@@ -86,6 +86,18 @@ PYTHONPATH=src python3 -m unittest discover -s tests -q
   - enable `lidar_postprocess_enabled=true`
   - noise/dropout controls: `lidar_noise`, `lidar_noise_stddev_m`, `lidar_dropout_probability`
   - emits `lidar_noisy_preview.xyz`.
+- LiDAR trajectory sweep preview:
+  - enable `lidar_trajectory_sweep_enabled=true`
+  - set `lidar_trajectory_sweep_frames` and `lidar_preview_points_per_frame`
+  - motion compensation controls:
+    - `lidar_motion_compensation_enabled`
+    - `lidar_motion_compensation_mode` (`linear`)
+    - `lidar_scan_duration_s`
+  - optional auto-extrinsics from trajectory:
+    - `lidar_extrinsics_auto_use_position=none|xy|xyz`
+    - `lidar_extrinsics_auto_use_orientation=true|false`
+    - `lidar_extrinsics_auto_offsets`
+  - emits `lidar_trajectory_sweep.json`.
 - Radar target preview:
   - enable `radar_postprocess_enabled=true`
   - core controls: `radar_max_targets`, `radar_range_min_m`, `radar_range_max_m`
@@ -111,4 +123,4 @@ PYTHONPATH=src python3 -m unittest discover -s tests -q
 ## Next implementation target
 
 - Add strict schema mapping from project scenario format to HELIOS survey XML.
-- Implement camera/lidar/radar post-physics from detected HELIOS artifacts.
+- Add renderer bridge integration (CARLA/AWSIM) with artifact playback contracts.

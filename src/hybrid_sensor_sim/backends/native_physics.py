@@ -114,6 +114,14 @@ class NativePhysicsBackend(SensorBackend):
         )
         if lidar_noisy_artifact is not None:
             artifacts["lidar_noisy_preview"] = lidar_noisy_artifact
+        lidar_sweep_artifact = self._generate_lidar_trajectory_sweep_if_available(
+            request=request,
+            artifacts=artifacts,
+            enhanced_output=enhanced_output,
+            metrics=metrics,
+        )
+        if lidar_sweep_artifact is not None:
+            artifacts["lidar_trajectory_sweep"] = lidar_sweep_artifact
         radar_targets_artifact = self._generate_radar_targets_if_available(
             request=request,
             artifacts=artifacts,
@@ -165,6 +173,9 @@ class NativePhysicsBackend(SensorBackend):
                 },
                 "camera_projection_enabled": bool(request.options.get("camera_projection_enabled", True)),
                 "lidar_postprocess_enabled": bool(request.options.get("lidar_postprocess_enabled", True)),
+                "lidar_trajectory_sweep_enabled": bool(
+                    request.options.get("lidar_trajectory_sweep_enabled", False)
+                ),
                 "radar_postprocess_enabled": bool(request.options.get("radar_postprocess_enabled", True)),
                 "radar_trajectory_sweep_enabled": bool(
                     request.options.get("radar_trajectory_sweep_enabled", False)
@@ -436,26 +447,17 @@ class NativePhysicsBackend(SensorBackend):
             metrics["lidar_output_count"] = 0.0
             return None
 
-        noise_model = str(request.options.get("lidar_noise", "gaussian")).lower().strip()
-        noise_stddev = float(request.options.get("lidar_noise_stddev_m", 0.02))
-        dropout_prob = float(request.options.get("lidar_dropout_probability", 0.01))
-        dropout_prob = min(max(dropout_prob, 0.0), 1.0)
-
         rng = random.Random(int(request.seed) + 17)
-        noisy_points: list[tuple[float, float, float]] = []
-        for x, y, z in points_xyz:
-            if dropout_prob > 0.0 and rng.random() < dropout_prob:
-                continue
-            if noise_model == "gaussian":
-                nx = x + rng.gauss(0.0, noise_stddev)
-                ny = y + rng.gauss(0.0, noise_stddev)
-                nz = z + rng.gauss(0.0, noise_stddev)
-                noisy_points.append((nx, ny, nz))
-            else:
-                noisy_points.append((x, y, z))
+        noisy_points = self._apply_lidar_noise_and_dropout(
+            request=request,
+            points_xyz=points_xyz,
+            rng=rng,
+        )
 
         output_path = enhanced_output / "lidar_noisy_preview.xyz"
         write_xyz_points(output_path, noisy_points)
+        noise_model = str(request.options.get("lidar_noise", "gaussian")).lower().strip()
+        noise_stddev = float(request.options.get("lidar_noise_stddev_m", 0.02))
         metrics["lidar_input_count"] = float(len(points_xyz))
         metrics["lidar_output_count"] = float(len(noisy_points))
         metrics["lidar_dropout_ratio"] = (
@@ -465,6 +467,245 @@ class NativePhysicsBackend(SensorBackend):
         )
         metrics["lidar_noise_stddev_m"] = float(noise_stddev if noise_model == "gaussian" else 0.0)
         return output_path
+
+    def _generate_lidar_trajectory_sweep_if_available(
+        self,
+        request: SensorSimRequest,
+        artifacts: dict[str, Path],
+        enhanced_output: Path,
+        metrics: dict[str, float],
+    ) -> Path | None:
+        if not bool(request.options.get("lidar_postprocess_enabled", True)):
+            return None
+        if not bool(request.options.get("lidar_trajectory_sweep_enabled", False)):
+            return None
+
+        point_cloud = artifacts.get("point_cloud_primary")
+        trajectory_path = artifacts.get("trajectory_primary")
+        if (
+            point_cloud is None
+            or point_cloud.suffix.lower() != ".xyz"
+            or not point_cloud.exists()
+            or trajectory_path is None
+            or not trajectory_path.exists()
+        ):
+            return None
+
+        max_points = int(request.options.get("lidar_postprocess_max_points", 50000))
+        points_xyz = read_xyz_points(point_cloud, max_points=max_points)
+        if not points_xyz:
+            metrics["lidar_trajectory_sweep_frame_count"] = 0.0
+            metrics["lidar_trajectory_sweep_total_output_count"] = 0.0
+            return None
+
+        poses = read_trajectory_poses(
+            trajectory_path,
+            max_rows=int(request.options.get("camera_extrinsics_auto_max_rows", 20000)),
+        )
+        if not poses:
+            metrics["lidar_trajectory_sweep_frame_count"] = 0.0
+            metrics["lidar_trajectory_sweep_total_output_count"] = 0.0
+            return None
+
+        frame_count = int(request.options.get("lidar_trajectory_sweep_frames", 3))
+        selected_poses = self._sample_trajectory_poses(poses=poses, frame_count=frame_count)
+        preview_points_per_frame = int(request.options.get("lidar_preview_points_per_frame", 64))
+        motion_comp_enabled = bool(request.options.get("lidar_motion_compensation_enabled", True))
+        motion_comp_mode = str(request.options.get("lidar_motion_compensation_mode", "linear"))
+        scan_duration_s = float(request.options.get("lidar_scan_duration_s", 0.1))
+        base_extrinsics = self._lidar_extrinsics_from_options(request)
+
+        frames: list[dict[str, object]] = []
+        total_output_count = 0
+        for frame_id, (pose_index, pose) in enumerate(selected_poses):
+            effective_extrinsics = self._build_lidar_extrinsics_from_pose(
+                request=request,
+                base_extrinsics=base_extrinsics,
+                pose=pose,
+                force_enable=True,
+            )
+            ego_velocity = self._estimate_ego_velocity_for_pose_index(poses=poses, pose_index=pose_index)
+            compensated_world_points = points_xyz
+            if motion_comp_enabled:
+                compensated_world_points = self._apply_lidar_motion_compensation(
+                    points_xyz=points_xyz,
+                    ego_velocity=ego_velocity,
+                    scan_duration_s=scan_duration_s,
+                    mode=motion_comp_mode,
+                )
+
+            points_lidar = transform_points_world_to_camera(
+                points_xyz=compensated_world_points,
+                extrinsics=effective_extrinsics,
+            )
+            rng = random.Random(int(request.seed) + 937 + frame_id)
+            noisy_points = self._apply_lidar_noise_and_dropout(
+                request=request,
+                points_xyz=points_lidar,
+                rng=rng,
+            )
+            total_output_count += len(noisy_points)
+            frames.append(
+                {
+                    "frame_id": frame_id,
+                    "pose_index": pose_index,
+                    "trajectory_pose": self._trajectory_pose_payload(
+                        pose=pose,
+                        trajectory_path=trajectory_path,
+                    ),
+                    "ego_velocity_mps": {
+                        "vx": ego_velocity[0],
+                        "vy": ego_velocity[1],
+                        "vz": ego_velocity[2],
+                    },
+                    "lidar_extrinsics": {
+                        "enabled": effective_extrinsics.enabled,
+                        "tx": effective_extrinsics.tx,
+                        "ty": effective_extrinsics.ty,
+                        "tz": effective_extrinsics.tz,
+                        "roll_deg": effective_extrinsics.roll_deg,
+                        "pitch_deg": effective_extrinsics.pitch_deg,
+                        "yaw_deg": effective_extrinsics.yaw_deg,
+                    },
+                    "motion_compensation_enabled": motion_comp_enabled,
+                    "output_count": len(noisy_points),
+                    "preview_points_xyz": [
+                        {"x": x, "y": y, "z": z}
+                        for x, y, z in noisy_points[:preview_points_per_frame]
+                    ],
+                }
+            )
+
+        metrics["lidar_trajectory_sweep_frame_count"] = float(len(frames))
+        metrics["lidar_trajectory_sweep_total_output_count"] = float(total_output_count)
+        metrics["lidar_motion_compensation_applied"] = 1.0 if motion_comp_enabled else 0.0
+        payload = {
+            "input_point_cloud": str(point_cloud),
+            "trajectory_path": str(trajectory_path),
+            "input_count": len(points_xyz),
+            "frame_count": len(frames),
+            "frames": frames,
+        }
+        output_path = enhanced_output / "lidar_trajectory_sweep.json"
+        output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        return output_path
+
+    def _apply_lidar_noise_and_dropout(
+        self,
+        request: SensorSimRequest,
+        points_xyz: list[tuple[float, float, float]],
+        rng: random.Random,
+    ) -> list[tuple[float, float, float]]:
+        noise_model = str(request.options.get("lidar_noise", "gaussian")).lower().strip()
+        noise_stddev = float(request.options.get("lidar_noise_stddev_m", 0.02))
+        dropout_prob = float(request.options.get("lidar_dropout_probability", 0.01))
+        dropout_prob = min(max(dropout_prob, 0.0), 1.0)
+
+        noisy_points: list[tuple[float, float, float]] = []
+        for x, y, z in points_xyz:
+            if dropout_prob > 0.0 and rng.random() < dropout_prob:
+                continue
+            if noise_model == "gaussian":
+                noisy_points.append(
+                    (
+                        x + rng.gauss(0.0, noise_stddev),
+                        y + rng.gauss(0.0, noise_stddev),
+                        z + rng.gauss(0.0, noise_stddev),
+                    )
+                )
+            else:
+                noisy_points.append((x, y, z))
+        return noisy_points
+
+    def _apply_lidar_motion_compensation(
+        self,
+        points_xyz: list[tuple[float, float, float]],
+        ego_velocity: tuple[float, float, float],
+        scan_duration_s: float,
+        mode: str,
+    ) -> list[tuple[float, float, float]]:
+        if not points_xyz:
+            return []
+        if scan_duration_s <= 0.0:
+            return list(points_xyz)
+        if mode.lower().strip() not in {"linear", "pose_delta"}:
+            return list(points_xyz)
+
+        vx, vy, vz = ego_velocity
+        n_points = len(points_xyz)
+        if n_points <= 1:
+            return list(points_xyz)
+
+        compensated: list[tuple[float, float, float]] = []
+        denom = float(n_points - 1)
+        for idx, (x, y, z) in enumerate(points_xyz):
+            alpha = float(idx) / denom
+            dt = (alpha - 0.5) * scan_duration_s
+            compensated.append((x - vx * dt, y - vy * dt, z - vz * dt))
+        return compensated
+
+    def _lidar_extrinsics_from_options(self, request: SensorSimRequest) -> CameraExtrinsics:
+        data = request.options.get("lidar_extrinsics", {})
+        if not isinstance(data, dict):
+            return CameraExtrinsics(enabled=False)
+        return CameraExtrinsics(
+            tx=float(data.get("tx", 0.0)),
+            ty=float(data.get("ty", 0.0)),
+            tz=float(data.get("tz", 0.0)),
+            roll_deg=float(data.get("roll_deg", 0.0)),
+            pitch_deg=float(data.get("pitch_deg", 0.0)),
+            yaw_deg=float(data.get("yaw_deg", 0.0)),
+            enabled=bool(data.get("enabled", False)),
+        )
+
+    def _build_lidar_extrinsics_from_pose(
+        self,
+        request: SensorSimRequest,
+        base_extrinsics: CameraExtrinsics,
+        pose: TrajectoryPose,
+        force_enable: bool,
+    ) -> CameraExtrinsics:
+        position_mode = str(
+            request.options.get("lidar_extrinsics_auto_use_position", "xy")
+        ).lower()
+        use_orientation = bool(request.options.get("lidar_extrinsics_auto_use_orientation", True))
+
+        tx, ty, tz = base_extrinsics.tx, base_extrinsics.ty, base_extrinsics.tz
+        if position_mode in {"xy", "xyz"}:
+            tx = pose.x
+            ty = pose.y
+        if position_mode == "xyz":
+            tz = pose.z
+
+        roll_deg = base_extrinsics.roll_deg
+        pitch_deg = base_extrinsics.pitch_deg
+        yaw_deg = base_extrinsics.yaw_deg
+        if use_orientation:
+            roll_deg = pose.roll_deg
+            pitch_deg = pose.pitch_deg
+            yaw_deg = pose.yaw_deg
+
+        offsets = request.options.get("lidar_extrinsics_auto_offsets", {})
+        if isinstance(offsets, dict):
+            tx += float(offsets.get("tx", 0.0))
+            ty += float(offsets.get("ty", 0.0))
+            tz += float(offsets.get("tz", 0.0))
+            roll_deg += float(offsets.get("roll_deg", 0.0))
+            pitch_deg += float(offsets.get("pitch_deg", 0.0))
+            yaw_deg += float(offsets.get("yaw_deg", 0.0))
+
+        enabled = bool(base_extrinsics.enabled)
+        if force_enable:
+            enabled = True
+        return CameraExtrinsics(
+            tx=tx,
+            ty=ty,
+            tz=tz,
+            roll_deg=roll_deg,
+            pitch_deg=pitch_deg,
+            yaw_deg=yaw_deg,
+            enabled=enabled,
+        )
 
     def _generate_radar_targets_if_available(
         self,
