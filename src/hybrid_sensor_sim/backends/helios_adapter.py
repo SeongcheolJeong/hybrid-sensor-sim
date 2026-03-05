@@ -4,11 +4,25 @@ import json
 import os
 import re
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
 from hybrid_sensor_sim.backends.base import SensorBackend
 from hybrid_sensor_sim.types import SensorSimRequest, SensorSimResult
+
+
+@dataclass(frozen=True)
+class _PreparedExecution:
+    command: list[str]
+    cwd: Path
+    runtime: str
+    binary: str
+    survey_path: Path
+    assets_paths: list[Path]
+    output_root: Path
+    host_root: Path | None = None
+    container_root: Path | None = None
 
 
 class HeliosAdapter(SensorBackend):
@@ -49,7 +63,7 @@ class HeliosAdapter(SensorBackend):
         configured = request.options.get("helios_cwd")
         if configured:
             path = Path(str(configured)).expanduser()
-            return path if path.is_absolute() else (Path.cwd() / path).resolve()
+            return path.resolve() if path.is_absolute() else (Path.cwd() / path).resolve()
 
         binary_parent = binary.resolve().parent
         if binary_parent.name in {"Debug", "Release"} and binary_parent.parent.name == "build":
@@ -60,33 +74,26 @@ class HeliosAdapter(SensorBackend):
 
     def _resolve_input_path(self, raw: str | Path, helios_cwd: Path) -> Path:
         path = Path(raw).expanduser()
-        return path if path.is_absolute() else (helios_cwd / path).resolve()
+        return path.resolve() if path.is_absolute() else (helios_cwd / path).resolve()
 
     def _resolve_output_root(self, request: SensorSimRequest) -> Path:
         configured = request.options.get("helios_output_root")
         if configured:
             path = Path(str(configured)).expanduser()
-            return path if path.is_absolute() else (request.output_dir / path).resolve()
+            return path.resolve() if path.is_absolute() else (request.output_dir / path).resolve()
         return (request.output_dir / "helios_output").resolve()
 
-    def _build_helios_command(
+    def _build_helios_args(
         self,
-        binary: Path,
         request: SensorSimRequest,
-        helios_cwd: Path,
+        survey_path: Path,
+        assets_paths: list[Path],
         output_root: Path,
-    ) -> tuple[list[str], Path, list[Path]]:
+    ) -> list[str]:
         options = request.options
-        survey_raw = options.get("survey_path", request.scenario_path)
-        survey_path = self._resolve_input_path(survey_raw, helios_cwd)
-
-        assets_paths_raw = options.get("assets_paths", [])
-        assets_paths = [self._resolve_input_path(item, helios_cwd) for item in assets_paths_raw]
-
-        command = [str(binary), str(survey_path), "--output", str(output_root)]
+        args = [str(survey_path), "--output", str(output_root), "--seed", str(request.seed)]
         for assets_path in assets_paths:
-            command.extend(["--assets", str(assets_path)])
-        command.extend(["--seed", str(request.seed)])
+            args.extend(["--assets", str(assets_path)])
 
         bool_flags = {
             "write_waveform": "--writeWaveform",
@@ -105,7 +112,7 @@ class HeliosAdapter(SensorBackend):
         }
         for key, flag in bool_flags.items():
             if bool(options.get(key, False)):
-                command.append(flag)
+                args.append(flag)
 
         scalar_flags = {
             "gps_start_time": "--gpsStartTime",
@@ -121,9 +128,26 @@ class HeliosAdapter(SensorBackend):
         }
         for key, flag in scalar_flags.items():
             if key in options:
-                command.extend([flag, str(options[key])])
+                args.extend([flag, str(options[key])])
 
-        command.extend(str(item) for item in options.get("extra_args", []))
+        args.extend(str(item) for item in options.get("extra_args", []))
+        return args
+
+    def _build_helios_command(
+        self,
+        binary: Path,
+        request: SensorSimRequest,
+        helios_cwd: Path,
+        output_root: Path,
+    ) -> tuple[list[str], Path, list[Path]]:
+        options = request.options
+        survey_raw = options.get("survey_path", request.scenario_path)
+        survey_path = self._resolve_input_path(survey_raw, helios_cwd)
+
+        assets_paths_raw = options.get("assets_paths", [])
+        assets_paths = [self._resolve_input_path(item, helios_cwd) for item in assets_paths_raw]
+
+        command = [str(binary), *self._build_helios_args(request, survey_path, assets_paths, output_root)]
         return command, survey_path, assets_paths
 
     def _extract_output_dir_from_logs(self, stdout: str, stderr: str) -> Path | None:
@@ -135,12 +159,188 @@ class HeliosAdapter(SensorBackend):
 
     def _collect_files(self, root: Path, exts: Iterable[str]) -> list[Path]:
         ext_set = {item.lower() for item in exts}
+        if not root.exists():
+            return []
         return sorted(
             [path for path in root.rglob("*") if path.is_file() and path.suffix.lower() in ext_set]
         )
 
     def _collect_string_match_files(self, root: Path, token: str) -> list[Path]:
+        if not root.exists():
+            return []
         return sorted([path for path in root.rglob("*") if path.is_file() and token in path.name])
+
+    def _docker_daemon_available(self) -> tuple[bool, str]:
+        try:
+            proc = subprocess.run(
+                ["docker", "info"],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except FileNotFoundError:
+            return False, "docker CLI is not installed."
+        if proc.returncode != 0:
+            stderr = proc.stderr.strip()
+            return False, stderr if stderr else "docker daemon is not reachable."
+        return True, ""
+
+    def _ensure_path_under_root(self, path: Path, root: Path) -> bool:
+        try:
+            path.resolve().relative_to(root.resolve())
+            return True
+        except ValueError:
+            return False
+
+    def _host_to_container_path(self, path: Path, host_root: Path, container_root: Path) -> Path:
+        relative = path.resolve().relative_to(host_root.resolve())
+        return (container_root / relative).resolve()
+
+    def _container_to_host_path(self, path: Path, host_root: Path, container_root: Path) -> Path:
+        if path.is_absolute():
+            try:
+                relative = path.relative_to(container_root)
+                return (host_root / relative).resolve()
+            except ValueError:
+                return path
+        return (host_root / path).resolve()
+
+    def _prepare_binary_execution(self, request: SensorSimRequest, binary: Path) -> _PreparedExecution:
+        helios_cwd = self._resolve_helios_cwd(request, binary)
+        output_root = self._resolve_output_root(request)
+        command, survey_path, assets_paths = self._build_helios_command(
+            binary=binary,
+            request=request,
+            helios_cwd=helios_cwd,
+            output_root=output_root,
+        )
+        return _PreparedExecution(
+            command=command,
+            cwd=helios_cwd,
+            runtime="binary",
+            binary=str(binary),
+            survey_path=survey_path,
+            assets_paths=assets_paths,
+            output_root=output_root,
+        )
+
+    def _prepare_docker_execution(
+        self,
+        request: SensorSimRequest,
+        require_runtime_available: bool,
+    ) -> tuple[_PreparedExecution | None, str | None]:
+        if require_runtime_available:
+            docker_ok, docker_err = self._docker_daemon_available()
+            if not docker_ok:
+                return None, f"docker runtime requested but unavailable: {docker_err}"
+
+        image = str(request.options.get("helios_docker_image", "")).strip()
+        if not image:
+            return None, "docker runtime requires 'helios_docker_image' option."
+
+        host_root = Path.cwd().resolve()
+        container_root = Path(str(request.options.get("helios_docker_mount_point", "/workspace")))
+        container_binary = str(request.options.get("helios_docker_binary", "helios++"))
+
+        configured_cwd = request.options.get("helios_cwd")
+        if configured_cwd:
+            helios_cwd = Path(str(configured_cwd)).expanduser()
+            helios_cwd = helios_cwd.resolve() if helios_cwd.is_absolute() else (host_root / helios_cwd).resolve()
+        else:
+            helios_cwd = host_root
+
+        survey_path = self._resolve_input_path(
+            request.options.get("survey_path", request.scenario_path), helios_cwd
+        )
+        assets_paths_raw = request.options.get("assets_paths", [])
+        assets_paths = [self._resolve_input_path(item, helios_cwd) for item in assets_paths_raw]
+        output_root = self._resolve_output_root(request)
+
+        required_paths = [helios_cwd, survey_path, output_root, *assets_paths]
+        out_of_root = [path for path in required_paths if not self._ensure_path_under_root(path, host_root)]
+        if out_of_root:
+            return (
+                None,
+                "docker runtime supports paths under current workspace only. "
+                f"out_of_root={','.join(str(path) for path in out_of_root)}",
+            )
+
+        container_cwd = self._host_to_container_path(helios_cwd, host_root, container_root)
+        container_survey = self._host_to_container_path(survey_path, host_root, container_root)
+        container_assets = [
+            self._host_to_container_path(path, host_root, container_root) for path in assets_paths
+        ]
+        container_output = self._host_to_container_path(output_root, host_root, container_root)
+
+        helios_args = self._build_helios_args(
+            request=request,
+            survey_path=container_survey,
+            assets_paths=container_assets,
+            output_root=container_output,
+        )
+        docker_extra_run_args = [str(item) for item in request.options.get("helios_docker_extra_run_args", [])]
+        command = [
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            f"{host_root}:{container_root}",
+            "-w",
+            str(container_cwd),
+            *docker_extra_run_args,
+            image,
+            container_binary,
+            *helios_args,
+        ]
+        return (
+            _PreparedExecution(
+                command=command,
+                cwd=host_root,
+                runtime="docker",
+                binary=f"{image}:{container_binary}",
+                survey_path=survey_path,
+                assets_paths=assets_paths,
+                output_root=output_root,
+                host_root=host_root,
+                container_root=container_root,
+            ),
+            None,
+        )
+
+    def _prepare_execution(
+        self,
+        request: SensorSimRequest,
+        require_runtime_available: bool,
+    ) -> tuple[_PreparedExecution | None, str | None]:
+        runtime = str(request.options.get("helios_runtime", "auto")).lower().strip()
+        if runtime not in {"auto", "binary", "docker"}:
+            return None, f"unsupported helios_runtime '{runtime}'. expected one of auto/binary/docker."
+
+        binary = self._resolve_binary()
+        binary_available = self._available(binary)
+        if runtime == "binary":
+            if not binary_available or binary is None:
+                return None, "binary runtime requested but HELIOS binary is missing or not executable."
+            return self._prepare_binary_execution(request, binary), None
+
+        if runtime == "docker":
+            return self._prepare_docker_execution(request, require_runtime_available=require_runtime_available)
+
+        if binary_available and binary is not None:
+            return self._prepare_binary_execution(request, binary), None
+
+        docker_exec, docker_err = self._prepare_docker_execution(
+            request,
+            require_runtime_available=require_runtime_available,
+        )
+        if docker_exec is not None:
+            return docker_exec, None
+        return (
+            None,
+            "auto runtime could not prepare execution: "
+            "binary unavailable and docker unavailable. "
+            f"details={docker_err}",
+        )
 
     def _build_output_summary(
         self,
@@ -179,58 +379,55 @@ class HeliosAdapter(SensorBackend):
         return artifacts, metrics, manifest
 
     def simulate(self, request: SensorSimRequest) -> SensorSimResult:
-        binary = self._resolve_binary()
         helios_output = request.output_dir / "helios_raw"
         helios_output.mkdir(parents=True, exist_ok=True)
+        execute = bool(request.options.get("execute_helios", False))
 
-        if not self._available(binary):
-            planned = {
-                "binary": str(binary) if binary else None,
-                "scenario": str(request.scenario_path),
-                "sensor_profile": request.sensor_profile,
-                "seed": request.seed,
-                "error": "HELIOS binary is missing or not executable.",
-            }
-            manifest_path = helios_output / "helios_execution_plan.json"
-            manifest_path.write_text(json.dumps(planned, indent=2), encoding="utf-8")
+        command_override = request.options.get("helios_command")
+        prepared: _PreparedExecution | None = None
+        preparation_error: str | None = None
+        if command_override:
+            cwd_raw = request.options.get("helios_cwd", Path.cwd())
+            cwd = Path(str(cwd_raw)).expanduser()
+            cwd = cwd.resolve() if cwd.is_absolute() else (Path.cwd() / cwd).resolve()
+            prepared = _PreparedExecution(
+                command=[str(item) for item in command_override],
+                cwd=cwd,
+                runtime="override",
+                binary="command_override",
+                survey_path=request.scenario_path.resolve(),
+                assets_paths=[],
+                output_root=self._resolve_output_root(request),
+            )
+        else:
+            prepared, preparation_error = self._prepare_execution(
+                request,
+                require_runtime_available=execute,
+            )
+
+        planned = {
+            "binary": prepared.binary if prepared else None,
+            "survey_path": str(prepared.survey_path) if prepared else str(request.scenario_path),
+            "assets_paths": [str(path) for path in prepared.assets_paths] if prepared else [],
+            "sensor_profile": request.sensor_profile,
+            "seed": request.seed,
+            "runtime": prepared.runtime if prepared else str(request.options.get("helios_runtime", "auto")),
+            "helios_cwd": str(prepared.cwd) if prepared else str(request.options.get("helios_cwd", "")),
+            "output_root": str(prepared.output_root) if prepared else str(self._resolve_output_root(request)),
+            "command": prepared.command if prepared else [],
+            "used_command_override": bool(command_override),
+            "error": preparation_error,
+        }
+        manifest_path = helios_output / "helios_execution_plan.json"
+        manifest_path.write_text(json.dumps(planned, indent=2), encoding="utf-8")
+        if prepared is None:
             return SensorSimResult(
                 backend=self.name(),
                 success=False,
                 artifacts={"execution_plan": manifest_path},
-                message="HELIOS binary is missing or not executable.",
+                message=preparation_error or "Failed to prepare HELIOS execution.",
             )
 
-        assert binary is not None
-        helios_cwd = self._resolve_helios_cwd(request, binary)
-        output_root = self._resolve_output_root(request)
-        command_override = request.options.get("helios_command")
-        if command_override:
-            command = [str(item) for item in command_override]
-            survey_path = request.scenario_path
-            assets_paths = []
-        else:
-            command, survey_path, assets_paths = self._build_helios_command(
-                binary=binary,
-                request=request,
-                helios_cwd=helios_cwd,
-                output_root=output_root,
-            )
-
-        planned = {
-            "binary": str(binary),
-            "survey_path": str(survey_path),
-            "assets_paths": [str(path) for path in assets_paths],
-            "sensor_profile": request.sensor_profile,
-            "seed": request.seed,
-            "helios_cwd": str(helios_cwd),
-            "output_root": str(output_root),
-            "command": command,
-            "used_command_override": bool(command_override),
-        }
-        manifest_path = helios_output / "helios_execution_plan.json"
-        manifest_path.write_text(json.dumps(planned, indent=2), encoding="utf-8")
-
-        execute = bool(request.options.get("execute_helios", False))
         if not execute:
             return SensorSimResult(
                 backend=self.name(),
@@ -239,9 +436,10 @@ class HeliosAdapter(SensorBackend):
                 message="HELIOS execution plan generated only (execute_helios=false).",
             )
 
+        prepared.output_root.mkdir(parents=True, exist_ok=True)
         process = subprocess.run(  # noqa: S603
-            command,
-            cwd=str(helios_cwd),
+            prepared.command,
+            cwd=str(prepared.cwd),
             text=True,
             capture_output=True,
             check=False,
@@ -264,10 +462,15 @@ class HeliosAdapter(SensorBackend):
 
         detected_output = self._extract_output_dir_from_logs(process.stdout, process.stderr)
         if detected_output is None:
-            detected_output = output_root
+            detected_output = prepared.output_root
+        elif prepared.runtime == "docker" and prepared.host_root and prepared.container_root:
+            detected_output = self._container_to_host_path(
+                detected_output,
+                host_root=prepared.host_root,
+                container_root=prepared.container_root,
+            )
         if not detected_output.is_absolute():
-            detected_output = (helios_cwd / detected_output).resolve()
-        output_root.mkdir(parents=True, exist_ok=True)
+            detected_output = (prepared.cwd / detected_output).resolve()
 
         output_manifest_path = helios_output / "helios_output_manifest.json"
         artifacts, metrics, output_manifest = self._build_output_summary(
@@ -276,6 +479,7 @@ class HeliosAdapter(SensorBackend):
         )
         output_manifest["detected_output_dir"] = str(detected_output)
         output_manifest["return_code"] = process.returncode
+        output_manifest["runtime"] = prepared.runtime
         output_manifest_path.write_text(json.dumps(output_manifest, indent=2), encoding="utf-8")
         artifacts["execution_plan"] = manifest_path
         artifacts["stdout"] = stdout_path

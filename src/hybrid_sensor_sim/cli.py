@@ -32,12 +32,15 @@ def main() -> int:
     cfg = _load_config(args.config)
 
     mode = BackendMode(cfg.get("mode", BackendMode.HYBRID_AUTO.value))
+    options = dict(cfg.get("options", {}))
+    if cfg.get("helios_runtime") and "helios_runtime" not in options:
+        options["helios_runtime"] = cfg["helios_runtime"]
     request = SensorSimRequest(
         scenario_path=Path(cfg["scenario_path"]),
         output_dir=Path(cfg["output_dir"]),
         sensor_profile=cfg.get("sensor_profile", "default"),
         seed=int(cfg.get("seed", 0)),
-        options=cfg.get("options", {}),
+        options=options,
     )
     request.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -62,4 +65,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

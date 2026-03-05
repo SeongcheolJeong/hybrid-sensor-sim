@@ -1,14 +1,17 @@
 {
   "mode": "hybrid_auto",
-  "helios_runtime": "binary",
+  "helios_runtime": "docker",
   "helios_bin": "",
   "scenario_path": "third_party/helios/data/surveys/demo/tls_plane.xml",
-  "output_dir": "artifacts/helios_demo",
+  "output_dir": "artifacts/helios_docker",
   "sensor_profile": "lidar-demo",
   "seed": 42,
   "options": {
-    "helios_runtime": "binary",
+    "helios_runtime": "docker",
     "execute_helios": true,
+    "helios_docker_image": "heliosplusplus:local",
+    "helios_docker_binary": "helios++",
+    "helios_docker_mount_point": "/workspace",
     "helios_cwd": "third_party/helios",
     "survey_path": "data/surveys/demo/tls_plane.xml",
     "assets_paths": [

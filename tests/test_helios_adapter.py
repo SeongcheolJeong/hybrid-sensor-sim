@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from hybrid_sensor_sim.backends.helios_adapter import HeliosAdapter
 from hybrid_sensor_sim.types import SensorSimRequest
@@ -100,7 +101,82 @@ touch "${rootdir}/scan_fullwave.txt"
             self.assertFalse(result.success)
             self.assertIn("execution_plan", result.artifacts)
 
+    def test_auto_runtime_reports_binary_and_docker_unavailable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            request = self._make_request(
+                root,
+                execute_helios=True,
+                helios_runtime="auto",
+                helios_docker_image="helios:test",
+            )
+            adapter = HeliosAdapter(helios_bin=root / "missing_binary")
+            with mock.patch.object(
+                HeliosAdapter,
+                "_docker_daemon_available",
+                return_value=(False, "daemon down"),
+            ):
+                result = adapter.simulate(request)
+            self.assertFalse(result.success)
+            self.assertIn("binary unavailable", result.message)
+            self.assertIn("daemon down", result.message)
+
+    def test_docker_runtime_generates_plan_with_docker_command(self) -> None:
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            assets = root / "assets"
+            assets.mkdir(parents=True, exist_ok=True)
+
+            request = self._make_request(
+                root,
+                execute_helios=False,
+                helios_runtime="docker",
+                helios_docker_image="helios:test",
+                helios_docker_binary="helios++",
+                helios_cwd=str(root),
+                survey_path=str(survey),
+                assets_paths=[str(assets)],
+            )
+            adapter = HeliosAdapter(helios_bin=root / "missing_binary")
+            with mock.patch.object(
+                HeliosAdapter,
+                "_docker_daemon_available",
+                return_value=(True, ""),
+            ):
+                result = adapter.simulate(request)
+
+            self.assertTrue(result.success)
+            plan = json.loads(result.artifacts["execution_plan"].read_text(encoding="utf-8"))
+            command = plan["command"]
+            self.assertGreater(len(command), 5)
+            self.assertEqual(command[0], "docker")
+            self.assertEqual(command[1], "run")
+            self.assertIn("helios:test", command)
+            self.assertIn("--output", command)
+
+    def test_docker_dry_run_does_not_require_daemon(self) -> None:
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp:
+            root = Path(tmp)
+            request = self._make_request(
+                root,
+                execute_helios=False,
+                helios_runtime="docker",
+                helios_docker_image="helios:test",
+                helios_cwd=str(root),
+                survey_path=str(root / "survey.xml"),
+            )
+            adapter = HeliosAdapter(helios_bin=root / "missing_binary")
+            with mock.patch.object(
+                HeliosAdapter,
+                "_docker_daemon_available",
+                return_value=(False, "daemon down"),
+            ):
+                result = adapter.simulate(request)
+            self.assertTrue(result.success)
+            self.assertIn("execution_plan", result.artifacts)
+
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -1,11 +1,13 @@
 {
   "mode": "hybrid_auto",
+  "helios_runtime": "auto",
   "helios_bin": "",
   "scenario_path": "examples/scenarios/minimal_scene.json",
   "output_dir": "artifacts/run01",
   "sensor_profile": "default",
   "seed": 7,
   "options": {
+    "helios_runtime": "auto",
     "execute_helios": false,
     "helios_command": [],
     "camera_geometry": "pinhole",
