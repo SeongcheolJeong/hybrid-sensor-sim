@@ -23,16 +23,31 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 ## Quick start
 
 ```bash
-python3 -m hybrid_sensor_sim.cli --config configs/hybrid_sensor_sim.example.json
+PYTHONPATH=src python3 -m hybrid_sensor_sim.cli --config configs/hybrid_sensor_sim.example.json
 ```
 
 Run tests:
 
 ```bash
-python3 -m unittest -q
+PYTHONPATH=src python3 -m unittest discover -s tests -q
 ```
+
+## HELIOS execution modes
+
+- `execute_helios=false`:
+  - creates execution plan only (safe dry run).
+- `execute_helios=true`:
+  - runs HELIOS CLI,
+  - captures `stdout/stderr`,
+  - detects generated output directory and primary files (`.xyz/.las/.laz`, trajectory, pulse, fullwave),
+  - writes output manifest for downstream physics chain.
+
+## Example configs
+
+- [configs/hybrid_sensor_sim.example.json](/Users/seongcheoljeong/Documents/Test/configs/hybrid_sensor_sim.example.json): minimal dry-run/fallback config.
+- [configs/hybrid_sensor_sim.helios_demo.json](/Users/seongcheoljeong/Documents/Test/configs/hybrid_sensor_sim.helios_demo.json): HELIOS demo survey config (requires built `HELIOS_BIN`).
 
 ## Next implementation target
 
-- Replace placeholder HELIOS command flow with actual scene/sensor config mapping.
-- Connect generated point cloud output into calibrated camera/lidar/radar post-physics stages.
+- Add strict schema mapping from project scenario format to HELIOS survey XML.
+- Implement camera/lidar/radar post-physics from detected HELIOS artifacts.

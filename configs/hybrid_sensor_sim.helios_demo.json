@@ -1,0 +1,24 @@
+{
+  "mode": "hybrid_auto",
+  "helios_bin": "",
+  "scenario_path": "third_party/helios/data/surveys/demo/tls_plane.xml",
+  "output_dir": "artifacts/helios_demo",
+  "sensor_profile": "lidar-demo",
+  "seed": 42,
+  "options": {
+    "execute_helios": true,
+    "helios_cwd": "third_party/helios",
+    "survey_path": "data/surveys/demo/tls_plane.xml",
+    "assets_paths": [
+      "assets"
+    ],
+    "las_output": false,
+    "zip_output": false,
+    "nthreads": 2,
+    "camera_geometry": "pinhole",
+    "camera_distortion": "brown-conrady",
+    "lidar_noise": "gaussian",
+    "radar_clutter": "basic",
+    "motion_compensation": true
+  }
+}
