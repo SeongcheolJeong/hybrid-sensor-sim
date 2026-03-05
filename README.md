@@ -68,12 +68,20 @@ PYTHONPATH=src python3 -m unittest discover -s tests -q
 - `camera_extrinsics` is applied as `p_cam = R(roll,pitch,yaw) * (p_world - t)`:
   - `tx,ty,tz`: camera translation.
   - `roll_deg,pitch_deg,yaw_deg`: ZYX Euler rotation in degrees.
+- Optional auto extrinsics from HELIOS trajectory:
+  - enable `camera_extrinsics_auto_from_trajectory=true`
+  - choose pose with `camera_extrinsics_auto_pose=first|middle|last`
+  - choose merge policy:
+    - `camera_extrinsics_auto_use_position=xy|xyz`
+    - `camera_extrinsics_auto_use_orientation=true|false`
+  - optional offsets via `camera_extrinsics_auto_offsets`.
 
 ## Example configs
 
 - [configs/hybrid_sensor_sim.example.json](/Users/seongcheoljeong/Documents/Test/configs/hybrid_sensor_sim.example.json): minimal dry-run/fallback config.
 - [configs/hybrid_sensor_sim.helios_demo.json](/Users/seongcheoljeong/Documents/Test/configs/hybrid_sensor_sim.helios_demo.json): HELIOS demo survey config (requires built `HELIOS_BIN`).
 - [configs/hybrid_sensor_sim.helios_docker.json](/Users/seongcheoljeong/Documents/Test/configs/hybrid_sensor_sim.helios_docker.json): docker runtime demo config.
+- [configs/hybrid_sensor_sim.helios_docker.auto_extrinsics.json](/Users/seongcheoljeong/Documents/Test/configs/hybrid_sensor_sim.helios_docker.auto_extrinsics.json): docker demo with trajectory-based auto extrinsics.
 
 ## Next implementation target
 

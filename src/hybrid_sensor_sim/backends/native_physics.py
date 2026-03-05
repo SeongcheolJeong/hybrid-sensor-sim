@@ -5,6 +5,7 @@ from pathlib import Path
 
 from hybrid_sensor_sim.backends.base import SensorBackend
 from hybrid_sensor_sim.io.pointcloud_xyz import read_xyz_points
+from hybrid_sensor_sim.io.trajectory_txt import TrajectoryPose, read_trajectory_poses
 from hybrid_sensor_sim.physics.camera import (
     BrownConradyDistortion,
     CameraExtrinsics,
@@ -204,9 +205,15 @@ class NativePhysicsBackend(SensorBackend):
             points_xyz=points_xyz,
             request=request,
         )
+        effective_extrinsics, extrinsics_meta = self._resolve_effective_extrinsics(
+            request=request,
+            artifacts=artifacts,
+            base_extrinsics=extrinsics,
+            reference_point=reference_point,
+        )
         camera_points = transform_points_world_to_camera(
             points_xyz=transformed_points,
-            extrinsics=extrinsics,
+            extrinsics=effective_extrinsics,
         )
 
         projected = project_points_brown_conrady(
@@ -218,6 +225,9 @@ class NativePhysicsBackend(SensorBackend):
 
         metrics["camera_projection_input_count"] = float(len(points_xyz))
         metrics["camera_projection_output_count"] = float(len(projected))
+        metrics["camera_extrinsics_auto_applied"] = (
+            1.0 if extrinsics_meta.get("source") == "trajectory_auto" else 0.0
+        )
         preview_count = int(request.options.get("camera_projection_preview_count", 20))
         preview = {
             "input_point_cloud": str(point_cloud),
@@ -231,14 +241,16 @@ class NativePhysicsBackend(SensorBackend):
             if reference_point is not None
             else None,
             "camera_extrinsics": {
-                "enabled": extrinsics.enabled,
-                "tx": extrinsics.tx,
-                "ty": extrinsics.ty,
-                "tz": extrinsics.tz,
-                "roll_deg": extrinsics.roll_deg,
-                "pitch_deg": extrinsics.pitch_deg,
-                "yaw_deg": extrinsics.yaw_deg,
+                "enabled": effective_extrinsics.enabled,
+                "tx": effective_extrinsics.tx,
+                "ty": effective_extrinsics.ty,
+                "tz": effective_extrinsics.tz,
+                "roll_deg": effective_extrinsics.roll_deg,
+                "pitch_deg": effective_extrinsics.pitch_deg,
+                "yaw_deg": effective_extrinsics.yaw_deg,
             },
+            "camera_extrinsics_source": extrinsics_meta.get("source", "manual"),
+            "camera_extrinsics_trajectory_pose": extrinsics_meta.get("trajectory_pose"),
             "preview_points_uvz": [
                 {"u": u, "v": v, "z": z} for u, v, z in projected[:preview_count]
             ],
@@ -246,6 +258,109 @@ class NativePhysicsBackend(SensorBackend):
         output_path = enhanced_output / "camera_projection_preview.json"
         output_path.write_text(json.dumps(preview, indent=2), encoding="utf-8")
         return output_path
+
+    def _resolve_effective_extrinsics(
+        self,
+        request: SensorSimRequest,
+        artifacts: dict[str, Path],
+        base_extrinsics: CameraExtrinsics,
+        reference_point: tuple[float, float, float] | None,
+    ) -> tuple[CameraExtrinsics, dict[str, object]]:
+        auto_enabled = bool(request.options.get("camera_extrinsics_auto_from_trajectory", False))
+        if not auto_enabled:
+            return base_extrinsics, {"source": "manual", "trajectory_pose": None}
+
+        trajectory_path = artifacts.get("trajectory_primary")
+        if trajectory_path is None or not trajectory_path.exists():
+            return base_extrinsics, {"source": "manual", "trajectory_pose": None}
+
+        poses = read_trajectory_poses(
+            trajectory_path,
+            max_rows=int(request.options.get("camera_extrinsics_auto_max_rows", 20000)),
+        )
+        if not poses:
+            return base_extrinsics, {"source": "manual", "trajectory_pose": None}
+
+        pose = self._select_trajectory_pose(
+            poses=poses,
+            selector=str(request.options.get("camera_extrinsics_auto_pose", "first")),
+        )
+
+        position_mode = str(
+            request.options.get("camera_extrinsics_auto_use_position", "xy")
+        ).lower()
+        use_orientation = bool(request.options.get("camera_extrinsics_auto_use_orientation", False))
+
+        tx, ty, tz = base_extrinsics.tx, base_extrinsics.ty, base_extrinsics.tz
+        if position_mode in {"xy", "xyz"}:
+            tx = pose.x
+            ty = pose.y
+        if position_mode == "xyz":
+            tz = pose.z
+
+        roll_deg = base_extrinsics.roll_deg
+        pitch_deg = base_extrinsics.pitch_deg
+        yaw_deg = base_extrinsics.yaw_deg
+        if use_orientation:
+            roll_deg = pose.roll_deg
+            pitch_deg = pose.pitch_deg
+            yaw_deg = pose.yaw_deg
+
+        offsets = request.options.get("camera_extrinsics_auto_offsets", {})
+        if isinstance(offsets, dict):
+            tx += float(offsets.get("tx", 0.0))
+            ty += float(offsets.get("ty", 0.0))
+            tz += float(offsets.get("tz", 0.0))
+            roll_deg += float(offsets.get("roll_deg", 0.0))
+            pitch_deg += float(offsets.get("pitch_deg", 0.0))
+            yaw_deg += float(offsets.get("yaw_deg", 0.0))
+
+        if (
+            reference_point is not None
+            and bool(request.options.get("camera_reference_apply_to_extrinsics", True))
+            and position_mode in {"xy", "xyz"}
+        ):
+            tx -= reference_point[0]
+            ty -= reference_point[1]
+            if position_mode == "xyz":
+                apply_ref_z = bool(request.options.get("camera_reference_apply_z", True))
+                if apply_ref_z:
+                    tz -= reference_point[2]
+
+        effective = CameraExtrinsics(
+            tx=tx,
+            ty=ty,
+            tz=tz,
+            roll_deg=roll_deg,
+            pitch_deg=pitch_deg,
+            yaw_deg=yaw_deg,
+            enabled=True,
+        )
+        pose_payload = {
+            "x": pose.x,
+            "y": pose.y,
+            "z": pose.z,
+            "time_s": pose.time_s,
+            "roll_deg": pose.roll_deg,
+            "pitch_deg": pose.pitch_deg,
+            "yaw_deg": pose.yaw_deg,
+            "trajectory_path": str(trajectory_path),
+        }
+        return effective, {"source": "trajectory_auto", "trajectory_pose": pose_payload}
+
+    def _select_trajectory_pose(
+        self,
+        poses: list[TrajectoryPose],
+        selector: str,
+    ) -> TrajectoryPose:
+        if not poses:
+            raise ValueError("poses must not be empty")
+        normalized = selector.lower().strip()
+        if normalized == "last":
+            return poses[-1]
+        if normalized == "middle":
+            return poses[len(poses) // 2]
+        return poses[0]
 
     def _apply_projection_reference_frame(
         self,

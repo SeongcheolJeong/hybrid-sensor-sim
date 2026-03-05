@@ -194,6 +194,50 @@ EOF
         self.assertEqual(extrinsics.pitch_deg, 5.0)
         self.assertEqual(extrinsics.yaw_deg, 6.0)
 
+    def test_auto_extrinsics_from_trajectory_xy_and_orientation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            trajectory = root / "leg000_trajectory.txt"
+            trajectory.write_text(
+                "100.0 200.0 10.0 0.0 1.0 2.0 90.0\n"
+                "110.0 210.0 20.0 1.0 3.0 4.0 91.0\n",
+                encoding="utf-8",
+            )
+            backend = NativePhysicsBackend()
+            request = SensorSimRequest(
+                scenario_path=Path("/tmp/scenario"),
+                output_dir=Path("/tmp/out"),
+                options={
+                    "camera_extrinsics": {
+                        "enabled": True,
+                        "tx": 1.0,
+                        "ty": 2.0,
+                        "tz": 3.0,
+                        "roll_deg": 4.0,
+                        "pitch_deg": 5.0,
+                        "yaw_deg": 6.0,
+                    },
+                    "camera_extrinsics_auto_from_trajectory": True,
+                    "camera_extrinsics_auto_pose": "last",
+                    "camera_extrinsics_auto_use_position": "xy",
+                    "camera_extrinsics_auto_use_orientation": True,
+                },
+            )
+            base = backend._camera_extrinsics_from_options(request)
+            effective, meta = backend._resolve_effective_extrinsics(
+                request=request,
+                artifacts={"trajectory_primary": trajectory},
+                base_extrinsics=base,
+                reference_point=None,
+            )
+            self.assertEqual(meta["source"], "trajectory_auto")
+            self.assertAlmostEqual(effective.tx, 110.0)
+            self.assertAlmostEqual(effective.ty, 210.0)
+            self.assertAlmostEqual(effective.tz, 3.0)
+            self.assertAlmostEqual(effective.roll_deg, 3.0)
+            self.assertAlmostEqual(effective.pitch_deg, 4.0)
+            self.assertAlmostEqual(effective.yaw_deg, 91.0)
+
 
 if __name__ == "__main__":
     unittest.main()

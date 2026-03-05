@@ -36,6 +36,19 @@
       "pitch_deg": 0.0,
       "yaw_deg": 0.0
     },
+    "camera_extrinsics_auto_from_trajectory": false,
+    "camera_extrinsics_auto_pose": "first",
+    "camera_extrinsics_auto_use_position": "xy",
+    "camera_extrinsics_auto_use_orientation": false,
+    "camera_extrinsics_auto_offsets": {
+      "tx": 0.0,
+      "ty": 0.0,
+      "tz": 0.0,
+      "roll_deg": 0.0,
+      "pitch_deg": 0.0,
+      "yaw_deg": 0.0
+    },
+    "camera_reference_apply_to_extrinsics": true,
     "camera_projection_enabled": true,
     "camera_projection_max_points": 5000,
     "camera_projection_preview_count": 20,

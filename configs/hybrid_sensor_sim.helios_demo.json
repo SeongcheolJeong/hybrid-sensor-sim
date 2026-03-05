@@ -43,6 +43,7 @@
       "pitch_deg": 0.0,
       "yaw_deg": 0.0
     },
+    "camera_extrinsics_auto_from_trajectory": false,
     "camera_projection_enabled": true,
     "camera_projection_max_points": 10000,
     "camera_projection_preview_count": 50,

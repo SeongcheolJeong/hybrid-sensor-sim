@@ -3,7 +3,7 @@
   "helios_runtime": "docker",
   "helios_bin": "",
   "scenario_path": "third_party/helios/data/test/als_hd_demo_tiff_min.xml",
-  "output_dir": "artifacts/helios_docker",
+  "output_dir": "artifacts/helios_docker_auto_extrinsics",
   "sensor_profile": "lidar-demo",
   "seed": 42,
   "options": {
@@ -47,9 +47,21 @@
       "pitch_deg": 0.0,
       "yaw_deg": 0.0
     },
-    "camera_extrinsics_auto_from_trajectory": false,
+    "camera_extrinsics_auto_from_trajectory": true,
+    "camera_extrinsics_auto_pose": "first",
+    "camera_extrinsics_auto_use_position": "xy",
+    "camera_extrinsics_auto_use_orientation": false,
+    "camera_extrinsics_auto_offsets": {
+      "tx": 0.0,
+      "ty": 0.0,
+      "tz": 0.0,
+      "roll_deg": 0.0,
+      "pitch_deg": 0.0,
+      "yaw_deg": 0.0
+    },
+    "camera_reference_mode": "none",
+    "camera_reference_apply_to_extrinsics": true,
     "camera_projection_enabled": true,
-    "camera_reference_mode": "first_point_xy",
     "camera_projection_clamp_to_image": false,
     "camera_projection_max_points": 10000,
     "camera_projection_preview_count": 50,
