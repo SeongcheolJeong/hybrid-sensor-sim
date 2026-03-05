@@ -93,6 +93,17 @@ class NativePhysicsBackend(SensorBackend):
         )
         if camera_projection_artifact is not None:
             artifacts["camera_projection_preview"] = camera_projection_artifact
+        camera_projection_sweep_artifact = self._project_xyz_trajectory_sweep_if_available(
+            request=request,
+            artifacts=artifacts,
+            enhanced_output=enhanced_output,
+            intrinsics=intrinsics,
+            distortion=distortion,
+            extrinsics=extrinsics,
+            metrics=metrics,
+        )
+        if camera_projection_sweep_artifact is not None:
+            artifacts["camera_projection_trajectory_sweep"] = camera_projection_sweep_artifact
 
         payload = {
             "mode": "hybrid_enhanced",
@@ -259,6 +270,120 @@ class NativePhysicsBackend(SensorBackend):
         output_path.write_text(json.dumps(preview, indent=2), encoding="utf-8")
         return output_path
 
+    def _project_xyz_trajectory_sweep_if_available(
+        self,
+        request: SensorSimRequest,
+        artifacts: dict[str, Path],
+        enhanced_output: Path,
+        intrinsics: CameraIntrinsics,
+        distortion: BrownConradyDistortion,
+        extrinsics: CameraExtrinsics,
+        metrics: dict[str, float],
+    ) -> Path | None:
+        if not bool(request.options.get("camera_projection_enabled", True)):
+            return None
+        if not bool(request.options.get("camera_projection_trajectory_sweep_enabled", False)):
+            return None
+
+        point_cloud = artifacts.get("point_cloud_primary")
+        trajectory_path = artifacts.get("trajectory_primary")
+        if (
+            point_cloud is None
+            or point_cloud.suffix.lower() != ".xyz"
+            or not point_cloud.exists()
+            or trajectory_path is None
+            or not trajectory_path.exists()
+        ):
+            return None
+
+        max_points = int(request.options.get("camera_projection_max_points", 5000))
+        points_xyz = read_xyz_points(point_cloud, max_points=max_points)
+        if not points_xyz:
+            metrics["camera_projection_trajectory_sweep_frame_count"] = 0.0
+            metrics["camera_projection_trajectory_sweep_total_output_count"] = 0.0
+            return None
+
+        transformed_points, reference_point = self._apply_projection_reference_frame(
+            points_xyz=points_xyz,
+            request=request,
+        )
+        poses = read_trajectory_poses(
+            trajectory_path,
+            max_rows=int(request.options.get("camera_extrinsics_auto_max_rows", 20000)),
+        )
+        if not poses:
+            metrics["camera_projection_trajectory_sweep_frame_count"] = 0.0
+            metrics["camera_projection_trajectory_sweep_total_output_count"] = 0.0
+            return None
+
+        frame_count = int(request.options.get("camera_projection_trajectory_sweep_frames", 3))
+        selected_poses = self._sample_trajectory_poses(poses=poses, frame_count=frame_count)
+        clamp_to_image = bool(request.options.get("camera_projection_clamp_to_image", True))
+        preview_count = int(request.options.get("camera_projection_preview_count", 20))
+        frames: list[dict[str, object]] = []
+        total_output_count = 0
+        for pose_index, pose in selected_poses:
+            effective = self._build_extrinsics_from_pose(
+                request=request,
+                base_extrinsics=extrinsics,
+                pose=pose,
+                reference_point=reference_point,
+                force_enable=True,
+            )
+            camera_points = transform_points_world_to_camera(
+                points_xyz=transformed_points,
+                extrinsics=effective,
+            )
+            projected = project_points_brown_conrady(
+                points_xyz=camera_points,
+                intrinsics=intrinsics,
+                distortion=distortion,
+                clamp_to_image=clamp_to_image,
+            )
+            total_output_count += len(projected)
+            frames.append(
+                {
+                    "pose_index": pose_index,
+                    "trajectory_pose": self._trajectory_pose_payload(
+                        pose=pose,
+                        trajectory_path=trajectory_path,
+                    ),
+                    "camera_extrinsics": {
+                        "enabled": effective.enabled,
+                        "tx": effective.tx,
+                        "ty": effective.ty,
+                        "tz": effective.tz,
+                        "roll_deg": effective.roll_deg,
+                        "pitch_deg": effective.pitch_deg,
+                        "yaw_deg": effective.yaw_deg,
+                    },
+                    "output_count": len(projected),
+                    "preview_points_uvz": [
+                        {"u": u, "v": v, "z": z} for u, v, z in projected[:preview_count]
+                    ],
+                }
+            )
+
+        metrics["camera_projection_trajectory_sweep_frame_count"] = float(len(frames))
+        metrics["camera_projection_trajectory_sweep_total_output_count"] = float(total_output_count)
+        preview = {
+            "input_point_cloud": str(point_cloud),
+            "trajectory_path": str(trajectory_path),
+            "input_count": len(points_xyz),
+            "frame_count": len(frames),
+            "reference_point_xyz": {
+                "x": reference_point[0],
+                "y": reference_point[1],
+                "z": reference_point[2],
+            }
+            if reference_point is not None
+            else None,
+            "frames": frames,
+        }
+        output_path = enhanced_output / "camera_projection_trajectory_sweep.json"
+        output_path.write_text(json.dumps(preview, indent=2), encoding="utf-8")
+        return output_path
+
     def _resolve_effective_extrinsics(
         self,
         request: SensorSimRequest,
@@ -285,7 +410,27 @@ class NativePhysicsBackend(SensorBackend):
             poses=poses,
             selector=str(request.options.get("camera_extrinsics_auto_pose", "first")),
         )
+        effective = self._build_extrinsics_from_pose(
+            request=request,
+            base_extrinsics=base_extrinsics,
+            pose=pose,
+            reference_point=reference_point,
+            force_enable=True,
+        )
+        pose_payload = self._trajectory_pose_payload(
+            pose=pose,
+            trajectory_path=trajectory_path,
+        )
+        return effective, {"source": "trajectory_auto", "trajectory_pose": pose_payload}
 
+    def _build_extrinsics_from_pose(
+        self,
+        request: SensorSimRequest,
+        base_extrinsics: CameraExtrinsics,
+        pose: TrajectoryPose,
+        reference_point: tuple[float, float, float] | None,
+        force_enable: bool,
+    ) -> CameraExtrinsics:
         position_mode = str(
             request.options.get("camera_extrinsics_auto_use_position", "xy")
         ).lower()
@@ -327,16 +472,25 @@ class NativePhysicsBackend(SensorBackend):
                 if apply_ref_z:
                     tz -= reference_point[2]
 
-        effective = CameraExtrinsics(
+        enabled = bool(base_extrinsics.enabled)
+        if force_enable:
+            enabled = True
+        return CameraExtrinsics(
             tx=tx,
             ty=ty,
             tz=tz,
             roll_deg=roll_deg,
             pitch_deg=pitch_deg,
             yaw_deg=yaw_deg,
-            enabled=True,
+            enabled=enabled,
         )
-        pose_payload = {
+
+    def _trajectory_pose_payload(
+        self,
+        pose: TrajectoryPose,
+        trajectory_path: Path,
+    ) -> dict[str, object]:
+        return {
             "x": pose.x,
             "y": pose.y,
             "z": pose.z,
@@ -346,7 +500,6 @@ class NativePhysicsBackend(SensorBackend):
             "yaw_deg": pose.yaw_deg,
             "trajectory_path": str(trajectory_path),
         }
-        return effective, {"source": "trajectory_auto", "trajectory_pose": pose_payload}
 
     def _select_trajectory_pose(
         self,
@@ -361,6 +514,28 @@ class NativePhysicsBackend(SensorBackend):
         if normalized == "middle":
             return poses[len(poses) // 2]
         return poses[0]
+
+    def _sample_trajectory_poses(
+        self,
+        poses: list[TrajectoryPose],
+        frame_count: int,
+    ) -> list[tuple[int, TrajectoryPose]]:
+        if not poses:
+            return []
+        if frame_count <= 1:
+            return [(0, poses[0])]
+        if frame_count >= len(poses):
+            return [(idx, pose) for idx, pose in enumerate(poses)]
+
+        sampled: list[tuple[int, TrajectoryPose]] = []
+        max_index = len(poses) - 1
+        for frame_idx in range(frame_count):
+            ratio = float(frame_idx) / float(frame_count - 1)
+            pose_index = int(round(ratio * max_index))
+            if sampled and sampled[-1][0] == pose_index:
+                continue
+            sampled.append((pose_index, poses[pose_index]))
+        return sampled
 
     def _apply_projection_reference_frame(
         self,

@@ -238,6 +238,90 @@ EOF
             self.assertAlmostEqual(effective.pitch_deg, 4.0)
             self.assertAlmostEqual(effective.yaw_deg, 91.0)
 
+    def test_hybrid_generates_trajectory_sweep_preview(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+1.0 0.0 10.0
+2.0 1.0 10.0
+-1.0 1.0 5.0
+EOF
+cat > "${rootdir}/scan_trajectory.txt" <<EOF
+0.0 0.0 0.0 0.0 0.0 0.0 0.0
+5.0 0.0 0.0 1.0 0.0 0.0 20.0
+10.0 0.0 0.0 2.0 0.0 0.0 45.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": True,
+                    "camera_projection_trajectory_sweep_enabled": True,
+                    "camera_projection_trajectory_sweep_frames": 3,
+                    "camera_projection_clamp_to_image": False,
+                    "camera_intrinsics": {
+                        "fx": 1000.0,
+                        "fy": 1000.0,
+                        "cx": 960.0,
+                        "cy": 540.0,
+                        "width": 1920,
+                        "height": 1080,
+                    },
+                    "camera_extrinsics": {
+                        "enabled": True,
+                        "tx": 0.0,
+                        "ty": 0.0,
+                        "tz": 0.0,
+                        "roll_deg": 0.0,
+                        "pitch_deg": 0.0,
+                        "yaw_deg": 0.0,
+                    },
+                    "camera_extrinsics_auto_use_position": "xy",
+                    "camera_extrinsics_auto_use_orientation": True,
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+            self.assertTrue(result.success)
+            self.assertIn("camera_projection_trajectory_sweep", result.artifacts)
+            self.assertIn("camera_projection_trajectory_sweep_frame_count", result.metrics)
+            self.assertEqual(result.metrics["camera_projection_trajectory_sweep_frame_count"], 3.0)
+
+            sweep_path = result.artifacts["camera_projection_trajectory_sweep"]
+            sweep = json.loads(sweep_path.read_text(encoding="utf-8"))
+            self.assertEqual(sweep["frame_count"], 3)
+            self.assertEqual(len(sweep["frames"]), 3)
+            self.assertGreaterEqual(sweep["frames"][0]["output_count"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

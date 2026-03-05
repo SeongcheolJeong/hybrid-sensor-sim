@@ -75,6 +75,10 @@ PYTHONPATH=src python3 -m unittest discover -s tests -q
     - `camera_extrinsics_auto_use_position=xy|xyz`
     - `camera_extrinsics_auto_use_orientation=true|false`
   - optional offsets via `camera_extrinsics_auto_offsets`.
+- Optional trajectory sweep projection preview:
+  - enable `camera_projection_trajectory_sweep_enabled=true`
+  - set `camera_projection_trajectory_sweep_frames` (default `3`)
+  - emits `camera_projection_trajectory_sweep.json` with multi-pose frame previews.
 
 ## Example configs
 

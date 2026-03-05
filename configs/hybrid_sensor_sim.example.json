@@ -52,6 +52,8 @@
     "camera_projection_enabled": true,
     "camera_projection_max_points": 5000,
     "camera_projection_preview_count": 20,
+    "camera_projection_trajectory_sweep_enabled": false,
+    "camera_projection_trajectory_sweep_frames": 3,
     "lidar_noise": "gaussian",
     "radar_clutter": "basic",
     "motion_compensation": true
