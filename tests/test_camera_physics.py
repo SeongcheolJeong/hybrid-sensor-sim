@@ -402,6 +402,91 @@ EOF
             self.assertNotEqual(radar_payload["targets"][0]["radial_velocity_mps"], 0.0)
             self.assertEqual(result.metrics.get("radar_target_count"), float(radar_payload["target_count"]))
 
+    def test_radar_trajectory_sweep_uses_local_velocity_per_frame(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+20.0 0.0 0.0
+EOF
+cat > "${rootdir}/scan_trajectory.txt" <<EOF
+0.0 0.0 0.0 0.0 0.0 0.0 0.0
+2.0 0.0 0.0 1.0 0.0 0.0 0.0
+6.0 0.0 0.0 2.0 0.0 0.0 0.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "lidar_postprocess_enabled": False,
+                    "radar_postprocess_enabled": True,
+                    "radar_trajectory_sweep_enabled": True,
+                    "radar_trajectory_sweep_frames": 3,
+                    "radar_preview_targets_per_frame": 4,
+                    "radar_max_targets": 4,
+                    "radar_clutter": "none",
+                    "radar_false_target_count": 0,
+                    "radar_extrinsics": {
+                        "enabled": True,
+                        "tx": 0.0,
+                        "ty": 0.0,
+                        "tz": 0.0,
+                        "roll_deg": 0.0,
+                        "pitch_deg": 0.0,
+                        "yaw_deg": 0.0,
+                    },
+                    "radar_extrinsics_auto_use_position": "none",
+                    "radar_extrinsics_auto_use_orientation": False,
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+            self.assertTrue(result.success)
+            self.assertIn("radar_targets_trajectory_sweep", result.artifacts)
+            self.assertEqual(result.metrics.get("radar_trajectory_sweep_frame_count"), 3.0)
+
+            payload = json.loads(
+                result.artifacts["radar_targets_trajectory_sweep"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(payload["frame_count"], 3)
+            self.assertEqual(len(payload["frames"]), 3)
+
+            radial_velocities = []
+            for frame in payload["frames"]:
+                self.assertGreater(frame["target_count"], 0)
+                radial_velocities.append(frame["targets_preview"][0]["radial_velocity_mps"])
+            self.assertGreater(radial_velocities[0], radial_velocities[1])
+            self.assertGreater(radial_velocities[1], radial_velocities[2])
+
 
 if __name__ == "__main__":
     unittest.main()

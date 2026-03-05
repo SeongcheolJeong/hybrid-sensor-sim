@@ -92,6 +92,14 @@ PYTHONPATH=src python3 -m unittest discover -s tests -q
   - clutter/false alarms: `radar_clutter`, `radar_false_target_count`
   - ego-motion velocity source: `radar_use_ego_velocity_from_trajectory`
   - emits `radar_targets_preview.json`.
+- Radar trajectory sweep preview:
+  - enable `radar_trajectory_sweep_enabled=true`
+  - set `radar_trajectory_sweep_frames` and `radar_preview_targets_per_frame`
+  - optional auto-extrinsics from trajectory:
+    - `radar_extrinsics_auto_use_position=none|xy|xyz`
+    - `radar_extrinsics_auto_use_orientation=true|false`
+    - `radar_extrinsics_auto_offsets`
+  - emits `radar_targets_trajectory_sweep.json`.
 
 ## Example configs
 

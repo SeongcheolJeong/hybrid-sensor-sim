@@ -122,6 +122,14 @@ class NativePhysicsBackend(SensorBackend):
         )
         if radar_targets_artifact is not None:
             artifacts["radar_targets_preview"] = radar_targets_artifact
+        radar_targets_sweep_artifact = self._generate_radar_targets_trajectory_sweep_if_available(
+            request=request,
+            artifacts=artifacts,
+            enhanced_output=enhanced_output,
+            metrics=metrics,
+        )
+        if radar_targets_sweep_artifact is not None:
+            artifacts["radar_targets_trajectory_sweep"] = radar_targets_sweep_artifact
 
         payload = {
             "mode": "hybrid_enhanced",
@@ -158,6 +166,9 @@ class NativePhysicsBackend(SensorBackend):
                 "camera_projection_enabled": bool(request.options.get("camera_projection_enabled", True)),
                 "lidar_postprocess_enabled": bool(request.options.get("lidar_postprocess_enabled", True)),
                 "radar_postprocess_enabled": bool(request.options.get("radar_postprocess_enabled", True)),
+                "radar_trajectory_sweep_enabled": bool(
+                    request.options.get("radar_trajectory_sweep_enabled", False)
+                ),
             },
         }
         out_path = enhanced_output / "hybrid_physics.json"
@@ -478,6 +489,169 @@ class NativePhysicsBackend(SensorBackend):
 
         extrinsics = self._radar_extrinsics_from_options(request)
         points_radar = transform_points_world_to_camera(points_xyz=points_xyz, extrinsics=extrinsics)
+        rng = random.Random(int(request.seed) + 137)
+        clutter_model = str(request.options.get("radar_clutter", "basic")).lower().strip()
+        ego_vx, ego_vy, ego_vz = self._estimate_ego_velocity_from_trajectory(request, artifacts)
+        selected, false_added = self._build_radar_targets_from_points(
+            request=request,
+            points_radar=points_radar,
+            ego_velocity=(ego_vx, ego_vy, ego_vz),
+            rng=rng,
+            false_target_count=int(
+                request.options.get(
+                    "radar_false_target_count",
+                    2 if clutter_model == "basic" else 0,
+                )
+            ),
+        )
+
+        preview = {
+            "input_point_cloud": str(point_cloud),
+            "input_count": len(points_xyz),
+            "target_count": len(selected),
+            "ego_velocity_mps": {
+                "vx": ego_vx,
+                "vy": ego_vy,
+                "vz": ego_vz,
+            },
+            "radar_extrinsics": {
+                "enabled": extrinsics.enabled,
+                "tx": extrinsics.tx,
+                "ty": extrinsics.ty,
+                "tz": extrinsics.tz,
+                "roll_deg": extrinsics.roll_deg,
+                "pitch_deg": extrinsics.pitch_deg,
+                "yaw_deg": extrinsics.yaw_deg,
+            },
+            "targets": selected,
+        }
+        output_path = enhanced_output / "radar_targets_preview.json"
+        output_path.write_text(json.dumps(preview, indent=2), encoding="utf-8")
+        metrics["radar_input_count"] = float(len(points_xyz))
+        metrics["radar_target_count"] = float(len(selected))
+        metrics["radar_false_target_count"] = float(false_added)
+        return output_path
+
+    def _generate_radar_targets_trajectory_sweep_if_available(
+        self,
+        request: SensorSimRequest,
+        artifacts: dict[str, Path],
+        enhanced_output: Path,
+        metrics: dict[str, float],
+    ) -> Path | None:
+        if not bool(request.options.get("radar_postprocess_enabled", True)):
+            return None
+        if not bool(request.options.get("radar_trajectory_sweep_enabled", False)):
+            return None
+
+        point_cloud = artifacts.get("point_cloud_primary")
+        trajectory_path = artifacts.get("trajectory_primary")
+        if (
+            point_cloud is None
+            or point_cloud.suffix.lower() != ".xyz"
+            or not point_cloud.exists()
+            or trajectory_path is None
+            or not trajectory_path.exists()
+        ):
+            return None
+
+        max_points = int(request.options.get("radar_postprocess_max_points", 50000))
+        points_xyz = read_xyz_points(point_cloud, max_points=max_points)
+        if not points_xyz:
+            metrics["radar_trajectory_sweep_frame_count"] = 0.0
+            metrics["radar_trajectory_sweep_total_target_count"] = 0.0
+            return None
+
+        poses = read_trajectory_poses(
+            trajectory_path,
+            max_rows=int(request.options.get("camera_extrinsics_auto_max_rows", 20000)),
+        )
+        if not poses:
+            metrics["radar_trajectory_sweep_frame_count"] = 0.0
+            metrics["radar_trajectory_sweep_total_target_count"] = 0.0
+            return None
+
+        frame_count = int(request.options.get("radar_trajectory_sweep_frames", 3))
+        selected_poses = self._sample_trajectory_poses(poses=poses, frame_count=frame_count)
+        clutter_model = str(request.options.get("radar_clutter", "basic")).lower().strip()
+        default_false_target_count = 2 if clutter_model == "basic" else 0
+        false_target_count = int(
+            request.options.get("radar_false_target_count", default_false_target_count)
+        )
+        preview_targets_per_frame = int(request.options.get("radar_preview_targets_per_frame", 16))
+        base_extrinsics = self._radar_extrinsics_from_options(request)
+        frames: list[dict[str, object]] = []
+        total_targets = 0
+        for frame_id, (pose_index, pose) in enumerate(selected_poses):
+            effective_extrinsics = self._build_radar_extrinsics_from_pose(
+                request=request,
+                base_extrinsics=base_extrinsics,
+                pose=pose,
+                force_enable=True,
+            )
+            points_radar = transform_points_world_to_camera(
+                points_xyz=points_xyz,
+                extrinsics=effective_extrinsics,
+            )
+            ego_velocity = self._estimate_ego_velocity_for_pose_index(poses=poses, pose_index=pose_index)
+            rng = random.Random(int(request.seed) + 537 + frame_id)
+            targets, false_added = self._build_radar_targets_from_points(
+                request=request,
+                points_radar=points_radar,
+                ego_velocity=ego_velocity,
+                rng=rng,
+                false_target_count=false_target_count,
+            )
+            total_targets += len(targets)
+            frames.append(
+                {
+                    "frame_id": frame_id,
+                    "pose_index": pose_index,
+                    "trajectory_pose": self._trajectory_pose_payload(
+                        pose=pose,
+                        trajectory_path=trajectory_path,
+                    ),
+                    "ego_velocity_mps": {
+                        "vx": ego_velocity[0],
+                        "vy": ego_velocity[1],
+                        "vz": ego_velocity[2],
+                    },
+                    "radar_extrinsics": {
+                        "enabled": effective_extrinsics.enabled,
+                        "tx": effective_extrinsics.tx,
+                        "ty": effective_extrinsics.ty,
+                        "tz": effective_extrinsics.tz,
+                        "roll_deg": effective_extrinsics.roll_deg,
+                        "pitch_deg": effective_extrinsics.pitch_deg,
+                        "yaw_deg": effective_extrinsics.yaw_deg,
+                    },
+                    "target_count": len(targets),
+                    "false_target_count": false_added,
+                    "targets_preview": targets[:preview_targets_per_frame],
+                }
+            )
+
+        metrics["radar_trajectory_sweep_frame_count"] = float(len(frames))
+        metrics["radar_trajectory_sweep_total_target_count"] = float(total_targets)
+        payload = {
+            "input_point_cloud": str(point_cloud),
+            "trajectory_path": str(trajectory_path),
+            "input_count": len(points_xyz),
+            "frame_count": len(frames),
+            "frames": frames,
+        }
+        output_path = enhanced_output / "radar_targets_trajectory_sweep.json"
+        output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        return output_path
+
+    def _build_radar_targets_from_points(
+        self,
+        request: SensorSimRequest,
+        points_radar: list[tuple[float, float, float]],
+        ego_velocity: tuple[float, float, float],
+        rng: random.Random,
+        false_target_count: int,
+    ) -> tuple[list[dict[str, object]], int]:
         clutter_model = str(request.options.get("radar_clutter", "basic")).lower().strip()
         max_targets = int(request.options.get("radar_max_targets", 64))
         min_range = float(request.options.get("radar_range_min_m", 0.5))
@@ -488,9 +662,7 @@ class NativePhysicsBackend(SensorBackend):
         range_noise_m = float(request.options.get("radar_range_noise_stddev_m", 0.05))
         velocity_noise_mps = float(request.options.get("radar_velocity_noise_stddev_mps", 0.1))
         rcs_base_dbsm = float(request.options.get("radar_rcs_base_dbsm", 12.0))
-
-        rng = random.Random(int(request.seed) + 137)
-        ego_vx, ego_vy, ego_vz = self._estimate_ego_velocity_from_trajectory(request, artifacts)
+        ego_vx, ego_vy, ego_vz = ego_velocity
 
         candidates: list[tuple[float, dict[str, object]]] = []
         for x, y, z in points_radar:
@@ -535,7 +707,6 @@ class NativePhysicsBackend(SensorBackend):
         candidates.sort(key=lambda item: item[0])
         selected = [item[1] for item in candidates[:max_targets]]
 
-        false_target_count = int(request.options.get("radar_false_target_count", 2 if clutter_model == "basic" else 0))
         false_added = 0
         for _ in range(false_target_count):
             if len(selected) >= max_targets:
@@ -557,33 +728,7 @@ class NativePhysicsBackend(SensorBackend):
 
         for idx, target in enumerate(selected):
             target["id"] = idx
-
-        preview = {
-            "input_point_cloud": str(point_cloud),
-            "input_count": len(points_xyz),
-            "target_count": len(selected),
-            "ego_velocity_mps": {
-                "vx": ego_vx,
-                "vy": ego_vy,
-                "vz": ego_vz,
-            },
-            "radar_extrinsics": {
-                "enabled": extrinsics.enabled,
-                "tx": extrinsics.tx,
-                "ty": extrinsics.ty,
-                "tz": extrinsics.tz,
-                "roll_deg": extrinsics.roll_deg,
-                "pitch_deg": extrinsics.pitch_deg,
-                "yaw_deg": extrinsics.yaw_deg,
-            },
-            "targets": selected,
-        }
-        output_path = enhanced_output / "radar_targets_preview.json"
-        output_path.write_text(json.dumps(preview, indent=2), encoding="utf-8")
-        metrics["radar_input_count"] = float(len(points_xyz))
-        metrics["radar_target_count"] = float(len(selected))
-        metrics["radar_false_target_count"] = float(false_added)
-        return output_path
+        return selected, false_added
 
     def _radar_extrinsics_from_options(self, request: SensorSimRequest) -> CameraExtrinsics:
         data = request.options.get("radar_extrinsics", {})
@@ -597,6 +742,55 @@ class NativePhysicsBackend(SensorBackend):
             pitch_deg=float(data.get("pitch_deg", 0.0)),
             yaw_deg=float(data.get("yaw_deg", 0.0)),
             enabled=bool(data.get("enabled", False)),
+        )
+
+    def _build_radar_extrinsics_from_pose(
+        self,
+        request: SensorSimRequest,
+        base_extrinsics: CameraExtrinsics,
+        pose: TrajectoryPose,
+        force_enable: bool,
+    ) -> CameraExtrinsics:
+        position_mode = str(
+            request.options.get("radar_extrinsics_auto_use_position", "xy")
+        ).lower()
+        use_orientation = bool(request.options.get("radar_extrinsics_auto_use_orientation", True))
+
+        tx, ty, tz = base_extrinsics.tx, base_extrinsics.ty, base_extrinsics.tz
+        if position_mode in {"xy", "xyz"}:
+            tx = pose.x
+            ty = pose.y
+        if position_mode == "xyz":
+            tz = pose.z
+
+        roll_deg = base_extrinsics.roll_deg
+        pitch_deg = base_extrinsics.pitch_deg
+        yaw_deg = base_extrinsics.yaw_deg
+        if use_orientation:
+            roll_deg = pose.roll_deg
+            pitch_deg = pose.pitch_deg
+            yaw_deg = pose.yaw_deg
+
+        offsets = request.options.get("radar_extrinsics_auto_offsets", {})
+        if isinstance(offsets, dict):
+            tx += float(offsets.get("tx", 0.0))
+            ty += float(offsets.get("ty", 0.0))
+            tz += float(offsets.get("tz", 0.0))
+            roll_deg += float(offsets.get("roll_deg", 0.0))
+            pitch_deg += float(offsets.get("pitch_deg", 0.0))
+            yaw_deg += float(offsets.get("yaw_deg", 0.0))
+
+        enabled = bool(base_extrinsics.enabled)
+        if force_enable:
+            enabled = True
+        return CameraExtrinsics(
+            tx=tx,
+            ty=ty,
+            tz=tz,
+            roll_deg=roll_deg,
+            pitch_deg=pitch_deg,
+            yaw_deg=yaw_deg,
+            enabled=enabled,
         )
 
     def _estimate_ego_velocity_from_trajectory(
@@ -627,6 +821,32 @@ class NativePhysicsBackend(SensorBackend):
         if dt <= 1e-9:
             return (0.0, 0.0, 0.0)
         return ((last.x - first.x) / dt, (last.y - first.y) / dt, (last.z - first.z) / dt)
+
+    def _estimate_ego_velocity_for_pose_index(
+        self,
+        poses: list[TrajectoryPose],
+        pose_index: int,
+    ) -> tuple[float, float, float]:
+        if not poses:
+            return (0.0, 0.0, 0.0)
+        if len(poses) == 1:
+            return (0.0, 0.0, 0.0)
+
+        left_index = pose_index - 1 if pose_index > 0 else pose_index
+        right_index = pose_index + 1 if pose_index < len(poses) - 1 else pose_index
+        if left_index == right_index:
+            return (0.0, 0.0, 0.0)
+
+        left = poses[left_index]
+        right = poses[right_index]
+        dt = right.time_s - left.time_s
+        if dt <= 1e-9:
+            return (0.0, 0.0, 0.0)
+        return (
+            (right.x - left.x) / dt,
+            (right.y - left.y) / dt,
+            (right.z - left.z) / dt,
+        )
 
     def _resolve_effective_extrinsics(
         self,

@@ -63,6 +63,19 @@
     "radar_range_max_m": 200.0,
     "radar_false_target_count": 2,
     "radar_use_ego_velocity_from_trajectory": true,
+    "radar_trajectory_sweep_enabled": false,
+    "radar_trajectory_sweep_frames": 3,
+    "radar_preview_targets_per_frame": 16,
+    "radar_extrinsics_auto_use_position": "xy",
+    "radar_extrinsics_auto_use_orientation": true,
+    "radar_extrinsics_auto_offsets": {
+      "tx": 0.0,
+      "ty": 0.0,
+      "tz": 0.0,
+      "roll_deg": 0.0,
+      "pitch_deg": 0.0,
+      "yaw_deg": 0.0
+    },
     "lidar_noise": "gaussian",
     "radar_clutter": "basic",
     "motion_compensation": true
