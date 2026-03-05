@@ -17,6 +17,24 @@
     "nthreads": 2,
     "camera_geometry": "pinhole",
     "camera_distortion": "brown-conrady",
+    "camera_intrinsics": {
+      "fx": 1250.0,
+      "fy": 1250.0,
+      "cx": 960.0,
+      "cy": 540.0,
+      "width": 1920,
+      "height": 1080
+    },
+    "camera_distortion_coeffs": {
+      "k1": 0.01,
+      "k2": 0.001,
+      "p1": 0.0001,
+      "p2": -0.0001,
+      "k3": 0.0001
+    },
+    "camera_projection_enabled": true,
+    "camera_projection_max_points": 10000,
+    "camera_projection_preview_count": 50,
     "lidar_noise": "gaussian",
     "radar_clutter": "basic",
     "motion_compensation": true

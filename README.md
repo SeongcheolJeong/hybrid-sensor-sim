@@ -40,7 +40,8 @@ PYTHONPATH=src python3 -m unittest discover -s tests -q
   - runs HELIOS CLI,
   - captures `stdout/stderr`,
   - detects generated output directory and primary files (`.xyz/.las/.laz`, trajectory, pulse, fullwave),
-  - writes output manifest for downstream physics chain.
+  - writes output manifest for downstream physics chain,
+  - projects `.xyz` point cloud into camera image plane using intrinsics + Brown-Conrady distortion coefficients.
 
 ## Example configs
 
