@@ -113,7 +113,44 @@ EOF
             self.assertGreater(preview["output_count"], 0)
             self.assertIn("camera_projection_output_count", result.metrics)
 
+    def test_projection_reference_mode_first_point(self) -> None:
+        backend = NativePhysicsBackend()
+        request = SensorSimRequest(
+            scenario_path=Path("/tmp/scenario"),
+            output_dir=Path("/tmp/out"),
+            options={"camera_reference_mode": "first_point"},
+        )
+        points = [(10.0, 20.0, 30.0), (13.0, 26.0, 39.0)]
+        transformed, ref = backend._apply_projection_reference_frame(points, request)
+        self.assertEqual(ref, (10.0, 20.0, 30.0))
+        self.assertEqual(transformed[0], (0.0, 0.0, 0.0))
+        self.assertEqual(transformed[1], (3.0, 6.0, 9.0))
+
+    def test_projection_reference_explicit_point(self) -> None:
+        backend = NativePhysicsBackend()
+        request = SensorSimRequest(
+            scenario_path=Path("/tmp/scenario"),
+            output_dir=Path("/tmp/out"),
+            options={"camera_reference_point": [100.0, 200.0, 300.0]},
+        )
+        points = [(101.0, 198.0, 310.0)]
+        transformed, ref = backend._apply_projection_reference_frame(points, request)
+        self.assertEqual(ref, (100.0, 200.0, 300.0))
+        self.assertEqual(transformed[0], (1.0, -2.0, 10.0))
+
+    def test_projection_reference_mode_first_point_xy_keeps_depth(self) -> None:
+        backend = NativePhysicsBackend()
+        request = SensorSimRequest(
+            scenario_path=Path("/tmp/scenario"),
+            output_dir=Path("/tmp/out"),
+            options={"camera_reference_mode": "first_point_xy"},
+        )
+        points = [(10.0, 20.0, 30.0), (13.0, 26.0, 39.0)]
+        transformed, ref = backend._apply_projection_reference_frame(points, request)
+        self.assertEqual(ref, (10.0, 20.0, 0.0))
+        self.assertEqual(transformed[0], (0.0, 0.0, 30.0))
+        self.assertEqual(transformed[1], (3.0, 6.0, 39.0))
+
 
 if __name__ == "__main__":
     unittest.main()
-

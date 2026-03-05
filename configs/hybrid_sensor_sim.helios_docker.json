@@ -2,20 +2,21 @@
   "mode": "hybrid_auto",
   "helios_runtime": "docker",
   "helios_bin": "",
-  "scenario_path": "third_party/helios/data/surveys/demo/tls_plane.xml",
+  "scenario_path": "third_party/helios/data/test/als_hd_demo_tiff_min.xml",
   "output_dir": "artifacts/helios_docker",
   "sensor_profile": "lidar-demo",
   "seed": 42,
   "options": {
     "helios_runtime": "docker",
     "execute_helios": true,
-    "helios_docker_image": "heliosplusplus:local",
-    "helios_docker_binary": "helios++",
+    "helios_docker_image": "heliosplusplus:cli",
+    "helios_docker_binary": "/home/jovyan/helios/build/helios++",
     "helios_docker_mount_point": "/workspace",
     "helios_cwd": "third_party/helios",
-    "survey_path": "data/surveys/demo/tls_plane.xml",
+    "survey_path": "data/test/als_hd_demo_tiff_min.xml",
     "assets_paths": [
-      "assets"
+      "python/pyhelios",
+      "."
     ],
     "las_output": false,
     "zip_output": false,
@@ -38,6 +39,8 @@
       "k3": 0.0001
     },
     "camera_projection_enabled": true,
+    "camera_reference_mode": "first_point_xy",
+    "camera_projection_clamp_to_image": false,
     "camera_projection_max_points": 10000,
     "camera_projection_preview_count": 50,
     "lidar_noise": "gaussian",

@@ -26,9 +26,14 @@ class HybridOrchestrator:
             return self.native.enhance_from_helios(request, helios_result)
 
         fallback = self.native.simulate(request)
+        fallback.artifacts.update(
+            {f"helios_failure_{key}": value for key, value in helios_result.artifacts.items()}
+        )
+        fallback.metrics.update(
+            {f"helios_failure_{key}": value for key, value in helios_result.metrics.items()}
+        )
         fallback.message = (
             "HELIOS failed; fallback to native simulation. "
             f"reason={helios_result.message}"
         )
         return fallback
-

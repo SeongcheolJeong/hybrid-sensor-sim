@@ -45,6 +45,7 @@ class HybridOrchestratorTests(unittest.TestCase):
             self.assertTrue(result.success)
             self.assertEqual(result.backend, "native_physics")
             self.assertIn("fallback", result.message.lower())
+            self.assertIn("helios_failure_execution_plan", result.artifacts)
 
     def test_hybrid_uses_helios_then_native_enhancement(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -68,4 +69,3 @@ class HybridOrchestratorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

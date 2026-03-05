@@ -164,8 +164,13 @@ class NativePhysicsBackend(SensorBackend):
             metrics["camera_projection_output_count"] = 0.0
             return None
 
-        projected = project_points_brown_conrady(
+        transformed_points, reference_point = self._apply_projection_reference_frame(
             points_xyz=points_xyz,
+            request=request,
+        )
+
+        projected = project_points_brown_conrady(
+            points_xyz=transformed_points,
             intrinsics=intrinsics,
             distortion=distortion,
             clamp_to_image=bool(request.options.get("camera_projection_clamp_to_image", True)),
@@ -178,6 +183,13 @@ class NativePhysicsBackend(SensorBackend):
             "input_point_cloud": str(point_cloud),
             "input_count": len(points_xyz),
             "output_count": len(projected),
+            "reference_point_xyz": {
+                "x": reference_point[0],
+                "y": reference_point[1],
+                "z": reference_point[2],
+            }
+            if reference_point is not None
+            else None,
             "preview_points_uvz": [
                 {"u": u, "v": v, "z": z} for u, v, z in projected[:preview_count]
             ],
@@ -185,3 +197,44 @@ class NativePhysicsBackend(SensorBackend):
         output_path = enhanced_output / "camera_projection_preview.json"
         output_path.write_text(json.dumps(preview, indent=2), encoding="utf-8")
         return output_path
+
+    def _apply_projection_reference_frame(
+        self,
+        points_xyz: list[tuple[float, float, float]],
+        request: SensorSimRequest,
+    ) -> tuple[list[tuple[float, float, float]], tuple[float, float, float] | None]:
+        mode = str(request.options.get("camera_reference_mode", "none")).lower().strip()
+        explicit = request.options.get("camera_reference_point")
+        apply_z = bool(request.options.get("camera_reference_apply_z", True))
+        if mode in {"first_point_xy", "mean_point_xy"} and "camera_reference_apply_z" not in request.options:
+            apply_z = False
+
+        reference_point: tuple[float, float, float] | None = None
+        if explicit is not None:
+            if not isinstance(explicit, list) or len(explicit) != 3:
+                raise ValueError("camera_reference_point must be [x, y, z].")
+            reference_point = (float(explicit[0]), float(explicit[1]), float(explicit[2]))
+        elif mode == "first_point":
+            first = points_xyz[0]
+            reference_point = (float(first[0]), float(first[1]), float(first[2]))
+        elif mode == "first_point_xy":
+            first = points_xyz[0]
+            reference_point = (float(first[0]), float(first[1]), 0.0)
+        elif mode == "mean_point":
+            count = float(len(points_xyz))
+            mean_x = sum(point[0] for point in points_xyz) / count
+            mean_y = sum(point[1] for point in points_xyz) / count
+            mean_z = sum(point[2] for point in points_xyz) / count
+            reference_point = (mean_x, mean_y, mean_z)
+        elif mode == "mean_point_xy":
+            count = float(len(points_xyz))
+            mean_x = sum(point[0] for point in points_xyz) / count
+            mean_y = sum(point[1] for point in points_xyz) / count
+            reference_point = (mean_x, mean_y, 0.0)
+
+        if reference_point is None:
+            return points_xyz, None
+
+        ref_x, ref_y, ref_z = reference_point
+        transformed = [(x - ref_x, y - ref_y, z - ref_z if apply_z else z) for x, y, z in points_xyz]
+        return transformed, reference_point

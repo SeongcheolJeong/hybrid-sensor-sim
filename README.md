@@ -52,7 +52,19 @@ PYTHONPATH=src python3 -m unittest discover -s tests -q
 - Use [configs/hybrid_sensor_sim.helios_docker.json](/Users/seongcheoljeong/Documents/Test/configs/hybrid_sensor_sim.helios_docker.json) and set a valid `helios_docker_image`.
 - Current docker mode assumes survey/assets/output paths are under this workspace root.
 - Build helper: `bash scripts/docker_build_helios.sh [image_tag]`
+- Low-memory CLI-only build helper: `bash scripts/docker_build_helios_cli.sh [image_tag]`
 - Run helper: `bash scripts/run_hybrid_docker_demo.sh [config_path]`
+- Docker demo config uses:
+  - `helios_docker_image=heliosplusplus:cli`
+  - `helios_docker_binary=/home/jovyan/helios/build/helios++`
+  - `assets_paths=["python/pyhelios", "."]`
+
+## Camera projection notes
+
+- For large world coordinates, use `camera_reference_mode`:
+  - `none` (default): raw coordinates.
+  - `first_point` / `mean_point`: xyz recenter.
+  - `first_point_xy` / `mean_point_xy`: xy recenter while keeping original z-depth.
 
 ## Example configs
 
