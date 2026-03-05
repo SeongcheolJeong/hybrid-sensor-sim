@@ -38,6 +38,15 @@
       "p2": -0.0001,
       "k3": 0.0001
     },
+    "camera_extrinsics": {
+      "enabled": true,
+      "tx": 0.0,
+      "ty": 0.0,
+      "tz": 0.0,
+      "roll_deg": 0.0,
+      "pitch_deg": 0.0,
+      "yaw_deg": 0.0
+    },
     "camera_projection_enabled": true,
     "camera_reference_mode": "first_point_xy",
     "camera_projection_clamp_to_image": false,

@@ -10,8 +10,10 @@ from hybrid_sensor_sim.backends.native_physics import NativePhysicsBackend
 from hybrid_sensor_sim.orchestrator import HybridOrchestrator
 from hybrid_sensor_sim.physics.camera import (
     BrownConradyDistortion,
+    CameraExtrinsics,
     CameraIntrinsics,
     project_points_brown_conrady,
+    transform_points_world_to_camera,
 )
 from hybrid_sensor_sim.types import BackendMode, SensorSimRequest
 
@@ -39,6 +41,21 @@ class CameraPhysicsTests(unittest.TestCase):
 
         self.assertNotAlmostEqual(base[0], distorted[0], places=6)
         self.assertNotAlmostEqual(base[1], distorted[1], places=6)
+
+    def test_world_to_camera_transform_identity_when_disabled(self) -> None:
+        points = [(1.0, 2.0, 3.0)]
+        extrinsics = CameraExtrinsics(enabled=False)
+        transformed = transform_points_world_to_camera(points, extrinsics)
+        self.assertEqual(transformed, points)
+
+    def test_world_to_camera_transform_yaw_90(self) -> None:
+        points = [(1.0, 0.0, 5.0)]
+        extrinsics = CameraExtrinsics(enabled=True, yaw_deg=90.0)
+        transformed = transform_points_world_to_camera(points, extrinsics)
+        x, y, z = transformed[0]
+        self.assertAlmostEqual(x, 0.0, places=6)
+        self.assertAlmostEqual(y, 1.0, places=6)
+        self.assertAlmostEqual(z, 5.0, places=6)
 
 
 class HybridCameraProjectionTests(unittest.TestCase):
@@ -150,6 +167,32 @@ EOF
         self.assertEqual(ref, (10.0, 20.0, 0.0))
         self.assertEqual(transformed[0], (0.0, 0.0, 30.0))
         self.assertEqual(transformed[1], (3.0, 6.0, 39.0))
+
+    def test_camera_extrinsics_parsing(self) -> None:
+        backend = NativePhysicsBackend()
+        request = SensorSimRequest(
+            scenario_path=Path("/tmp/scenario"),
+            output_dir=Path("/tmp/out"),
+            options={
+                "camera_extrinsics": {
+                    "enabled": True,
+                    "tx": 1.0,
+                    "ty": 2.0,
+                    "tz": 3.0,
+                    "roll_deg": 4.0,
+                    "pitch_deg": 5.0,
+                    "yaw_deg": 6.0,
+                }
+            },
+        )
+        extrinsics = backend._camera_extrinsics_from_options(request)
+        self.assertTrue(extrinsics.enabled)
+        self.assertEqual(extrinsics.tx, 1.0)
+        self.assertEqual(extrinsics.ty, 2.0)
+        self.assertEqual(extrinsics.tz, 3.0)
+        self.assertEqual(extrinsics.roll_deg, 4.0)
+        self.assertEqual(extrinsics.pitch_deg, 5.0)
+        self.assertEqual(extrinsics.yaw_deg, 6.0)
 
 
 if __name__ == "__main__":

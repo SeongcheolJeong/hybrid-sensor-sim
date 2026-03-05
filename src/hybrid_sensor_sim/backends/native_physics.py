@@ -7,8 +7,10 @@ from hybrid_sensor_sim.backends.base import SensorBackend
 from hybrid_sensor_sim.io.pointcloud_xyz import read_xyz_points
 from hybrid_sensor_sim.physics.camera import (
     BrownConradyDistortion,
+    CameraExtrinsics,
     CameraIntrinsics,
     project_points_brown_conrady,
+    transform_points_world_to_camera,
 )
 from hybrid_sensor_sim.types import SensorSimRequest, SensorSimResult
 
@@ -22,6 +24,7 @@ class NativePhysicsBackend(SensorBackend):
         native_output.mkdir(parents=True, exist_ok=True)
         intrinsics = self._camera_intrinsics_from_options(request)
         distortion = self._camera_distortion_from_options(request)
+        extrinsics = self._camera_extrinsics_from_options(request)
         payload = {
             "mode": "native_only",
             "scenario": str(request.scenario_path),
@@ -46,6 +49,15 @@ class NativePhysicsBackend(SensorBackend):
                 "p2": distortion.p2,
                 "k3": distortion.k3,
             },
+            "camera_extrinsics": {
+                "enabled": extrinsics.enabled,
+                "tx": extrinsics.tx,
+                "ty": extrinsics.ty,
+                "tz": extrinsics.tz,
+                "roll_deg": extrinsics.roll_deg,
+                "pitch_deg": extrinsics.pitch_deg,
+                "yaw_deg": extrinsics.yaw_deg,
+            },
         }
         out_path = native_output / "native_physics.json"
         out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -65,6 +77,7 @@ class NativePhysicsBackend(SensorBackend):
         enhanced_output.mkdir(parents=True, exist_ok=True)
         intrinsics = self._camera_intrinsics_from_options(request)
         distortion = self._camera_distortion_from_options(request)
+        extrinsics = self._camera_extrinsics_from_options(request)
 
         artifacts = {**helios_result.artifacts}
         metrics = dict(helios_result.metrics)
@@ -74,6 +87,7 @@ class NativePhysicsBackend(SensorBackend):
             enhanced_output=enhanced_output,
             intrinsics=intrinsics,
             distortion=distortion,
+            extrinsics=extrinsics,
             metrics=metrics,
         )
         if camera_projection_artifact is not None:
@@ -101,6 +115,15 @@ class NativePhysicsBackend(SensorBackend):
                     "p1": distortion.p1,
                     "p2": distortion.p2,
                     "k3": distortion.k3,
+                },
+                "camera_extrinsics": {
+                    "enabled": extrinsics.enabled,
+                    "tx": extrinsics.tx,
+                    "ty": extrinsics.ty,
+                    "tz": extrinsics.tz,
+                    "roll_deg": extrinsics.roll_deg,
+                    "pitch_deg": extrinsics.pitch_deg,
+                    "yaw_deg": extrinsics.yaw_deg,
                 },
                 "camera_projection_enabled": bool(request.options.get("camera_projection_enabled", True)),
             },
@@ -141,6 +164,18 @@ class NativePhysicsBackend(SensorBackend):
             k3=float(data.get("k3", 0.0)),
         )
 
+    def _camera_extrinsics_from_options(self, request: SensorSimRequest) -> CameraExtrinsics:
+        data = request.options.get("camera_extrinsics", {})
+        return CameraExtrinsics(
+            tx=float(data.get("tx", 0.0)),
+            ty=float(data.get("ty", 0.0)),
+            tz=float(data.get("tz", 0.0)),
+            roll_deg=float(data.get("roll_deg", 0.0)),
+            pitch_deg=float(data.get("pitch_deg", 0.0)),
+            yaw_deg=float(data.get("yaw_deg", 0.0)),
+            enabled=bool(data.get("enabled", False)),
+        )
+
     def _project_xyz_if_available(
         self,
         request: SensorSimRequest,
@@ -148,6 +183,7 @@ class NativePhysicsBackend(SensorBackend):
         enhanced_output: Path,
         intrinsics: CameraIntrinsics,
         distortion: BrownConradyDistortion,
+        extrinsics: CameraExtrinsics,
         metrics: dict[str, float],
     ) -> Path | None:
         if not bool(request.options.get("camera_projection_enabled", True)):
@@ -168,9 +204,13 @@ class NativePhysicsBackend(SensorBackend):
             points_xyz=points_xyz,
             request=request,
         )
+        camera_points = transform_points_world_to_camera(
+            points_xyz=transformed_points,
+            extrinsics=extrinsics,
+        )
 
         projected = project_points_brown_conrady(
-            points_xyz=transformed_points,
+            points_xyz=camera_points,
             intrinsics=intrinsics,
             distortion=distortion,
             clamp_to_image=bool(request.options.get("camera_projection_clamp_to_image", True)),
@@ -190,6 +230,15 @@ class NativePhysicsBackend(SensorBackend):
             }
             if reference_point is not None
             else None,
+            "camera_extrinsics": {
+                "enabled": extrinsics.enabled,
+                "tx": extrinsics.tx,
+                "ty": extrinsics.ty,
+                "tz": extrinsics.tz,
+                "roll_deg": extrinsics.roll_deg,
+                "pitch_deg": extrinsics.pitch_deg,
+                "yaw_deg": extrinsics.yaw_deg,
+            },
             "preview_points_uvz": [
                 {"u": u, "v": v, "z": z} for u, v, z in projected[:preview_count]
             ],

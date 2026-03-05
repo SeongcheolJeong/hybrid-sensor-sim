@@ -65,6 +65,9 @@ PYTHONPATH=src python3 -m unittest discover -s tests -q
   - `none` (default): raw coordinates.
   - `first_point` / `mean_point`: xyz recenter.
   - `first_point_xy` / `mean_point_xy`: xy recenter while keeping original z-depth.
+- `camera_extrinsics` is applied as `p_cam = R(roll,pitch,yaw) * (p_world - t)`:
+  - `tx,ty,tz`: camera translation.
+  - `roll_deg,pitch_deg,yaw_deg`: ZYX Euler rotation in degrees.
 
 ## Example configs
 

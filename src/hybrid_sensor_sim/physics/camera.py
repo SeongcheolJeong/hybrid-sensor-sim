@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import cos, pi, sin
 
 
 @dataclass(frozen=True)
@@ -20,6 +21,63 @@ class BrownConradyDistortion:
     p1: float = 0.0
     p2: float = 0.0
     k3: float = 0.0
+
+
+@dataclass(frozen=True)
+class CameraExtrinsics:
+    tx: float = 0.0
+    ty: float = 0.0
+    tz: float = 0.0
+    roll_deg: float = 0.0
+    pitch_deg: float = 0.0
+    yaw_deg: float = 0.0
+    enabled: bool = False
+
+
+def _deg_to_rad(value: float) -> float:
+    return value * pi / 180.0
+
+
+def transform_points_world_to_camera(
+    points_xyz: list[tuple[float, float, float]],
+    extrinsics: CameraExtrinsics,
+) -> list[tuple[float, float, float]]:
+    if not extrinsics.enabled:
+        return points_xyz
+
+    roll = _deg_to_rad(extrinsics.roll_deg)
+    pitch = _deg_to_rad(extrinsics.pitch_deg)
+    yaw = _deg_to_rad(extrinsics.yaw_deg)
+
+    cr = cos(roll)
+    sr = sin(roll)
+    cp = cos(pitch)
+    sp = sin(pitch)
+    cy = cos(yaw)
+    sy = sin(yaw)
+
+    # ZYX order: R = Rz(yaw) * Ry(pitch) * Rx(roll)
+    r00 = cy * cp
+    r01 = cy * sp * sr - sy * cr
+    r02 = cy * sp * cr + sy * sr
+    r10 = sy * cp
+    r11 = sy * sp * sr + cy * cr
+    r12 = sy * sp * cr - cy * sr
+    r20 = -sp
+    r21 = cp * sr
+    r22 = cp * cr
+
+    tx, ty, tz = extrinsics.tx, extrinsics.ty, extrinsics.tz
+    transformed: list[tuple[float, float, float]] = []
+    for x, y, z in points_xyz:
+        x_local = x - tx
+        y_local = y - ty
+        z_local = z - tz
+        x_cam = r00 * x_local + r01 * y_local + r02 * z_local
+        y_cam = r10 * x_local + r11 * y_local + r12 * z_local
+        z_cam = r20 * x_local + r21 * y_local + r22 * z_local
+        transformed.append((x_cam, y_cam, z_cam))
+    return transformed
 
 
 def project_points_brown_conrady(
@@ -54,4 +112,3 @@ def project_points_brown_conrady(
         projections.append((u, v, z))
 
     return projections
-

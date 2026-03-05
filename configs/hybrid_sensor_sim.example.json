@@ -27,6 +27,15 @@
       "p2": 0.0,
       "k3": 0.0
     },
+    "camera_extrinsics": {
+      "enabled": false,
+      "tx": 0.0,
+      "ty": 0.0,
+      "tz": 0.0,
+      "roll_deg": 0.0,
+      "pitch_deg": 0.0,
+      "yaw_deg": 0.0
+    },
     "camera_projection_enabled": true,
     "camera_projection_max_points": 5000,
     "camera_projection_preview_count": 20,
