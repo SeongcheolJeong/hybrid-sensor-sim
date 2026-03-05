@@ -80,6 +80,19 @@ PYTHONPATH=src python3 -m unittest discover -s tests -q
   - set `camera_projection_trajectory_sweep_frames` (default `3`)
   - emits `camera_projection_trajectory_sweep.json` with multi-pose frame previews.
 
+## LiDAR/Radar post-physics notes
+
+- LiDAR noisy preview:
+  - enable `lidar_postprocess_enabled=true`
+  - noise/dropout controls: `lidar_noise`, `lidar_noise_stddev_m`, `lidar_dropout_probability`
+  - emits `lidar_noisy_preview.xyz`.
+- Radar target preview:
+  - enable `radar_postprocess_enabled=true`
+  - core controls: `radar_max_targets`, `radar_range_min_m`, `radar_range_max_m`
+  - clutter/false alarms: `radar_clutter`, `radar_false_target_count`
+  - ego-motion velocity source: `radar_use_ego_velocity_from_trajectory`
+  - emits `radar_targets_preview.json`.
+
 ## Example configs
 
 - [configs/hybrid_sensor_sim.example.json](/Users/seongcheoljeong/Documents/Test/configs/hybrid_sensor_sim.example.json): minimal dry-run/fallback config.

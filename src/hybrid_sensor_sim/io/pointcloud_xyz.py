@@ -22,3 +22,17 @@ def read_xyz_points(path: Path, max_points: int = 5000) -> list[tuple[float, flo
                 break
     return points
 
+
+def write_xyz_points(
+    path: Path,
+    points: list[tuple[float, float, float]],
+    decimals: int = 6,
+) -> None:
+    lines = []
+    fmt = "{:." + str(decimals) + "f}"
+    for x, y, z in points:
+        lines.append(f"{fmt.format(x)} {fmt.format(y)} {fmt.format(z)}")
+    payload = "\n".join(lines)
+    if payload:
+        payload += "\n"
+    path.write_text(payload, encoding="utf-8")

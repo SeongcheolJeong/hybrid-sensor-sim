@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import random
+from math import atan2, log10, pi, sqrt
 from pathlib import Path
 
 from hybrid_sensor_sim.backends.base import SensorBackend
-from hybrid_sensor_sim.io.pointcloud_xyz import read_xyz_points
+from hybrid_sensor_sim.io.pointcloud_xyz import read_xyz_points, write_xyz_points
 from hybrid_sensor_sim.io.trajectory_txt import TrajectoryPose, read_trajectory_poses
 from hybrid_sensor_sim.physics.camera import (
     BrownConradyDistortion,
@@ -104,6 +106,22 @@ class NativePhysicsBackend(SensorBackend):
         )
         if camera_projection_sweep_artifact is not None:
             artifacts["camera_projection_trajectory_sweep"] = camera_projection_sweep_artifact
+        lidar_noisy_artifact = self._generate_lidar_noisy_pointcloud_if_available(
+            request=request,
+            artifacts=artifacts,
+            enhanced_output=enhanced_output,
+            metrics=metrics,
+        )
+        if lidar_noisy_artifact is not None:
+            artifacts["lidar_noisy_preview"] = lidar_noisy_artifact
+        radar_targets_artifact = self._generate_radar_targets_if_available(
+            request=request,
+            artifacts=artifacts,
+            enhanced_output=enhanced_output,
+            metrics=metrics,
+        )
+        if radar_targets_artifact is not None:
+            artifacts["radar_targets_preview"] = radar_targets_artifact
 
         payload = {
             "mode": "hybrid_enhanced",
@@ -138,6 +156,8 @@ class NativePhysicsBackend(SensorBackend):
                     "yaw_deg": extrinsics.yaw_deg,
                 },
                 "camera_projection_enabled": bool(request.options.get("camera_projection_enabled", True)),
+                "lidar_postprocess_enabled": bool(request.options.get("lidar_postprocess_enabled", True)),
+                "radar_postprocess_enabled": bool(request.options.get("radar_postprocess_enabled", True)),
             },
         }
         out_path = enhanced_output / "hybrid_physics.json"
@@ -383,6 +403,230 @@ class NativePhysicsBackend(SensorBackend):
         output_path = enhanced_output / "camera_projection_trajectory_sweep.json"
         output_path.write_text(json.dumps(preview, indent=2), encoding="utf-8")
         return output_path
+
+    def _generate_lidar_noisy_pointcloud_if_available(
+        self,
+        request: SensorSimRequest,
+        artifacts: dict[str, Path],
+        enhanced_output: Path,
+        metrics: dict[str, float],
+    ) -> Path | None:
+        if not bool(request.options.get("lidar_postprocess_enabled", True)):
+            return None
+
+        point_cloud = artifacts.get("point_cloud_primary")
+        if point_cloud is None or point_cloud.suffix.lower() != ".xyz" or not point_cloud.exists():
+            return None
+
+        max_points = int(request.options.get("lidar_postprocess_max_points", 50000))
+        points_xyz = read_xyz_points(point_cloud, max_points=max_points)
+        if not points_xyz:
+            metrics["lidar_input_count"] = 0.0
+            metrics["lidar_output_count"] = 0.0
+            return None
+
+        noise_model = str(request.options.get("lidar_noise", "gaussian")).lower().strip()
+        noise_stddev = float(request.options.get("lidar_noise_stddev_m", 0.02))
+        dropout_prob = float(request.options.get("lidar_dropout_probability", 0.01))
+        dropout_prob = min(max(dropout_prob, 0.0), 1.0)
+
+        rng = random.Random(int(request.seed) + 17)
+        noisy_points: list[tuple[float, float, float]] = []
+        for x, y, z in points_xyz:
+            if dropout_prob > 0.0 and rng.random() < dropout_prob:
+                continue
+            if noise_model == "gaussian":
+                nx = x + rng.gauss(0.0, noise_stddev)
+                ny = y + rng.gauss(0.0, noise_stddev)
+                nz = z + rng.gauss(0.0, noise_stddev)
+                noisy_points.append((nx, ny, nz))
+            else:
+                noisy_points.append((x, y, z))
+
+        output_path = enhanced_output / "lidar_noisy_preview.xyz"
+        write_xyz_points(output_path, noisy_points)
+        metrics["lidar_input_count"] = float(len(points_xyz))
+        metrics["lidar_output_count"] = float(len(noisy_points))
+        metrics["lidar_dropout_ratio"] = (
+            1.0 - (float(len(noisy_points)) / float(len(points_xyz)))
+            if points_xyz
+            else 0.0
+        )
+        metrics["lidar_noise_stddev_m"] = float(noise_stddev if noise_model == "gaussian" else 0.0)
+        return output_path
+
+    def _generate_radar_targets_if_available(
+        self,
+        request: SensorSimRequest,
+        artifacts: dict[str, Path],
+        enhanced_output: Path,
+        metrics: dict[str, float],
+    ) -> Path | None:
+        if not bool(request.options.get("radar_postprocess_enabled", True)):
+            return None
+
+        point_cloud = artifacts.get("point_cloud_primary")
+        if point_cloud is None or point_cloud.suffix.lower() != ".xyz" or not point_cloud.exists():
+            return None
+
+        max_points = int(request.options.get("radar_postprocess_max_points", 50000))
+        points_xyz = read_xyz_points(point_cloud, max_points=max_points)
+        if not points_xyz:
+            metrics["radar_input_count"] = 0.0
+            metrics["radar_target_count"] = 0.0
+            return None
+
+        extrinsics = self._radar_extrinsics_from_options(request)
+        points_radar = transform_points_world_to_camera(points_xyz=points_xyz, extrinsics=extrinsics)
+        clutter_model = str(request.options.get("radar_clutter", "basic")).lower().strip()
+        max_targets = int(request.options.get("radar_max_targets", 64))
+        min_range = float(request.options.get("radar_range_min_m", 0.5))
+        max_range = float(request.options.get("radar_range_max_m", 200.0))
+        horiz_fov_rad = float(request.options.get("radar_horizontal_fov_deg", 120.0)) * pi / 180.0
+        vert_fov_rad = float(request.options.get("radar_vertical_fov_deg", 30.0)) * pi / 180.0
+        angle_noise_deg = float(request.options.get("radar_angle_noise_stddev_deg", 0.1))
+        range_noise_m = float(request.options.get("radar_range_noise_stddev_m", 0.05))
+        velocity_noise_mps = float(request.options.get("radar_velocity_noise_stddev_mps", 0.1))
+        rcs_base_dbsm = float(request.options.get("radar_rcs_base_dbsm", 12.0))
+
+        rng = random.Random(int(request.seed) + 137)
+        ego_vx, ego_vy, ego_vz = self._estimate_ego_velocity_from_trajectory(request, artifacts)
+
+        candidates: list[tuple[float, dict[str, object]]] = []
+        for x, y, z in points_radar:
+            range_m = sqrt(x * x + y * y + z * z)
+            if range_m < min_range or range_m > max_range:
+                continue
+
+            xy_norm = sqrt(x * x + y * y)
+            azimuth_rad = atan2(y, x)
+            elevation_rad = atan2(z, xy_norm if xy_norm > 1e-9 else 1e-9)
+            if abs(azimuth_rad) > horiz_fov_rad * 0.5:
+                continue
+            if abs(elevation_rad) > vert_fov_rad * 0.5:
+                continue
+
+            radial_velocity = -(ego_vx * x + ego_vy * y + ego_vz * z) / max(range_m, 1e-9)
+            noisy_range = range_m
+            noisy_azimuth = azimuth_rad
+            noisy_elevation = elevation_rad
+            noisy_radial_velocity = radial_velocity
+            if clutter_model == "basic":
+                noisy_range = max(min_range, noisy_range + rng.gauss(0.0, range_noise_m))
+                noisy_azimuth += rng.gauss(0.0, angle_noise_deg) * pi / 180.0
+                noisy_elevation += rng.gauss(0.0, angle_noise_deg) * pi / 180.0
+                noisy_radial_velocity += rng.gauss(0.0, velocity_noise_mps)
+
+            rcs = rcs_base_dbsm - 20.0 * log10(max(noisy_range, 1e-3))
+            candidates.append(
+                (
+                    noisy_range,
+                    {
+                        "range_m": noisy_range,
+                        "azimuth_deg": noisy_azimuth * 180.0 / pi,
+                        "elevation_deg": noisy_elevation * 180.0 / pi,
+                        "radial_velocity_mps": noisy_radial_velocity,
+                        "rcs_dbsm": rcs,
+                        "is_false_alarm": False,
+                    },
+                )
+            )
+
+        candidates.sort(key=lambda item: item[0])
+        selected = [item[1] for item in candidates[:max_targets]]
+
+        false_target_count = int(request.options.get("radar_false_target_count", 2 if clutter_model == "basic" else 0))
+        false_added = 0
+        for _ in range(false_target_count):
+            if len(selected) >= max_targets:
+                break
+            false_range = rng.uniform(min_range, max_range)
+            false_azimuth = rng.uniform(-0.5 * horiz_fov_rad, 0.5 * horiz_fov_rad)
+            false_elevation = rng.uniform(-0.5 * vert_fov_rad, 0.5 * vert_fov_rad)
+            selected.append(
+                {
+                    "range_m": false_range,
+                    "azimuth_deg": false_azimuth * 180.0 / pi,
+                    "elevation_deg": false_elevation * 180.0 / pi,
+                    "radial_velocity_mps": rng.gauss(0.0, 0.2),
+                    "rcs_dbsm": rcs_base_dbsm - 20.0 * log10(max(false_range, 1e-3)) + rng.gauss(0.0, 2.0),
+                    "is_false_alarm": True,
+                }
+            )
+            false_added += 1
+
+        for idx, target in enumerate(selected):
+            target["id"] = idx
+
+        preview = {
+            "input_point_cloud": str(point_cloud),
+            "input_count": len(points_xyz),
+            "target_count": len(selected),
+            "ego_velocity_mps": {
+                "vx": ego_vx,
+                "vy": ego_vy,
+                "vz": ego_vz,
+            },
+            "radar_extrinsics": {
+                "enabled": extrinsics.enabled,
+                "tx": extrinsics.tx,
+                "ty": extrinsics.ty,
+                "tz": extrinsics.tz,
+                "roll_deg": extrinsics.roll_deg,
+                "pitch_deg": extrinsics.pitch_deg,
+                "yaw_deg": extrinsics.yaw_deg,
+            },
+            "targets": selected,
+        }
+        output_path = enhanced_output / "radar_targets_preview.json"
+        output_path.write_text(json.dumps(preview, indent=2), encoding="utf-8")
+        metrics["radar_input_count"] = float(len(points_xyz))
+        metrics["radar_target_count"] = float(len(selected))
+        metrics["radar_false_target_count"] = float(false_added)
+        return output_path
+
+    def _radar_extrinsics_from_options(self, request: SensorSimRequest) -> CameraExtrinsics:
+        data = request.options.get("radar_extrinsics", {})
+        if not isinstance(data, dict):
+            return CameraExtrinsics(enabled=False)
+        return CameraExtrinsics(
+            tx=float(data.get("tx", 0.0)),
+            ty=float(data.get("ty", 0.0)),
+            tz=float(data.get("tz", 0.0)),
+            roll_deg=float(data.get("roll_deg", 0.0)),
+            pitch_deg=float(data.get("pitch_deg", 0.0)),
+            yaw_deg=float(data.get("yaw_deg", 0.0)),
+            enabled=bool(data.get("enabled", False)),
+        )
+
+    def _estimate_ego_velocity_from_trajectory(
+        self,
+        request: SensorSimRequest,
+        artifacts: dict[str, Path],
+    ) -> tuple[float, float, float]:
+        if not bool(request.options.get("radar_use_ego_velocity_from_trajectory", True)):
+            default_speed = float(request.options.get("radar_default_ego_speed_mps", 0.0))
+            return (default_speed, 0.0, 0.0)
+
+        trajectory_path = artifacts.get("trajectory_primary")
+        if trajectory_path is None or not trajectory_path.exists():
+            default_speed = float(request.options.get("radar_default_ego_speed_mps", 0.0))
+            return (default_speed, 0.0, 0.0)
+
+        poses = read_trajectory_poses(
+            trajectory_path,
+            max_rows=int(request.options.get("camera_extrinsics_auto_max_rows", 20000)),
+        )
+        if len(poses) < 2:
+            default_speed = float(request.options.get("radar_default_ego_speed_mps", 0.0))
+            return (default_speed, 0.0, 0.0)
+
+        first = poses[0]
+        last = poses[-1]
+        dt = last.time_s - first.time_s
+        if dt <= 1e-9:
+            return (0.0, 0.0, 0.0)
+        return ((last.x - first.x) / dt, (last.y - first.y) / dt, (last.z - first.z) / dt)
 
     def _resolve_effective_extrinsics(
         self,

@@ -322,6 +322,86 @@ EOF
             self.assertEqual(len(sweep["frames"]), 3)
             self.assertGreaterEqual(sweep["frames"][0]["output_count"], 0)
 
+    def test_hybrid_generates_lidar_and_radar_previews(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+8.0 0.2 0.1
+12.0 -0.5 0.3
+20.0 1.0 0.0
+EOF
+cat > "${rootdir}/scan_trajectory.txt" <<EOF
+0.0 0.0 0.0 0.0 0.0 0.0 0.0
+10.0 0.0 0.0 2.0 0.0 0.0 0.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "lidar_postprocess_enabled": True,
+                    "lidar_noise": "gaussian",
+                    "lidar_noise_stddev_m": 0.0,
+                    "lidar_dropout_probability": 0.0,
+                    "radar_postprocess_enabled": True,
+                    "radar_max_targets": 8,
+                    "radar_range_min_m": 0.5,
+                    "radar_range_max_m": 100.0,
+                    "radar_false_target_count": 0,
+                    "radar_use_ego_velocity_from_trajectory": True,
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+            self.assertTrue(result.success)
+
+            self.assertIn("lidar_noisy_preview", result.artifacts)
+            lidar_lines = [
+                line
+                for line in result.artifacts["lidar_noisy_preview"].read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            self.assertEqual(len(lidar_lines), 3)
+            self.assertEqual(result.metrics.get("lidar_output_count"), 3.0)
+
+            self.assertIn("radar_targets_preview", result.artifacts)
+            radar_payload = json.loads(
+                result.artifacts["radar_targets_preview"].read_text(encoding="utf-8")
+            )
+            self.assertGreater(radar_payload["target_count"], 0)
+            self.assertIn("radial_velocity_mps", radar_payload["targets"][0])
+            self.assertNotEqual(radar_payload["targets"][0]["radial_velocity_mps"], 0.0)
+            self.assertEqual(result.metrics.get("radar_target_count"), float(radar_payload["target_count"]))
+
 
 if __name__ == "__main__":
     unittest.main()
