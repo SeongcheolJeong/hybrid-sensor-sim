@@ -1,0 +1,17 @@
+{
+  "mode": "hybrid_auto",
+  "helios_bin": "",
+  "scenario_path": "examples/scenarios/minimal_scene.json",
+  "output_dir": "artifacts/run01",
+  "sensor_profile": "default",
+  "seed": 7,
+  "options": {
+    "execute_helios": false,
+    "helios_command": [],
+    "camera_geometry": "pinhole",
+    "camera_distortion": "brown-conrady",
+    "lidar_noise": "gaussian",
+    "radar_clutter": "basic",
+    "motion_compensation": true
+  }
+}

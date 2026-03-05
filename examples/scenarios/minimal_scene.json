@@ -1,0 +1,11 @@
+{
+  "name": "minimal_scene",
+  "description": "Placeholder scenario file for hybrid sensor simulation bootstrap",
+  "objects": [
+    {
+      "id": "ego",
+      "type": "vehicle",
+      "pose": [0.0, 0.0, 0.0]
+    }
+  ]
+}
