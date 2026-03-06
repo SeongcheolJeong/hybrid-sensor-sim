@@ -65,6 +65,57 @@ PY
         output_args+=(--mount-pose "${sensor_id}:${tx}:${ty}:${tz}:${roll}:${pitch}:${yaw}")
       fi
       ;;
+    --frame-manifest)
+      if [[ $# -lt 2 ]]; then
+        echo "missing payload for --frame-manifest" >&2
+        exit 2
+      fi
+      manifest_path="$2"
+      shift 2
+      parsed_frames="$(python3 - "${manifest_path}" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+try:
+    with open(path, "r", encoding="utf-8") as fp:
+        payload = json.load(fp)
+except OSError as exc:
+    raise SystemExit(f"cannot read --frame-manifest file: {exc}")
+except json.JSONDecodeError as exc:
+    raise SystemExit(f"invalid --frame-manifest payload: {exc}")
+
+frames = payload.get("frames")
+if not isinstance(frames, list):
+    raise SystemExit("--frame-manifest payload missing frames list")
+
+for frame in frames:
+    if not isinstance(frame, dict):
+        continue
+    rid = frame.get("renderer_frame_id", frame.get("frame_id", 0))
+    try:
+        rid = int(rid)
+    except (TypeError, ValueError):
+        rid = 0
+    for sensor in ("camera", "lidar", "radar"):
+        source = frame.get(sensor)
+        if not isinstance(source, dict):
+            continue
+        if not bool(source.get("available", False)):
+            continue
+        payload_artifact = str(source.get("payload_artifact", "")).strip()
+        if not payload_artifact:
+            continue
+        print(f"{sensor}|{rid}|{payload_artifact}")
+PY
+)"
+      while IFS='|' read -r sensor_name renderer_frame_id payload_artifact; do
+        if [[ -z "${sensor_name}" || -z "${payload_artifact}" ]]; then
+          continue
+        fi
+        output_args+=(--ingest-sensor-frame "${sensor_name}:${renderer_frame_id}:${payload_artifact}")
+      done <<<"${parsed_frames}"
+      ;;
     *)
       output_args+=("$1")
       shift

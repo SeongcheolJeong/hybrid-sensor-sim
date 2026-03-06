@@ -505,6 +505,136 @@ echo "carla_backend_ok"
             self.assertIn("--town", wrapper_invocation["output_args"])
             self.assertIn("Town03", wrapper_invocation["output_args"])
 
+    def test_renderer_runtime_awsim_wrapper_consumes_frame_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+
+            fake_awsim = root / "fake_awsim.sh"
+            fake_awsim.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+echo "awsim_backend_ok"
+""",
+                encoding="utf-8",
+            )
+            fake_awsim.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "renderer_bridge_enabled": True,
+                    "renderer_backend": "awsim",
+                    "renderer_execute": True,
+                    "renderer_bin": "",
+                    "awsim_bin": "",
+                    "renderer_command": [],
+                    "camera_projection_enabled": True,
+                    "camera_projection_trajectory_sweep_enabled": True,
+                    "camera_projection_trajectory_sweep_frames": 2,
+                    "lidar_postprocess_enabled": True,
+                    "lidar_trajectory_sweep_enabled": True,
+                    "lidar_trajectory_sweep_frames": 2,
+                    "radar_postprocess_enabled": True,
+                    "radar_trajectory_sweep_enabled": True,
+                    "radar_trajectory_sweep_frames": 2,
+                    "renderer_sensor_mounts_only_enabled": False,
+                },
+            )
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            with mock.patch.dict(os.environ, {"AWSIM_BIN": str(fake_awsim)}, clear=False):
+                result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            self.assertIn("backend_wrapper_invocation", result.artifacts)
+            wrapper_invocation = json.loads(
+                result.artifacts["backend_wrapper_invocation"].read_text(encoding="utf-8")
+            )
+            output_args = wrapper_invocation["output_args"]
+            ingest_indices = [idx for idx, token in enumerate(output_args) if token == "--ingest-sensor-frame"]
+            self.assertEqual(len(ingest_indices), 6)
+            ingest_payloads = [output_args[idx + 1] for idx in ingest_indices]
+            self.assertTrue(any(payload.startswith("camera:0:") for payload in ingest_payloads))
+            self.assertTrue(any(payload.startswith("lidar:0:") for payload in ingest_payloads))
+            self.assertTrue(any(payload.startswith("radar:0:") for payload in ingest_payloads))
+            for payload in ingest_payloads:
+                parts = payload.split(":", 2)
+                self.assertEqual(len(parts), 3)
+                self.assertTrue(Path(parts[2]).exists())
+
+    def test_renderer_runtime_carla_wrapper_consumes_frame_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+
+            fake_carla = root / "fake_carla.sh"
+            fake_carla.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+echo "carla_backend_ok"
+""",
+                encoding="utf-8",
+            )
+            fake_carla.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "renderer_bridge_enabled": True,
+                    "renderer_backend": "carla",
+                    "renderer_execute": True,
+                    "renderer_bin": "",
+                    "carla_bin": "",
+                    "renderer_command": [],
+                    "camera_projection_enabled": True,
+                    "camera_projection_trajectory_sweep_enabled": True,
+                    "camera_projection_trajectory_sweep_frames": 2,
+                    "lidar_postprocess_enabled": True,
+                    "lidar_trajectory_sweep_enabled": True,
+                    "lidar_trajectory_sweep_frames": 2,
+                    "radar_postprocess_enabled": True,
+                    "radar_trajectory_sweep_enabled": True,
+                    "radar_trajectory_sweep_frames": 2,
+                    "renderer_sensor_mounts_only_enabled": False,
+                },
+            )
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            with mock.patch.dict(os.environ, {"CARLA_BIN": str(fake_carla)}, clear=False):
+                result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            self.assertIn("backend_wrapper_invocation", result.artifacts)
+            wrapper_invocation = json.loads(
+                result.artifacts["backend_wrapper_invocation"].read_text(encoding="utf-8")
+            )
+            output_args = wrapper_invocation["output_args"]
+            ingest_indices = [idx for idx, token in enumerate(output_args) if token == "--ingest-frame"]
+            self.assertEqual(len(ingest_indices), 6)
+            ingest_payloads = [output_args[idx + 1] for idx in ingest_indices]
+            self.assertTrue(any(payload.startswith("0:camera:") for payload in ingest_payloads))
+            self.assertTrue(any(payload.startswith("0:lidar:") for payload in ingest_payloads))
+            self.assertTrue(any(payload.startswith("0:radar:") for payload in ingest_payloads))
+            for payload in ingest_payloads:
+                parts = payload.split(":", 2)
+                self.assertEqual(len(parts), 3)
+                self.assertTrue(Path(parts[2]).exists())
+
     def test_renderer_runtime_injects_scene_and_sensor_mount_args_from_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

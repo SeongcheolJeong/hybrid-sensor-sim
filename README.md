@@ -175,6 +175,9 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - wrappers translate `--sensor-mount` payloads to backend attach args:
       - AWSIM: `--mount-sensor <sensor_id:sensor_type:actor>` and (when extrinsics exist) `--mount-pose <sensor_id:tx:ty:tz:roll:pitch:yaw>`
       - CARLA: `--attach-sensor <sensor_type:sensor_id:actor>` and (when extrinsics exist) `--sensor-pose <sensor_id:tx:ty:tz:roll:pitch:yaw>`
+    - wrappers translate `--frame-manifest` to backend ingestion args:
+      - AWSIM: repeated `--ingest-sensor-frame <sensor:renderer_frame_id:payload_path>`
+      - CARLA: repeated `--ingest-frame <renderer_frame_id:sensor:payload_path>`
   - execution plan includes `backend_args_preview` for normalized scene/sensor-mount argument inspection.
   - runtime artifacts:
     - `backend_invocation.json`: normalized backend command + preview snapshot.
