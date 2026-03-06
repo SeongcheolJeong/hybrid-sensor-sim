@@ -34,6 +34,18 @@ Run tests:
 PYTHONPATH=src python3 -m unittest discover -s tests -q
 ```
 
+Survey mapping dry-run demo (no HELIOS execution, plan+mapping artifacts only):
+
+```bash
+PYTHONPATH=src python3 -m hybrid_sensor_sim.cli --config configs/hybrid_sensor_sim.survey_mapping_demo.json
+```
+
+Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
+
+- `helios_execution_plan.json`
+- `survey_mapping_metadata.json`
+- generated survey XML under `generated_surveys/`
+
 ## HELIOS execution modes
 
 - Runtime selection (`options.helios_runtime`):
@@ -46,6 +58,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests -q
 - Scenario mapping:
   - set `survey_generate_from_scenario=true` to generate survey XML from scenario JSON.
   - generated survey path is recorded in `helios_execution_plan.json` (`generated_survey_path`).
+  - mapping summary is embedded in `helios_execution_plan.json` (`survey_mapping_metadata`) and emitted as `survey_mapping_metadata.json`.
   - trajectory source priority:
     - `ego_trajectory` (if present),
     - else `objects[].pose/waypoints` + `waypoints`.

@@ -62,6 +62,37 @@ class SurveyMappingTests(unittest.TestCase):
                     options={},
                 )
 
+    def test_generate_survey_emits_mapping_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            scenario = root / "scenario.json"
+            scenario.write_text(
+                json.dumps(
+                    {
+                        "name": "metadata-scene",
+                        "ego_trajectory": [[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            metadata: dict[str, object] = {}
+            out = generate_survey_from_scenario(
+                scenario_path=scenario,
+                output_dir=root / "generated",
+                options={
+                    "survey_scanner_settings_id": "scaset_demo",
+                    "survey_scan_freq_hz": 25,
+                },
+                metadata_out=metadata,
+            )
+            self.assertTrue(out.exists())
+            self.assertEqual(metadata.get("survey_name"), "metadata-scene")
+            self.assertEqual(metadata.get("scanner_settings_id"), "scaset_demo")
+            self.assertEqual(metadata.get("scan_freq_hz"), 25.0)
+            self.assertEqual(metadata.get("leg_count"), 2)
+            self.assertEqual(metadata.get("trajectory_source"), "ego_trajectory")
+            self.assertIn("survey_scan_freq_hz", metadata.get("option_override_keys"))
+
     def test_generate_survey_from_explicit_helios_legs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

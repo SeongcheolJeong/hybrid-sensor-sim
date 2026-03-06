@@ -102,25 +102,36 @@ def _dedupe_consecutive_points(
     return deduped
 
 
-def _extract_trajectory_points(scenario: dict[str, Any]) -> list[tuple[float, float, float]]:
+def _extract_trajectory_points(
+    scenario: dict[str, Any],
+) -> tuple[list[tuple[float, float, float]], str]:
     ego_trajectory = _extract_points(scenario.get("ego_trajectory"))
     if ego_trajectory:
-        return _dedupe_consecutive_points(ego_trajectory)
+        return _dedupe_consecutive_points(ego_trajectory), "ego_trajectory"
 
     ego_obj = _resolve_ego_object(scenario)
     points: list[tuple[float, float, float]] = []
+    object_points_count = 0
     if ego_obj is not None:
         pose = _extract_pose_from_entry(ego_obj)
         if pose is not None:
             points.append(pose)
-        points.extend(_extract_points(ego_obj.get("waypoints")))
+            object_points_count += 1
+        ego_waypoints = _extract_points(ego_obj.get("waypoints"))
+        points.extend(ego_waypoints)
+        object_points_count += len(ego_waypoints)
 
-    points.extend(_extract_points(scenario.get("waypoints")))
+    scenario_waypoints = _extract_points(scenario.get("waypoints"))
+    points.extend(scenario_waypoints)
     points = _dedupe_consecutive_points(points)
 
     if not points:
-        points.append((0.0, 0.0, 0.0))
-    return points
+        return [(0.0, 0.0, 0.0)], "default_origin"
+    if object_points_count > 0 and scenario_waypoints:
+        return points, "objects_and_waypoints"
+    if object_points_count > 0:
+        return points, "objects"
+    return points, "waypoints"
 
 
 def _resolve_str_option(
@@ -226,6 +237,7 @@ def generate_survey_from_scenario(
     scenario_path: Path,
     output_dir: Path,
     options: dict[str, Any],
+    metadata_out: dict[str, Any] | None = None,
 ) -> Path:
     if not scenario_path.exists():
         raise ValueError(f"scenario path does not exist: {scenario_path}")
@@ -331,6 +343,10 @@ def generate_survey_from_scenario(
     force_global_leg_scanner = bool(options.get("survey_force_global_leg_scanner", False))
 
     explicit_legs = _resolve_explicit_legs(scenario)
+    explicit_legs_defined_count = len(explicit_legs)
+    explicit_legs_used_count = 0
+    trajectory_source = "unused_explicit_legs"
+    leg_source = "explicit_legs"
     legs: list[tuple[tuple[float, float, float], dict[str, str]]] = []
     if explicit_legs:
         for leg_cfg in explicit_legs:
@@ -338,10 +354,19 @@ def generate_survey_from_scenario(
             if pose is None:
                 continue
             legs.append((pose, _extract_leg_scanner_overrides(leg_cfg)))
+            explicit_legs_used_count += 1
     else:
-        for point in _extract_trajectory_points(scenario):
+        leg_source = "trajectory"
+        trajectory_points, trajectory_source = _extract_trajectory_points(scenario)
+        for point in trajectory_points:
+            legs.append((point, {}))
+    if explicit_legs and not legs:
+        leg_source = "trajectory_fallback_from_explicit_legs"
+        trajectory_points, trajectory_source = _extract_trajectory_points(scenario)
+        for point in trajectory_points:
             legs.append((point, {}))
     if not legs:
+        trajectory_source = "default_origin"
         legs.append(((0.0, 0.0, 0.0), {}))
 
     document = ET.Element("document")
@@ -404,4 +429,49 @@ def generate_survey_from_scenario(
     output_dir.mkdir(parents=True, exist_ok=True)
     survey_path = output_dir / f"{survey_name}.xml"
     tree.write(survey_path, encoding="utf-8", xml_declaration=True)
+    if metadata_out is not None:
+        relevant_option_keys = [
+            "survey_generated_name",
+            "survey_scene_ref",
+            "survey_platform_ref",
+            "survey_scanner_ref",
+            "survey_scanner_settings_id",
+            "survey_pulse_freq_hz",
+            "survey_scan_freq_hz",
+            "survey_head_rotate_per_sec_deg",
+            "survey_head_rotate_start_deg",
+            "survey_head_rotate_stop_deg",
+            "survey_force_global_leg_scanner",
+        ]
+        option_override_keys = sorted(
+            [
+                key
+                for key in relevant_option_keys
+                if key in options and options.get(key) is not None
+            ]
+        )
+        metadata_out.update(
+            {
+                "scenario_path": str(scenario_path.resolve()),
+                "survey_path": str(survey_path.resolve()),
+                "survey_name": survey_name,
+                "scene_ref": scene_ref,
+                "platform_ref": platform_ref,
+                "scanner_ref": scanner_ref,
+                "scanner_settings_id": scanner_settings_id,
+                "pulse_freq_hz": pulse_freq_hz,
+                "scan_freq_hz": scan_freq_hz,
+                "head_rotate_per_sec_deg": head_rotate_per_sec_deg,
+                "head_rotate_start_deg": head_rotate_start_deg,
+                "head_rotate_stop_deg": head_rotate_stop_deg,
+                "force_global_leg_scanner": force_global_leg_scanner,
+                "leg_count": len(legs),
+                "leg_source": leg_source,
+                "trajectory_source": trajectory_source,
+                "explicit_legs_defined_count": explicit_legs_defined_count,
+                "explicit_legs_used_count": explicit_legs_used_count,
+                "leg_scanner_override_count": sum(1 for _, override in legs if bool(override)),
+                "option_override_keys": option_override_keys,
+            }
+        )
     return survey_path

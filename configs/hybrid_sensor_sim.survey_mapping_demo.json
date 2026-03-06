@@ -1,0 +1,24 @@
+{
+  "mode": "hybrid_auto",
+  "helios_runtime": "docker",
+  "helios_bin": "",
+  "scenario_path": "examples/scenarios/helios_explicit_legs_scene.json",
+  "output_dir": "artifacts/survey_mapping_demo",
+  "sensor_profile": "lidar-demo",
+  "seed": 17,
+  "options": {
+    "helios_runtime": "docker",
+    "helios_docker_image": "heliosplusplus:cli",
+    "helios_docker_binary": "/home/jovyan/helios/build/helios++",
+    "execute_helios": false,
+    "survey_generate_from_scenario": true,
+    "survey_scenario_path": "examples/scenarios/helios_explicit_legs_scene.json",
+    "survey_generated_name": "helios_explicit_legs_demo",
+    "survey_generated_output_dir": "helios_raw/generated_surveys",
+    "survey_force_global_leg_scanner": false,
+    "camera_projection_enabled": false,
+    "lidar_postprocess_enabled": false,
+    "radar_postprocess_enabled": false,
+    "renderer_bridge_enabled": false
+  }
+}

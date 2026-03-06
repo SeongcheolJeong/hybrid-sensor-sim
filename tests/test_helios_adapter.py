@@ -223,6 +223,20 @@ touch "${rootdir}/scan_fullwave.txt"
             self.assertTrue(plan["survey_generated_from_scenario"])
             self.assertEqual(plan["generated_survey_path"], str(generated))
             self.assertIn(str(generated), plan["command"])
+            self.assertIn("survey_mapping_metadata", plan)
+            mapping_meta = plan["survey_mapping_metadata"]
+            self.assertIsInstance(mapping_meta, dict)
+            assert isinstance(mapping_meta, dict)
+            self.assertEqual(mapping_meta.get("survey_name"), "gen-survey")
+            self.assertEqual(mapping_meta.get("leg_count"), 2)
+            self.assertEqual(mapping_meta.get("trajectory_source"), "objects")
+
+            self.assertIn("survey_mapping_metadata", result.artifacts)
+            mapping_meta_path = result.artifacts["survey_mapping_metadata"]
+            self.assertTrue(mapping_meta_path.exists())
+            mapping_meta_file = json.loads(mapping_meta_path.read_text(encoding="utf-8"))
+            self.assertEqual(mapping_meta_file.get("survey_name"), "gen-survey")
+            self.assertEqual(mapping_meta_file.get("leg_count"), 2)
 
 
 if __name__ == "__main__":

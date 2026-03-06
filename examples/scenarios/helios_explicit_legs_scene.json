@@ -1,0 +1,45 @@
+{
+  "name": "helios-explicit-legs-demo",
+  "description": "Scenario mapping demo with explicit HELIOS legs and lidar defaults",
+  "ego_trajectory": [
+    [0.0, 0.0, 1.8],
+    [2.5, 0.0, 1.8],
+    [5.0, 0.0, 1.8]
+  ],
+  "sensors": {
+    "lidar": {
+      "pulse_freq_hz": 180000,
+      "scan_freq_hz": 15,
+      "head_rotate_per_sec_deg": 4.0
+    }
+  },
+  "helios": {
+    "scene": "data/scenes/demo/plane_scene.xml#plane_scene",
+    "platform": "data/platforms.xml#tripod",
+    "scanner": "data/scanners_tls.xml#panoscanner",
+    "legs": [
+      {
+        "platform": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 1.8
+        },
+        "scanner": {
+          "head_rotate_start_deg": -90.0,
+          "head_rotate_stop_deg": 90.0
+        }
+      },
+      {
+        "platform": {
+          "x": 5.0,
+          "y": 0.0,
+          "z": 1.8
+        },
+        "scanner": {
+          "head_rotate_start_deg": -120.0,
+          "head_rotate_stop_deg": 120.0
+        }
+      }
+    ]
+  }
+}
