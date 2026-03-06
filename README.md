@@ -158,6 +158,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - references available sensor artifacts (`camera/lidar/radar` preview or sweep) per frame.
   - when survey mapping is enabled, contract also carries `survey_mapping` metadata and related artifact paths.
   - includes `sensor_setup` block with camera/lidar/radar calibration context (`intrinsics`, `distortion`, `extrinsics`, and source).
+  - includes `renderer_sensor_mounts` block for renderer-side sensor attach specs (`sensor_id`, `sensor_type`, `attach_to_actor_id`, `extrinsics`).
 - Runtime executor:
   - set `renderer_execute=true` to run renderer command.
   - choose command source:

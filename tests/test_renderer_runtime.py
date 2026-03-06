@@ -64,6 +64,9 @@ class RendererRuntimeTests(unittest.TestCase):
                     "renderer_backend": "carla",
                     "renderer_execute": False,
                     "renderer_command": ["echo", "renderer_plan", "{contract}"],
+                    "renderer_camera_sensor_id": "cam_front",
+                    "renderer_lidar_sensor_id": "lidar_roof",
+                    "renderer_radar_sensor_id": "radar_bumper",
                 },
             )
             orchestrator = HybridOrchestrator(
@@ -272,6 +275,9 @@ echo "renderer_ok ${contract}"
                     "renderer_backend": "carla",
                     "renderer_execute": False,
                     "renderer_command": ["echo", "renderer_plan", "{contract}"],
+                    "renderer_camera_sensor_id": "cam_front",
+                    "renderer_lidar_sensor_id": "lidar_roof",
+                    "renderer_radar_sensor_id": "radar_bumper",
                 },
             )
             orchestrator = HybridOrchestrator(
@@ -318,6 +324,15 @@ echo "renderer_ok ${contract}"
             radar_setup = payload["sensor_setup"]["radar"]
             self.assertEqual(radar_setup["extrinsics_source"], "options")
             self.assertEqual(radar_setup["extrinsics"]["tx"], 7.0)
+
+            mounts = payload["renderer_sensor_mounts"]
+            self.assertEqual(len(mounts), 3)
+            self.assertEqual(mounts[0]["sensor_id"], "cam_front")
+            self.assertEqual(mounts[1]["sensor_id"], "lidar_roof")
+            self.assertEqual(mounts[2]["sensor_id"], "radar_bumper")
+            self.assertFalse(mounts[0]["enabled"])
+            self.assertFalse(mounts[1]["enabled"])
+            self.assertFalse(mounts[2]["enabled"])
 
 
 if __name__ == "__main__":

@@ -679,6 +679,17 @@ EOF
                 payload["sensor_setup"]["radar"]["extrinsics_source"],
                 "radar_sweep_frame0",
             )
+            self.assertIn("renderer_sensor_mounts", payload)
+            mounts = payload["renderer_sensor_mounts"]
+            self.assertEqual(len(mounts), 3)
+            self.assertEqual(mounts[0]["sensor_type"], "camera")
+            self.assertFalse(mounts[0]["enabled"])
+            self.assertEqual(mounts[1]["sensor_type"], "lidar")
+            self.assertTrue(mounts[1]["enabled"])
+            self.assertEqual(mounts[1]["extrinsics_source"], "lidar_sweep_frame0")
+            self.assertEqual(mounts[2]["sensor_type"], "radar")
+            self.assertTrue(mounts[2]["enabled"])
+            self.assertEqual(mounts[2]["extrinsics_source"], "radar_sweep_frame0")
 
 
 if __name__ == "__main__":

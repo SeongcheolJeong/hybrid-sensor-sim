@@ -72,6 +72,57 @@ def _frame_source(
     return None
 
 
+def _build_renderer_sensor_mounts(
+    *,
+    options: dict[str, Any],
+    camera_extrinsics: dict[str, Any] | None,
+    camera_extrinsics_source: str,
+    lidar_extrinsics: dict[str, Any] | None,
+    lidar_extrinsics_source: str,
+    radar_extrinsics: dict[str, Any] | None,
+    radar_extrinsics_source: str,
+    camera_available: bool,
+    lidar_available: bool,
+    radar_available: bool,
+) -> list[dict[str, Any]]:
+    ego_actor_id = str(options.get("renderer_ego_actor_id", "ego"))
+    mounts: list[dict[str, Any]] = []
+
+    mounts.append(
+        {
+            "sensor_id": str(options.get("renderer_camera_sensor_id", "camera_front")),
+            "sensor_type": "camera",
+            "attach_to_actor_id": ego_actor_id,
+            "enabled": camera_available,
+            "extrinsics_source": camera_extrinsics_source,
+            "extrinsics": camera_extrinsics,
+            "intrinsics": _dict_or_none(options.get("camera_intrinsics")) or {},
+            "distortion_coeffs": _dict_or_none(options.get("camera_distortion_coeffs")) or {},
+        }
+    )
+    mounts.append(
+        {
+            "sensor_id": str(options.get("renderer_lidar_sensor_id", "lidar_top")),
+            "sensor_type": "lidar",
+            "attach_to_actor_id": ego_actor_id,
+            "enabled": lidar_available,
+            "extrinsics_source": lidar_extrinsics_source,
+            "extrinsics": lidar_extrinsics,
+        }
+    )
+    mounts.append(
+        {
+            "sensor_id": str(options.get("renderer_radar_sensor_id", "radar_front")),
+            "sensor_type": "radar",
+            "attach_to_actor_id": ego_actor_id,
+            "enabled": radar_available,
+            "extrinsics_source": radar_extrinsics_source,
+            "extrinsics": radar_extrinsics,
+        }
+    )
+    return mounts
+
+
 def build_renderer_playback_contract(
     *,
     options: dict[str, Any],
@@ -195,6 +246,22 @@ def build_renderer_playback_contract(
             frame["radar"] = radar_source
         frames.append(frame)
 
+    camera_available = (camera_sweep is not None) or (camera_preview is not None)
+    lidar_available = (lidar_sweep is not None) or (lidar_preview is not None)
+    radar_available = (radar_sweep is not None) or (radar_preview is not None)
+    renderer_sensor_mounts = _build_renderer_sensor_mounts(
+        options=options,
+        camera_extrinsics=camera_extrinsics,
+        camera_extrinsics_source=camera_extrinsics_source,
+        lidar_extrinsics=lidar_extrinsics,
+        lidar_extrinsics_source=lidar_extrinsics_source,
+        radar_extrinsics=radar_extrinsics,
+        radar_extrinsics_source=radar_extrinsics_source,
+        camera_available=camera_available,
+        lidar_available=lidar_available,
+        radar_available=radar_available,
+    )
+
     return {
         "schema_version": "1.0",
         "renderer_backend": str(options.get("renderer_backend", "none")),
@@ -259,6 +326,7 @@ def build_renderer_playback_contract(
                 "range_max_m": float(options.get("radar_range_max_m", 200.0)),
             },
         },
+        "renderer_sensor_mounts": renderer_sensor_mounts,
         "frame_count": frame_count,
         "frame_step_s": frame_step_s,
         "frame_offset": frame_offset,
