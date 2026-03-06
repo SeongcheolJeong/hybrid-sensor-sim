@@ -194,6 +194,66 @@ echo "renderer_ok ${contract}"
             self.assertIn("--fps", plan["command"])
             self.assertIn("20", plan["command"])
             self.assertIn(str(contract_path), plan["command"])
+            self.assertGreaterEqual(plan["contract_scene_args_count"], 2)
+            self.assertEqual(plan["contract_sensor_mount_args_count"], 0)
+
+    def test_renderer_runtime_injects_scene_and_sensor_mount_args_from_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "lidar_postprocess_enabled": False,
+                    "radar_postprocess_enabled": False,
+                    "renderer_bridge_enabled": True,
+                    "renderer_backend": "carla",
+                    "renderer_map": "Town06",
+                    "renderer_weather": "rain",
+                    "renderer_scene_seed": 77,
+                    "renderer_ego_actor_id": "ego_01",
+                    "renderer_execute": False,
+                    "renderer_command": ["echo", "renderer_plan", "{contract}"],
+                    "renderer_camera_sensor_id": "cam_front",
+                    "renderer_lidar_sensor_id": "lidar_roof",
+                    "renderer_radar_sensor_id": "radar_bumper",
+                    "renderer_sensor_mounts_only_enabled": False,
+                },
+            )
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+            self.assertTrue(result.success)
+            plan = json.loads(
+                result.artifacts["renderer_execution_plan"].read_text(encoding="utf-8")
+            )
+            command = plan["command"]
+            self.assertIn("--town", command)
+            self.assertIn("Town06", command)
+            self.assertIn("--weather", command)
+            self.assertIn("rain", command)
+            self.assertIn("--seed", command)
+            self.assertIn("77", command)
+            self.assertIn("--ego-actor-id", command)
+            self.assertIn("ego_01", command)
+
+            mount_indices = [idx for idx, token in enumerate(command) if token == "--sensor-mount"]
+            self.assertEqual(len(mount_indices), 3)
+            mount_payloads = [json.loads(command[idx + 1]) for idx in mount_indices]
+            self.assertEqual(mount_payloads[0]["sensor_id"], "cam_front")
+            self.assertEqual(mount_payloads[1]["sensor_id"], "lidar_roof")
+            self.assertEqual(mount_payloads[2]["sensor_id"], "radar_bumper")
+            self.assertGreater(plan["contract_scene_args_count"], 0)
+            self.assertGreater(plan["contract_sensor_mount_args_count"], 0)
 
     def test_renderer_contract_contains_survey_mapping_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

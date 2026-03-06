@@ -165,6 +165,9 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `renderer_command` (explicit command list; supports `{contract}` token)
     - or `renderer_bin` + `renderer_extra_args`
     - or backend defaults (`awsim_bin` / `carla_bin` + `awsim_extra_args` / `carla_extra_args`) when `renderer_bin` is empty
+  - optional contract-driven argument injection:
+    - scene args: `renderer_inject_scene_args` (`renderer_scene_*_flag` for map/weather/seed/ego)
+    - sensor mount args: `renderer_inject_sensor_mount_args`, `renderer_sensor_mount_flag`, `renderer_sensor_mounts_only_enabled`, `renderer_sensor_mount_format=json|compact`
   - contract argument controls:
     - `renderer_contract_flag` (default `--contract`)
     - `renderer_inject_contract_arg` / `renderer_contract_positional`

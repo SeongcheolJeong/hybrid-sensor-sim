@@ -25,6 +25,16 @@ def _resolve_renderer_cwd(options: dict[str, Any]) -> Path:
     return (Path.cwd() / path).resolve()
 
 
+def _read_contract_payload(contract_path: Path) -> dict[str, Any] | None:
+    if not contract_path.exists():
+        return None
+    try:
+        payload = json.loads(contract_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
 def _coerce_arg_list(raw: Any, name: str) -> tuple[list[str], str | None]:
     if raw is None:
         return [], None
@@ -72,11 +82,124 @@ def _resolve_backend_default_command(
     return [executable, *backend_extra_args, *shared_extra_args], None
 
 
+def _resolve_scene_flag(
+    *,
+    options: dict[str, Any],
+    key: str,
+    default: str,
+) -> str:
+    raw = options.get(key)
+    if raw is None:
+        return default
+    text = str(raw).strip()
+    return text if text else default
+
+
+def _append_flag_value(command: list[str], flag: str, value: object) -> int:
+    if flag:
+        command.extend([flag, str(value)])
+        return 2
+    command.append(str(value))
+    return 1
+
+
+def _inject_contract_scene_args(
+    *,
+    command: list[str],
+    options: dict[str, Any],
+    backend: str,
+    contract_payload: dict[str, Any] | None,
+) -> int:
+    if not bool(options.get("renderer_inject_scene_args", True)):
+        return 0
+    if not isinstance(contract_payload, dict):
+        return 0
+    scene = contract_payload.get("renderer_scene")
+    if not isinstance(scene, dict):
+        return 0
+
+    default_map_flag = "--town" if backend == "carla" else "--map"
+    map_flag = _resolve_scene_flag(
+        options=options,
+        key="renderer_scene_map_flag",
+        default=default_map_flag,
+    )
+    weather_flag = _resolve_scene_flag(
+        options=options,
+        key="renderer_scene_weather_flag",
+        default="--weather",
+    )
+    seed_flag = _resolve_scene_flag(
+        options=options,
+        key="renderer_scene_seed_flag",
+        default="--seed",
+    )
+    ego_flag = _resolve_scene_flag(
+        options=options,
+        key="renderer_scene_ego_actor_flag",
+        default="--ego-actor-id",
+    )
+
+    added = 0
+    map_value = scene.get("map")
+    if map_value is not None and str(map_value).strip():
+        added += _append_flag_value(command, map_flag, map_value)
+    weather_value = scene.get("weather")
+    if weather_value is not None and str(weather_value).strip():
+        added += _append_flag_value(command, weather_flag, weather_value)
+    seed_value = scene.get("scene_seed")
+    if seed_value is not None:
+        added += _append_flag_value(command, seed_flag, seed_value)
+    ego_value = scene.get("ego_actor_id")
+    if ego_value is not None and str(ego_value).strip():
+        added += _append_flag_value(command, ego_flag, ego_value)
+    return added
+
+
+def _inject_contract_sensor_mount_args(
+    *,
+    command: list[str],
+    options: dict[str, Any],
+    contract_payload: dict[str, Any] | None,
+) -> int:
+    if not bool(options.get("renderer_inject_sensor_mount_args", True)):
+        return 0
+    if not isinstance(contract_payload, dict):
+        return 0
+    mounts_raw = contract_payload.get("renderer_sensor_mounts")
+    if not isinstance(mounts_raw, list):
+        return 0
+
+    mount_flag = str(options.get("renderer_sensor_mount_flag", "--sensor-mount")).strip()
+    only_enabled = bool(options.get("renderer_sensor_mounts_only_enabled", True))
+    mount_format = str(options.get("renderer_sensor_mount_format", "json")).lower().strip()
+
+    added = 0
+    for mount in mounts_raw:
+        if not isinstance(mount, dict):
+            continue
+        if only_enabled and not bool(mount.get("enabled", False)):
+            continue
+        if mount_format == "compact":
+            payload = "|".join(
+                [
+                    str(mount.get("sensor_id", "")),
+                    str(mount.get("sensor_type", "")),
+                    str(mount.get("attach_to_actor_id", "")),
+                ]
+            )
+        else:
+            payload = json.dumps(mount, separators=(",", ":"), sort_keys=True)
+        added += _append_flag_value(command, mount_flag, payload)
+    return added
+
+
 def _build_renderer_command(
     options: dict[str, Any],
+    backend: str,
     contract_path: Path,
-) -> tuple[list[str], bool, str, str | None]:
-    backend = str(options.get("renderer_backend", "none")).lower().strip()
+    contract_payload: dict[str, Any] | None,
+) -> tuple[list[str], bool, str, int, int, str | None]:
     command_override = options.get("renderer_command", [])
     used_override = isinstance(command_override, list) and len(command_override) > 0
     command_source = "renderer_command"
@@ -90,7 +213,7 @@ def _build_renderer_command(
                 backend=backend,
             )
             if default_error is not None:
-                return [], False, "none", default_error
+                return [], False, "none", 0, 0, default_error
             command_source = "backend_default"
         else:
             extra_args, shared_error = _coerce_arg_list(
@@ -98,7 +221,7 @@ def _build_renderer_command(
                 "renderer_extra_args",
             )
             if shared_error is not None:
-                return [], False, "none", shared_error
+                return [], False, "none", 0, 0, shared_error
             command = [renderer_bin, *extra_args]
             command_source = "renderer_bin"
 
@@ -122,7 +245,18 @@ def _build_renderer_command(
                 command.extend([contract_flag, str(contract_path)])
             else:
                 command.append(str(contract_path))
-    return command, used_override, command_source, None
+    scene_args_count = _inject_contract_scene_args(
+        command=command,
+        options=options,
+        backend=backend,
+        contract_payload=contract_payload,
+    )
+    sensor_mount_args_count = _inject_contract_sensor_mount_args(
+        command=command,
+        options=options,
+        contract_payload=contract_payload,
+    )
+    return command, used_override, command_source, scene_args_count, sensor_mount_args_count, None
 
 
 def execute_renderer_runtime(
@@ -137,10 +271,15 @@ def execute_renderer_runtime(
     backend = str(options.get("renderer_backend", "none")).lower().strip()
     execute = bool(options.get("renderer_execute", False))
     cwd = _resolve_renderer_cwd(options)
+    contract_payload = _read_contract_payload(contract_path)
 
-    command, used_override, command_source, build_error = _build_renderer_command(
+    command, used_override, command_source, scene_args_count, sensor_mount_args_count, build_error = (
+        _build_renderer_command(
         options=options,
+        backend=backend,
         contract_path=contract_path,
+        contract_payload=contract_payload,
+        )
     )
     plan_payload = {
         "backend": backend,
@@ -150,6 +289,8 @@ def execute_renderer_runtime(
         "command": command,
         "used_command_override": used_override,
         "command_source": command_source,
+        "contract_scene_args_count": scene_args_count,
+        "contract_sensor_mount_args_count": sensor_mount_args_count,
         "error": build_error,
     }
     plan_path.write_text(json.dumps(plan_payload, indent=2), encoding="utf-8")
@@ -157,6 +298,8 @@ def execute_renderer_runtime(
     metrics: dict[str, float] = {
         "renderer_runtime_planned": 1.0,
         "renderer_execute_requested": 1.0 if execute else 0.0,
+        "renderer_contract_scene_args_count": float(scene_args_count),
+        "renderer_contract_sensor_mount_args_count": float(sensor_mount_args_count),
     }
 
     if backend in {"", "none"}:
