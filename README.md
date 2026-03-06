@@ -64,6 +64,10 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - else `objects[].pose/waypoints` + `waypoints`.
   - explicit legs are supported via `helios.legs` or `helios_legs`.
   - `sensors.lidar` can provide defaults (`pulse_freq_hz`, `scan_freq_hz`, head rotate fields).
+  - custom scanner attributes can be passed through:
+    - global scanner settings: `sensors.lidar.scanner_settings`, `helios.scanner_settings`,
+    - explicit override via options: `survey_scanner_settings_extra_attrs`,
+    - per-leg scanner settings: `helios.legs[].scanner` (scalar fields are forwarded).
   - options override scenario defaults:
     - refs: `survey_scene_ref`, `survey_platform_ref`, `survey_scanner_ref`
     - scanner setting template id: `survey_scanner_settings_id`

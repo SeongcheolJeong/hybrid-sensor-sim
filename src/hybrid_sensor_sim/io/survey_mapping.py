@@ -18,6 +18,29 @@ def _coerce_float(raw: Any) -> float | None:
         return None
 
 
+def _scalar_xml_attr_value(raw: Any) -> str | None:
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        return "true" if raw else "false"
+    if isinstance(raw, (int, float)):
+        return str(raw)
+    if isinstance(raw, str):
+        return raw
+    return None
+
+
+def _collect_scalar_attrs(raw: dict[str, Any], *, skip_keys: set[str]) -> dict[str, str]:
+    attrs: dict[str, str] = {}
+    for key, value in raw.items():
+        if key in skip_keys:
+            continue
+        stringified = _scalar_xml_attr_value(value)
+        if stringified is not None:
+            attrs[str(key)] = stringified
+    return attrs
+
+
 def _lookup(mapping: dict[str, Any], *keys: str) -> Any:
     for key in keys:
         if key in mapping and mapping[key] is not None:
@@ -220,6 +243,22 @@ def _extract_leg_scanner_overrides(leg: dict[str, Any]) -> dict[str, str]:
     )
     if head_rotate_stop_deg is not None:
         overrides["headRotateStop_deg"] = f"{head_rotate_stop_deg:.6f}"
+
+    overrides.update(
+        _collect_scalar_attrs(
+            scanner_raw,
+            skip_keys={
+                "template",
+                "template_id",
+                "headRotatePerSec_deg",
+                "head_rotate_per_sec_deg",
+                "headRotateStart_deg",
+                "head_rotate_start_deg",
+                "headRotateStop_deg",
+                "head_rotate_stop_deg",
+            },
+        )
+    )
     return overrides
 
 
@@ -230,6 +269,39 @@ def _extract_leg_pose(leg: dict[str, Any]) -> tuple[float, float, float] | None:
             if pose is not None:
                 return pose
     return _extract_pose_xyz(leg)
+
+
+def _resolve_global_scanner_extra_attrs(
+    *,
+    options: dict[str, Any],
+    lidar_cfg: dict[str, Any],
+    helios_scanner_cfg: dict[str, Any],
+) -> dict[str, str]:
+    skip_common = {
+        "id",
+        "active",
+        "pulse_freq_hz",
+        "pulseFreq_hz",
+        "scan_freq_hz",
+        "scanFreq_hz",
+        "head_rotate_per_sec_deg",
+        "headRotatePerSec_deg",
+        "head_rotate_start_deg",
+        "headRotateStart_deg",
+        "head_rotate_stop_deg",
+        "headRotateStop_deg",
+    }
+    attrs: dict[str, str] = {}
+
+    lidar_scanner_settings = lidar_cfg.get("scanner_settings")
+    if isinstance(lidar_scanner_settings, dict):
+        attrs.update(_collect_scalar_attrs(lidar_scanner_settings, skip_keys=skip_common))
+    attrs.update(_collect_scalar_attrs(helios_scanner_cfg, skip_keys=skip_common))
+
+    option_attrs = options.get("survey_scanner_settings_extra_attrs")
+    if isinstance(option_attrs, dict):
+        attrs.update(_collect_scalar_attrs(option_attrs, skip_keys={"id", "active"}))
+    return attrs
 
 
 def generate_survey_from_scenario(
@@ -341,6 +413,11 @@ def generate_survey_from_scenario(
         180.0,
     )
     force_global_leg_scanner = bool(options.get("survey_force_global_leg_scanner", False))
+    scanner_settings_extra_attrs = _resolve_global_scanner_extra_attrs(
+        options=options,
+        lidar_cfg=lidar_cfg,
+        helios_scanner_cfg=helios_scanner_cfg,
+    )
 
     explicit_legs = _resolve_explicit_legs(scenario)
     explicit_legs_defined_count = len(explicit_legs)
@@ -378,6 +455,7 @@ def generate_survey_from_scenario(
             "active": "true",
             "pulseFreq_hz": str(int(round(pulse_freq_hz))),
             "scanFreq_hz": str(int(round(scan_freq_hz))),
+            **scanner_settings_extra_attrs,
         },
     )
     scanner_settings.text = None

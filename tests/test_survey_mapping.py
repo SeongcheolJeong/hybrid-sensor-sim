@@ -106,18 +106,26 @@ class SurveyMappingTests(unittest.TestCase):
                                 "pulse_freq_hz": 200000,
                                 "scan_freq_hz": 20,
                                 "head_rotate_per_sec_deg": 3.0,
+                                "scanner_settings": {
+                                    "beam_divergence_rad": 0.0015
+                                },
                             }
                         },
                         "helios": {
                             "scene": "data/scenes/base_scene.xml#base_scene",
                             "platform": "data/platforms.xml#vehicle_rig",
                             "scanner": "data/scanners_tls.xml#veh_lidar",
+                            "scanner_settings": {
+                                "numRays": 64,
+                                "scanPattern": "hybrid"
+                            },
                             "legs": [
                                 {
                                     "platform": {"x": 1.0, "y": 2.0, "z": 3.0},
                                     "scanner": {
                                         "template": "leg_template",
                                         "head_rotate_start_deg": -90.0,
+                                        "maxRange_m": 120.0
                                     },
                                 },
                                 {"pose": [4.0, 5.0, 6.0]},
@@ -134,6 +142,10 @@ class SurveyMappingTests(unittest.TestCase):
                 options={
                     "survey_scene_ref": "data/scenes/override_scene.xml#override_scene",
                     "survey_scanner_settings_id": "global_set",
+                    "survey_scanner_settings_extra_attrs": {
+                        "numRays": 128,
+                        "enableMotionCompensation": True
+                    },
                 },
             )
             self.assertTrue(out.exists())
@@ -146,6 +158,10 @@ class SurveyMappingTests(unittest.TestCase):
             self.assertEqual(scanner_settings.attrib.get("id"), "global_set")
             self.assertEqual(scanner_settings.attrib.get("pulseFreq_hz"), "200000")
             self.assertEqual(scanner_settings.attrib.get("scanFreq_hz"), "20")
+            self.assertEqual(scanner_settings.attrib.get("beam_divergence_rad"), "0.0015")
+            self.assertEqual(scanner_settings.attrib.get("scanPattern"), "hybrid")
+            self.assertEqual(scanner_settings.attrib.get("numRays"), "128")
+            self.assertEqual(scanner_settings.attrib.get("enableMotionCompensation"), "true")
 
             survey = root_node.find("survey")
             self.assertIsNotNone(survey)
@@ -170,6 +186,7 @@ class SurveyMappingTests(unittest.TestCase):
             self.assertEqual(first_scanner.attrib.get("headRotatePerSec_deg"), "3.000000")
             self.assertEqual(first_scanner.attrib.get("headRotateStart_deg"), "-90.000000")
             self.assertEqual(first_scanner.attrib.get("headRotateStop_deg"), "180.000000")
+            self.assertEqual(first_scanner.attrib.get("maxRange_m"), "120.0")
 
             second_scanner = legs[1].find("scannerSettings")
             self.assertIsNotNone(second_scanner)
