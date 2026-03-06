@@ -414,6 +414,69 @@ def _resolve_backend_frame_source(
     return resolved, materialized_count
 
 
+def _sensor_mount_index(contract_payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    mounts = contract_payload.get("renderer_sensor_mounts")
+    if not isinstance(mounts, list):
+        return {}
+    index: dict[str, dict[str, Any]] = {}
+    for mount in mounts:
+        if not isinstance(mount, dict):
+            continue
+        sensor_type = str(mount.get("sensor_type", "")).strip().lower()
+        if sensor_type not in {"camera", "lidar", "radar"}:
+            continue
+        if sensor_type in index:
+            continue
+        index[sensor_type] = mount
+    return index
+
+
+def _infer_sensor_payload_format(
+    *,
+    sensor_name: str,
+    payload_artifact: str,
+) -> str:
+    suffix = Path(payload_artifact).suffix.lower()
+    if sensor_name == "camera":
+        return "camera_projection_json"
+    if sensor_name == "lidar":
+        if suffix == ".xyz":
+            return "lidar_points_xyz"
+        if suffix == ".json":
+            return "lidar_points_json"
+        return "lidar_points"
+    if sensor_name == "radar":
+        return "radar_targets_json"
+    return "unknown"
+
+
+def _enrich_resolved_sensor_source(
+    *,
+    sensor_name: str,
+    resolved_source: dict[str, Any],
+    mount_index: dict[str, dict[str, Any]],
+) -> None:
+    mount = mount_index.get(sensor_name, {})
+    sensor_id = str(mount.get("sensor_id", "")).strip() if isinstance(mount, dict) else ""
+    attach_to = (
+        str(mount.get("attach_to_actor_id", "")).strip() if isinstance(mount, dict) else ""
+    )
+    if not sensor_id:
+        sensor_id = sensor_name
+    if not attach_to:
+        attach_to = "ego"
+    payload_artifact = str(resolved_source.get("payload_artifact", "")).strip()
+    data_format = _infer_sensor_payload_format(
+        sensor_name=sensor_name,
+        payload_artifact=payload_artifact,
+    )
+    resolved_source["sensor_name"] = sensor_name
+    resolved_source["sensor_type"] = sensor_name
+    resolved_source["sensor_id"] = sensor_id
+    resolved_source["attach_to_actor_id"] = attach_to
+    resolved_source["data_format"] = data_format
+
+
 def _build_backend_frame_inputs_manifest(
     *,
     options: dict[str, Any],
@@ -433,6 +496,7 @@ def _build_backend_frame_inputs_manifest(
     frames_raw = contract_payload.get("frames")
     if not isinstance(frames_raw, list):
         frames_raw = []
+    mount_index = _sensor_mount_index(contract_payload)
 
     frame_start = max(0, _coerce_int(options.get("renderer_backend_frame_start"), default=0))
     frame_stride = max(1, _coerce_int(options.get("renderer_backend_frame_stride"), default=1))
@@ -467,6 +531,11 @@ def _build_backend_frame_inputs_manifest(
                 frame_index=frame_id,
                 runtime_dir=runtime_dir,
                 cwd=cwd,
+            )
+            _enrich_resolved_sensor_source(
+                sensor_name=sensor_name,
+                resolved_source=resolved_source,
+                mount_index=mount_index,
             )
             frame_manifest[sensor_name] = resolved_source
             if resolved_source.get("available") is True:

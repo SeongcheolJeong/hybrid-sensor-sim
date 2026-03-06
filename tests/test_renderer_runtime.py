@@ -569,6 +569,12 @@ echo "awsim_backend_ok"
                 parts = payload.split(":", 2)
                 self.assertEqual(len(parts), 3)
                 self.assertTrue(Path(parts[2]).exists())
+            meta_indices = [idx for idx, token in enumerate(output_args) if token == "--ingest-sensor-meta"]
+            self.assertEqual(len(meta_indices), 3)
+            meta_payloads = [output_args[idx + 1] for idx in meta_indices]
+            self.assertIn("camera:camera_front:camera_projection_json:ego", meta_payloads)
+            self.assertIn("lidar:lidar_top:lidar_points_json:ego", meta_payloads)
+            self.assertIn("radar:radar_front:radar_targets_json:ego", meta_payloads)
 
     def test_renderer_runtime_carla_wrapper_consumes_frame_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -634,6 +640,12 @@ echo "carla_backend_ok"
                 parts = payload.split(":", 2)
                 self.assertEqual(len(parts), 3)
                 self.assertTrue(Path(parts[2]).exists())
+            meta_indices = [idx for idx, token in enumerate(output_args) if token == "--ingest-meta"]
+            self.assertEqual(len(meta_indices), 3)
+            meta_payloads = [output_args[idx + 1] for idx in meta_indices]
+            self.assertIn("camera:camera_front:camera_projection_json:ego", meta_payloads)
+            self.assertIn("lidar:lidar_top:lidar_points_json:ego", meta_payloads)
+            self.assertIn("radar:radar_front:radar_targets_json:ego", meta_payloads)
 
     def test_renderer_runtime_injects_scene_and_sensor_mount_args_from_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -886,6 +898,12 @@ echo "carla_backend_ok"
                 self.assertTrue(frame["camera"]["available"])
                 self.assertTrue(frame["lidar"]["available"])
                 self.assertTrue(frame["radar"]["available"])
+                self.assertEqual(frame["camera"]["sensor_id"], "camera_front")
+                self.assertEqual(frame["lidar"]["sensor_id"], "lidar_top")
+                self.assertEqual(frame["radar"]["sensor_id"], "radar_front")
+                self.assertEqual(frame["camera"]["data_format"], "camera_projection_json")
+                self.assertEqual(frame["lidar"]["data_format"], "lidar_points_json")
+                self.assertEqual(frame["radar"]["data_format"], "radar_targets_json")
                 self.assertTrue(Path(frame["camera"]["payload_artifact"]).exists())
                 self.assertTrue(Path(frame["lidar"]["payload_artifact"]).exists())
                 self.assertTrue(Path(frame["radar"]["payload_artifact"]).exists())

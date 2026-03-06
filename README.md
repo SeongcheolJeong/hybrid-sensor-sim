@@ -177,11 +177,13 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
       - CARLA: `--attach-sensor <sensor_type:sensor_id:actor>` and (when extrinsics exist) `--sensor-pose <sensor_id:tx:ty:tz:roll:pitch:yaw>`
     - wrappers translate `--frame-manifest` to backend ingestion args:
       - AWSIM: repeated `--ingest-sensor-frame <sensor:renderer_frame_id:payload_path>`
+        plus `--ingest-sensor-meta <sensor:sensor_id:data_format:attach_actor>`
       - CARLA: repeated `--ingest-frame <renderer_frame_id:sensor:payload_path>`
+        plus `--ingest-meta <sensor:sensor_id:data_format:attach_actor>`
   - execution plan includes `backend_args_preview` for normalized scene/sensor-mount argument inspection.
   - runtime artifacts:
     - `backend_invocation.json`: normalized backend command + preview snapshot.
-    - `backend_frame_inputs_manifest.json`: contract frame sources resolved into backend-consumable payload pointers.
+    - `backend_frame_inputs_manifest.json`: contract frame sources resolved into backend-consumable payload pointers, enriched with `sensor_id` / `data_format` / `attach_to_actor_id`.
     - `backend_wrapper_invocation.json`: wrapper input/output args snapshot (when wrapper path is used and execution is enabled).
   - contract argument controls:
     - `renderer_contract_flag` (default `--contract`)
