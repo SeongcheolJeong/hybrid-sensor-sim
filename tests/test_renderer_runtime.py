@@ -886,8 +886,12 @@ echo "carla_backend_ok"
 
             self.assertTrue(result.success)
             self.assertIn("backend_frame_inputs_manifest", result.artifacts)
+            self.assertIn("backend_ingestion_profile", result.artifacts)
             manifest = json.loads(
                 result.artifacts["backend_frame_inputs_manifest"].read_text(encoding="utf-8")
+            )
+            ingestion_profile = json.loads(
+                result.artifacts["backend_ingestion_profile"].read_text(encoding="utf-8")
             )
             self.assertEqual(manifest["frame_count"], 2)
             self.assertEqual(len(manifest["frames"]), 2)
@@ -911,6 +915,12 @@ echo "carla_backend_ok"
                 self.assertIn("materialized_payload_artifact", frame["lidar"])
                 self.assertIn("materialized_payload_artifact", frame["radar"])
 
+            self.assertEqual(ingestion_profile["backend"], "carla")
+            self.assertEqual(ingestion_profile["frame_flag"], "--ingest-frame")
+            self.assertEqual(ingestion_profile["meta_flag"], "--ingest-meta")
+            self.assertEqual(ingestion_profile["entry_count"], 6)
+            self.assertEqual(len(ingestion_profile["entries"]), 6)
+
             self.assertEqual(result.metrics.get("renderer_backend_frame_manifest_written"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_frame_count"), 2.0)
             self.assertEqual(result.metrics.get("renderer_backend_sensor_bindings"), 6.0)
@@ -918,6 +928,8 @@ echo "carla_backend_ok"
                 result.metrics.get("renderer_backend_materialized_frame_payload_count"),
                 6.0,
             )
+            self.assertEqual(result.metrics.get("renderer_backend_ingestion_profile_written"), 1.0)
+            self.assertEqual(result.metrics.get("renderer_backend_ingestion_entry_count"), 6.0)
 
     def test_renderer_runtime_backend_frame_manifest_selection_options(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -968,8 +980,13 @@ echo "carla_backend_ok"
             self.assertEqual(manifest["frame_count"], 1)
             self.assertEqual(len(manifest["frames"]), 1)
             self.assertEqual(manifest["frames"][0]["renderer_frame_id"], 1)
+            ingestion_profile = json.loads(
+                result.artifacts["backend_ingestion_profile"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(ingestion_profile["entry_count"], 3)
             self.assertEqual(result.metrics.get("renderer_backend_frame_count"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_sensor_bindings"), 3.0)
+            self.assertEqual(result.metrics.get("renderer_backend_ingestion_entry_count"), 3.0)
 
 
 if __name__ == "__main__":

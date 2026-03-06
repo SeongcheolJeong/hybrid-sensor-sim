@@ -318,8 +318,10 @@ def _build_backend_invocation_payload(
     backend_wrapper_used: bool,
     backend_args_preview: dict[str, Any] | None,
     backend_frame_manifest: str | None,
+    backend_ingestion_profile: str | None,
     backend_frame_count: int,
     backend_sensor_bindings: int,
+    backend_ingestion_entry_count: int,
     build_error: str | None,
 ) -> dict[str, Any]:
     return {
@@ -331,8 +333,10 @@ def _build_backend_invocation_payload(
         "backend_wrapper_used": backend_wrapper_used,
         "backend_args_preview": backend_args_preview,
         "backend_frame_inputs_manifest": backend_frame_manifest,
+        "backend_ingestion_profile": backend_ingestion_profile,
         "backend_frame_count": backend_frame_count,
         "backend_sensor_bindings": backend_sensor_bindings,
+        "backend_ingestion_entry_count": backend_ingestion_entry_count,
         "error": build_error,
     }
 
@@ -565,6 +569,81 @@ def _build_backend_frame_inputs_manifest(
     }
 
 
+def _build_backend_ingestion_profile(
+    *,
+    backend: str,
+    frame_manifest_path: Path | None,
+    runtime_dir: Path,
+) -> tuple[Path | None, dict[str, float]]:
+    if frame_manifest_path is None or not frame_manifest_path.exists():
+        return None, {
+            "renderer_backend_ingestion_profile_written": 0.0,
+            "renderer_backend_ingestion_entry_count": 0.0,
+        }
+    manifest = _read_contract_payload(frame_manifest_path)
+    if not isinstance(manifest, dict):
+        return None, {
+            "renderer_backend_ingestion_profile_written": 0.0,
+            "renderer_backend_ingestion_entry_count": 0.0,
+        }
+
+    frames = manifest.get("frames")
+    if not isinstance(frames, list):
+        frames = []
+
+    frame_flag = "--ingest-sensor-frame" if backend == "awsim" else "--ingest-frame"
+    meta_flag = "--ingest-sensor-meta" if backend == "awsim" else "--ingest-meta"
+    entries: list[dict[str, Any]] = []
+    for frame in frames:
+        if not isinstance(frame, dict):
+            continue
+        renderer_frame_id = _coerce_int(frame.get("renderer_frame_id"), default=0)
+        for sensor_name in ("camera", "lidar", "radar"):
+            source = frame.get(sensor_name)
+            if not isinstance(source, dict) or not bool(source.get("available", False)):
+                continue
+            payload_artifact = str(source.get("payload_artifact", "")).strip()
+            if not payload_artifact:
+                continue
+            sensor = str(source.get("sensor_name", sensor_name)).strip() or sensor_name
+            sensor_id = str(source.get("sensor_id", "")).strip() or sensor
+            data_format = str(source.get("data_format", "")).strip()
+            attach_to = str(source.get("attach_to_actor_id", "")).strip() or "ego"
+            if backend == "awsim":
+                frame_value = f"{sensor}:{renderer_frame_id}:{payload_artifact}"
+            else:
+                frame_value = f"{renderer_frame_id}:{sensor}:{payload_artifact}"
+            meta_value = f"{sensor}:{sensor_id}:{data_format}:{attach_to}"
+            entries.append(
+                {
+                    "renderer_frame_id": renderer_frame_id,
+                    "sensor_name": sensor,
+                    "sensor_id": sensor_id,
+                    "data_format": data_format,
+                    "payload_artifact": payload_artifact,
+                    "frame_flag": frame_flag,
+                    "frame_value": frame_value,
+                    "meta_flag": meta_flag,
+                    "meta_value": meta_value,
+                }
+            )
+
+    profile_payload = {
+        "backend": backend,
+        "frame_manifest": str(frame_manifest_path),
+        "frame_flag": frame_flag,
+        "meta_flag": meta_flag,
+        "entry_count": len(entries),
+        "entries": entries,
+    }
+    profile_path = runtime_dir / "backend_ingestion_profile.json"
+    profile_path.write_text(json.dumps(profile_payload, indent=2), encoding="utf-8")
+    return profile_path, {
+        "renderer_backend_ingestion_profile_written": 1.0,
+        "renderer_backend_ingestion_entry_count": float(len(entries)),
+    }
+
+
 def _inject_contract_scene_args(
     *,
     command: list[str],
@@ -710,6 +789,11 @@ def execute_renderer_runtime(
         runtime_dir=runtime_dir,
         cwd=cwd,
     )
+    ingestion_profile_path, ingestion_profile_metrics = _build_backend_ingestion_profile(
+        backend=backend,
+        frame_manifest_path=frame_manifest_path,
+        runtime_dir=runtime_dir,
+    )
     frame_manifest_args_count = _inject_frame_manifest_arg(
         command=command,
         options=options,
@@ -736,9 +820,13 @@ def execute_renderer_runtime(
         "contract_frame_manifest_args_count": frame_manifest_args_count,
         "backend_args_preview": backend_args_preview,
         "backend_frame_inputs_manifest": str(frame_manifest_path) if frame_manifest_path else None,
+        "backend_ingestion_profile": str(ingestion_profile_path) if ingestion_profile_path else None,
         "backend_frame_count": int(frame_manifest_metrics.get("renderer_backend_frame_count", 0.0)),
         "backend_sensor_bindings": int(
             frame_manifest_metrics.get("renderer_backend_sensor_bindings", 0.0)
+        ),
+        "backend_ingestion_entry_count": int(
+            ingestion_profile_metrics.get("renderer_backend_ingestion_entry_count", 0.0)
         ),
         "backend_wrapper_dump_path": str(wrapper_dump_path) if backend_wrapper_used else None,
         "error": build_error,
@@ -754,9 +842,13 @@ def execute_renderer_runtime(
         backend_wrapper_used=backend_wrapper_used,
         backend_args_preview=backend_args_preview,
         backend_frame_manifest=str(frame_manifest_path) if frame_manifest_path else None,
+        backend_ingestion_profile=str(ingestion_profile_path) if ingestion_profile_path else None,
         backend_frame_count=int(frame_manifest_metrics.get("renderer_backend_frame_count", 0.0)),
         backend_sensor_bindings=int(
             frame_manifest_metrics.get("renderer_backend_sensor_bindings", 0.0)
+        ),
+        backend_ingestion_entry_count=int(
+            ingestion_profile_metrics.get("renderer_backend_ingestion_entry_count", 0.0)
         ),
         build_error=build_error,
     )
@@ -770,6 +862,8 @@ def execute_renderer_runtime(
     }
     if frame_manifest_path is not None:
         artifacts["backend_frame_inputs_manifest"] = frame_manifest_path
+    if ingestion_profile_path is not None:
+        artifacts["backend_ingestion_profile"] = ingestion_profile_path
     metrics: dict[str, float] = {
         "renderer_runtime_planned": 1.0,
         "renderer_execute_requested": 1.0 if execute else 0.0,
@@ -780,6 +874,7 @@ def execute_renderer_runtime(
         "renderer_contract_frame_manifest_args_count": float(frame_manifest_args_count),
     }
     metrics.update(frame_manifest_metrics)
+    metrics.update(ingestion_profile_metrics)
 
     if backend in {"", "none"}:
         return RendererRuntimeResult(
