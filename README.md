@@ -46,7 +46,15 @@ PYTHONPATH=src python3 -m unittest discover -s tests -q
 - Scenario mapping:
   - set `survey_generate_from_scenario=true` to generate survey XML from scenario JSON.
   - generated survey path is recorded in `helios_execution_plan.json` (`generated_survey_path`).
-  - optional mapping refs: `survey_scene_ref`, `survey_platform_ref`, `survey_scanner_ref`.
+  - trajectory source priority:
+    - `ego_trajectory` (if present),
+    - else `objects[].pose/waypoints` + `waypoints`.
+  - explicit legs are supported via `helios.legs` or `helios_legs`.
+  - `sensors.lidar` can provide defaults (`pulse_freq_hz`, `scan_freq_hz`, head rotate fields).
+  - options override scenario defaults:
+    - refs: `survey_scene_ref`, `survey_platform_ref`, `survey_scanner_ref`
+    - scanner setting template id: `survey_scanner_settings_id`
+    - force global leg scanner attributes: `survey_force_global_leg_scanner=true`
 - Post-processing:
   - detects generated output directory and primary files (`.xyz/.las/.laz`, trajectory, pulse, fullwave),
   - writes output manifest for downstream physics chain,
