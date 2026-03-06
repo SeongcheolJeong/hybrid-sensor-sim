@@ -173,6 +173,50 @@ echo "renderer_ok ${contract}"
                 options={
                     "execute_helios": True,
                     "survey_generate_from_scenario": True,
+                    "camera_geometry": "pinhole",
+                    "camera_distortion": "brown-conrady",
+                    "camera_intrinsics": {
+                        "fx": 1111.0,
+                        "fy": 1112.0,
+                        "cx": 640.0,
+                        "cy": 360.0,
+                        "width": 1280,
+                        "height": 720,
+                    },
+                    "camera_distortion_coeffs": {
+                        "k1": 0.01,
+                        "k2": 0.001,
+                        "p1": 0.0,
+                        "p2": 0.0,
+                        "k3": 0.0,
+                    },
+                    "camera_extrinsics": {
+                        "enabled": True,
+                        "tx": 1.0,
+                        "ty": 2.0,
+                        "tz": 3.0,
+                        "roll_deg": 0.0,
+                        "pitch_deg": 1.0,
+                        "yaw_deg": 2.0,
+                    },
+                    "lidar_extrinsics": {
+                        "enabled": True,
+                        "tx": 4.0,
+                        "ty": 5.0,
+                        "tz": 6.0,
+                        "roll_deg": 1.0,
+                        "pitch_deg": 2.0,
+                        "yaw_deg": 3.0,
+                    },
+                    "radar_extrinsics": {
+                        "enabled": True,
+                        "tx": 7.0,
+                        "ty": 8.0,
+                        "tz": 9.0,
+                        "roll_deg": 2.0,
+                        "pitch_deg": 3.0,
+                        "yaw_deg": 4.0,
+                    },
                     "camera_projection_enabled": False,
                     "lidar_postprocess_enabled": False,
                     "radar_postprocess_enabled": False,
@@ -211,6 +255,21 @@ echo "renderer_ok ${contract}"
                 payload["input_artifacts"]["generated_survey"],
                 str(result.artifacts["generated_survey"]),
             )
+            self.assertIn("sensor_setup", payload)
+            camera_setup = payload["sensor_setup"]["camera"]
+            self.assertEqual(camera_setup["geometry_model"], "pinhole")
+            self.assertEqual(camera_setup["distortion_model"], "brown-conrady")
+            self.assertEqual(camera_setup["intrinsics"]["fx"], 1111.0)
+            self.assertEqual(camera_setup["extrinsics_source"], "options")
+
+            lidar_setup = payload["sensor_setup"]["lidar"]
+            self.assertEqual(lidar_setup["extrinsics_source"], "options")
+            self.assertEqual(lidar_setup["extrinsics"]["tx"], 4.0)
+            self.assertFalse(lidar_setup["trajectory_sweep_enabled"])
+
+            radar_setup = payload["sensor_setup"]["radar"]
+            self.assertEqual(radar_setup["extrinsics_source"], "options")
+            self.assertEqual(radar_setup["extrinsics"]["tx"], 7.0)
 
 
 if __name__ == "__main__":

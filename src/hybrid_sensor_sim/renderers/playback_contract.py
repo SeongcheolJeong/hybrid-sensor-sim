@@ -28,6 +28,25 @@ def _safe_frame_count(payload: dict[str, Any] | None) -> int:
     return 0
 
 
+def _dict_or_none(raw: Any) -> dict[str, Any] | None:
+    return raw if isinstance(raw, dict) else None
+
+
+def _frame_first_dict(payload: dict[str, Any] | None, key: str) -> dict[str, Any] | None:
+    if not isinstance(payload, dict):
+        return None
+    frames = payload.get("frames")
+    if not isinstance(frames, list):
+        return None
+    for frame in frames:
+        if not isinstance(frame, dict):
+            continue
+        value = frame.get(key)
+        if isinstance(value, dict):
+            return value
+    return None
+
+
 def _frame_source(
     *,
     sweep_artifact: Path | None,
@@ -77,6 +96,59 @@ def build_renderer_playback_contract(
     survey_mapping_payload = (
         _read_json(survey_mapping_metadata) if survey_mapping_metadata is not None else None
     )
+    camera_preview_payload = _read_json(camera_preview) if camera_preview is not None else None
+    radar_preview_payload = _read_json(radar_preview) if radar_preview is not None else None
+
+    camera_extrinsics_option = _dict_or_none(options.get("camera_extrinsics"))
+    camera_extrinsics_sweep = _frame_first_dict(camera_sweep_payload, "camera_extrinsics")
+    camera_extrinsics_preview = (
+        camera_preview_payload.get("camera_extrinsics")
+        if isinstance(camera_preview_payload, dict)
+        else None
+    )
+    camera_extrinsics: dict[str, Any] | None = None
+    camera_extrinsics_source = "none"
+    if isinstance(camera_extrinsics_sweep, dict):
+        camera_extrinsics = camera_extrinsics_sweep
+        camera_extrinsics_source = "camera_sweep_frame0"
+    elif isinstance(camera_extrinsics_preview, dict):
+        camera_extrinsics = camera_extrinsics_preview
+        camera_extrinsics_source = str(
+            camera_preview_payload.get("camera_extrinsics_source", "camera_preview")
+        )
+    elif camera_extrinsics_option is not None:
+        camera_extrinsics = camera_extrinsics_option
+        camera_extrinsics_source = "options"
+
+    lidar_extrinsics_option = _dict_or_none(options.get("lidar_extrinsics"))
+    lidar_extrinsics_sweep = _frame_first_dict(lidar_sweep_payload, "lidar_extrinsics")
+    lidar_extrinsics: dict[str, Any] | None = None
+    lidar_extrinsics_source = "none"
+    if isinstance(lidar_extrinsics_sweep, dict):
+        lidar_extrinsics = lidar_extrinsics_sweep
+        lidar_extrinsics_source = "lidar_sweep_frame0"
+    elif lidar_extrinsics_option is not None:
+        lidar_extrinsics = lidar_extrinsics_option
+        lidar_extrinsics_source = "options"
+
+    radar_extrinsics_option = _dict_or_none(options.get("radar_extrinsics"))
+    radar_extrinsics_sweep = _frame_first_dict(radar_sweep_payload, "radar_extrinsics")
+    radar_extrinsics_preview = (
+        radar_preview_payload.get("radar_extrinsics")
+        if isinstance(radar_preview_payload, dict)
+        else None
+    )
+    radar_extrinsics: dict[str, Any] | None = None
+    radar_extrinsics_source = "none"
+    if isinstance(radar_extrinsics_sweep, dict):
+        radar_extrinsics = radar_extrinsics_sweep
+        radar_extrinsics_source = "radar_sweep_frame0"
+    elif isinstance(radar_extrinsics_preview, dict):
+        radar_extrinsics = radar_extrinsics_preview
+        radar_extrinsics_source = "radar_preview"
+    elif radar_extrinsics_option is not None:
+        radar_extrinsics = radar_extrinsics_option
+        radar_extrinsics_source = "options"
 
     frame_count = max(
         1,
@@ -156,6 +228,36 @@ def build_renderer_playback_contract(
             "metadata": survey_mapping_payload,
             "metadata_artifact": str(survey_mapping_metadata) if survey_mapping_metadata is not None else None,
             "generated_survey_path": str(generated_survey) if generated_survey is not None else None,
+        },
+        "sensor_setup": {
+            "camera": {
+                "geometry_model": str(options.get("camera_geometry", "pinhole")),
+                "distortion_model": str(options.get("camera_distortion", "brown-conrady")),
+                "intrinsics": _dict_or_none(options.get("camera_intrinsics")) or {},
+                "distortion_coeffs": _dict_or_none(options.get("camera_distortion_coeffs")) or {},
+                "extrinsics": camera_extrinsics,
+                "extrinsics_source": camera_extrinsics_source,
+            },
+            "lidar": {
+                "extrinsics": lidar_extrinsics,
+                "extrinsics_source": lidar_extrinsics_source,
+                "trajectory_sweep_enabled": bool(
+                    options.get("lidar_trajectory_sweep_enabled", False)
+                ),
+                "motion_compensation_enabled": bool(
+                    options.get("lidar_motion_compensation_enabled", True)
+                ),
+                "scan_duration_s": float(options.get("lidar_scan_duration_s", 0.1)),
+            },
+            "radar": {
+                "extrinsics": radar_extrinsics,
+                "extrinsics_source": radar_extrinsics_source,
+                "trajectory_sweep_enabled": bool(
+                    options.get("radar_trajectory_sweep_enabled", False)
+                ),
+                "range_min_m": float(options.get("radar_range_min_m", 0.5)),
+                "range_max_m": float(options.get("radar_range_max_m", 200.0)),
+            },
         },
         "frame_count": frame_count,
         "frame_step_s": frame_step_s,

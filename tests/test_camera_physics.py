@@ -633,6 +633,15 @@ EOF
                     "renderer_time_step_s": 0.1,
                     "renderer_start_time_s": 10.0,
                     "renderer_frame_offset": 100,
+                    "camera_extrinsics": {
+                        "enabled": True,
+                        "tx": 1.0,
+                        "ty": 2.0,
+                        "tz": 3.0,
+                        "roll_deg": 0.0,
+                        "pitch_deg": 1.0,
+                        "yaw_deg": 2.0,
+                    },
                 },
             )
 
@@ -657,6 +666,19 @@ EOF
             self.assertAlmostEqual(payload["frames"][0]["time_s"], 10.0, places=6)
             self.assertIn("lidar", payload["frames"][0])
             self.assertIn("radar", payload["frames"][0])
+            self.assertIn("sensor_setup", payload)
+            self.assertEqual(
+                payload["sensor_setup"]["camera"]["extrinsics_source"],
+                "options",
+            )
+            self.assertEqual(
+                payload["sensor_setup"]["lidar"]["extrinsics_source"],
+                "lidar_sweep_frame0",
+            )
+            self.assertEqual(
+                payload["sensor_setup"]["radar"]["extrinsics_source"],
+                "radar_sweep_frame0",
+            )
 
 
 if __name__ == "__main__":
