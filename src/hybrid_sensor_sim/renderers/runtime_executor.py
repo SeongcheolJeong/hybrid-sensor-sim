@@ -416,6 +416,7 @@ def _resolve_backend_frame_source(
 
 def _build_backend_frame_inputs_manifest(
     *,
+    options: dict[str, Any],
     contract_payload: dict[str, Any] | None,
     contract_path: Path,
     runtime_dir: Path,
@@ -433,10 +434,18 @@ def _build_backend_frame_inputs_manifest(
     if not isinstance(frames_raw, list):
         frames_raw = []
 
+    frame_start = max(0, _coerce_int(options.get("renderer_backend_frame_start"), default=0))
+    frame_stride = max(1, _coerce_int(options.get("renderer_backend_frame_stride"), default=1))
+    max_frames = _coerce_int(options.get("renderer_backend_max_frames"), default=0)
+    selected_indices = list(range(frame_start, len(frames_raw), frame_stride))
+    if max_frames > 0:
+        selected_indices = selected_indices[:max_frames]
+
     manifest_frames: list[dict[str, Any]] = []
     sensor_binding_count = 0
     materialized_payload_count = 0
-    for fallback_index, frame in enumerate(frames_raw):
+    for fallback_index in selected_indices:
+        frame = frames_raw[fallback_index]
         if not isinstance(frame, dict):
             continue
         frame_id = _coerce_int(frame.get("frame_id"), default=fallback_index)
@@ -467,6 +476,13 @@ def _build_backend_frame_inputs_manifest(
 
     manifest_payload = {
         "contract_path": str(contract_path),
+        "selection": {
+            "start": frame_start,
+            "stride": frame_stride,
+            "max_frames": max_frames if max_frames > 0 else None,
+            "selected_indices": selected_indices,
+            "source_frame_count": len(frames_raw),
+        },
         "frame_count": len(manifest_frames),
         "frames": manifest_frames,
     }
@@ -619,6 +635,7 @@ def execute_renderer_runtime(
         )
     )
     frame_manifest_path, frame_manifest_metrics = _build_backend_frame_inputs_manifest(
+        options=options,
         contract_payload=contract_payload,
         contract_path=contract_path,
         runtime_dir=runtime_dir,

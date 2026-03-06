@@ -187,6 +187,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `renderer_contract_flag` (default `--contract`)
     - `renderer_inject_contract_arg` / `renderer_contract_positional`
     - frame manifest arg: `renderer_inject_frame_manifest_arg` (default `true`), `renderer_frame_manifest_flag` (default `--frame-manifest`), `renderer_frame_manifest_positional`
+    - frame manifest selection: `renderer_backend_frame_start` (default `0`), `renderer_backend_frame_stride` (default `1`), `renderer_backend_max_frames` (default all)
   - safety behavior:
     - `renderer_fail_on_error=true` makes hybrid result fail when renderer runtime fails.
   - emits `renderer_runtime/renderer_execution_plan.json` (+ stdout/stderr logs on execute).

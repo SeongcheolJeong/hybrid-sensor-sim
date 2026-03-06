@@ -901,6 +901,58 @@ echo "carla_backend_ok"
                 6.0,
             )
 
+    def test_renderer_runtime_backend_frame_manifest_selection_options(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "renderer_bridge_enabled": True,
+                    "renderer_backend": "carla",
+                    "renderer_execute": False,
+                    "renderer_command": ["echo", "renderer_plan", "{contract}"],
+                    "camera_projection_enabled": True,
+                    "camera_projection_trajectory_sweep_enabled": True,
+                    "camera_projection_trajectory_sweep_frames": 3,
+                    "lidar_postprocess_enabled": True,
+                    "lidar_trajectory_sweep_enabled": True,
+                    "lidar_trajectory_sweep_frames": 3,
+                    "radar_postprocess_enabled": True,
+                    "radar_trajectory_sweep_enabled": True,
+                    "radar_trajectory_sweep_frames": 3,
+                    "renderer_sensor_mounts_only_enabled": False,
+                    "renderer_backend_frame_start": 1,
+                    "renderer_backend_frame_stride": 2,
+                    "renderer_backend_max_frames": 1,
+                },
+            )
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            manifest = json.loads(
+                result.artifacts["backend_frame_inputs_manifest"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(manifest["selection"]["start"], 1)
+            self.assertEqual(manifest["selection"]["stride"], 2)
+            self.assertEqual(manifest["selection"]["max_frames"], 1)
+            self.assertEqual(manifest["selection"]["selected_indices"], [1])
+            self.assertEqual(manifest["frame_count"], 1)
+            self.assertEqual(len(manifest["frames"]), 1)
+            self.assertEqual(manifest["frames"][0]["renderer_frame_id"], 1)
+            self.assertEqual(result.metrics.get("renderer_backend_frame_count"), 1.0)
+            self.assertEqual(result.metrics.get("renderer_backend_sensor_bindings"), 3.0)
+
 
 if __name__ == "__main__":
     unittest.main()
