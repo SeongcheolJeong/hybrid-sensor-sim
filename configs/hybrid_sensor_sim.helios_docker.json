@@ -93,6 +93,15 @@
       "pitch_deg": 0.0,
       "yaw_deg": 0.0
     },
+    "renderer_bridge_enabled": false,
+    "renderer_backend": "none",
+    "renderer_map": "",
+    "renderer_weather": "default",
+    "renderer_scene_seed": 0,
+    "renderer_ego_actor_id": "ego",
+    "renderer_time_step_s": 0.05,
+    "renderer_start_time_s": 0.0,
+    "renderer_frame_offset": 0,
     "lidar_noise": "gaussian",
     "radar_clutter": "basic",
     "motion_compensation": true

@@ -574,6 +574,90 @@ EOF
             self.assertGreater(radial_velocities[0], radial_velocities[1])
             self.assertGreater(radial_velocities[1], radial_velocities[2])
 
+    def test_hybrid_generates_renderer_playback_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+10.0 0.0 0.0
+12.0 0.0 0.0
+14.0 0.0 0.0
+EOF
+cat > "${rootdir}/scan_trajectory.txt" <<EOF
+0.0 0.0 0.0 0.0 0.0 0.0 0.0
+2.0 0.0 0.0 1.0 0.0 0.0 0.0
+4.0 0.0 0.0 2.0 0.0 0.0 0.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "lidar_postprocess_enabled": True,
+                    "lidar_noise": "none",
+                    "lidar_dropout_probability": 0.0,
+                    "lidar_trajectory_sweep_enabled": True,
+                    "lidar_trajectory_sweep_frames": 3,
+                    "radar_postprocess_enabled": True,
+                    "radar_clutter": "none",
+                    "radar_false_target_count": 0,
+                    "radar_trajectory_sweep_enabled": True,
+                    "radar_trajectory_sweep_frames": 3,
+                    "renderer_bridge_enabled": True,
+                    "renderer_backend": "awsim",
+                    "renderer_map": "sample_map",
+                    "renderer_time_step_s": 0.1,
+                    "renderer_start_time_s": 10.0,
+                    "renderer_frame_offset": 100,
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+            self.assertTrue(result.success)
+            self.assertIn("renderer_playback_contract", result.artifacts)
+            self.assertEqual(result.metrics.get("renderer_playback_contract_generated"), 1.0)
+            self.assertEqual(result.metrics.get("renderer_playback_contract_frame_count"), 3.0)
+
+            payload = json.loads(
+                result.artifacts["renderer_playback_contract"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(payload["renderer_backend"], "awsim")
+            self.assertEqual(payload["renderer_scene"]["map"], "sample_map")
+            self.assertEqual(payload["frame_count"], 3)
+            self.assertEqual(len(payload["frames"]), 3)
+            self.assertEqual(payload["frames"][0]["renderer_frame_id"], 100)
+            self.assertAlmostEqual(payload["frames"][0]["time_s"], 10.0, places=6)
+            self.assertIn("lidar", payload["frames"][0])
+            self.assertIn("radar", payload["frames"][0])
+
 
 if __name__ == "__main__":
     unittest.main()

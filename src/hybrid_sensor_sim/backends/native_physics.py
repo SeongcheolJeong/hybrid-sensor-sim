@@ -15,6 +15,7 @@ from hybrid_sensor_sim.physics.camera import (
     project_points_brown_conrady,
     transform_points_world_to_camera,
 )
+from hybrid_sensor_sim.renderers import build_renderer_playback_contract
 from hybrid_sensor_sim.types import SensorSimRequest, SensorSimResult
 
 
@@ -138,6 +139,14 @@ class NativePhysicsBackend(SensorBackend):
         )
         if radar_targets_sweep_artifact is not None:
             artifacts["radar_targets_trajectory_sweep"] = radar_targets_sweep_artifact
+        renderer_contract_artifact = self._generate_renderer_playback_contract_if_available(
+            request=request,
+            artifacts=artifacts,
+            enhanced_output=enhanced_output,
+            metrics=metrics,
+        )
+        if renderer_contract_artifact is not None:
+            artifacts["renderer_playback_contract"] = renderer_contract_artifact
 
         payload = {
             "mode": "hybrid_enhanced",
@@ -180,6 +189,8 @@ class NativePhysicsBackend(SensorBackend):
                 "radar_trajectory_sweep_enabled": bool(
                     request.options.get("radar_trajectory_sweep_enabled", False)
                 ),
+                "renderer_bridge_enabled": bool(request.options.get("renderer_bridge_enabled", False)),
+                "renderer_backend": str(request.options.get("renderer_backend", "none")),
             },
         }
         out_path = enhanced_output / "hybrid_physics.json"
@@ -706,6 +717,26 @@ class NativePhysicsBackend(SensorBackend):
             yaw_deg=yaw_deg,
             enabled=enabled,
         )
+
+    def _generate_renderer_playback_contract_if_available(
+        self,
+        request: SensorSimRequest,
+        artifacts: dict[str, Path],
+        enhanced_output: Path,
+        metrics: dict[str, float],
+    ) -> Path | None:
+        payload = build_renderer_playback_contract(
+            options=request.options,
+            artifacts=artifacts,
+        )
+        if payload is None:
+            return None
+
+        output_path = enhanced_output / "renderer_playback_contract.json"
+        output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        metrics["renderer_playback_contract_generated"] = 1.0
+        metrics["renderer_playback_contract_frame_count"] = float(payload.get("frame_count", 0))
+        return output_path
 
     def _generate_radar_targets_if_available(
         self,

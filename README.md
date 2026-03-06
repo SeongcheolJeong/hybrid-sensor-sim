@@ -16,6 +16,7 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 
 - `src/hybrid_sensor_sim/backends/helios_adapter.py`: external HELIOS execution adapter.
 - `src/hybrid_sensor_sim/backends/native_physics.py`: local physics enhancement layer.
+- `src/hybrid_sensor_sim/renderers/playback_contract.py`: renderer playback contract builder for CARLA/AWSIM bridge.
 - `src/hybrid_sensor_sim/orchestrator.py`: mode selection and pipeline chaining.
 - `docs/hybrid_helios_plan.md`: functional roadmap and risk management.
 - `scripts/setup_helios.sh`: bootstrap helper for cloning/building HELIOS.
@@ -113,6 +114,18 @@ PYTHONPATH=src python3 -m unittest discover -s tests -q
     - `radar_extrinsics_auto_offsets`
   - emits `radar_targets_trajectory_sweep.json`.
 
+## Renderer bridge notes
+
+- Enable contract output with `renderer_bridge_enabled=true`.
+- Choose renderer with `renderer_backend` (`awsim`/`carla`/`none`).
+- Scene controls:
+  - `renderer_map`, `renderer_weather`, `renderer_scene_seed`, `renderer_ego_actor_id`
+- Playback timeline controls:
+  - `renderer_time_step_s`, `renderer_start_time_s`, `renderer_frame_offset`
+- Output:
+  - emits `renderer_playback_contract.json`
+  - references available sensor artifacts (`camera/lidar/radar` preview or sweep) per frame.
+
 ## Example configs
 
 - [configs/hybrid_sensor_sim.example.json](/Users/seongcheoljeong/Documents/Test/configs/hybrid_sensor_sim.example.json): minimal dry-run/fallback config.
@@ -123,4 +136,4 @@ PYTHONPATH=src python3 -m unittest discover -s tests -q
 ## Next implementation target
 
 - Add strict schema mapping from project scenario format to HELIOS survey XML.
-- Add renderer bridge integration (CARLA/AWSIM) with artifact playback contracts.
+- Add renderer runtime executors (CARLA/AWSIM) that consume playback contracts directly.
