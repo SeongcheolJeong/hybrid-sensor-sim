@@ -1,10 +1,24 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+_BACKEND_PRESETS: dict[str, dict[str, str]] = {
+    "awsim": {
+        "default_bin": "awsim",
+        "wrapper": "scripts/renderer_launch_awsim.sh",
+        "scene_map_flag": "--map",
+    },
+    "carla": {
+        "default_bin": "carla",
+        "wrapper": "scripts/renderer_launch_carla.sh",
+        "scene_map_flag": "--town",
+    },
+}
 
 
 @dataclass
@@ -43,25 +57,65 @@ def _coerce_arg_list(raw: Any, name: str) -> tuple[list[str], str | None]:
     return [str(item) for item in raw], None
 
 
-def _resolve_backend_default_command(
+def _backend_preset(backend: str) -> dict[str, str] | None:
+    return _BACKEND_PRESETS.get(backend)
+
+
+def _resolve_backend_executable(
     *,
     options: dict[str, Any],
     backend: str,
-) -> tuple[list[str], str | None]:
-    if backend not in {"awsim", "carla"}:
-        return [], "renderer_bin is required when renderer_command is not set."
+) -> tuple[str, str, str | None]:
+    preset = _backend_preset(backend)
+    if preset is None:
+        return "", "none", "renderer_bin is required when renderer_command is not set."
 
-    executable = str(
+    explicit_bin = str(
         options.get(
             f"{backend}_bin",
             options.get(
                 f"renderer_{backend}_bin",
-                options.get("renderer_backend_bin", backend),
+                options.get("renderer_backend_bin", ""),
             ),
         )
     ).strip()
-    if executable == "":
-        executable = backend
+    if explicit_bin:
+        return explicit_bin, "backend_default", None
+
+    wrapper_enabled = bool(options.get("renderer_backend_wrapper_enabled", True))
+    if wrapper_enabled:
+        wrapper_raw = str(
+            options.get(
+                f"{backend}_wrapper",
+                options.get(
+                    f"renderer_{backend}_wrapper",
+                    options.get(
+                        "renderer_backend_wrapper",
+                        preset["wrapper"],
+                    ),
+                ),
+            )
+        ).strip()
+        wrapper_path = Path(wrapper_raw).expanduser()
+        if not wrapper_path.is_absolute():
+            wrapper_path = (Path.cwd() / wrapper_path).resolve()
+        if wrapper_path.exists() and os.access(wrapper_path, os.X_OK):
+            return str(wrapper_path), "backend_wrapper", None
+
+    return preset["default_bin"], "backend_default", None
+
+
+def _resolve_backend_default_command(
+    *,
+    options: dict[str, Any],
+    backend: str,
+) -> tuple[list[str], str, str | None]:
+    executable, source, resolve_error = _resolve_backend_executable(
+        options=options,
+        backend=backend,
+    )
+    if resolve_error is not None:
+        return [], "none", resolve_error
 
     backend_extra_args, backend_error = _coerce_arg_list(
         options.get(
@@ -71,15 +125,15 @@ def _resolve_backend_default_command(
         f"{backend}_extra_args",
     )
     if backend_error is not None:
-        return [], backend_error
+        return [], "none", backend_error
 
     shared_extra_args, shared_error = _coerce_arg_list(
         options.get("renderer_extra_args", []),
         "renderer_extra_args",
     )
     if shared_error is not None:
-        return [], shared_error
-    return [executable, *backend_extra_args, *shared_extra_args], None
+        return [], "none", shared_error
+    return [executable, *backend_extra_args, *shared_extra_args], source, None
 
 
 def _resolve_scene_flag(
@@ -118,7 +172,8 @@ def _inject_contract_scene_args(
     if not isinstance(scene, dict):
         return 0
 
-    default_map_flag = "--town" if backend == "carla" else "--map"
+    preset = _backend_preset(backend)
+    default_map_flag = preset["scene_map_flag"] if preset is not None else "--map"
     map_flag = _resolve_scene_flag(
         options=options,
         key="renderer_scene_map_flag",
@@ -208,13 +263,13 @@ def _build_renderer_command(
     else:
         renderer_bin = str(options.get("renderer_bin", "")).strip()
         if not renderer_bin:
-            command, default_error = _resolve_backend_default_command(
+            command, backend_source, default_error = _resolve_backend_default_command(
                 options=options,
                 backend=backend,
             )
             if default_error is not None:
                 return [], False, "none", 0, 0, default_error
-            command_source = "backend_default"
+            command_source = backend_source
         else:
             extra_args, shared_error = _coerce_arg_list(
                 options.get("renderer_extra_args", []),
@@ -275,10 +330,10 @@ def execute_renderer_runtime(
 
     command, used_override, command_source, scene_args_count, sensor_mount_args_count, build_error = (
         _build_renderer_command(
-        options=options,
-        backend=backend,
-        contract_path=contract_path,
-        contract_payload=contract_payload,
+            options=options,
+            backend=backend,
+            contract_path=contract_path,
+            contract_payload=contract_payload,
         )
     )
     plan_payload = {
@@ -289,6 +344,7 @@ def execute_renderer_runtime(
         "command": command,
         "used_command_override": used_override,
         "command_source": command_source,
+        "backend_wrapper_used": command_source == "backend_wrapper",
         "contract_scene_args_count": scene_args_count,
         "contract_sensor_mount_args_count": sensor_mount_args_count,
         "error": build_error,
@@ -298,6 +354,7 @@ def execute_renderer_runtime(
     metrics: dict[str, float] = {
         "renderer_runtime_planned": 1.0,
         "renderer_execute_requested": 1.0 if execute else 0.0,
+        "renderer_backend_wrapper_used": 1.0 if command_source == "backend_wrapper" else 0.0,
         "renderer_contract_scene_args_count": float(scene_args_count),
         "renderer_contract_sensor_mount_args_count": float(sensor_mount_args_count),
     }

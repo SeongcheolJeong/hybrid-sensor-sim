@@ -188,6 +188,7 @@ echo "renderer_ok ${contract}"
             )
             self.assertFalse(plan["used_command_override"])
             self.assertEqual(plan["command_source"], "backend_default")
+            self.assertFalse(plan["backend_wrapper_used"])
             self.assertIsNone(plan["error"])
             self.assertEqual(plan["command"][0], "awsim-player")
             self.assertIn("--headless", plan["command"])
@@ -196,6 +197,49 @@ echo "renderer_ok ${contract}"
             self.assertIn(str(contract_path), plan["command"])
             self.assertGreaterEqual(plan["contract_scene_args_count"], 2)
             self.assertEqual(plan["contract_sensor_mount_args_count"], 0)
+            self.assertEqual(result.metrics.get("renderer_backend_wrapper_used"), 0.0)
+
+    def test_renderer_runtime_uses_backend_wrapper_when_bin_not_set(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "lidar_postprocess_enabled": False,
+                    "radar_postprocess_enabled": False,
+                    "renderer_bridge_enabled": True,
+                    "renderer_backend": "awsim",
+                    "renderer_execute": False,
+                    "renderer_bin": "",
+                    "awsim_bin": "",
+                    "renderer_command": [],
+                    "renderer_map": "wrapper_map",
+                },
+            )
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+            self.assertTrue(result.success)
+            self.assertIn("renderer_execution_plan", result.artifacts)
+            plan = json.loads(
+                result.artifacts["renderer_execution_plan"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(plan["command_source"], "backend_wrapper")
+            self.assertTrue(plan["backend_wrapper_used"])
+            self.assertTrue(plan["command"][0].endswith("scripts/renderer_launch_awsim.sh"))
+            self.assertIn("--map", plan["command"])
+            self.assertIn("wrapper_map", plan["command"])
+            self.assertEqual(result.metrics.get("renderer_backend_wrapper_used"), 1.0)
 
     def test_renderer_runtime_injects_scene_and_sensor_mount_args_from_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

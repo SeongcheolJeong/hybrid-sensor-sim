@@ -165,9 +165,13 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `renderer_command` (explicit command list; supports `{contract}` token)
     - or `renderer_bin` + `renderer_extra_args`
     - or backend defaults (`awsim_bin` / `carla_bin` + `awsim_extra_args` / `carla_extra_args`) when `renderer_bin` is empty
+    - if backend bin is empty and wrapper is enabled, use local wrappers: `scripts/renderer_launch_awsim.sh`, `scripts/renderer_launch_carla.sh`
   - optional contract-driven argument injection:
     - scene args: `renderer_inject_scene_args` (`renderer_scene_*_flag` for map/weather/seed/ego)
     - sensor mount args: `renderer_inject_sensor_mount_args`, `renderer_sensor_mount_flag`, `renderer_sensor_mounts_only_enabled`, `renderer_sensor_mount_format=json|compact`
+  - wrapper notes:
+    - wrapper mode is controlled by `renderer_backend_wrapper_enabled` and optional path overrides (`renderer_backend_wrapper`, `awsim_wrapper`, `carla_wrapper`).
+    - wrappers expect `AWSIM_BIN` / `CARLA_BIN` env vars when real execution is enabled.
   - contract argument controls:
     - `renderer_contract_flag` (default `--contract`)
     - `renderer_inject_contract_arg` / `renderer_contract_positional`
