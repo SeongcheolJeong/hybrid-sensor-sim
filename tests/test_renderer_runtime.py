@@ -144,6 +144,74 @@ echo "renderer_ok ${contract}"
             stdout = result.artifacts["renderer_stdout"].read_text(encoding="utf-8")
             self.assertIn("renderer_ok", stdout)
 
+    def test_renderer_contract_contains_survey_mapping_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            scenario = root / "scenario.json"
+            scenario.write_text(
+                json.dumps(
+                    {
+                        "name": "renderer-mapping-scene",
+                        "objects": [
+                            {
+                                "id": "ego",
+                                "type": "vehicle",
+                                "pose": [0.0, 0.0, 0.0],
+                                "waypoints": [[1.0, 0.0, 0.0]],
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+
+            request = SensorSimRequest(
+                scenario_path=scenario,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "survey_generate_from_scenario": True,
+                    "camera_projection_enabled": False,
+                    "lidar_postprocess_enabled": False,
+                    "radar_postprocess_enabled": False,
+                    "renderer_bridge_enabled": True,
+                    "renderer_backend": "carla",
+                    "renderer_execute": False,
+                    "renderer_command": ["echo", "renderer_plan", "{contract}"],
+                },
+            )
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+            self.assertTrue(result.success)
+            self.assertIn("renderer_playback_contract", result.artifacts)
+            self.assertIn("survey_mapping_metadata", result.artifacts)
+            self.assertIn("generated_survey", result.artifacts)
+
+            payload = json.loads(
+                result.artifacts["renderer_playback_contract"].read_text(encoding="utf-8")
+            )
+            self.assertIn("survey_mapping", payload)
+            self.assertTrue(payload["survey_mapping"]["available"])
+            mapping_meta = payload["survey_mapping"]["metadata"]
+            self.assertIsInstance(mapping_meta, dict)
+            assert isinstance(mapping_meta, dict)
+            self.assertEqual(mapping_meta.get("survey_name"), "renderer-mapping-scene")
+            self.assertEqual(mapping_meta.get("leg_count"), 2)
+
+            self.assertEqual(
+                payload["input_artifacts"]["survey_mapping_metadata"],
+                str(result.artifacts["survey_mapping_metadata"]),
+            )
+            self.assertEqual(
+                payload["input_artifacts"]["generated_survey"],
+                str(result.artifacts["generated_survey"]),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

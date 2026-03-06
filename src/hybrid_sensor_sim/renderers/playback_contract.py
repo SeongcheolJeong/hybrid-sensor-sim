@@ -67,10 +67,16 @@ def build_renderer_playback_contract(
     camera_preview = artifacts.get("camera_projection_preview")
     lidar_preview = artifacts.get("lidar_noisy_preview")
     radar_preview = artifacts.get("radar_targets_preview")
+    generated_survey = artifacts.get("generated_survey")
+    execution_plan = artifacts.get("execution_plan")
+    survey_mapping_metadata = artifacts.get("survey_mapping_metadata")
 
     camera_sweep_payload = _read_json(camera_sweep) if camera_sweep is not None else None
     lidar_sweep_payload = _read_json(lidar_sweep) if lidar_sweep is not None else None
     radar_sweep_payload = _read_json(radar_sweep) if radar_sweep is not None else None
+    survey_mapping_payload = (
+        _read_json(survey_mapping_metadata) if survey_mapping_metadata is not None else None
+    )
 
     frame_count = max(
         1,
@@ -139,6 +145,17 @@ def build_renderer_playback_contract(
             "lidar_trajectory_sweep": str(lidar_sweep) if lidar_sweep is not None else None,
             "radar_targets_preview": str(radar_preview) if radar_preview is not None else None,
             "radar_targets_trajectory_sweep": str(radar_sweep) if radar_sweep is not None else None,
+            "generated_survey": str(generated_survey) if generated_survey is not None else None,
+            "survey_mapping_metadata": str(survey_mapping_metadata)
+            if survey_mapping_metadata is not None
+            else None,
+            "execution_plan": str(execution_plan) if execution_plan is not None else None,
+        },
+        "survey_mapping": {
+            "available": bool(survey_mapping_payload),
+            "metadata": survey_mapping_payload,
+            "metadata_artifact": str(survey_mapping_metadata) if survey_mapping_metadata is not None else None,
+            "generated_survey_path": str(generated_survey) if generated_survey is not None else None,
         },
         "frame_count": frame_count,
         "frame_step_s": frame_step_s,

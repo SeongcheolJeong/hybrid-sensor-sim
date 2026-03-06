@@ -151,6 +151,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - Output:
   - emits `renderer_playback_contract.json`
   - references available sensor artifacts (`camera/lidar/radar` preview or sweep) per frame.
+  - when survey mapping is enabled, contract also carries `survey_mapping` metadata and related artifact paths.
 - Runtime executor:
   - set `renderer_execute=true` to run renderer command.
   - choose command source:
