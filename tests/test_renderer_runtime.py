@@ -90,6 +90,90 @@ class RendererRuntimeTests(unittest.TestCase):
             self.assertFalse(plan["execute"])
             self.assertIn(str(contract_path), plan["command"])
 
+    def test_renderer_runtime_injects_frame_manifest_arg_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "lidar_postprocess_enabled": False,
+                    "radar_postprocess_enabled": False,
+                    "renderer_bridge_enabled": True,
+                    "renderer_backend": "carla",
+                    "renderer_execute": False,
+                    "renderer_command": ["echo", "renderer_plan", "{contract}"],
+                },
+            )
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            self.assertIn("backend_frame_inputs_manifest", result.artifacts)
+            manifest_path = result.artifacts["backend_frame_inputs_manifest"]
+            plan = json.loads(
+                result.artifacts["renderer_execution_plan"].read_text(encoding="utf-8")
+            )
+            self.assertIn("--frame-manifest", plan["command"])
+            flag_index = plan["command"].index("--frame-manifest")
+            self.assertEqual(plan["command"][flag_index + 1], str(manifest_path))
+            self.assertEqual(plan["contract_frame_manifest_args_count"], 2)
+            self.assertEqual(
+                result.metrics.get("renderer_contract_frame_manifest_args_count"),
+                2.0,
+            )
+
+    def test_renderer_runtime_can_disable_frame_manifest_arg_injection(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "lidar_postprocess_enabled": False,
+                    "radar_postprocess_enabled": False,
+                    "renderer_bridge_enabled": True,
+                    "renderer_backend": "carla",
+                    "renderer_execute": False,
+                    "renderer_command": ["echo", "renderer_plan", "{contract}"],
+                    "renderer_inject_frame_manifest_arg": False,
+                },
+            )
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            self.assertIn("backend_frame_inputs_manifest", result.artifacts)
+            plan = json.loads(
+                result.artifacts["renderer_execution_plan"].read_text(encoding="utf-8")
+            )
+            self.assertNotIn("--frame-manifest", plan["command"])
+            self.assertEqual(plan["contract_frame_manifest_args_count"], 0)
+            self.assertEqual(
+                result.metrics.get("renderer_contract_frame_manifest_args_count"),
+                0.0,
+            )
+
     def test_renderer_runtime_executes_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

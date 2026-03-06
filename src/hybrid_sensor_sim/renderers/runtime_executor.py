@@ -510,6 +510,27 @@ def _inject_contract_sensor_mount_args(
     return len(args)
 
 
+def _inject_frame_manifest_arg(
+    *,
+    command: list[str],
+    options: dict[str, Any],
+    frame_manifest_path: Path | None,
+) -> int:
+    if frame_manifest_path is None:
+        return 0
+    if not bool(options.get("renderer_inject_frame_manifest_arg", True)):
+        return 0
+    manifest_flag = str(options.get("renderer_frame_manifest_flag", "--frame-manifest")).strip()
+    if bool(options.get("renderer_frame_manifest_positional", False)):
+        command.append(str(frame_manifest_path))
+        return 1
+    if manifest_flag:
+        command.extend([manifest_flag, str(frame_manifest_path)])
+        return 2
+    command.append(str(frame_manifest_path))
+    return 1
+
+
 def _build_renderer_command(
     options: dict[str, Any],
     backend: str,
@@ -603,6 +624,11 @@ def execute_renderer_runtime(
         runtime_dir=runtime_dir,
         cwd=cwd,
     )
+    frame_manifest_args_count = _inject_frame_manifest_arg(
+        command=command,
+        options=options,
+        frame_manifest_path=frame_manifest_path,
+    )
     backend_args_preview = _build_backend_args_preview(
         options=options,
         backend=backend,
@@ -621,6 +647,7 @@ def execute_renderer_runtime(
         "backend_wrapper_used": backend_wrapper_used,
         "contract_scene_args_count": scene_args_count,
         "contract_sensor_mount_args_count": sensor_mount_args_count,
+        "contract_frame_manifest_args_count": frame_manifest_args_count,
         "backend_args_preview": backend_args_preview,
         "backend_frame_inputs_manifest": str(frame_manifest_path) if frame_manifest_path else None,
         "backend_frame_count": int(frame_manifest_metrics.get("renderer_backend_frame_count", 0.0)),
@@ -664,6 +691,7 @@ def execute_renderer_runtime(
         "renderer_backend_invocation_written": 1.0,
         "renderer_contract_scene_args_count": float(scene_args_count),
         "renderer_contract_sensor_mount_args_count": float(sensor_mount_args_count),
+        "renderer_contract_frame_manifest_args_count": float(frame_manifest_args_count),
     }
     metrics.update(frame_manifest_metrics)
 
