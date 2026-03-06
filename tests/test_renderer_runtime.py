@@ -887,11 +887,19 @@ echo "carla_backend_ok"
             self.assertTrue(result.success)
             self.assertIn("backend_frame_inputs_manifest", result.artifacts)
             self.assertIn("backend_ingestion_profile", result.artifacts)
+            self.assertIn("backend_launcher_template", result.artifacts)
+            self.assertIn("backend_ingestion_args_sh", result.artifacts)
             manifest = json.loads(
                 result.artifacts["backend_frame_inputs_manifest"].read_text(encoding="utf-8")
             )
             ingestion_profile = json.loads(
                 result.artifacts["backend_ingestion_profile"].read_text(encoding="utf-8")
+            )
+            launcher_template = json.loads(
+                result.artifacts["backend_launcher_template"].read_text(encoding="utf-8")
+            )
+            backend_invocation = json.loads(
+                result.artifacts["backend_invocation"].read_text(encoding="utf-8")
             )
             self.assertEqual(manifest["frame_count"], 2)
             self.assertEqual(len(manifest["frames"]), 2)
@@ -920,6 +928,24 @@ echo "carla_backend_ok"
             self.assertEqual(ingestion_profile["meta_flag"], "--ingest-meta")
             self.assertEqual(ingestion_profile["entry_count"], 6)
             self.assertEqual(len(ingestion_profile["entries"]), 6)
+            self.assertEqual(launcher_template["backend"], "carla")
+            self.assertEqual(launcher_template["arg_count"], 18)
+            self.assertEqual(launcher_template["frame_arg_count"], 12)
+            self.assertEqual(launcher_template["meta_arg_count"], 6)
+            self.assertIn("--ingest-frame", launcher_template["args"])
+            self.assertIn("--ingest-meta", launcher_template["args"])
+            self.assertEqual(
+                backend_invocation["backend_launcher_template"],
+                str(result.artifacts["backend_launcher_template"]),
+            )
+            self.assertEqual(backend_invocation["backend_launcher_arg_count"], 18)
+            shell_artifact = result.artifacts["backend_ingestion_args_sh"]
+            self.assertTrue(shell_artifact.exists())
+            self.assertTrue(os.access(shell_artifact, os.X_OK))
+            shell_text = shell_artifact.read_text(encoding="utf-8")
+            self.assertIn("BACKEND_INGEST_ARGS=(", shell_text)
+            self.assertIn("--ingest-meta", shell_text)
+            self.assertIn("--ingest-frame", shell_text)
 
             self.assertEqual(result.metrics.get("renderer_backend_frame_manifest_written"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_frame_count"), 2.0)
@@ -930,6 +956,11 @@ echo "carla_backend_ok"
             )
             self.assertEqual(result.metrics.get("renderer_backend_ingestion_profile_written"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_ingestion_entry_count"), 6.0)
+            self.assertEqual(result.metrics.get("renderer_backend_launcher_template_written"), 1.0)
+            self.assertEqual(result.metrics.get("renderer_backend_ingestion_shell_written"), 1.0)
+            self.assertEqual(result.metrics.get("renderer_backend_launcher_arg_count"), 18.0)
+            self.assertEqual(result.metrics.get("renderer_backend_launcher_frame_arg_count"), 12.0)
+            self.assertEqual(result.metrics.get("renderer_backend_launcher_meta_arg_count"), 6.0)
 
     def test_renderer_runtime_backend_frame_manifest_selection_options(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -984,9 +1015,14 @@ echo "carla_backend_ok"
                 result.artifacts["backend_ingestion_profile"].read_text(encoding="utf-8")
             )
             self.assertEqual(ingestion_profile["entry_count"], 3)
+            launcher_template = json.loads(
+                result.artifacts["backend_launcher_template"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(launcher_template["arg_count"], 12)
             self.assertEqual(result.metrics.get("renderer_backend_frame_count"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_sensor_bindings"), 3.0)
             self.assertEqual(result.metrics.get("renderer_backend_ingestion_entry_count"), 3.0)
+            self.assertEqual(result.metrics.get("renderer_backend_launcher_arg_count"), 12.0)
 
 
 if __name__ == "__main__":
