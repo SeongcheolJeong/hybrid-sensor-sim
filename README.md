@@ -178,6 +178,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - execution plan includes `backend_args_preview` for normalized scene/sensor-mount argument inspection.
   - runtime artifacts:
     - `backend_invocation.json`: normalized backend command + preview snapshot.
+    - `backend_frame_inputs_manifest.json`: contract frame sources resolved into backend-consumable payload pointers.
     - `backend_wrapper_invocation.json`: wrapper input/output args snapshot (when wrapper path is used and execution is enabled).
   - contract argument controls:
     - `renderer_contract_flag` (default `--contract`)

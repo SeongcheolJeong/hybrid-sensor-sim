@@ -623,6 +623,70 @@ echo "carla_backend_ok"
             self.assertFalse(mounts[1]["enabled"])
             self.assertFalse(mounts[2]["enabled"])
 
+    def test_renderer_runtime_writes_backend_frame_inputs_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "renderer_bridge_enabled": True,
+                    "renderer_backend": "carla",
+                    "renderer_execute": False,
+                    "renderer_command": ["echo", "renderer_plan", "{contract}"],
+                    "camera_projection_enabled": True,
+                    "camera_projection_trajectory_sweep_enabled": True,
+                    "camera_projection_trajectory_sweep_frames": 2,
+                    "lidar_postprocess_enabled": True,
+                    "lidar_trajectory_sweep_enabled": True,
+                    "lidar_trajectory_sweep_frames": 2,
+                    "radar_postprocess_enabled": True,
+                    "radar_trajectory_sweep_enabled": True,
+                    "radar_trajectory_sweep_frames": 2,
+                    "renderer_sensor_mounts_only_enabled": False,
+                },
+            )
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            self.assertIn("backend_frame_inputs_manifest", result.artifacts)
+            manifest = json.loads(
+                result.artifacts["backend_frame_inputs_manifest"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(manifest["frame_count"], 2)
+            self.assertEqual(len(manifest["frames"]), 2)
+            for frame in manifest["frames"]:
+                self.assertIn("camera", frame)
+                self.assertIn("lidar", frame)
+                self.assertIn("radar", frame)
+                self.assertTrue(frame["camera"]["available"])
+                self.assertTrue(frame["lidar"]["available"])
+                self.assertTrue(frame["radar"]["available"])
+                self.assertTrue(Path(frame["camera"]["payload_artifact"]).exists())
+                self.assertTrue(Path(frame["lidar"]["payload_artifact"]).exists())
+                self.assertTrue(Path(frame["radar"]["payload_artifact"]).exists())
+                self.assertIn("materialized_payload_artifact", frame["camera"])
+                self.assertIn("materialized_payload_artifact", frame["lidar"])
+                self.assertIn("materialized_payload_artifact", frame["radar"])
+
+            self.assertEqual(result.metrics.get("renderer_backend_frame_manifest_written"), 1.0)
+            self.assertEqual(result.metrics.get("renderer_backend_frame_count"), 2.0)
+            self.assertEqual(result.metrics.get("renderer_backend_sensor_bindings"), 6.0)
+            self.assertEqual(
+                result.metrics.get("renderer_backend_materialized_frame_payload_count"),
+                6.0,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

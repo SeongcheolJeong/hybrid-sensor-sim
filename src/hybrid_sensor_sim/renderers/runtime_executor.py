@@ -317,6 +317,9 @@ def _build_backend_invocation_payload(
     command_source: str,
     backend_wrapper_used: bool,
     backend_args_preview: dict[str, Any] | None,
+    backend_frame_manifest: str | None,
+    backend_frame_count: int,
+    backend_sensor_bindings: int,
     build_error: str | None,
 ) -> dict[str, Any]:
     return {
@@ -327,7 +330,153 @@ def _build_backend_invocation_payload(
         "command_source": command_source,
         "backend_wrapper_used": backend_wrapper_used,
         "backend_args_preview": backend_args_preview,
+        "backend_frame_inputs_manifest": backend_frame_manifest,
+        "backend_frame_count": backend_frame_count,
+        "backend_sensor_bindings": backend_sensor_bindings,
         "error": build_error,
+    }
+
+
+def _coerce_int(value: Any, *, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _coerce_float(value: Any, *, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _resolve_artifact_path(*, raw: Any, cwd: Path) -> Path | None:
+    text = str(raw).strip() if raw is not None else ""
+    if not text:
+        return None
+    artifact = Path(text).expanduser()
+    if artifact.is_absolute():
+        return artifact
+    return (cwd / artifact).resolve()
+
+
+def _resolve_backend_frame_source(
+    *,
+    source: dict[str, Any],
+    sensor_name: str,
+    frame_index: int,
+    runtime_dir: Path,
+    cwd: Path,
+) -> tuple[dict[str, Any], int]:
+    source_type = str(source.get("source_type", "unknown")).strip()
+    requested_frame_index = _coerce_int(source.get("frame_index"), default=0)
+    frame_count = max(0, _coerce_int(source.get("frame_count"), default=0))
+    resolved: dict[str, Any] = {
+        "source_type": source_type,
+        "requested_frame_index": requested_frame_index,
+        "frame_count": frame_count,
+        "available": False,
+    }
+
+    artifact_path = _resolve_artifact_path(raw=source.get("artifact"), cwd=cwd)
+    if artifact_path is None:
+        resolved["error"] = "source artifact is not set."
+        return resolved, 0
+    resolved["artifact"] = str(artifact_path)
+    if not artifact_path.exists():
+        resolved["error"] = "source artifact does not exist."
+        return resolved, 0
+
+    payload_path = artifact_path
+    materialized_count = 0
+    if source_type == "sweep" and artifact_path.suffix.lower() == ".json":
+        sweep_payload = _read_contract_payload(artifact_path)
+        frames = sweep_payload.get("frames") if isinstance(sweep_payload, dict) else None
+        if not isinstance(frames, list) or not frames:
+            resolved["error"] = "sweep artifact has no frames."
+            return resolved, 0
+        resolved_index = min(max(requested_frame_index, 0), len(frames) - 1)
+        frame_payload = frames[resolved_index]
+        if not isinstance(frame_payload, dict):
+            resolved["error"] = "sweep frame payload is invalid."
+            return resolved, 0
+        payload_dir = runtime_dir / "frame_payloads"
+        payload_dir.mkdir(parents=True, exist_ok=True)
+        payload_path = payload_dir / f"frame_{frame_index:04d}_{sensor_name}.json"
+        payload_path.write_text(json.dumps(frame_payload, indent=2), encoding="utf-8")
+        resolved["resolved_frame_index"] = resolved_index
+        resolved["materialized_payload_artifact"] = str(payload_path)
+        materialized_count = 1
+
+    resolved["payload_artifact"] = str(payload_path)
+    resolved["available"] = True
+    return resolved, materialized_count
+
+
+def _build_backend_frame_inputs_manifest(
+    *,
+    contract_payload: dict[str, Any] | None,
+    contract_path: Path,
+    runtime_dir: Path,
+    cwd: Path,
+) -> tuple[Path | None, dict[str, float]]:
+    if not isinstance(contract_payload, dict):
+        return None, {
+            "renderer_backend_frame_manifest_written": 0.0,
+            "renderer_backend_frame_count": 0.0,
+            "renderer_backend_sensor_bindings": 0.0,
+            "renderer_backend_materialized_frame_payload_count": 0.0,
+        }
+
+    frames_raw = contract_payload.get("frames")
+    if not isinstance(frames_raw, list):
+        frames_raw = []
+
+    manifest_frames: list[dict[str, Any]] = []
+    sensor_binding_count = 0
+    materialized_payload_count = 0
+    for fallback_index, frame in enumerate(frames_raw):
+        if not isinstance(frame, dict):
+            continue
+        frame_id = _coerce_int(frame.get("frame_id"), default=fallback_index)
+        frame_manifest: dict[str, Any] = {
+            "frame_id": frame_id,
+            "renderer_frame_id": _coerce_int(
+                frame.get("renderer_frame_id"),
+                default=frame_id,
+            ),
+            "time_s": _coerce_float(frame.get("time_s"), default=0.0),
+        }
+        for sensor_name in ("camera", "lidar", "radar"):
+            source = frame.get(sensor_name)
+            if not isinstance(source, dict):
+                continue
+            resolved_source, materialized_count = _resolve_backend_frame_source(
+                source=source,
+                sensor_name=sensor_name,
+                frame_index=frame_id,
+                runtime_dir=runtime_dir,
+                cwd=cwd,
+            )
+            frame_manifest[sensor_name] = resolved_source
+            if resolved_source.get("available") is True:
+                sensor_binding_count += 1
+            materialized_payload_count += materialized_count
+        manifest_frames.append(frame_manifest)
+
+    manifest_payload = {
+        "contract_path": str(contract_path),
+        "frame_count": len(manifest_frames),
+        "frames": manifest_frames,
+    }
+    manifest_path = runtime_dir / "backend_frame_inputs_manifest.json"
+    manifest_path.write_text(json.dumps(manifest_payload, indent=2), encoding="utf-8")
+    return manifest_path, {
+        "renderer_backend_frame_manifest_written": 1.0,
+        "renderer_backend_frame_count": float(len(manifest_frames)),
+        "renderer_backend_sensor_bindings": float(sensor_binding_count),
+        "renderer_backend_materialized_frame_payload_count": float(materialized_payload_count),
     }
 
 
@@ -448,6 +597,12 @@ def execute_renderer_runtime(
             contract_payload=contract_payload,
         )
     )
+    frame_manifest_path, frame_manifest_metrics = _build_backend_frame_inputs_manifest(
+        contract_payload=contract_payload,
+        contract_path=contract_path,
+        runtime_dir=runtime_dir,
+        cwd=cwd,
+    )
     backend_args_preview = _build_backend_args_preview(
         options=options,
         backend=backend,
@@ -467,6 +622,11 @@ def execute_renderer_runtime(
         "contract_scene_args_count": scene_args_count,
         "contract_sensor_mount_args_count": sensor_mount_args_count,
         "backend_args_preview": backend_args_preview,
+        "backend_frame_inputs_manifest": str(frame_manifest_path) if frame_manifest_path else None,
+        "backend_frame_count": int(frame_manifest_metrics.get("renderer_backend_frame_count", 0.0)),
+        "backend_sensor_bindings": int(
+            frame_manifest_metrics.get("renderer_backend_sensor_bindings", 0.0)
+        ),
         "backend_wrapper_dump_path": str(wrapper_dump_path) if backend_wrapper_used else None,
         "error": build_error,
     }
@@ -480,6 +640,11 @@ def execute_renderer_runtime(
         command_source=command_source,
         backend_wrapper_used=backend_wrapper_used,
         backend_args_preview=backend_args_preview,
+        backend_frame_manifest=str(frame_manifest_path) if frame_manifest_path else None,
+        backend_frame_count=int(frame_manifest_metrics.get("renderer_backend_frame_count", 0.0)),
+        backend_sensor_bindings=int(
+            frame_manifest_metrics.get("renderer_backend_sensor_bindings", 0.0)
+        ),
         build_error=build_error,
     )
     backend_invocation_path.write_text(
@@ -490,6 +655,8 @@ def execute_renderer_runtime(
         "renderer_execution_plan": plan_path,
         "backend_invocation": backend_invocation_path,
     }
+    if frame_manifest_path is not None:
+        artifacts["backend_frame_inputs_manifest"] = frame_manifest_path
     metrics: dict[str, float] = {
         "renderer_runtime_planned": 1.0,
         "renderer_execute_requested": 1.0 if execute else 0.0,
@@ -498,6 +665,7 @@ def execute_renderer_runtime(
         "renderer_contract_scene_args_count": float(scene_args_count),
         "renderer_contract_sensor_mount_args_count": float(sensor_mount_args_count),
     }
+    metrics.update(frame_manifest_metrics)
 
     if backend in {"", "none"}:
         return RendererRuntimeResult(
