@@ -68,6 +68,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - global scanner settings: `sensors.lidar.scanner_settings`, `helios.scanner_settings`,
     - explicit override via options: `survey_scanner_settings_extra_attrs`,
     - per-leg scanner settings: `helios.legs[].scanner` (scalar fields are forwarded).
+    - canonical key normalization is applied (examples): `num_rays -> numRays`, `max_range_m -> maxRange_m`, `horizontal_fov_deg -> horizontalFov_deg`.
   - options override scenario defaults:
     - refs: `survey_scene_ref`, `survey_platform_ref`, `survey_scanner_ref`
     - scanner setting template id: `survey_scanner_settings_id`

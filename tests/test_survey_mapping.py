@@ -116,8 +116,8 @@ class SurveyMappingTests(unittest.TestCase):
                             "platform": "data/platforms.xml#vehicle_rig",
                             "scanner": "data/scanners_tls.xml#veh_lidar",
                             "scanner_settings": {
-                                "numRays": 64,
-                                "scanPattern": "hybrid"
+                                "num_rays": 64,
+                                "scan_pattern": "hybrid"
                             },
                             "legs": [
                                 {
@@ -125,7 +125,7 @@ class SurveyMappingTests(unittest.TestCase):
                                     "scanner": {
                                         "template": "leg_template",
                                         "head_rotate_start_deg": -90.0,
-                                        "maxRange_m": 120.0
+                                        "max_range_m": 120.0
                                     },
                                 },
                                 {"pose": [4.0, 5.0, 6.0]},
@@ -143,7 +143,8 @@ class SurveyMappingTests(unittest.TestCase):
                     "survey_scene_ref": "data/scenes/override_scene.xml#override_scene",
                     "survey_scanner_settings_id": "global_set",
                     "survey_scanner_settings_extra_attrs": {
-                        "numRays": 128,
+                        "num_rays": 128,
+                        "horizontal_fov_deg": 120.0,
                         "enableMotionCompensation": True
                     },
                 },
@@ -161,6 +162,7 @@ class SurveyMappingTests(unittest.TestCase):
             self.assertEqual(scanner_settings.attrib.get("beam_divergence_rad"), "0.0015")
             self.assertEqual(scanner_settings.attrib.get("scanPattern"), "hybrid")
             self.assertEqual(scanner_settings.attrib.get("numRays"), "128")
+            self.assertEqual(scanner_settings.attrib.get("horizontalFov_deg"), "120.0")
             self.assertEqual(scanner_settings.attrib.get("enableMotionCompensation"), "true")
 
             survey = root_node.find("survey")

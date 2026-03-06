@@ -30,14 +30,41 @@ def _scalar_xml_attr_value(raw: Any) -> str | None:
     return None
 
 
-def _collect_scalar_attrs(raw: dict[str, Any], *, skip_keys: set[str]) -> dict[str, str]:
+_SCANNER_ATTR_KEY_ALIASES = {
+    "num_rays": "numRays",
+    "channels": "numRays",
+    "scan_pattern": "scanPattern",
+    "max_range_m": "maxRange_m",
+    "min_range_m": "minRange_m",
+    "horizontal_fov_deg": "horizontalFov_deg",
+    "vertical_fov_deg": "verticalFov_deg",
+    "beam_divergence_mrad": "beamDivergence_mrad",
+    "pulse_freq_hz": "pulseFreq_hz",
+    "scan_freq_hz": "scanFreq_hz",
+    "head_rotate_per_sec_deg": "headRotatePerSec_deg",
+    "head_rotate_start_deg": "headRotateStart_deg",
+    "head_rotate_stop_deg": "headRotateStop_deg",
+}
+
+
+def _normalize_scanner_attr_key(key: str) -> str:
+    return _SCANNER_ATTR_KEY_ALIASES.get(key, key)
+
+
+def _collect_scalar_attrs(
+    raw: dict[str, Any],
+    *,
+    skip_keys: set[str],
+    normalize_keys: bool = False,
+) -> dict[str, str]:
     attrs: dict[str, str] = {}
     for key, value in raw.items():
         if key in skip_keys:
             continue
+        normalized_key = _normalize_scanner_attr_key(str(key)) if normalize_keys else str(key)
         stringified = _scalar_xml_attr_value(value)
         if stringified is not None:
-            attrs[str(key)] = stringified
+            attrs[normalized_key] = stringified
     return attrs
 
 
@@ -257,6 +284,7 @@ def _extract_leg_scanner_overrides(leg: dict[str, Any]) -> dict[str, str]:
                 "headRotateStop_deg",
                 "head_rotate_stop_deg",
             },
+            normalize_keys=True,
         )
     )
     return overrides
@@ -295,12 +323,30 @@ def _resolve_global_scanner_extra_attrs(
 
     lidar_scanner_settings = lidar_cfg.get("scanner_settings")
     if isinstance(lidar_scanner_settings, dict):
-        attrs.update(_collect_scalar_attrs(lidar_scanner_settings, skip_keys=skip_common))
-    attrs.update(_collect_scalar_attrs(helios_scanner_cfg, skip_keys=skip_common))
+        attrs.update(
+            _collect_scalar_attrs(
+                lidar_scanner_settings,
+                skip_keys=skip_common,
+                normalize_keys=True,
+            )
+        )
+    attrs.update(
+        _collect_scalar_attrs(
+            helios_scanner_cfg,
+            skip_keys=skip_common,
+            normalize_keys=True,
+        )
+    )
 
     option_attrs = options.get("survey_scanner_settings_extra_attrs")
     if isinstance(option_attrs, dict):
-        attrs.update(_collect_scalar_attrs(option_attrs, skip_keys={"id", "active"}))
+        attrs.update(
+            _collect_scalar_attrs(
+                option_attrs,
+                skip_keys={"id", "active"},
+                normalize_keys=True,
+            )
+        )
     return attrs
 
 
