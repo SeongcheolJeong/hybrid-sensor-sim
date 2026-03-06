@@ -198,6 +198,12 @@ echo "renderer_ok ${contract}"
             self.assertGreaterEqual(plan["contract_scene_args_count"], 2)
             self.assertEqual(plan["contract_sensor_mount_args_count"], 0)
             self.assertEqual(result.metrics.get("renderer_backend_wrapper_used"), 0.0)
+            self.assertIn("backend_args_preview", plan)
+            preview = plan["backend_args_preview"]
+            self.assertEqual(preview["backend"], "awsim")
+            self.assertEqual(preview["scene"]["weather"], "default")
+            self.assertIn("--weather", preview["scene_cli_args"])
+            self.assertEqual(preview["sensor_mounts"], [])
 
     def test_renderer_runtime_uses_backend_wrapper_when_bin_not_set(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -240,6 +246,7 @@ echo "renderer_ok ${contract}"
             self.assertIn("--map", plan["command"])
             self.assertIn("wrapper_map", plan["command"])
             self.assertEqual(result.metrics.get("renderer_backend_wrapper_used"), 1.0)
+            self.assertEqual(plan["backend_args_preview"]["scene"]["map"], "wrapper_map")
 
     def test_renderer_runtime_injects_scene_and_sensor_mount_args_from_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -298,6 +305,11 @@ echo "renderer_ok ${contract}"
             self.assertEqual(mount_payloads[2]["sensor_id"], "radar_bumper")
             self.assertGreater(plan["contract_scene_args_count"], 0)
             self.assertGreater(plan["contract_sensor_mount_args_count"], 0)
+            preview = plan["backend_args_preview"]
+            self.assertEqual(preview["backend"], "carla")
+            self.assertEqual(preview["scene"]["map"], "Town06")
+            self.assertEqual(len(preview["sensor_mounts"]), 3)
+            self.assertEqual(len(preview["sensor_mount_cli_args"]), 6)
 
     def test_renderer_contract_contains_survey_mapping_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
