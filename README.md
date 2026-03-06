@@ -125,6 +125,17 @@ PYTHONPATH=src python3 -m unittest discover -s tests -q
 - Output:
   - emits `renderer_playback_contract.json`
   - references available sensor artifacts (`camera/lidar/radar` preview or sweep) per frame.
+- Runtime executor:
+  - set `renderer_execute=true` to run renderer command.
+  - choose command source:
+    - `renderer_command` (explicit command list; supports `{contract}` token)
+    - or `renderer_bin` + `renderer_extra_args`
+  - contract argument controls:
+    - `renderer_contract_flag` (default `--contract`)
+    - `renderer_inject_contract_arg` / `renderer_contract_positional`
+  - safety behavior:
+    - `renderer_fail_on_error=true` makes hybrid result fail when renderer runtime fails.
+  - emits `renderer_runtime/renderer_execution_plan.json` (+ stdout/stderr logs on execute).
 
 ## Example configs
 

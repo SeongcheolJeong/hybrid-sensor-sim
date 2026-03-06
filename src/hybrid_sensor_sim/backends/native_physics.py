@@ -16,6 +16,7 @@ from hybrid_sensor_sim.physics.camera import (
     transform_points_world_to_camera,
 )
 from hybrid_sensor_sim.renderers import build_renderer_playback_contract
+from hybrid_sensor_sim.renderers import execute_renderer_runtime
 from hybrid_sensor_sim.types import SensorSimRequest, SensorSimResult
 
 
@@ -147,6 +148,19 @@ class NativePhysicsBackend(SensorBackend):
         )
         if renderer_contract_artifact is not None:
             artifacts["renderer_playback_contract"] = renderer_contract_artifact
+        renderer_runtime_success = True
+        renderer_runtime_message = ""
+        renderer_runtime_artifacts, renderer_runtime_metrics, renderer_runtime_message, renderer_runtime_success = (
+            self._execute_renderer_runtime_if_available(
+                request=request,
+                artifacts=artifacts,
+                enhanced_output=enhanced_output,
+                metrics=metrics,
+            )
+        )
+        artifacts.update(renderer_runtime_artifacts)
+        metrics.update(renderer_runtime_metrics)
+        metrics["renderer_runtime_success"] = 1.0 if renderer_runtime_success else 0.0
 
         payload = {
             "mode": "hybrid_enhanced",
@@ -191,19 +205,31 @@ class NativePhysicsBackend(SensorBackend):
                 ),
                 "renderer_bridge_enabled": bool(request.options.get("renderer_bridge_enabled", False)),
                 "renderer_backend": str(request.options.get("renderer_backend", "none")),
+                "renderer_execute": bool(request.options.get("renderer_execute", False)),
             },
         }
         out_path = enhanced_output / "hybrid_physics.json"
         out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        result_success = True
+        result_message = "Hybrid enhancement completed."
+        if renderer_runtime_message:
+            result_message = f"{result_message} {renderer_runtime_message}"
+        if not renderer_runtime_success and bool(request.options.get("renderer_fail_on_error", False)):
+            result_success = False
+            result_message = (
+                "Hybrid enhancement completed but renderer runtime failed "
+                "(renderer_fail_on_error=true). "
+                f"{renderer_runtime_message}"
+            )
         return SensorSimResult(
             backend="hybrid(helios+native_physics)",
-            success=True,
+            success=result_success,
             artifacts={
                 **artifacts,
                 "hybrid_physics": out_path,
             },
             metrics=metrics,
-            message="Hybrid enhancement completed.",
+            message=result_message,
         )
 
     def _camera_intrinsics_from_options(self, request: SensorSimRequest) -> CameraIntrinsics:
@@ -737,6 +763,29 @@ class NativePhysicsBackend(SensorBackend):
         metrics["renderer_playback_contract_generated"] = 1.0
         metrics["renderer_playback_contract_frame_count"] = float(payload.get("frame_count", 0))
         return output_path
+
+    def _execute_renderer_runtime_if_available(
+        self,
+        request: SensorSimRequest,
+        artifacts: dict[str, Path],
+        enhanced_output: Path,
+        metrics: dict[str, float],
+    ) -> tuple[dict[str, Path], dict[str, float], str, bool]:
+        if not bool(request.options.get("renderer_bridge_enabled", False)):
+            return {}, {}, "", True
+
+        contract_path = artifacts.get("renderer_playback_contract")
+        if contract_path is None or not contract_path.exists():
+            return {}, {}, "Renderer runtime skipped: playback contract is missing.", False
+
+        result = execute_renderer_runtime(
+            options=request.options,
+            contract_path=contract_path,
+            output_dir=enhanced_output,
+        )
+        if result.success:
+            return result.artifacts, result.metrics, result.message, True
+        return result.artifacts, result.metrics, result.message, False
 
     def _generate_radar_targets_if_available(
         self,
