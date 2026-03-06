@@ -795,6 +795,33 @@ def _inject_frame_manifest_arg(
     return 1
 
 
+def _inject_ingestion_profile_arg(
+    *,
+    command: list[str],
+    options: dict[str, Any],
+    ingestion_profile_path: Path | None,
+    backend_wrapper_used: bool,
+) -> int:
+    if ingestion_profile_path is None:
+        return 0
+    inject_option = options.get("renderer_inject_ingestion_profile_arg")
+    if inject_option is None:
+        inject_enabled = backend_wrapper_used
+    else:
+        inject_enabled = bool(inject_option)
+    if not inject_enabled:
+        return 0
+    profile_flag = str(options.get("renderer_ingestion_profile_flag", "--ingestion-profile")).strip()
+    if bool(options.get("renderer_ingestion_profile_positional", False)):
+        command.append(str(ingestion_profile_path))
+        return 1
+    if profile_flag:
+        command.extend([profile_flag, str(ingestion_profile_path)])
+        return 2
+    command.append(str(ingestion_profile_path))
+    return 1
+
+
 def _build_renderer_command(
     options: dict[str, Any],
     backend: str,
@@ -899,17 +926,23 @@ def execute_renderer_runtime(
         ingestion_profile_path=ingestion_profile_path,
         runtime_dir=runtime_dir,
     )
+    backend_wrapper_used = command_source == "backend_wrapper"
     frame_manifest_args_count = _inject_frame_manifest_arg(
         command=command,
         options=options,
         frame_manifest_path=frame_manifest_path,
+    )
+    ingestion_profile_args_count = _inject_ingestion_profile_arg(
+        command=command,
+        options=options,
+        ingestion_profile_path=ingestion_profile_path,
+        backend_wrapper_used=backend_wrapper_used,
     )
     backend_args_preview = _build_backend_args_preview(
         options=options,
         backend=backend,
         contract_payload=contract_payload,
     )
-    backend_wrapper_used = command_source == "backend_wrapper"
     wrapper_dump_path = runtime_dir / "backend_wrapper_invocation.json"
     plan_payload = {
         "backend": backend,
@@ -923,6 +956,7 @@ def execute_renderer_runtime(
         "contract_scene_args_count": scene_args_count,
         "contract_sensor_mount_args_count": sensor_mount_args_count,
         "contract_frame_manifest_args_count": frame_manifest_args_count,
+        "contract_ingestion_profile_args_count": ingestion_profile_args_count,
         "backend_args_preview": backend_args_preview,
         "backend_frame_inputs_manifest": str(frame_manifest_path) if frame_manifest_path else None,
         "backend_ingestion_profile": str(ingestion_profile_path) if ingestion_profile_path else None,
@@ -992,6 +1026,7 @@ def execute_renderer_runtime(
         "renderer_contract_scene_args_count": float(scene_args_count),
         "renderer_contract_sensor_mount_args_count": float(sensor_mount_args_count),
         "renderer_contract_frame_manifest_args_count": float(frame_manifest_args_count),
+        "renderer_contract_ingestion_profile_args_count": float(ingestion_profile_args_count),
     }
     metrics.update(frame_manifest_metrics)
     metrics.update(ingestion_profile_metrics)

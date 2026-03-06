@@ -14,6 +14,9 @@ fi
 
 input_args=("$@")
 output_args=()
+ingest_frame_args=()
+ingest_meta_args=()
+ingestion_profile_mode=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --sensor-mount)
@@ -72,6 +75,9 @@ PY
       fi
       manifest_path="$2"
       shift 2
+      if [[ "${ingestion_profile_mode}" -eq 1 ]]; then
+        continue
+      fi
       parsed_frames="$(python3 - "${manifest_path}" <<'PY'
 import json
 import os
@@ -150,7 +156,7 @@ PY
             if [[ -z "${sensor_name}" || -z "${payload_artifact}" ]]; then
               continue
             fi
-            output_args+=(--ingest-sensor-frame "${sensor_name}:${renderer_frame_id}:${payload_artifact}")
+            ingest_frame_args+=(--ingest-sensor-frame "${sensor_name}:${renderer_frame_id}:${payload_artifact}")
             ;;
           META)
             sensor_name="${field1}"
@@ -160,10 +166,77 @@ PY
             if [[ -z "${sensor_name}" || -z "${sensor_id}" || -z "${data_format}" ]]; then
               continue
             fi
-            output_args+=(--ingest-sensor-meta "${sensor_name}:${sensor_id}:${data_format}:${attach_to}")
+            ingest_meta_args+=(--ingest-sensor-meta "${sensor_name}:${sensor_id}:${data_format}:${attach_to}")
             ;;
         esac
       done <<<"${parsed_frames}"
+      ;;
+    --ingestion-profile)
+      if [[ $# -lt 2 ]]; then
+        echo "missing payload for --ingestion-profile" >&2
+        exit 2
+      fi
+      profile_path="$2"
+      shift 2
+      ingestion_profile_mode=1
+      ingest_frame_args=()
+      ingest_meta_args=()
+      parsed_profile="$(python3 - "${profile_path}" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+try:
+    with open(path, "r", encoding="utf-8") as fp:
+        payload = json.load(fp)
+except OSError as exc:
+    raise SystemExit(f"cannot read --ingestion-profile file: {exc}")
+except json.JSONDecodeError as exc:
+    raise SystemExit(f"invalid --ingestion-profile payload: {exc}")
+
+backend = str(payload.get("backend", "")).strip().lower()
+if backend and backend != "awsim":
+    raise SystemExit(f"ingestion profile backend mismatch: expected awsim, got {backend}")
+
+entries = payload.get("entries")
+if not isinstance(entries, list):
+    raise SystemExit("--ingestion-profile payload missing entries list")
+
+seen_meta = set()
+for entry in entries:
+    if not isinstance(entry, dict):
+        continue
+    frame_flag = str(entry.get("frame_flag", "")).strip()
+    frame_value = str(entry.get("frame_value", "")).strip()
+    if frame_flag and frame_value:
+        print(f"FRAME|{frame_flag}|{frame_value}")
+    meta_flag = str(entry.get("meta_flag", "")).strip()
+    meta_value = str(entry.get("meta_value", "")).strip()
+    if not meta_flag or not meta_value:
+        continue
+    meta_key = (meta_flag, meta_value)
+    if meta_key in seen_meta:
+        continue
+    seen_meta.add(meta_key)
+    print(f"META|{meta_flag}|{meta_value}")
+PY
+)"
+      while IFS='|' read -r record flag value; do
+        case "${record}" in
+          FRAME)
+            if [[ -z "${flag}" || -z "${value}" ]]; then
+              continue
+            fi
+            ingest_frame_args+=("${flag}" "${value}")
+            ;;
+          META)
+            if [[ -z "${flag}" || -z "${value}" ]]; then
+              continue
+            fi
+            ingest_meta_args+=("${flag}" "${value}")
+            ;;
+        esac
+      done <<<"${parsed_profile}"
       ;;
     *)
       output_args+=("$1")
@@ -171,6 +244,12 @@ PY
       ;;
   esac
 done
+if (( ${#ingest_meta_args[@]} > 0 )); then
+  output_args+=("${ingest_meta_args[@]}")
+fi
+if (( ${#ingest_frame_args[@]} > 0 )); then
+  output_args+=("${ingest_frame_args[@]}")
+fi
 
 if [[ -n "${RENDERER_WRAPPER_DUMP:-}" ]]; then
   python3 - "${RENDERER_WRAPPER_DUMP}" "${backend_bin}" "${input_args[@]}" "__WRAPSEP__" "${output_args[@]}" <<'PY'

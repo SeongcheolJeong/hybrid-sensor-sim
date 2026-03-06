@@ -180,6 +180,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
         plus `--ingest-sensor-meta <sensor:sensor_id:data_format:attach_actor>`
       - CARLA: repeated `--ingest-frame <renderer_frame_id:sensor:payload_path>`
         plus `--ingest-meta <sensor:sensor_id:data_format:attach_actor>`
+    - wrappers can consume `--ingestion-profile <backend_ingestion_profile.json>` directly (takes precedence over frame-manifest parsing when both are present).
   - execution plan includes `backend_args_preview` for normalized scene/sensor-mount argument inspection.
   - runtime artifacts:
     - `backend_invocation.json`: normalized backend command + preview snapshot.
@@ -192,6 +193,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `renderer_contract_flag` (default `--contract`)
     - `renderer_inject_contract_arg` / `renderer_contract_positional`
     - frame manifest arg: `renderer_inject_frame_manifest_arg` (default `true`), `renderer_frame_manifest_flag` (default `--frame-manifest`), `renderer_frame_manifest_positional`
+    - ingestion profile arg: `renderer_inject_ingestion_profile_arg` (default wrapper mode only), `renderer_ingestion_profile_flag` (default `--ingestion-profile`), `renderer_ingestion_profile_positional`
     - frame manifest selection: `renderer_backend_frame_start` (default `0`), `renderer_backend_frame_stride` (default `1`), `renderer_backend_max_frames` (default all)
   - safety behavior:
     - `renderer_fail_on_error=true` makes hybrid result fail when renderer runtime fails.

@@ -128,9 +128,15 @@ class RendererRuntimeTests(unittest.TestCase):
             flag_index = plan["command"].index("--frame-manifest")
             self.assertEqual(plan["command"][flag_index + 1], str(manifest_path))
             self.assertEqual(plan["contract_frame_manifest_args_count"], 2)
+            self.assertEqual(plan["contract_ingestion_profile_args_count"], 0)
+            self.assertNotIn("--ingestion-profile", plan["command"])
             self.assertEqual(
                 result.metrics.get("renderer_contract_frame_manifest_args_count"),
                 2.0,
+            )
+            self.assertEqual(
+                result.metrics.get("renderer_contract_ingestion_profile_args_count"),
+                0.0,
             )
 
     def test_renderer_runtime_can_disable_frame_manifest_arg_injection(self) -> None:
@@ -169,8 +175,13 @@ class RendererRuntimeTests(unittest.TestCase):
             )
             self.assertNotIn("--frame-manifest", plan["command"])
             self.assertEqual(plan["contract_frame_manifest_args_count"], 0)
+            self.assertEqual(plan["contract_ingestion_profile_args_count"], 0)
             self.assertEqual(
                 result.metrics.get("renderer_contract_frame_manifest_args_count"),
+                0.0,
+            )
+            self.assertEqual(
+                result.metrics.get("renderer_contract_ingestion_profile_args_count"),
                 0.0,
             )
 
@@ -331,8 +342,14 @@ echo "renderer_ok ${contract}"
             self.assertTrue(plan["command"][0].endswith("scripts/renderer_launch_awsim.sh"))
             self.assertIn("--map", plan["command"])
             self.assertIn("wrapper_map", plan["command"])
+            self.assertIn("--ingestion-profile", plan["command"])
+            self.assertEqual(plan["contract_ingestion_profile_args_count"], 2)
             self.assertEqual(result.metrics.get("renderer_backend_wrapper_used"), 1.0)
             self.assertEqual(plan["backend_args_preview"]["scene"]["map"], "wrapper_map")
+            self.assertEqual(
+                result.metrics.get("renderer_contract_ingestion_profile_args_count"),
+                2.0,
+            )
 
     def test_renderer_runtime_wrapper_execution_writes_wrapper_invocation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -423,6 +440,7 @@ echo "awsim_backend_ok"
                 result.artifacts["backend_wrapper_invocation"].read_text(encoding="utf-8")
             )
             self.assertEqual(wrapper_invocation["wrapper"], "awsim")
+            self.assertIn("--ingestion-profile", wrapper_invocation["input_args"])
             self.assertIn("--mount-sensor", wrapper_invocation["output_args"])
             self.assertIn("--mount-pose", wrapper_invocation["output_args"])
             self.assertIn("--map", wrapper_invocation["output_args"])
@@ -495,6 +513,7 @@ echo "carla_backend_ok"
                 result.artifacts["backend_wrapper_invocation"].read_text(encoding="utf-8")
             )
             self.assertEqual(wrapper_invocation["wrapper"], "carla")
+            self.assertIn("--ingestion-profile", wrapper_invocation["input_args"])
             self.assertIn("--attach-sensor", wrapper_invocation["output_args"])
             self.assertIn("--sensor-pose", wrapper_invocation["output_args"])
             self.assertIn("camera:cam_front:ego", wrapper_invocation["output_args"])
@@ -559,6 +578,7 @@ echo "awsim_backend_ok"
                 result.artifacts["backend_wrapper_invocation"].read_text(encoding="utf-8")
             )
             output_args = wrapper_invocation["output_args"]
+            self.assertIn("--ingestion-profile", wrapper_invocation["input_args"])
             ingest_indices = [idx for idx, token in enumerate(output_args) if token == "--ingest-sensor-frame"]
             self.assertEqual(len(ingest_indices), 6)
             ingest_payloads = [output_args[idx + 1] for idx in ingest_indices]
@@ -630,6 +650,7 @@ echo "carla_backend_ok"
                 result.artifacts["backend_wrapper_invocation"].read_text(encoding="utf-8")
             )
             output_args = wrapper_invocation["output_args"]
+            self.assertIn("--ingestion-profile", wrapper_invocation["input_args"])
             ingest_indices = [idx for idx, token in enumerate(output_args) if token == "--ingest-frame"]
             self.assertEqual(len(ingest_indices), 6)
             ingest_payloads = [output_args[idx + 1] for idx in ingest_indices]
