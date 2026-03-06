@@ -173,6 +173,9 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - wrapper mode is controlled by `renderer_backend_wrapper_enabled` and optional path overrides (`renderer_backend_wrapper`, `awsim_wrapper`, `carla_wrapper`).
     - wrappers expect `AWSIM_BIN` / `CARLA_BIN` env vars when real execution is enabled.
   - execution plan includes `backend_args_preview` for normalized scene/sensor-mount argument inspection.
+  - runtime artifacts:
+    - `backend_invocation.json`: normalized backend command + preview snapshot.
+    - `backend_wrapper_invocation.json`: wrapper input/output args snapshot (when wrapper path is used and execution is enabled).
   - contract argument controls:
     - `renderer_contract_flag` (default `--contract`)
     - `renderer_inject_contract_arg` / `renderer_contract_positional`

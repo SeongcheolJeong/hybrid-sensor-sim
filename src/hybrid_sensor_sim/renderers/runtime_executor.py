@@ -308,6 +308,29 @@ def _build_backend_args_preview(
     }
 
 
+def _build_backend_invocation_payload(
+    *,
+    backend: str,
+    execute: bool,
+    cwd: Path,
+    command: list[str],
+    command_source: str,
+    backend_wrapper_used: bool,
+    backend_args_preview: dict[str, Any] | None,
+    build_error: str | None,
+) -> dict[str, Any]:
+    return {
+        "backend": backend,
+        "execute": execute,
+        "cwd": str(cwd),
+        "command": command,
+        "command_source": command_source,
+        "backend_wrapper_used": backend_wrapper_used,
+        "backend_args_preview": backend_args_preview,
+        "error": build_error,
+    }
+
+
 def _inject_contract_scene_args(
     *,
     command: list[str],
@@ -430,6 +453,8 @@ def execute_renderer_runtime(
         backend=backend,
         contract_payload=contract_payload,
     )
+    backend_wrapper_used = command_source == "backend_wrapper"
+    wrapper_dump_path = runtime_dir / "backend_wrapper_invocation.json"
     plan_payload = {
         "backend": backend,
         "execute": execute,
@@ -438,18 +463,38 @@ def execute_renderer_runtime(
         "command": command,
         "used_command_override": used_override,
         "command_source": command_source,
-        "backend_wrapper_used": command_source == "backend_wrapper",
+        "backend_wrapper_used": backend_wrapper_used,
         "contract_scene_args_count": scene_args_count,
         "contract_sensor_mount_args_count": sensor_mount_args_count,
         "backend_args_preview": backend_args_preview,
+        "backend_wrapper_dump_path": str(wrapper_dump_path) if backend_wrapper_used else None,
         "error": build_error,
     }
     plan_path.write_text(json.dumps(plan_payload, indent=2), encoding="utf-8")
-    artifacts: dict[str, Path] = {"renderer_execution_plan": plan_path}
+    backend_invocation_path = runtime_dir / "backend_invocation.json"
+    backend_invocation_payload = _build_backend_invocation_payload(
+        backend=backend,
+        execute=execute,
+        cwd=cwd,
+        command=command,
+        command_source=command_source,
+        backend_wrapper_used=backend_wrapper_used,
+        backend_args_preview=backend_args_preview,
+        build_error=build_error,
+    )
+    backend_invocation_path.write_text(
+        json.dumps(backend_invocation_payload, indent=2),
+        encoding="utf-8",
+    )
+    artifacts: dict[str, Path] = {
+        "renderer_execution_plan": plan_path,
+        "backend_invocation": backend_invocation_path,
+    }
     metrics: dict[str, float] = {
         "renderer_runtime_planned": 1.0,
         "renderer_execute_requested": 1.0 if execute else 0.0,
-        "renderer_backend_wrapper_used": 1.0 if command_source == "backend_wrapper" else 0.0,
+        "renderer_backend_wrapper_used": 1.0 if backend_wrapper_used else 0.0,
+        "renderer_backend_invocation_written": 1.0,
         "renderer_contract_scene_args_count": float(scene_args_count),
         "renderer_contract_sensor_mount_args_count": float(sensor_mount_args_count),
     }
@@ -478,10 +523,15 @@ def execute_renderer_runtime(
 
     stdout_path = runtime_dir / "renderer_stdout.log"
     stderr_path = runtime_dir / "renderer_stderr.log"
+    run_env = None
+    if backend_wrapper_used:
+        run_env = dict(os.environ)
+        run_env["RENDERER_WRAPPER_DUMP"] = str(wrapper_dump_path)
     try:
         proc = subprocess.run(  # noqa: S603
             command,
             cwd=str(cwd),
+            env=run_env,
             text=True,
             capture_output=True,
             check=False,
@@ -490,6 +540,8 @@ def execute_renderer_runtime(
         stderr_path.write_text(proc.stderr, encoding="utf-8")
         artifacts["renderer_stdout"] = stdout_path
         artifacts["renderer_stderr"] = stderr_path
+        if backend_wrapper_used and wrapper_dump_path.exists():
+            artifacts["backend_wrapper_invocation"] = wrapper_dump_path
         metrics["renderer_return_code"] = float(proc.returncode)
         if proc.returncode != 0:
             return RendererRuntimeResult(
@@ -501,6 +553,8 @@ def execute_renderer_runtime(
     except OSError as exc:
         stderr_path.write_text(str(exc), encoding="utf-8")
         artifacts["renderer_stderr"] = stderr_path
+        if backend_wrapper_used and wrapper_dump_path.exists():
+            artifacts["backend_wrapper_invocation"] = wrapper_dump_path
         metrics["renderer_return_code"] = -1.0
         return RendererRuntimeResult(
             success=False,

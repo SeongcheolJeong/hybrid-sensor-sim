@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from hybrid_sensor_sim.backends.helios_adapter import HeliosAdapter
 from hybrid_sensor_sim.backends.native_physics import NativePhysicsBackend
@@ -247,6 +249,72 @@ echo "renderer_ok ${contract}"
             self.assertIn("wrapper_map", plan["command"])
             self.assertEqual(result.metrics.get("renderer_backend_wrapper_used"), 1.0)
             self.assertEqual(plan["backend_args_preview"]["scene"]["map"], "wrapper_map")
+
+    def test_renderer_runtime_wrapper_execution_writes_wrapper_invocation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+
+            fake_awsim = root / "fake_awsim.sh"
+            fake_awsim.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+echo "awsim_backend_ok"
+""",
+                encoding="utf-8",
+            )
+            fake_awsim.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "lidar_postprocess_enabled": False,
+                    "radar_postprocess_enabled": False,
+                    "renderer_bridge_enabled": True,
+                    "renderer_backend": "awsim",
+                    "renderer_execute": True,
+                    "renderer_bin": "",
+                    "awsim_bin": "",
+                    "renderer_command": [],
+                    "renderer_map": "Town07",
+                    "renderer_sensor_mounts_only_enabled": False,
+                    "renderer_sensor_mount_format": "compact",
+                    "renderer_camera_sensor_id": "cam_front",
+                    "renderer_lidar_sensor_id": "lidar_top",
+                    "renderer_radar_sensor_id": "radar_front",
+                },
+            )
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            with mock.patch.dict(os.environ, {"AWSIM_BIN": str(fake_awsim)}, clear=False):
+                result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            self.assertEqual(result.metrics.get("renderer_backend_wrapper_used"), 1.0)
+            self.assertIn("backend_invocation", result.artifacts)
+            self.assertIn("backend_wrapper_invocation", result.artifacts)
+
+            backend_invocation = json.loads(
+                result.artifacts["backend_invocation"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(backend_invocation["command_source"], "backend_wrapper")
+            self.assertTrue(backend_invocation["backend_wrapper_used"])
+
+            wrapper_invocation = json.loads(
+                result.artifacts["backend_wrapper_invocation"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(wrapper_invocation["wrapper"], "awsim")
+            self.assertIn("--mount-sensor", wrapper_invocation["output_args"])
+            self.assertIn("--map", wrapper_invocation["output_args"])
+            self.assertIn("Town07", wrapper_invocation["output_args"])
 
     def test_renderer_runtime_injects_scene_and_sensor_mount_args_from_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
