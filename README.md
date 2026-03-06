@@ -163,6 +163,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - choose command source:
     - `renderer_command` (explicit command list; supports `{contract}` token)
     - or `renderer_bin` + `renderer_extra_args`
+    - or backend defaults (`awsim_bin` / `carla_bin` + `awsim_extra_args` / `carla_extra_args`) when `renderer_bin` is empty
   - contract argument controls:
     - `renderer_contract_flag` (default `--contract`)
     - `renderer_inject_contract_arg` / `renderer_contract_positional`

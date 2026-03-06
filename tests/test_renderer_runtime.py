@@ -144,6 +144,54 @@ echo "renderer_ok ${contract}"
             stdout = result.artifacts["renderer_stdout"].read_text(encoding="utf-8")
             self.assertIn("renderer_ok", stdout)
 
+    def test_renderer_runtime_uses_backend_default_command(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "lidar_postprocess_enabled": False,
+                    "radar_postprocess_enabled": False,
+                    "renderer_bridge_enabled": True,
+                    "renderer_backend": "awsim",
+                    "renderer_execute": False,
+                    "renderer_bin": "",
+                    "renderer_command": [],
+                    "awsim_bin": "awsim-player",
+                    "awsim_extra_args": ["--headless"],
+                    "renderer_extra_args": ["--fps", "20"],
+                },
+            )
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+            self.assertTrue(result.success)
+            self.assertEqual(result.metrics.get("renderer_runtime_success"), 1.0)
+            self.assertIn("renderer_execution_plan", result.artifacts)
+
+            contract_path = result.artifacts["renderer_playback_contract"]
+            plan = json.loads(
+                result.artifacts["renderer_execution_plan"].read_text(encoding="utf-8")
+            )
+            self.assertFalse(plan["used_command_override"])
+            self.assertEqual(plan["command_source"], "backend_default")
+            self.assertIsNone(plan["error"])
+            self.assertEqual(plan["command"][0], "awsim-player")
+            self.assertIn("--headless", plan["command"])
+            self.assertIn("--fps", plan["command"])
+            self.assertIn("20", plan["command"])
+            self.assertIn(str(contract_path), plan["command"])
+
     def test_renderer_contract_contains_survey_mapping_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

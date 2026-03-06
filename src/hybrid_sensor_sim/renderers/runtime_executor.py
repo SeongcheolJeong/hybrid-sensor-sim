@@ -25,22 +25,82 @@ def _resolve_renderer_cwd(options: dict[str, Any]) -> Path:
     return (Path.cwd() / path).resolve()
 
 
+def _coerce_arg_list(raw: Any, name: str) -> tuple[list[str], str | None]:
+    if raw is None:
+        return [], None
+    if not isinstance(raw, list):
+        return [], f"{name} must be a list when provided."
+    return [str(item) for item in raw], None
+
+
+def _resolve_backend_default_command(
+    *,
+    options: dict[str, Any],
+    backend: str,
+) -> tuple[list[str], str | None]:
+    if backend not in {"awsim", "carla"}:
+        return [], "renderer_bin is required when renderer_command is not set."
+
+    executable = str(
+        options.get(
+            f"{backend}_bin",
+            options.get(
+                f"renderer_{backend}_bin",
+                options.get("renderer_backend_bin", backend),
+            ),
+        )
+    ).strip()
+    if executable == "":
+        executable = backend
+
+    backend_extra_args, backend_error = _coerce_arg_list(
+        options.get(
+            f"{backend}_extra_args",
+            options.get(f"renderer_{backend}_extra_args"),
+        ),
+        f"{backend}_extra_args",
+    )
+    if backend_error is not None:
+        return [], backend_error
+
+    shared_extra_args, shared_error = _coerce_arg_list(
+        options.get("renderer_extra_args", []),
+        "renderer_extra_args",
+    )
+    if shared_error is not None:
+        return [], shared_error
+    return [executable, *backend_extra_args, *shared_extra_args], None
+
+
 def _build_renderer_command(
     options: dict[str, Any],
     contract_path: Path,
-) -> tuple[list[str], bool, str | None]:
+) -> tuple[list[str], bool, str, str | None]:
+    backend = str(options.get("renderer_backend", "none")).lower().strip()
     command_override = options.get("renderer_command", [])
     used_override = isinstance(command_override, list) and len(command_override) > 0
+    command_source = "renderer_command"
     if used_override:
         command = [str(item) for item in command_override]
     else:
         renderer_bin = str(options.get("renderer_bin", "")).strip()
         if not renderer_bin:
-            return [], False, "renderer_bin is required when renderer_command is not set."
-        extra_args = options.get("renderer_extra_args", [])
-        if not isinstance(extra_args, list):
-            return [], False, "renderer_extra_args must be a list when provided."
-        command = [renderer_bin, *[str(item) for item in extra_args]]
+            command, default_error = _resolve_backend_default_command(
+                options=options,
+                backend=backend,
+            )
+            if default_error is not None:
+                return [], False, "none", default_error
+            command_source = "backend_default"
+        else:
+            extra_args, shared_error = _coerce_arg_list(
+                options.get("renderer_extra_args", []),
+                "renderer_extra_args",
+            )
+            if shared_error is not None:
+                return [], False, "none", shared_error
+            command = [renderer_bin, *extra_args]
+            command_source = "renderer_bin"
 
     contract_token_used = False
     expanded: list[str] = []
@@ -62,7 +122,7 @@ def _build_renderer_command(
                 command.extend([contract_flag, str(contract_path)])
             else:
                 command.append(str(contract_path))
-    return command, used_override, None
+    return command, used_override, command_source, None
 
 
 def execute_renderer_runtime(
@@ -78,7 +138,7 @@ def execute_renderer_runtime(
     execute = bool(options.get("renderer_execute", False))
     cwd = _resolve_renderer_cwd(options)
 
-    command, used_override, build_error = _build_renderer_command(
+    command, used_override, command_source, build_error = _build_renderer_command(
         options=options,
         contract_path=contract_path,
     )
@@ -89,6 +149,7 @@ def execute_renderer_runtime(
         "cwd": str(cwd),
         "command": command,
         "used_command_override": used_override,
+        "command_source": command_source,
         "error": build_error,
     }
     plan_path.write_text(json.dumps(plan_payload, indent=2), encoding="utf-8")
