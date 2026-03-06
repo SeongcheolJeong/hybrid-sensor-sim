@@ -172,6 +172,9 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - wrapper notes:
     - wrapper mode is controlled by `renderer_backend_wrapper_enabled` and optional path overrides (`renderer_backend_wrapper`, `awsim_wrapper`, `carla_wrapper`).
     - wrappers expect `AWSIM_BIN` / `CARLA_BIN` env vars when real execution is enabled.
+    - wrappers translate `--sensor-mount` payloads to backend attach args:
+      - AWSIM: `--mount-sensor <sensor_id:sensor_type:actor>` and (when extrinsics exist) `--mount-pose <sensor_id:tx:ty:tz:roll:pitch:yaw>`
+      - CARLA: `--attach-sensor <sensor_type:sensor_id:actor>` and (when extrinsics exist) `--sensor-pose <sensor_id:tx:ty:tz:roll:pitch:yaw>`
   - execution plan includes `backend_args_preview` for normalized scene/sensor-mount argument inspection.
   - runtime artifacts:
     - `backend_invocation.json`: normalized backend command + preview snapshot.

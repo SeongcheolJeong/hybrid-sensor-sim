@@ -284,10 +284,37 @@ echo "awsim_backend_ok"
                     "renderer_command": [],
                     "renderer_map": "Town07",
                     "renderer_sensor_mounts_only_enabled": False,
-                    "renderer_sensor_mount_format": "compact",
+                    "renderer_sensor_mount_format": "json",
                     "renderer_camera_sensor_id": "cam_front",
                     "renderer_lidar_sensor_id": "lidar_top",
                     "renderer_radar_sensor_id": "radar_front",
+                    "camera_extrinsics": {
+                        "enabled": True,
+                        "tx": 1.0,
+                        "ty": 2.0,
+                        "tz": 3.0,
+                        "roll_deg": 0.1,
+                        "pitch_deg": 0.2,
+                        "yaw_deg": 0.3,
+                    },
+                    "lidar_extrinsics": {
+                        "enabled": True,
+                        "tx": 4.0,
+                        "ty": 5.0,
+                        "tz": 6.0,
+                        "roll_deg": 0.4,
+                        "pitch_deg": 0.5,
+                        "yaw_deg": 0.6,
+                    },
+                    "radar_extrinsics": {
+                        "enabled": True,
+                        "tx": 7.0,
+                        "ty": 8.0,
+                        "tz": 9.0,
+                        "roll_deg": 0.7,
+                        "pitch_deg": 0.8,
+                        "yaw_deg": 0.9,
+                    },
                 },
             )
             orchestrator = HybridOrchestrator(
@@ -313,8 +340,86 @@ echo "awsim_backend_ok"
             )
             self.assertEqual(wrapper_invocation["wrapper"], "awsim")
             self.assertIn("--mount-sensor", wrapper_invocation["output_args"])
+            self.assertIn("--mount-pose", wrapper_invocation["output_args"])
             self.assertIn("--map", wrapper_invocation["output_args"])
             self.assertIn("Town07", wrapper_invocation["output_args"])
+            self.assertIn(
+                "cam_front:1.0:2.0:3.0:0.1:0.2:0.3",
+                wrapper_invocation["output_args"],
+            )
+
+    def test_renderer_runtime_carla_wrapper_execution_transforms_sensor_mount_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+
+            fake_carla = root / "fake_carla.sh"
+            fake_carla.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+echo "carla_backend_ok"
+""",
+                encoding="utf-8",
+            )
+            fake_carla.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "lidar_postprocess_enabled": False,
+                    "radar_postprocess_enabled": False,
+                    "renderer_bridge_enabled": True,
+                    "renderer_backend": "carla",
+                    "renderer_execute": True,
+                    "renderer_bin": "",
+                    "carla_bin": "",
+                    "renderer_command": [],
+                    "renderer_map": "Town03",
+                    "renderer_sensor_mounts_only_enabled": False,
+                    "renderer_sensor_mount_format": "json",
+                    "renderer_camera_sensor_id": "cam_front",
+                    "renderer_lidar_sensor_id": "lidar_top",
+                    "renderer_radar_sensor_id": "radar_front",
+                    "camera_extrinsics": {
+                        "enabled": True,
+                        "tx": 0.5,
+                        "ty": 0.0,
+                        "tz": 1.2,
+                        "roll_deg": 0.0,
+                        "pitch_deg": -1.5,
+                        "yaw_deg": 0.0,
+                    },
+                },
+            )
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            with mock.patch.dict(os.environ, {"CARLA_BIN": str(fake_carla)}, clear=False):
+                result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            self.assertEqual(result.metrics.get("renderer_backend_wrapper_used"), 1.0)
+            self.assertIn("backend_wrapper_invocation", result.artifacts)
+            wrapper_invocation = json.loads(
+                result.artifacts["backend_wrapper_invocation"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(wrapper_invocation["wrapper"], "carla")
+            self.assertIn("--attach-sensor", wrapper_invocation["output_args"])
+            self.assertIn("--sensor-pose", wrapper_invocation["output_args"])
+            self.assertIn("camera:cam_front:ego", wrapper_invocation["output_args"])
+            self.assertIn(
+                "cam_front:0.5:0.0:1.2:0.0:-1.5:0.0",
+                wrapper_invocation["output_args"],
+            )
+            self.assertIn("--town", wrapper_invocation["output_args"])
+            self.assertIn("Town03", wrapper_invocation["output_args"])
 
     def test_renderer_runtime_injects_scene_and_sensor_mount_args_from_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -28,20 +28,41 @@ import json
 import sys
 raw = sys.argv[1]
 if raw.startswith("{"):
-    obj = json.loads(raw)
+    try:
+        obj = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"invalid --sensor-mount payload: {exc}")
     sid = str(obj.get("sensor_id", ""))
     stype = str(obj.get("sensor_type", ""))
     attach = str(obj.get("attach_to_actor_id", ""))
+    extrinsics = obj.get("extrinsics")
+    if isinstance(extrinsics, dict):
+        tx = str(extrinsics.get("tx", ""))
+        ty = str(extrinsics.get("ty", ""))
+        tz = str(extrinsics.get("tz", ""))
+        roll = str(extrinsics.get("roll_deg", ""))
+        pitch = str(extrinsics.get("pitch_deg", ""))
+        yaw = str(extrinsics.get("yaw_deg", ""))
+    else:
+        tx = ""
+        ty = ""
+        tz = ""
+        roll = ""
+        pitch = ""
+        yaw = ""
 else:
     parts = raw.split("|")
-    parts += ["", "", ""]
-    sid, stype, attach = parts[:3]
-print("|".join([sid, stype, attach]))
+    parts += [""] * 9
+    sid, stype, attach, tx, ty, tz, roll, pitch, yaw = parts[:9]
+print("|".join([sid, stype, attach, tx, ty, tz, roll, pitch, yaw]))
 PY
 )"
-      IFS='|' read -r sensor_id sensor_type attach_to <<<"${parsed}"
+      IFS='|' read -r sensor_id sensor_type attach_to tx ty tz roll pitch yaw <<<"${parsed}"
       if [[ -n "${sensor_id}" && -n "${sensor_type}" && -n "${attach_to}" ]]; then
         output_args+=(--mount-sensor "${sensor_id}:${sensor_type}:${attach_to}")
+      fi
+      if [[ -n "${sensor_id}" && -n "${tx}" && -n "${ty}" && -n "${tz}" && -n "${roll}" && -n "${pitch}" && -n "${yaw}" ]]; then
+        output_args+=(--mount-pose "${sensor_id}:${tx}:${ty}:${tz}:${roll}:${pitch}:${yaw}")
       fi
       ;;
     *)
