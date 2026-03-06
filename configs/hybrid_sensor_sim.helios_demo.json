@@ -9,6 +9,7 @@
   "options": {
     "helios_runtime": "binary",
     "execute_helios": true,
+    "survey_generate_from_scenario": false,
     "helios_cwd": "third_party/helios",
     "survey_path": "data/surveys/demo/tls_plane.xml",
     "assets_paths": [

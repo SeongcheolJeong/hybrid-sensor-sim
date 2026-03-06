@@ -9,6 +9,7 @@
   "options": {
     "helios_runtime": "docker",
     "execute_helios": true,
+    "survey_generate_from_scenario": false,
     "helios_docker_image": "heliosplusplus:cli",
     "helios_docker_binary": "/home/jovyan/helios/build/helios++",
     "helios_docker_mount_point": "/workspace",

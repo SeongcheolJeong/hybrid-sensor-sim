@@ -16,6 +16,7 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 
 - `src/hybrid_sensor_sim/backends/helios_adapter.py`: external HELIOS execution adapter.
 - `src/hybrid_sensor_sim/backends/native_physics.py`: local physics enhancement layer.
+- `src/hybrid_sensor_sim/io/survey_mapping.py`: scenario JSON to HELIOS survey XML mapper.
 - `src/hybrid_sensor_sim/renderers/playback_contract.py`: renderer playback contract builder for CARLA/AWSIM bridge.
 - `src/hybrid_sensor_sim/orchestrator.py`: mode selection and pipeline chaining.
 - `docs/hybrid_helios_plan.md`: functional roadmap and risk management.
@@ -42,6 +43,10 @@ PYTHONPATH=src python3 -m unittest discover -s tests -q
 - Execution control:
   - `execute_helios=false`: creates execution plan only (safe dry run).
   - `execute_helios=true`: executes HELIOS and records `stdout/stderr`.
+- Scenario mapping:
+  - set `survey_generate_from_scenario=true` to generate survey XML from scenario JSON.
+  - generated survey path is recorded in `helios_execution_plan.json` (`generated_survey_path`).
+  - optional mapping refs: `survey_scene_ref`, `survey_platform_ref`, `survey_scanner_ref`.
 - Post-processing:
   - detects generated output directory and primary files (`.xyz/.las/.laz`, trajectory, pulse, fullwave),
   - writes output manifest for downstream physics chain,

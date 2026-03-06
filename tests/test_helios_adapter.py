@@ -177,6 +177,53 @@ touch "${rootdir}/scan_fullwave.txt"
             self.assertTrue(result.success)
             self.assertIn("execution_plan", result.artifacts)
 
+    def test_generates_survey_from_scenario_json_when_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            scenario = root / "scenario.json"
+            scenario.write_text(
+                """
+{
+  "name": "gen-survey",
+  "objects": [
+    {
+      "id": "ego",
+      "type": "vehicle",
+      "pose": [0.0, 0.0, 0.0],
+      "waypoints": [[1.0, 2.0, 3.0]]
+    }
+  ]
+}
+""".strip(),
+                encoding="utf-8",
+            )
+            output_dir = root / "out"
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=scenario,
+                output_dir=output_dir,
+                seed=5,
+                options={
+                    "execute_helios": False,
+                    "survey_generate_from_scenario": True,
+                },
+            )
+            adapter = HeliosAdapter(helios_bin=fake_helios)
+            result = adapter.simulate(request)
+            self.assertTrue(result.success)
+            self.assertIn("generated_survey", result.artifacts)
+            generated = result.artifacts["generated_survey"]
+            self.assertTrue(generated.exists())
+            self.assertEqual(generated.suffix.lower(), ".xml")
+
+            plan = json.loads(result.artifacts["execution_plan"].read_text(encoding="utf-8"))
+            self.assertTrue(plan["survey_generated_from_scenario"])
+            self.assertEqual(plan["generated_survey_path"], str(generated))
+            self.assertIn(str(generated), plan["command"])
+
 
 if __name__ == "__main__":
     unittest.main()

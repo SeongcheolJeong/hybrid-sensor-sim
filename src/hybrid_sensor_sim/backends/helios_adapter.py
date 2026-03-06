@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Iterable
 
 from hybrid_sensor_sim.backends.base import SensorBackend
+from hybrid_sensor_sim.io.survey_mapping import generate_survey_from_scenario
 from hybrid_sensor_sim.types import SensorSimRequest, SensorSimResult
 
 
@@ -21,6 +22,7 @@ class _PreparedExecution:
     survey_path: Path
     assets_paths: list[Path]
     output_root: Path
+    generated_survey_path: Path | None = None
     host_root: Path | None = None
     container_root: Path | None = None
 
@@ -83,6 +85,21 @@ class HeliosAdapter(SensorBackend):
             return path.resolve() if path.is_absolute() else (request.output_dir / path).resolve()
         return (request.output_dir / "helios_output").resolve()
 
+    def _resolve_generated_survey_output_dir(self, request: SensorSimRequest) -> Path:
+        configured = request.options.get("survey_generated_output_dir")
+        if configured:
+            path = Path(str(configured)).expanduser()
+            return path.resolve() if path.is_absolute() else (request.output_dir / path).resolve()
+        return (request.output_dir / "helios_raw" / "generated_surveys").resolve()
+
+    def _resolve_scenario_path_for_generation(
+        self,
+        request: SensorSimRequest,
+        helios_cwd: Path,
+    ) -> Path:
+        raw = request.options.get("survey_scenario_path", request.scenario_path)
+        return self._resolve_input_path(raw, helios_cwd)
+
     def _build_helios_args(
         self,
         request: SensorSimRequest,
@@ -139,16 +156,29 @@ class HeliosAdapter(SensorBackend):
         request: SensorSimRequest,
         helios_cwd: Path,
         output_root: Path,
-    ) -> tuple[list[str], Path, list[Path]]:
+    ) -> tuple[list[str], Path, list[Path], Path | None]:
         options = request.options
-        survey_raw = options.get("survey_path", request.scenario_path)
-        survey_path = self._resolve_input_path(survey_raw, helios_cwd)
+        generated_survey_path: Path | None = None
+        if bool(options.get("survey_generate_from_scenario", False)):
+            scenario_path = self._resolve_scenario_path_for_generation(
+                request=request,
+                helios_cwd=helios_cwd,
+            )
+            generated_survey_path = generate_survey_from_scenario(
+                scenario_path=scenario_path,
+                output_dir=self._resolve_generated_survey_output_dir(request),
+                options=options,
+            )
+            survey_path = generated_survey_path
+        else:
+            survey_raw = options.get("survey_path", request.scenario_path)
+            survey_path = self._resolve_input_path(survey_raw, helios_cwd)
 
         assets_paths_raw = options.get("assets_paths", [])
         assets_paths = [self._resolve_input_path(item, helios_cwd) for item in assets_paths_raw]
 
         command = [str(binary), *self._build_helios_args(request, survey_path, assets_paths, output_root)]
-        return command, survey_path, assets_paths
+        return command, survey_path, assets_paths, generated_survey_path
 
     def _extract_output_dir_from_logs(self, stdout: str, stderr: str) -> Path | None:
         combined = "\n".join([stdout, stderr])
@@ -208,7 +238,7 @@ class HeliosAdapter(SensorBackend):
     def _prepare_binary_execution(self, request: SensorSimRequest, binary: Path) -> _PreparedExecution:
         helios_cwd = self._resolve_helios_cwd(request, binary)
         output_root = self._resolve_output_root(request)
-        command, survey_path, assets_paths = self._build_helios_command(
+        command, survey_path, assets_paths, generated_survey_path = self._build_helios_command(
             binary=binary,
             request=request,
             helios_cwd=helios_cwd,
@@ -222,6 +252,7 @@ class HeliosAdapter(SensorBackend):
             survey_path=survey_path,
             assets_paths=assets_paths,
             output_root=output_root,
+            generated_survey_path=generated_survey_path,
         )
 
     def _prepare_docker_execution(
@@ -249,9 +280,22 @@ class HeliosAdapter(SensorBackend):
         else:
             helios_cwd = host_root
 
-        survey_path = self._resolve_input_path(
-            request.options.get("survey_path", request.scenario_path), helios_cwd
-        )
+        generated_survey_path: Path | None = None
+        if bool(request.options.get("survey_generate_from_scenario", False)):
+            scenario_path = self._resolve_scenario_path_for_generation(
+                request=request,
+                helios_cwd=helios_cwd,
+            )
+            generated_survey_path = generate_survey_from_scenario(
+                scenario_path=scenario_path,
+                output_dir=self._resolve_generated_survey_output_dir(request),
+                options=request.options,
+            )
+            survey_path = generated_survey_path
+        else:
+            survey_path = self._resolve_input_path(
+                request.options.get("survey_path", request.scenario_path), helios_cwd
+            )
         assets_paths_raw = request.options.get("assets_paths", [])
         assets_paths = [self._resolve_input_path(item, helios_cwd) for item in assets_paths_raw]
         output_root = self._resolve_output_root(request)
@@ -301,6 +345,7 @@ class HeliosAdapter(SensorBackend):
                 survey_path=survey_path,
                 assets_paths=assets_paths,
                 output_root=output_root,
+                generated_survey_path=generated_survey_path,
                 host_root=host_root,
                 container_root=container_root,
             ),
@@ -400,15 +445,23 @@ class HeliosAdapter(SensorBackend):
                 output_root=self._resolve_output_root(request),
             )
         else:
-            prepared, preparation_error = self._prepare_execution(
-                request,
-                require_runtime_available=execute,
-            )
+            try:
+                prepared, preparation_error = self._prepare_execution(
+                    request,
+                    require_runtime_available=execute,
+                )
+            except (ValueError, OSError) as exc:
+                prepared = None
+                preparation_error = str(exc)
 
         planned = {
             "binary": prepared.binary if prepared else None,
             "survey_path": str(prepared.survey_path) if prepared else str(request.scenario_path),
             "assets_paths": [str(path) for path in prepared.assets_paths] if prepared else [],
+            "generated_survey_path": str(prepared.generated_survey_path)
+            if prepared and prepared.generated_survey_path
+            else None,
+            "survey_generated_from_scenario": bool(prepared and prepared.generated_survey_path),
             "sensor_profile": request.sensor_profile,
             "seed": request.seed,
             "runtime": prepared.runtime if prepared else str(request.options.get("helios_runtime", "auto")),
@@ -427,12 +480,15 @@ class HeliosAdapter(SensorBackend):
                 artifacts={"execution_plan": manifest_path},
                 message=preparation_error or "Failed to prepare HELIOS execution.",
             )
+        base_artifacts = {"execution_plan": manifest_path}
+        if prepared.generated_survey_path is not None:
+            base_artifacts["generated_survey"] = prepared.generated_survey_path
 
         if not execute:
             return SensorSimResult(
                 backend=self.name(),
                 success=True,
-                artifacts={"execution_plan": manifest_path},
+                artifacts=base_artifacts,
                 message="HELIOS execution plan generated only (execute_helios=false).",
             )
 
@@ -482,6 +538,8 @@ class HeliosAdapter(SensorBackend):
         output_manifest["runtime"] = prepared.runtime
         output_manifest_path.write_text(json.dumps(output_manifest, indent=2), encoding="utf-8")
         artifacts["execution_plan"] = manifest_path
+        if prepared.generated_survey_path is not None:
+            artifacts["generated_survey"] = prepared.generated_survey_path
         artifacts["stdout"] = stdout_path
         artifacts["stderr"] = stderr_path
 
