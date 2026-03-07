@@ -1086,12 +1086,32 @@ printf "%s\\n" "$@"
             self.assertEqual(output_comparison_report["by_sensor"][0]["status"], "MATCHED")
             self.assertEqual(output_comparison_report["by_sensor"][0]["mismatch_reasons"], [])
             self.assertEqual(
+                output_comparison_report["by_sensor"][0]["role_diffs"][0]["status"],
+                "MATCHED",
+            )
+            self.assertEqual(
+                output_comparison_report["by_sensor"][0]["role_diffs"][0]["output_role"],
+                "camera_visible",
+            )
+            self.assertEqual(
                 output_comparison_report["by_sensor"][1]["mismatch_reasons"],
                 ["NO_DISCOVERED_FILES", "MISSING_EXPECTED_OUTPUTS"],
             )
             self.assertEqual(
+                output_comparison_report["by_sensor"][1]["role_diffs"][0]["status"],
+                "MISSING_EXPECTED",
+            )
+            self.assertEqual(
+                output_comparison_report["by_sensor"][1]["role_diffs"][0]["output_role"],
+                "lidar_point_cloud",
+            )
+            self.assertEqual(
                 output_comparison_report["by_sensor"][2]["missing_output_roles"],
                 ["radar_detections"],
+            )
+            self.assertEqual(
+                output_comparison_report["by_sensor"][2]["role_diffs"][0]["missing_relative_paths"],
+                ["sensor_exports/radar_front/targets.json"],
             )
             smoke_roles = {
                 entry["output_role"]: entry for entry in output_smoke_report["by_output_role"]
@@ -1122,6 +1142,10 @@ printf "%s\\n" "$@"
             self.assertEqual(
                 pipeline_summary["output_comparison"]["mismatch_reasons"],
                 ["MISSING_EXPECTED_OUTPUTS", "UNEXPECTED_OUTPUTS_PRESENT"],
+            )
+            self.assertEqual(
+                pipeline_summary["output_comparison"]["by_sensor"][0]["role_diffs"][0]["status"],
+                "MATCHED",
             )
             self.assertEqual(pipeline_summary["sensor_outputs"]["found_sensor_count"], 1)
             self.assertEqual(

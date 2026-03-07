@@ -263,6 +263,18 @@ printf 'debug\n' > "${BACKEND_OUTPUT_ROOT}/extras/unexpected.log"
                 output_comparison_report["by_sensor"][0]["missing_output_roles"],
                 [],
             )
+            self.assertEqual(
+                output_comparison_report["by_sensor"][0]["role_diffs"][0]["output_role"],
+                "camera_visible",
+            )
+            self.assertEqual(
+                output_comparison_report["by_sensor"][0]["role_diffs"][0]["status"],
+                "MATCHED",
+            )
+            self.assertEqual(
+                output_comparison_report["by_sensor"][0]["role_diffs"][0]["found_relative_paths"],
+                ["sensor_exports/awsim/camera_front/camera/rgb_frame.json"],
+            )
             self.assertIn("runner_ok", stdout)
             self.assertIn("runner_warn", stderr)
 

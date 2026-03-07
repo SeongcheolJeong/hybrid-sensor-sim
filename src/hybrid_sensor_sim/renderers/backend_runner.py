@@ -7,7 +7,7 @@ import shlex
 import subprocess
 import sys
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 _BACKEND_DEFAULT_BINS: dict[str, str] = {
@@ -414,6 +414,15 @@ def _output_comparison_mismatch_reasons(
     if expected_count <= 0 and discovered_count > 0:
         reasons.append("UNEXPECTED_DISCOVERED_WITHOUT_CONTRACT")
     return reasons
+
+
+def _sensor_id_from_relative_output_path(*, relative_path: str, backend: str) -> str:
+    parts = PurePosixPath(relative_path).parts
+    if len(parts) < 2 or parts[0] != "sensor_exports":
+        return ""
+    if len(parts) >= 3 and parts[1] == backend:
+        return str(parts[2]).strip()
+    return str(parts[1]).strip()
 
 
 def _sensor_export_filename(data_format: str) -> str:
@@ -1319,6 +1328,8 @@ def _build_backend_output_comparison_report(
     sensor_discovery_counts: dict[str, int] = {}
     sensor_unexpected_counts: dict[str, int] = {}
     sensor_unexpected_relative_paths: dict[str, list[str]] = {}
+    sensor_role_discovery_paths: dict[str, dict[str, list[str]]] = {}
+    sensor_role_match_types: dict[str, dict[str, list[str]]] = {}
     for discovered_file in discovered_files:
         key = str(discovered_file.resolve())
         matching_entries = path_index.get(key, [])
@@ -1337,11 +1348,9 @@ def _build_backend_output_comparison_report(
                     "size_bytes": discovered_file.stat().st_size,
                 }
             )
-            sensor_guess = (
-                relative_path.split("/", 3)[2]
-                if relative_path.startswith("sensor_exports/")
-                and len(relative_path.split("/", 3)) >= 3
-                else ""
+            sensor_guess = _sensor_id_from_relative_output_path(
+                relative_path=relative_path,
+                backend=str(payload.get("backend", "")).strip(),
             )
             if sensor_guess:
                 sensor_unexpected_counts[sensor_guess] = (
@@ -1385,6 +1394,19 @@ def _build_backend_output_comparison_report(
                 sensor_discovery_counts[sensor_id] = int(sensor_discovery_counts.get(sensor_id, 0)) + 1
             if output_role and output_role not in output_roles:
                 output_roles.append(output_role)
+            if sensor_id and output_role:
+                role_paths = sensor_role_discovery_paths.setdefault(sensor_id, {}).setdefault(
+                    output_role,
+                    [],
+                )
+                if relative_path not in role_paths:
+                    role_paths.append(relative_path)
+                role_match_types = sensor_role_match_types.setdefault(sensor_id, {}).setdefault(
+                    output_role,
+                    [],
+                )
+                if match_type not in role_match_types:
+                    role_match_types.append(match_type)
             if artifact_type and artifact_type not in artifact_types:
                 artifact_types.append(artifact_type)
         matched_outputs.append(
@@ -1442,6 +1464,88 @@ def _build_backend_output_comparison_report(
         unexpected_relative_paths = sorted(
             sensor_unexpected_relative_paths.get(sensor_id, [])
         )
+        expected_roles = sorted(
+            {
+                str(entry.get("output_role", "")).strip()
+                for entry in sensor_entries
+                if str(entry.get("output_role", "")).strip()
+            }
+        )
+        role_diffs: list[dict[str, Any]] = []
+        for output_role in expected_roles:
+            role_entries = [
+                entry
+                for entry in sensor_entries
+                if str(entry.get("output_role", "")).strip() == output_role
+            ]
+            role_expected_count = len(role_entries)
+            role_found_count = sum(1 for entry in role_entries if bool(entry.get("exists", False)))
+            role_missing_count = max(0, role_expected_count - role_found_count)
+            role_discovered_paths = sorted(
+                sensor_role_discovery_paths.get(sensor_id, {}).get(output_role, [])
+            )
+            role_match_types = sorted(
+                sensor_role_match_types.get(sensor_id, {}).get(output_role, [])
+            )
+            role_diffs.append(
+                {
+                    "output_role": output_role,
+                    "status": _output_comparison_status(
+                        expected_count=role_expected_count,
+                        missing_count=role_missing_count,
+                        unexpected_count=0,
+                        discovered_count=len(role_discovered_paths),
+                    ),
+                    "mismatch_reasons": _output_comparison_mismatch_reasons(
+                        expected_count=role_expected_count,
+                        missing_count=role_missing_count,
+                        unexpected_count=0,
+                        discovered_count=len(role_discovered_paths),
+                    ),
+                    "expected_output_count": role_expected_count,
+                    "found_output_count": role_found_count,
+                    "missing_output_count": role_missing_count,
+                    "discovered_file_count": len(role_discovered_paths),
+                    "data_formats": sorted(
+                        {
+                            str(entry.get("data_format", "")).strip()
+                            for entry in role_entries
+                            if str(entry.get("data_format", "")).strip()
+                        }
+                    ),
+                    "artifact_types": sorted(
+                        {
+                            str(entry.get("artifact_type", "")).strip()
+                            for entry in role_entries
+                            if str(entry.get("artifact_type", "")).strip()
+                        }
+                    ),
+                    "backend_filenames": sorted(
+                        {
+                            str(entry.get("backend_filename", "")).strip()
+                            for entry in role_entries
+                            if str(entry.get("backend_filename", "")).strip()
+                        }
+                    ),
+                    "expected_relative_paths": sorted(
+                        {
+                            str(entry.get("relative_path", "")).strip()
+                            for entry in role_entries
+                            if str(entry.get("relative_path", "")).strip()
+                        }
+                    ),
+                    "found_relative_paths": role_discovered_paths,
+                    "missing_relative_paths": sorted(
+                        {
+                            str(entry.get("relative_path", "")).strip()
+                            for entry in role_entries
+                            if not bool(entry.get("exists", False))
+                            and str(entry.get("relative_path", "")).strip()
+                        }
+                    ),
+                    "match_types": role_match_types,
+                }
+            )
         by_sensor.append(
             {
                 "sensor_id": sensor_id,
@@ -1481,6 +1585,7 @@ def _build_backend_output_comparison_report(
                 ),
                 "matched_relative_paths": matched_relative_paths,
                 "unexpected_relative_paths": unexpected_relative_paths,
+                "role_diffs": role_diffs,
             }
         )
 

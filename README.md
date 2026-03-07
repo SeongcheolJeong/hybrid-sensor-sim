@@ -480,6 +480,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
       - grouped summaries now retain `found_sensor_ids` / `missing_sensor_ids`, `data_formats`, `carrier_data_formats`, `backend_filenames`, and `embedded_output_count`.
     - `backend_output_comparison_report.json`: output-root discovery/comparison report that scans actual backend files, highlights unexpected exports, and distinguishes `CANONICAL`, `CANDIDATE`, and `EMBEDDED_SHARED` matches against the contract.
       - includes top-level and per-sensor `mismatch_reasons`, plus `found_output_roles`, `missing_output_roles`, and matched/unexpected relative paths for faster triage.
+      - each sensor also includes `role_diffs` so `camera/lidar/radar` role-level mismatches can be inspected directly.
     - `backend_runner_stdout.log` / `backend_runner_stderr.log`: stdout/stderr captured by standalone runner execution.
     - `backend_wrapper_invocation.json`: wrapper input/output args snapshot (when wrapper path is used and execution is enabled).
   - direct execution:
