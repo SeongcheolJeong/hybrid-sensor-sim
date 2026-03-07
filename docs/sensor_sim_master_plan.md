@@ -246,6 +246,7 @@ Primary code references:
   - local env-driven smoke presets now exist for AWSIM/CARLA so binary/map wiring can be swapped without editing tracked JSON by hand
   - local runtime discovery tool now emits `renderer_backend_local_setup.json` and `renderer_backend_local.env.sh` so missing binaries vs source-only repos are separated explicitly
   - local runtime discovery now separates `HELIOS binary ready` from `HELIOS docker ready`, and provides docker-local smoke presets for AWSIM/CARLA
+  - local runtime discovery can now optionally run a real HELIOS docker demo probe and persist the result for readiness triage
   - sensor-specific expected export paths derived from runtime ingestion data
   - backend-namespaced sensor export candidate paths and sensor output summary generation
   - backend-specific sensor export filename conventions (for example AWSIM vs CARLA camera outputs)

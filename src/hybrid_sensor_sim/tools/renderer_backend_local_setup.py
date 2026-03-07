@@ -8,6 +8,11 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from hybrid_sensor_sim.backends.helios_adapter import HeliosAdapter
+from hybrid_sensor_sim.backends.native_physics import NativePhysicsBackend
+from hybrid_sensor_sim.orchestrator import HybridOrchestrator
+from hybrid_sensor_sim.types import BackendMode, SensorSimRequest
+
 
 _DEFAULT_BACKEND_MAPS = {
     "awsim": "SampleMap",
@@ -50,6 +55,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Only scan explicit --search-root paths plus the repo root.",
     )
+    parser.add_argument(
+        "--probe-helios-docker-demo",
+        action="store_true",
+        help="Run the HELIOS docker demo config and store the result summary.",
+    )
+    parser.add_argument(
+        "--helios-docker-probe-config",
+        type=Path,
+        default=Path("configs/hybrid_sensor_sim.helios_docker.json"),
+        help="Config to use when --probe-helios-docker-demo is enabled.",
+    )
     return parser.parse_args(argv)
 
 
@@ -61,6 +77,14 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 def _write_text(path: Path, payload: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(payload, encoding="utf-8")
+
+
+def _load_json(path: Path) -> dict[str, Any]:
+    with path.open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    if not isinstance(payload, dict):
+        raise ValueError(f"Config payload at {path} must be a JSON object.")
+    return payload
 
 
 def _resolve_runtime_path(raw: str | Path) -> Path:
@@ -328,6 +352,7 @@ def _render_env_file(summary: dict[str, Any]) -> str:
             "#",
             "# Example:",
             "# source artifacts/renderer_backend_local_setup/renderer_backend_local.env.sh",
+            "# python3 scripts/discover_renderer_backend_local_env.py --probe-helios-docker-demo",
             "# python3 scripts/run_renderer_backend_smoke.py --config configs/renderer_backend_smoke.awsim.local.example.json --backend awsim",
             "# python3 scripts/run_renderer_backend_smoke.py --config configs/renderer_backend_smoke.awsim.local.docker.example.json --backend awsim",
             "",
@@ -336,12 +361,44 @@ def _render_env_file(summary: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _run_hybrid_config(config_path: Path) -> dict[str, Any]:
+    cfg = _load_json(config_path)
+    mode = BackendMode(cfg.get("mode", BackendMode.HYBRID_AUTO.value))
+    options = dict(cfg.get("options", {}))
+    if cfg.get("helios_runtime") and "helios_runtime" not in options:
+        options["helios_runtime"] = cfg["helios_runtime"]
+    request = SensorSimRequest(
+        scenario_path=Path(cfg["scenario_path"]),
+        output_dir=Path(cfg["output_dir"]),
+        sensor_profile=cfg.get("sensor_profile", "default"),
+        seed=int(cfg.get("seed", 0)),
+        options=options,
+    )
+    request.output_dir.mkdir(parents=True, exist_ok=True)
+    orchestrator = HybridOrchestrator(
+        helios=HeliosAdapter(
+            helios_bin=Path(cfg["helios_bin"]) if cfg.get("helios_bin") else None
+        ),
+        native=NativePhysicsBackend(),
+    )
+    result = orchestrator.run(request, mode)
+    return {
+        "backend": result.backend,
+        "success": result.success,
+        "message": result.message,
+        "artifacts": {key: str(value) for key, value in result.artifacts.items()},
+        "metrics": result.metrics,
+    }
+
+
 def build_renderer_backend_local_setup(
     *,
     repo_root: Path,
     search_roots: list[Path] | None = None,
     output_dir: Path | None = None,
     include_default_search_roots: bool = True,
+    probe_helios_docker_demo: bool = False,
+    helios_docker_probe_config: Path | None = None,
 ) -> dict[str, Any]:
     repo_root = repo_root.resolve()
     extra_roots = [_resolve_runtime_path(path) for path in (search_roots or [])]
@@ -439,7 +496,9 @@ def build_renderer_backend_local_setup(
     )
     env_path = output_root / "renderer_backend_local.env.sh"
     summary_path = output_root / "renderer_backend_local_setup.json"
+    probe_path = output_root / "helios_docker_probe.json"
     commands = {
+        "helios_docker_demo": "python3 scripts/discover_renderer_backend_local_env.py --probe-helios-docker-demo",
         "awsim_smoke_binary": (
             f"source {shlex.quote(str(env_path))} && "
             "python3 scripts/run_renderer_backend_smoke.py "
@@ -471,6 +530,41 @@ def build_renderer_backend_local_setup(
         if readiness["carla_smoke_ready_binary"]
         else commands["carla_smoke_docker"]
     )
+    probes: dict[str, Any] = {}
+    if probe_helios_docker_demo:
+        probe_config = _resolve_runtime_path(
+            helios_docker_probe_config
+            if helios_docker_probe_config is not None
+            else repo_root / "configs/hybrid_sensor_sim.helios_docker.json"
+        )
+        probe_summary: dict[str, Any] = {
+            "enabled": True,
+            "config_path": str(probe_config),
+            "ready": bool(helios_docker.get("ready")),
+        }
+        if helios_docker.get("ready"):
+            try:
+                probe_summary.update(_run_hybrid_config(probe_config))
+            except Exception as exc:
+                probe_summary.update(
+                    {
+                        "success": False,
+                        "message": str(exc),
+                        "artifacts": {},
+                        "metrics": {},
+                    }
+                )
+        else:
+            probe_summary.update(
+                {
+                    "success": False,
+                    "message": "HELIOS docker runtime is not ready.",
+                    "artifacts": {},
+                    "metrics": {},
+                }
+            )
+        _write_json(probe_path, probe_summary)
+        probes["helios_docker_demo"] = probe_summary
     return {
         "search_roots": [str(path) for path in all_search_roots],
         "backends": {
@@ -481,6 +575,7 @@ def build_renderer_backend_local_setup(
         "runtimes": {
             "helios_docker": helios_docker,
         },
+        "probes": probes,
         "selection": selection,
         "readiness": readiness,
         "issues": issues,
@@ -488,6 +583,7 @@ def build_renderer_backend_local_setup(
         "artifacts": {
             "summary_path": str(summary_path),
             "env_path": str(env_path),
+            "helios_docker_probe_path": str(probe_path),
         },
     }
 
@@ -501,6 +597,8 @@ def main(argv: list[str] | None = None) -> int:
         search_roots=[_resolve_runtime_path(path) for path in args.search_root],
         output_dir=output_dir,
         include_default_search_roots=not args.no_default_search_roots,
+        probe_helios_docker_demo=args.probe_helios_docker_demo,
+        helios_docker_probe_config=_resolve_runtime_path(args.helios_docker_probe_config),
     )
     summary_path = (
         _resolve_runtime_path(args.summary_path)

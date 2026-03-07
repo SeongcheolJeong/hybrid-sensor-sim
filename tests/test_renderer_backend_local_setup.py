@@ -189,6 +189,44 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertTrue(summary["readiness"]["awsim_smoke_ready"])
             self.assertEqual(summary["commands"]["awsim_smoke"], summary["commands"]["awsim_smoke_docker"])
 
+    def test_build_renderer_backend_local_setup_writes_probe_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            repo_root.mkdir(parents=True, exist_ok=True)
+            output_dir = root / "artifacts"
+            probe_result = {
+                "backend": "hybrid(helios+native_physics)",
+                "success": True,
+                "message": "probe ok",
+                "artifacts": {"point_cloud_primary": str(root / "point.xyz")},
+                "metrics": {"point_cloud_file_count": 1.0},
+            }
+
+            with patch(
+                "hybrid_sensor_sim.tools.renderer_backend_local_setup._inspect_helios_docker_runtime",
+                return_value=_ready_docker_runtime(),
+            ):
+                with patch(
+                    "hybrid_sensor_sim.tools.renderer_backend_local_setup._run_hybrid_config",
+                    return_value=probe_result,
+                ) as mocked_probe:
+                    summary = build_renderer_backend_local_setup(
+                        repo_root=repo_root,
+                        output_dir=output_dir,
+                        include_default_search_roots=False,
+                        probe_helios_docker_demo=True,
+                        helios_docker_probe_config=repo_root / "configs/hybrid_sensor_sim.helios_docker.json",
+                    )
+
+            mocked_probe.assert_called_once()
+            self.assertIn("helios_docker_demo", summary["probes"])
+            self.assertTrue(summary["probes"]["helios_docker_demo"]["success"])
+            probe_path = Path(summary["artifacts"]["helios_docker_probe_path"])
+            self.assertTrue(probe_path.exists())
+            probe_payload = json.loads(probe_path.read_text(encoding="utf-8"))
+            self.assertEqual(probe_payload["message"], "probe ok")
+
     def test_local_setup_main_writes_env_and_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -246,6 +284,7 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertIn("export HELIOS_DOCKER_BINARY=", env_text)
             self.assertIn("export AWSIM_BIN=", env_text)
             self.assertIn("# export CARLA_BIN=<set-me>", env_text)
+            self.assertIn("python3 scripts/discover_renderer_backend_local_env.py --probe-helios-docker-demo", env_text)
             self.assertIn("configs/renderer_backend_smoke.awsim.local.example.json", env_text)
             self.assertIn("configs/renderer_backend_smoke.awsim.local.docker.example.json", env_text)
 

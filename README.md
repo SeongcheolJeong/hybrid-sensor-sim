@@ -534,6 +534,8 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - `python3 scripts/discover_renderer_backend_local_env.py` writes:
   - `artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json`
   - `artifacts/renderer_backend_local_setup/renderer_backend_local.env.sh`
+- `python3 scripts/discover_renderer_backend_local_env.py --probe-helios-docker-demo` also writes:
+  - `artifacts/renderer_backend_local_setup/helios_docker_probe.json`
 - the summary reports:
   - selected `HELIOS_BIN`, `AWSIM_BIN`, `CARLA_BIN`
   - selected `HELIOS_DOCKER_IMAGE`
@@ -543,6 +545,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `carla_smoke_ready_binary`, `carla_smoke_ready_docker`, `carla_smoke_ready`
   - reference repo roots versus executable runtime candidates
 - when `heliosplusplus:cli` is present in Docker Desktop, discovery can mark HELIOS as docker-ready even if `HELIOS_BIN` is unset.
+- `--probe-helios-docker-demo` runs the configured docker demo and records actual HELIOS execution success/failure in `probes.helios_docker_demo`.
 - use `--no-default-search-roots` when you want discovery to only scan explicit `--search-root` inputs plus the repo root.
 
 ## Next implementation target
