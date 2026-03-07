@@ -611,11 +611,12 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_linux_handoff.sh`
   - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_linux_handoff_transfer_manifest.json`
   - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_linux_handoff_pack.sh`
+  - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_linux_handoff_unpack.sh`
   - `artifacts/renderer_backend_workflow/<backend>/local_setup_refreshed/renderer_backend_local_setup.json`
   - `artifacts/renderer_backend_workflow/<backend>/local_setup_refreshed/renderer_backend_local.env.sh`
   - plus smoke artifacts/reports when smoke executes
 - the workflow summary/report now includes structured blocker codes, a recommended next command, and Linux handoff transfer/env requirements when the selected runtime must move to a Linux runner
-- the Linux handoff path also emits a transfer manifest and a local pack script so the required inputs can be bundled into a tarball before moving to a Linux runner
+- the Linux handoff path also emits a transfer manifest with per-file verification data, a local pack script, and a Linux unpack/verify script so the required inputs can be bundled and revalidated before smoke execution
 
 ## Next implementation target
 
