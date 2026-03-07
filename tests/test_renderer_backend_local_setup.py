@@ -115,6 +115,10 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
                 "AWSIM-Demo.x86_64",
             )
             self.assertIn(
+                "scripts/acquire_renderer_backend_package.py --backend awsim",
+                " ".join(summary["acquisition_hints"]["awsim"]["next_actions"]),
+            )
+            self.assertIn(
                 "https://github.com/carla-simulator/carla/releases/tag/0.10.0",
                 [
                     item["url"]
@@ -171,6 +175,14 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertEqual(summary["selection"]["HELIOS_DOCKER_IMAGE"], "heliosplusplus:cli")
             self.assertEqual(summary["selection"]["AWSIM_BIN"], str(awsim_bin.resolve()))
             self.assertEqual(summary["selection"]["CARLA_BIN"], str(carla_bin.resolve()))
+            self.assertIn(
+                "scripts/acquire_renderer_backend_package.py --backend awsim",
+                summary["commands"]["awsim_acquire"],
+            )
+            self.assertIn(
+                "scripts/acquire_renderer_backend_package.py --backend carla",
+                summary["commands"]["carla_acquire"],
+            )
             self.assertEqual(summary["selection"]["AWSIM_RENDERER_MAP"], "EnvAwsimMap")
             self.assertEqual(summary["selection"]["CARLA_RENDERER_MAP"], "EnvTown05")
             self.assertEqual(summary["acquisition_hints"]["helios"]["status"], "docker_ready")

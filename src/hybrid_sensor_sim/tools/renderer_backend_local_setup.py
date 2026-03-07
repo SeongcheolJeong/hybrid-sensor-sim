@@ -545,6 +545,7 @@ def _build_acquisition_hints(
         ],
         "next_actions": [
             "Download an AWSIM demo package and extract it.",
+            f"Run python3 scripts/acquire_renderer_backend_package.py --backend awsim --setup-summary {shlex.quote(str((repo_root / 'artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json').resolve()))} to download and stage the package automatically.",
             "Mark AWSIM-Demo.x86_64 executable and export AWSIM_BIN to that path.",
             "Re-run local discovery and then run the docker-backed AWSIM smoke preset.",
         ],
@@ -583,6 +584,7 @@ def _build_acquisition_hints(
         ],
         "next_actions": [
             "Use a packaged CARLA release or Linux Docker image on a supported Linux/Windows runner.",
+            f"Run python3 scripts/acquire_renderer_backend_package.py --backend carla --setup-summary {shlex.quote(str((repo_root / 'artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json').resolve()))} to download and stage the package automatically.",
             "If building from source, run ./CarlaSetup.sh --interactive in a Linux CARLA UE5 checkout.",
             "Export CARLA_BIN to CarlaUnreal.sh or the packaged launcher path and re-run local discovery.",
         ],
@@ -716,6 +718,14 @@ def build_renderer_backend_local_setup(
     probe_path = output_root / "helios_docker_probe.json"
     commands = {
         "helios_docker_demo": "python3 scripts/discover_renderer_backend_local_env.py --probe-helios-docker-demo",
+        "awsim_acquire": (
+            "python3 scripts/acquire_renderer_backend_package.py "
+            f"--backend awsim --setup-summary {shlex.quote(str(summary_path))}"
+        ),
+        "carla_acquire": (
+            "python3 scripts/acquire_renderer_backend_package.py "
+            f"--backend carla --setup-summary {shlex.quote(str(summary_path))}"
+        ),
         "awsim_smoke_binary": (
             f"source {shlex.quote(str(env_path))} && "
             "python3 scripts/run_renderer_backend_smoke.py "

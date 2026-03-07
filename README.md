@@ -24,6 +24,7 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `scripts/setup_helios.sh`: bootstrap helper for cloning/building HELIOS.
 - `scripts/run_renderer_backend_smoke.py`: AWSIM/CARLA smoke launcher that forces direct backend execution plus output-contract inspection.
 - `scripts/discover_renderer_backend_local_env.py`: discovers local HELIOS/AWSIM/CARLA runtime candidates and writes a reusable env file plus readiness summary.
+- `scripts/acquire_renderer_backend_package.py`: resolves an official AWSIM/CARLA package URL from `renderer_backend_local_setup.json`, downloads it, and optionally stages it into a runnable backend directory.
 - `scripts/stage_renderer_backend_package.py`: extracts packaged AWSIM/CARLA archives into `third_party/runtime_backends/<backend>` and writes a staging env file for smoke runs.
 
 ## Quick start
@@ -569,6 +570,19 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - the env file is meant to be sourced directly before smoke runs:
   - `source third_party/runtime_backends/awsim/renderer_backend_package_stage.env.sh`
   - `python3 scripts/run_renderer_backend_smoke.py --config configs/renderer_backend_smoke.awsim.local.docker.example.json --backend awsim`
+
+### Local backend package acquire
+
+- `python3 scripts/acquire_renderer_backend_package.py --backend awsim --setup-summary artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json`
+- `python3 scripts/acquire_renderer_backend_package.py --backend carla --setup-summary artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json --dry-run`
+- behavior:
+  - resolves the first `acquisition_hints.<backend>.download_options[*].url`
+  - downloads the archive into `~/Downloads` by default
+  - reuses an existing archive unless `--overwrite-download` is set
+  - stages the archive automatically unless `--download-only` is set
+- emits:
+  - `third_party/runtime_backends/<backend>/renderer_backend_package_acquire.json`
+  - plus the staging artifacts from `stage_renderer_backend_package.py` when staging is enabled
 
 ## Next implementation target
 
