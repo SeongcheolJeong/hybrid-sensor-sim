@@ -728,6 +728,91 @@ echo "awsim_backend_ok"
             self.assertIn(str(fake_awsim), direct_command)
             self.assertIn("--mount-sensor", direct_command)
 
+    def test_renderer_runtime_can_execute_via_backend_runner(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+
+            fake_awsim = root / "fake_awsim_direct.sh"
+            fake_awsim.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+printf "direct_backend\\n"
+printf "%s\\n" "$@"
+""",
+                encoding="utf-8",
+            )
+            fake_awsim.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "renderer_bridge_enabled": True,
+                    "renderer_backend": "awsim",
+                    "renderer_execute": True,
+                    "renderer_execute_via_runner": True,
+                    "renderer_bin": "",
+                    "awsim_bin": "",
+                    "renderer_command": [],
+                    "renderer_map": "Town09",
+                    "camera_projection_enabled": True,
+                    "camera_projection_trajectory_sweep_enabled": True,
+                    "camera_projection_trajectory_sweep_frames": 2,
+                    "lidar_postprocess_enabled": True,
+                    "lidar_trajectory_sweep_enabled": True,
+                    "lidar_trajectory_sweep_frames": 2,
+                    "radar_postprocess_enabled": True,
+                    "radar_trajectory_sweep_enabled": True,
+                    "radar_trajectory_sweep_frames": 2,
+                    "renderer_sensor_mounts_only_enabled": False,
+                },
+            )
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            with mock.patch.dict(os.environ, {"AWSIM_BIN": str(fake_awsim)}, clear=False):
+                result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            self.assertNotIn("backend_wrapper_invocation", result.artifacts)
+            self.assertEqual(result.metrics.get("renderer_execute_via_runner_requested"), 1.0)
+            self.assertEqual(result.metrics.get("renderer_backend_runner_execution_used"), 1.0)
+            self.assertEqual(result.metrics.get("renderer_backend_execution_wrapper_used"), 0.0)
+            stdout = result.artifacts["renderer_stdout"].read_text(encoding="utf-8")
+            self.assertIn("direct_backend", stdout)
+            self.assertIn("--mount-sensor", stdout)
+            self.assertIn("--ingest-sensor-frame", stdout)
+            self.assertNotIn("--ingestion-profile", stdout)
+            self.assertNotIn("--sensor-bundle-summary", stdout)
+
+            plan = json.loads(
+                result.artifacts["renderer_execution_plan"].read_text(encoding="utf-8")
+            )
+            backend_invocation = json.loads(
+                result.artifacts["backend_invocation"].read_text(encoding="utf-8")
+            )
+            run_manifest = json.loads(
+                result.artifacts["backend_run_manifest"].read_text(encoding="utf-8")
+            )
+            self.assertTrue(plan["execute_via_runner"])
+            self.assertEqual(plan["command_source"], "backend_wrapper")
+            self.assertEqual(plan["execution_command_source"], "backend_runner")
+            self.assertFalse(plan["execution_backend_wrapper_used"])
+            self.assertTrue(plan["execution_command"][0].endswith("fake_awsim_direct.sh"))
+            self.assertTrue(backend_invocation["execute_via_runner"])
+            self.assertEqual(backend_invocation["execution_command_source"], "backend_runner")
+            self.assertFalse(backend_invocation["execution_backend_wrapper_used"])
+            self.assertEqual(run_manifest["status"], "EXECUTION_SUCCEEDED")
+            self.assertEqual(run_manifest["command_source"], "backend_runner")
+            self.assertFalse(run_manifest["backend_wrapper_used"])
+            self.assertIsNone(run_manifest["artifacts"]["backend_wrapper_invocation"])
+
     def test_renderer_runtime_carla_wrapper_execution_transforms_sensor_mount_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

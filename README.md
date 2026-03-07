@@ -466,6 +466,9 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `backend_runner_request.json`: wrapper-free direct backend launch request assembled from scene args, mount args, and launcher template args.
     - `backend_direct_run_command.sh`: executable shell command generated from `backend_runner_request.json`.
     - `backend_wrapper_invocation.json`: wrapper input/output args snapshot (when wrapper path is used and execution is enabled).
+  - direct execution:
+    - `renderer_execute_via_runner=true` executes the backend using `backend_runner_request.json` instead of the wrapper/renderer command path.
+    - in that mode, plan/invocation/run-manifest keep both the planned wrapper path and the actual `execution_command` / `execution_command_source=backend_runner`.
   - contract argument controls:
     - `renderer_contract_flag` (default `--contract`)
     - `renderer_inject_contract_arg` / `renderer_contract_positional`

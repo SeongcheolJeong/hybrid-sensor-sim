@@ -315,10 +315,14 @@ def _build_backend_invocation_payload(
     *,
     backend: str,
     execute: bool,
+    execute_via_runner: bool,
     cwd: Path,
     command: list[str],
     command_source: str,
     backend_wrapper_used: bool,
+    execution_command: list[str],
+    execution_command_source: str,
+    execution_backend_wrapper_used: bool,
     backend_args_preview: dict[str, Any] | None,
     backend_frame_manifest: str | None,
     backend_ingestion_profile: str | None,
@@ -337,10 +341,14 @@ def _build_backend_invocation_payload(
     return {
         "backend": backend,
         "execute": execute,
+        "execute_via_runner": execute_via_runner,
         "cwd": str(cwd),
         "command": command,
         "command_source": command_source,
         "backend_wrapper_used": backend_wrapper_used,
+        "execution_command": execution_command,
+        "execution_command_source": execution_command_source,
+        "execution_backend_wrapper_used": execution_backend_wrapper_used,
         "backend_args_preview": backend_args_preview,
         "backend_frame_inputs_manifest": backend_frame_manifest,
         "backend_ingestion_profile": backend_ingestion_profile,
@@ -436,6 +444,26 @@ def _backend_run_status_metrics(status: str) -> dict[str, float]:
         if status in {"EXECUTION_FAILED", "PROCESS_ERROR"}
         else 0.0,
     }
+
+
+def _resolve_execution_command(
+    *,
+    options: dict[str, Any],
+    command: list[str],
+    command_source: str,
+    backend_wrapper_used: bool,
+    runner_request_path: Path | None,
+) -> tuple[bool, list[str], str, bool]:
+    execute_via_runner = bool(options.get("renderer_execute_via_runner", False))
+    if not execute_via_runner or runner_request_path is None or not runner_request_path.exists():
+        return execute_via_runner, list(command), command_source, backend_wrapper_used
+    runner_request = _read_contract_payload(runner_request_path)
+    if not isinstance(runner_request, dict):
+        return execute_via_runner, list(command), command_source, backend_wrapper_used
+    runner_command = runner_request.get("command")
+    if not isinstance(runner_command, list) or not runner_command:
+        return execute_via_runner, list(command), command_source, backend_wrapper_used
+    return True, [str(item) for item in runner_command], "backend_runner", False
 
 
 def _coerce_int(value: Any, *, default: int = 0) -> int:
@@ -1272,6 +1300,8 @@ def execute_renderer_runtime(
         launcher_template_path=launcher_template_artifacts.get("backend_launcher_template"),
     )
     backend_wrapper_used = command_source == "backend_wrapper"
+    runner_request_path = runner_artifacts.get("backend_runner_request")
+    direct_run_command_path = runner_artifacts.get("backend_direct_run_command")
     frame_manifest_args_count = _inject_frame_manifest_arg(
         command=command,
         options=options,
@@ -1289,16 +1319,29 @@ def execute_renderer_runtime(
         bundle_summary_path=bundle_summary_path,
         backend_wrapper_used=backend_wrapper_used,
     )
+    execute_via_runner, execution_command, execution_command_source, execution_backend_wrapper_used = (
+        _resolve_execution_command(
+            options=options,
+            command=command,
+            command_source=command_source,
+            backend_wrapper_used=backend_wrapper_used,
+            runner_request_path=runner_request_path,
+        )
+    )
     wrapper_dump_path = runtime_dir / "backend_wrapper_invocation.json"
     plan_payload = {
         "backend": backend,
         "execute": execute,
+        "execute_via_runner": execute_via_runner,
         "contract_path": str(contract_path),
         "cwd": str(cwd),
         "command": command,
+        "execution_command": execution_command,
         "used_command_override": used_override,
         "command_source": command_source,
+        "execution_command_source": execution_command_source,
         "backend_wrapper_used": backend_wrapper_used,
+        "execution_backend_wrapper_used": execution_backend_wrapper_used,
         "contract_scene_args_count": scene_args_count,
         "contract_sensor_mount_args_count": sensor_mount_args_count,
         "contract_frame_manifest_args_count": frame_manifest_args_count,
@@ -1337,8 +1380,6 @@ def execute_renderer_runtime(
     plan_path.write_text(json.dumps(plan_payload, indent=2), encoding="utf-8")
     backend_invocation_path = runtime_dir / "backend_invocation.json"
     launcher_template_path = launcher_template_artifacts.get("backend_launcher_template")
-    runner_request_path = runner_artifacts.get("backend_runner_request")
-    direct_run_command_path = runner_artifacts.get("backend_direct_run_command")
     frame_count = int(frame_manifest_metrics.get("renderer_backend_frame_count", 0.0))
     sensor_bindings = int(frame_manifest_metrics.get("renderer_backend_sensor_bindings", 0.0))
     complete_frame_count = int(
@@ -1354,10 +1395,14 @@ def execute_renderer_runtime(
     backend_invocation_payload = _build_backend_invocation_payload(
         backend=backend,
         execute=execute,
+        execute_via_runner=execute_via_runner,
         cwd=cwd,
         command=command,
         command_source=command_source,
         backend_wrapper_used=backend_wrapper_used,
+        execution_command=execution_command,
+        execution_command_source=execution_command_source,
+        execution_backend_wrapper_used=execution_backend_wrapper_used,
         backend_args_preview=backend_args_preview,
         backend_frame_manifest=str(frame_manifest_path) if frame_manifest_path else None,
         backend_ingestion_profile=str(ingestion_profile_path) if ingestion_profile_path else None,
@@ -1398,7 +1443,14 @@ def execute_renderer_runtime(
     metrics: dict[str, float] = {
         "renderer_runtime_planned": 1.0,
         "renderer_execute_requested": 1.0 if execute else 0.0,
+        "renderer_execute_via_runner_requested": 1.0 if execute_via_runner else 0.0,
         "renderer_backend_wrapper_used": 1.0 if backend_wrapper_used else 0.0,
+        "renderer_backend_runner_execution_used": 1.0
+        if execution_command_source == "backend_runner"
+        else 0.0,
+        "renderer_backend_execution_wrapper_used": 1.0
+        if execution_backend_wrapper_used
+        else 0.0,
         "renderer_backend_invocation_written": 1.0,
         "renderer_contract_scene_args_count": float(scene_args_count),
         "renderer_contract_sensor_mount_args_count": float(sensor_mount_args_count),
@@ -1418,9 +1470,9 @@ def execute_renderer_runtime(
             backend=backend,
             execute=execute,
             cwd=cwd,
-            command=command,
-            command_source=command_source,
-            backend_wrapper_used=backend_wrapper_used,
+            command=execution_command,
+            command_source=execution_command_source,
+            backend_wrapper_used=execution_backend_wrapper_used,
             status="SKIPPED",
             message="Renderer runtime skipped: renderer_backend is none.",
             failure_reason=None,
@@ -1433,7 +1485,7 @@ def execute_renderer_runtime(
             launcher_template_path=launcher_template_path,
             runner_request_path=runner_request_path,
             direct_run_command_path=direct_run_command_path,
-            wrapper_dump_path=wrapper_dump_path if backend_wrapper_used else None,
+            wrapper_dump_path=wrapper_dump_path if execution_backend_wrapper_used else None,
             stdout_path=None,
             stderr_path=None,
             frame_count=frame_count,
@@ -1455,9 +1507,9 @@ def execute_renderer_runtime(
             backend=backend,
             execute=execute,
             cwd=cwd,
-            command=command,
-            command_source=command_source,
-            backend_wrapper_used=backend_wrapper_used,
+            command=execution_command,
+            command_source=execution_command_source,
+            backend_wrapper_used=execution_backend_wrapper_used,
             status="PLAN_ERROR",
             message=f"Renderer runtime plan error: {build_error}",
             failure_reason="BUILD_ERROR",
@@ -1470,7 +1522,7 @@ def execute_renderer_runtime(
             launcher_template_path=launcher_template_path,
             runner_request_path=runner_request_path,
             direct_run_command_path=direct_run_command_path,
-            wrapper_dump_path=wrapper_dump_path if backend_wrapper_used else None,
+            wrapper_dump_path=wrapper_dump_path if execution_backend_wrapper_used else None,
             stdout_path=None,
             stderr_path=None,
             frame_count=frame_count,
@@ -1492,9 +1544,9 @@ def execute_renderer_runtime(
             backend=backend,
             execute=execute,
             cwd=cwd,
-            command=command,
-            command_source=command_source,
-            backend_wrapper_used=backend_wrapper_used,
+            command=execution_command,
+            command_source=execution_command_source,
+            backend_wrapper_used=execution_backend_wrapper_used,
             status="PLANNED_ONLY",
             message="Renderer runtime plan generated only (renderer_execute=false).",
             failure_reason=None,
@@ -1507,7 +1559,7 @@ def execute_renderer_runtime(
             launcher_template_path=launcher_template_path,
             runner_request_path=runner_request_path,
             direct_run_command_path=direct_run_command_path,
-            wrapper_dump_path=wrapper_dump_path if backend_wrapper_used else None,
+            wrapper_dump_path=wrapper_dump_path if execution_backend_wrapper_used else None,
             stdout_path=None,
             stderr_path=None,
             frame_count=frame_count,
@@ -1527,12 +1579,12 @@ def execute_renderer_runtime(
     stdout_path = runtime_dir / "renderer_stdout.log"
     stderr_path = runtime_dir / "renderer_stderr.log"
     run_env = None
-    if backend_wrapper_used:
+    if execution_backend_wrapper_used:
         run_env = dict(os.environ)
         run_env["RENDERER_WRAPPER_DUMP"] = str(wrapper_dump_path)
     try:
         proc = subprocess.run(  # noqa: S603
-            command,
+            execution_command,
             cwd=str(cwd),
             env=run_env,
             text=True,
@@ -1543,7 +1595,7 @@ def execute_renderer_runtime(
         stderr_path.write_text(proc.stderr, encoding="utf-8")
         artifacts["renderer_stdout"] = stdout_path
         artifacts["renderer_stderr"] = stderr_path
-        if backend_wrapper_used and wrapper_dump_path.exists():
+        if execution_backend_wrapper_used and wrapper_dump_path.exists():
             artifacts["backend_wrapper_invocation"] = wrapper_dump_path
         metrics["renderer_return_code"] = float(proc.returncode)
         if proc.returncode != 0:
@@ -1552,9 +1604,9 @@ def execute_renderer_runtime(
                 backend=backend,
                 execute=execute,
                 cwd=cwd,
-                command=command,
-                command_source=command_source,
-                backend_wrapper_used=backend_wrapper_used,
+                command=execution_command,
+                command_source=execution_command_source,
+                backend_wrapper_used=execution_backend_wrapper_used,
                 status="EXECUTION_FAILED",
                 message=f"Renderer runtime command failed with exit code {proc.returncode}.",
                 failure_reason="NONZERO_EXIT",
@@ -1567,7 +1619,11 @@ def execute_renderer_runtime(
                 launcher_template_path=launcher_template_path,
                 runner_request_path=runner_request_path,
                 direct_run_command_path=direct_run_command_path,
-                wrapper_dump_path=wrapper_dump_path if backend_wrapper_used and wrapper_dump_path.exists() else None,
+                wrapper_dump_path=(
+                    wrapper_dump_path
+                    if execution_backend_wrapper_used and wrapper_dump_path.exists()
+                    else None
+                ),
                 stdout_path=stdout_path,
                 stderr_path=stderr_path,
                 frame_count=frame_count,
@@ -1586,7 +1642,7 @@ def execute_renderer_runtime(
     except OSError as exc:
         stderr_path.write_text(str(exc), encoding="utf-8")
         artifacts["renderer_stderr"] = stderr_path
-        if backend_wrapper_used and wrapper_dump_path.exists():
+        if execution_backend_wrapper_used and wrapper_dump_path.exists():
             artifacts["backend_wrapper_invocation"] = wrapper_dump_path
         metrics["renderer_return_code"] = -1.0
         _write_backend_run_manifest(
@@ -1594,9 +1650,9 @@ def execute_renderer_runtime(
             backend=backend,
             execute=execute,
             cwd=cwd,
-            command=command,
-            command_source=command_source,
-            backend_wrapper_used=backend_wrapper_used,
+            command=execution_command,
+            command_source=execution_command_source,
+            backend_wrapper_used=execution_backend_wrapper_used,
             status="PROCESS_ERROR",
             message=f"Renderer runtime process error: {exc}",
             failure_reason="PROCESS_ERROR",
@@ -1609,7 +1665,11 @@ def execute_renderer_runtime(
             launcher_template_path=launcher_template_path,
             runner_request_path=runner_request_path,
             direct_run_command_path=direct_run_command_path,
-            wrapper_dump_path=wrapper_dump_path if backend_wrapper_used and wrapper_dump_path.exists() else None,
+            wrapper_dump_path=(
+                wrapper_dump_path
+                if execution_backend_wrapper_used and wrapper_dump_path.exists()
+                else None
+            ),
             stdout_path=None,
             stderr_path=stderr_path,
             frame_count=frame_count,
@@ -1631,9 +1691,9 @@ def execute_renderer_runtime(
         backend=backend,
         execute=execute,
         cwd=cwd,
-        command=command,
-        command_source=command_source,
-        backend_wrapper_used=backend_wrapper_used,
+        command=execution_command,
+        command_source=execution_command_source,
+        backend_wrapper_used=execution_backend_wrapper_used,
         status="EXECUTION_SUCCEEDED",
         message="Renderer runtime execution completed.",
         failure_reason=None,
@@ -1646,7 +1706,9 @@ def execute_renderer_runtime(
         launcher_template_path=launcher_template_path,
         runner_request_path=runner_request_path,
         direct_run_command_path=direct_run_command_path,
-        wrapper_dump_path=wrapper_dump_path if backend_wrapper_used and wrapper_dump_path.exists() else None,
+        wrapper_dump_path=(
+            wrapper_dump_path if execution_backend_wrapper_used and wrapper_dump_path.exists() else None
+        ),
         stdout_path=stdout_path,
         stderr_path=stderr_path,
         frame_count=frame_count,

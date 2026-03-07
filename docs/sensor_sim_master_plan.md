@@ -232,6 +232,7 @@ Primary code references:
   - backend sensor bundle summary generation
   - backend run manifest generation
   - backend runner request and direct command generation
+  - optional direct backend execution via runner request
   - launcher template generation
   - wrapper-first renderer/backend command flow
   - wrapper-level bundle summary consumption for backend-debug/runtime inspection
