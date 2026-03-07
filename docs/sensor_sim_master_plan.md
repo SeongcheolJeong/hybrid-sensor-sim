@@ -233,6 +233,7 @@ Primary code references:
   - backend output spec generation and expected-output inspection
   - backend output smoke report generation with grouped completeness status
   - grouped backend output contracts enriched with sensor/data-format/backend-filename metadata for role-level export comparison
+  - output-root discovery/comparison report for unexpected backend exports and canonical/candidate match tracing
   - sensor-specific expected export paths derived from runtime ingestion data
   - backend-namespaced sensor export candidate paths and sensor output summary generation
   - backend-specific sensor export filename conventions (for example AWSIM vs CARLA camera outputs)

@@ -25,6 +25,8 @@ mkdir -p "$(dirname "${BACKEND_SENSOR_OUTPUT_FILE}")"
 printf '{"sensor":"camera_front"}\n' > "${BACKEND_SENSOR_OUTPUT_FILE}"
 echo "runner_ok"
 echo "runner_warn" >&2
+mkdir -p "${BACKEND_OUTPUT_ROOT}/extras"
+printf 'debug\n' > "${BACKEND_OUTPUT_ROOT}/extras/unexpected.log"
 """,
                 encoding="utf-8",
             )
@@ -50,6 +52,7 @@ echo "runner_warn" >&2
                         "runner_mode": "direct_backend",
                         "command": [str(fake_backend), "--demo"],
                         "env": {
+                            "BACKEND_OUTPUT_ROOT": str(root / "backend_outputs" / "awsim"),
                             "BACKEND_OUTPUT_FILE": str(output_file),
                             "BACKEND_SENSOR_OUTPUT_FILE": str(sensor_output_file),
                         },
@@ -131,6 +134,7 @@ echo "runner_warn" >&2
             self.assertIn("sensor_output_camera_front", result.artifacts)
             self.assertIn("backend_sensor_output_summary", result.artifacts)
             self.assertIn("backend_output_smoke_report", result.artifacts)
+            self.assertIn("backend_output_comparison_report", result.artifacts)
             manifest = json.loads(
                 result.artifacts["backend_runner_execution_manifest"].read_text(encoding="utf-8")
             )
@@ -139,6 +143,9 @@ echo "runner_warn" >&2
             )
             output_smoke_report = json.loads(
                 result.artifacts["backend_output_smoke_report"].read_text(encoding="utf-8")
+            )
+            output_comparison_report = json.loads(
+                result.artifacts["backend_output_comparison_report"].read_text(encoding="utf-8")
             )
             stdout = result.artifacts["backend_runner_stdout"].read_text(encoding="utf-8")
             stderr = result.artifacts["backend_runner_stderr"].read_text(encoding="utf-8")
@@ -166,7 +173,15 @@ echo "runner_warn" >&2
                 manifest["artifacts"]["backend_output_smoke_report"],
                 str(result.artifacts["backend_output_smoke_report"]),
             )
+            self.assertEqual(
+                manifest["artifacts"]["backend_output_comparison_report"],
+                str(result.artifacts["backend_output_comparison_report"]),
+            )
             self.assertEqual(manifest["output_smoke_report"]["status"], "COMPLETE")
+            self.assertEqual(
+                manifest["output_comparison_report"]["status"],
+                "UNEXPECTED_OUTPUTS",
+            )
             self.assertTrue(
                 any(
                     entry["artifact_key"] == "sensor_output_camera_front"
@@ -223,6 +238,16 @@ echo "runner_warn" >&2
             self.assertEqual(
                 output_smoke_report["by_sensor"][0]["status"],
                 "COMPLETE",
+            )
+            self.assertEqual(output_comparison_report["status"], "UNEXPECTED_OUTPUTS")
+            self.assertEqual(output_comparison_report["discovered_file_count"], 3)
+            self.assertEqual(output_comparison_report["matched_file_count"], 2)
+            self.assertEqual(output_comparison_report["unexpected_output_count"], 1)
+            self.assertEqual(output_comparison_report["candidate_match_count"], 1)
+            self.assertEqual(output_comparison_report["canonical_match_count"], 1)
+            self.assertEqual(
+                output_comparison_report["unexpected_outputs"][0]["relative_path"],
+                "extras/unexpected.log",
             )
             self.assertIn("runner_ok", stdout)
             self.assertIn("runner_warn", stderr)

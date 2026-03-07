@@ -406,6 +406,7 @@ def _write_backend_run_manifest(
     launcher_arg_count: int,
     sensor_output_summary_path: Path | None = None,
     output_smoke_report_path: Path | None = None,
+    output_comparison_report_path: Path | None = None,
 ) -> None:
     payload = {
         "backend": backend,
@@ -443,6 +444,9 @@ def _write_backend_run_manifest(
             ),
             "backend_output_smoke_report": (
                 str(output_smoke_report_path) if output_smoke_report_path else None
+            ),
+            "backend_output_comparison_report": (
+                str(output_comparison_report_path) if output_comparison_report_path else None
             ),
             "backend_wrapper_invocation": str(wrapper_dump_path) if wrapper_dump_path else None,
             "renderer_stdout": str(stdout_path) if stdout_path else None,
@@ -537,6 +541,7 @@ def _write_renderer_pipeline_summary(
     runner_execution_manifest_path: Path | None,
     sensor_output_summary_path: Path | None,
     output_smoke_report_path: Path | None,
+    output_comparison_report_path: Path | None,
     wrapper_dump_path: Path | None,
     stdout_path: Path | None,
     stderr_path: Path | None,
@@ -743,6 +748,58 @@ def _write_renderer_pipeline_summary(
                 if str(key).strip()
             }
 
+    output_comparison_available = False
+    output_comparison_status: str | None = None
+    output_comparison_discovered_file_count = 0
+    output_comparison_matched_file_count = 0
+    output_comparison_unexpected_output_count = 0
+    output_comparison_canonical_match_count = 0
+    output_comparison_candidate_match_count = 0
+    output_comparison_embedded_match_count = 0
+    output_comparison_unexpected_outputs: list[dict[str, Any]] = []
+    output_comparison_by_sensor: list[dict[str, Any]] = []
+    output_comparison_payload = (
+        _read_contract_payload(output_comparison_report_path)
+        if output_comparison_report_path
+        else None
+    )
+    if isinstance(output_comparison_payload, dict):
+        output_comparison_available = True
+        raw_status = output_comparison_payload.get("status")
+        output_comparison_status = str(raw_status).strip() if raw_status is not None else None
+        output_comparison_discovered_file_count = _coerce_int(
+            output_comparison_payload.get("discovered_file_count"),
+            default=0,
+        )
+        output_comparison_matched_file_count = _coerce_int(
+            output_comparison_payload.get("matched_file_count"),
+            default=0,
+        )
+        output_comparison_unexpected_output_count = _coerce_int(
+            output_comparison_payload.get("unexpected_output_count"),
+            default=0,
+        )
+        output_comparison_canonical_match_count = _coerce_int(
+            output_comparison_payload.get("canonical_match_count"),
+            default=0,
+        )
+        output_comparison_candidate_match_count = _coerce_int(
+            output_comparison_payload.get("candidate_match_count"),
+            default=0,
+        )
+        output_comparison_embedded_match_count = _coerce_int(
+            output_comparison_payload.get("embedded_match_count"),
+            default=0,
+        )
+        raw_unexpected_outputs = output_comparison_payload.get("unexpected_outputs")
+        if isinstance(raw_unexpected_outputs, list):
+            output_comparison_unexpected_outputs = [
+                item for item in raw_unexpected_outputs if isinstance(item, dict)
+            ]
+        raw_by_sensor = output_comparison_payload.get("by_sensor")
+        if isinstance(raw_by_sensor, list):
+            output_comparison_by_sensor = [item for item in raw_by_sensor if isinstance(item, dict)]
+
     payload = {
         "backend": backend,
         "execute_requested": execute,
@@ -812,6 +869,18 @@ def _write_renderer_pipeline_summary(
             "by_sensor": smoke_report_by_sensor,
             "sensor_status_counts": smoke_report_sensor_status_counts,
         },
+        "output_comparison": {
+            "available": output_comparison_available,
+            "status": output_comparison_status,
+            "discovered_file_count": output_comparison_discovered_file_count,
+            "matched_file_count": output_comparison_matched_file_count,
+            "unexpected_output_count": output_comparison_unexpected_output_count,
+            "canonical_match_count": output_comparison_canonical_match_count,
+            "candidate_match_count": output_comparison_candidate_match_count,
+            "embedded_match_count": output_comparison_embedded_match_count,
+            "unexpected_outputs": output_comparison_unexpected_outputs,
+            "by_sensor": output_comparison_by_sensor,
+        },
         "artifacts": {
             "renderer_execution_plan": str(plan_path),
             "backend_invocation": str(backend_invocation_path),
@@ -832,6 +901,9 @@ def _write_renderer_pipeline_summary(
             "backend_output_smoke_report": (
                 str(output_smoke_report_path) if output_smoke_report_path else None
             ),
+            "backend_output_comparison_report": (
+                str(output_comparison_report_path) if output_comparison_report_path else None
+            ),
             "backend_wrapper_invocation": str(wrapper_dump_path) if wrapper_dump_path else None,
             "renderer_stdout": str(stdout_path) if stdout_path else None,
             "renderer_stderr": str(stderr_path) if stderr_path else None,
@@ -850,6 +922,9 @@ def _write_renderer_pipeline_summary(
         ),
         "renderer_pipeline_output_smoke_report_available": (
             1.0 if smoke_report_available else 0.0
+        ),
+        "renderer_pipeline_output_comparison_available": (
+            1.0 if output_comparison_available else 0.0
         ),
         "renderer_pipeline_expected_output_count": float(expected_output_count),
         "renderer_pipeline_expected_output_found_count": float(found_output_count),
@@ -1826,6 +1901,7 @@ def execute_renderer_runtime(
     runner_execution_manifest_path: Path | None = None
     sensor_output_summary_path: Path | None = None
     output_smoke_report_path: Path | None = None
+    output_comparison_report_path: Path | None = None
     runner_stdout_path: Path | None = None
     runner_stderr_path: Path | None = None
     artifacts: dict[str, Path] = {
@@ -1878,6 +1954,7 @@ def execute_renderer_runtime(
         runner_execution_manifest_path_for_summary: Path | None,
         sensor_output_summary_path_for_summary: Path | None,
         output_smoke_report_path_for_summary: Path | None = None,
+        output_comparison_report_path_for_summary: Path | None = None,
         runner_stdout_path_for_summary: Path | None = None,
         runner_stderr_path_for_summary: Path | None = None,
     ) -> None:
@@ -1916,6 +1993,7 @@ def execute_renderer_runtime(
                 runner_execution_manifest_path=runner_execution_manifest_path_for_summary,
                 sensor_output_summary_path=sensor_output_summary_path_for_summary,
                 output_smoke_report_path=output_smoke_report_path_for_summary,
+                output_comparison_report_path=output_comparison_report_path_for_summary,
                 wrapper_dump_path=wrapper_dump_path_for_summary,
                 stdout_path=stdout_path_for_summary,
                 stderr_path=stderr_path_for_summary,
@@ -2111,6 +2189,9 @@ def execute_renderer_runtime(
         )
         sensor_output_summary_path = runner_result.artifacts.get("backend_sensor_output_summary")
         output_smoke_report_path = runner_result.artifacts.get("backend_output_smoke_report")
+        output_comparison_report_path = runner_result.artifacts.get(
+            "backend_output_comparison_report"
+        )
         runner_stdout_path = runner_result.artifacts.get("backend_runner_stdout")
         runner_stderr_path = runner_result.artifacts.get("backend_runner_stderr")
         artifacts.update(runner_result.artifacts)
@@ -2149,6 +2230,7 @@ def execute_renderer_runtime(
                 runner_execution_manifest_path=runner_execution_manifest_path,
                 sensor_output_summary_path=sensor_output_summary_path,
                 output_smoke_report_path=output_smoke_report_path,
+                output_comparison_report_path=output_comparison_report_path,
                 wrapper_dump_path=None,
                 stdout_path=stdout_path if runner_stdout_path is not None else None,
                 stderr_path=stderr_path if runner_stderr_path is not None else None,
@@ -2172,6 +2254,7 @@ def execute_renderer_runtime(
                 runner_execution_manifest_path_for_summary=runner_execution_manifest_path,
                 sensor_output_summary_path_for_summary=sensor_output_summary_path,
                 output_smoke_report_path_for_summary=output_smoke_report_path,
+                output_comparison_report_path_for_summary=output_comparison_report_path,
                 runner_stdout_path_for_summary=runner_stdout_path,
                 runner_stderr_path_for_summary=runner_stderr_path,
             )
@@ -2207,6 +2290,7 @@ def execute_renderer_runtime(
             runner_execution_manifest_path=runner_execution_manifest_path,
             sensor_output_summary_path=sensor_output_summary_path,
             output_smoke_report_path=output_smoke_report_path,
+            output_comparison_report_path=output_comparison_report_path,
             wrapper_dump_path=None,
             stdout_path=stdout_path if runner_stdout_path is not None else None,
             stderr_path=stderr_path if runner_stderr_path is not None else None,
@@ -2230,6 +2314,7 @@ def execute_renderer_runtime(
             runner_execution_manifest_path_for_summary=runner_execution_manifest_path,
             sensor_output_summary_path_for_summary=sensor_output_summary_path,
             output_smoke_report_path_for_summary=output_smoke_report_path,
+            output_comparison_report_path_for_summary=output_comparison_report_path,
             runner_stdout_path_for_summary=runner_stdout_path,
             runner_stderr_path_for_summary=runner_stderr_path,
         )

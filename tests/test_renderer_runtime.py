@@ -116,6 +116,7 @@ class RendererRuntimeTests(unittest.TestCase):
             self.assertEqual(pipeline_summary["status"], "PLANNED_ONLY")
             self.assertFalse(pipeline_summary["expected_outputs"]["inspection_available"])
             self.assertFalse(pipeline_summary["output_smoke_report"]["available"])
+            self.assertFalse(pipeline_summary["output_comparison"]["available"])
             self.assertEqual(
                 pipeline_summary["artifacts"]["backend_run_manifest"],
                 str(result.artifacts["backend_run_manifest"]),
@@ -143,6 +144,7 @@ class RendererRuntimeTests(unittest.TestCase):
                 str(result.artifacts["backend_direct_run_command"]),
             )
             self.assertIsNone(run_manifest["artifacts"]["backend_output_smoke_report"])
+            self.assertIsNone(run_manifest["artifacts"]["backend_output_comparison_report"])
 
     def test_renderer_runtime_injects_frame_manifest_arg_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -899,6 +901,8 @@ for entry in payload.get("expected_outputs", []):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text('{"sensor":"camera_front"}', encoding="utf-8")
 PY
+mkdir -p "${BACKEND_OUTPUT_ROOT}/extras"
+printf '{"kind":"extra"}\n' > "${BACKEND_OUTPUT_ROOT}/extras/debug_extra.json"
 printf "direct_backend\\n"
 printf "%s\\n" "$@"
 """,
@@ -949,12 +953,14 @@ printf "%s\\n" "$@"
             self.assertIn("renderer_pipeline_summary", result.artifacts)
             self.assertIn("backend_sensor_output_summary", result.artifacts)
             self.assertIn("backend_output_smoke_report", result.artifacts)
+            self.assertIn("backend_output_comparison_report", result.artifacts)
             self.assertEqual(result.metrics.get("renderer_execute_via_runner_requested"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_runner_execution_used"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_execution_wrapper_used"), 0.0)
             self.assertEqual(result.metrics.get("renderer_pipeline_summary_written"), 1.0)
             self.assertEqual(result.metrics.get("renderer_pipeline_sensor_output_summary_available"), 1.0)
             self.assertEqual(result.metrics.get("renderer_pipeline_output_smoke_report_available"), 1.0)
+            self.assertEqual(result.metrics.get("renderer_pipeline_output_comparison_available"), 1.0)
             stdout = result.artifacts["renderer_stdout"].read_text(encoding="utf-8")
             self.assertIn("direct_backend", stdout)
             self.assertIn("--mount-sensor", stdout)
@@ -981,6 +987,9 @@ printf "%s\\n" "$@"
             )
             output_smoke_report = json.loads(
                 result.artifacts["backend_output_smoke_report"].read_text(encoding="utf-8")
+            )
+            output_comparison_report = json.loads(
+                result.artifacts["backend_output_comparison_report"].read_text(encoding="utf-8")
             )
             output_spec = json.loads(
                 result.artifacts["backend_output_spec"].read_text(encoding="utf-8")
@@ -1017,11 +1026,16 @@ printf "%s\\n" "$@"
                 str(result.artifacts["backend_output_smoke_report"]),
             )
             self.assertEqual(
+                run_manifest["artifacts"]["backend_output_comparison_report"],
+                str(result.artifacts["backend_output_comparison_report"]),
+            )
+            self.assertEqual(
                 run_manifest["artifacts"]["backend_runner_stdout"],
                 str(result.artifacts["backend_runner_stdout"]),
             )
             self.assertEqual(runner_execution_manifest["status"], "EXECUTION_SUCCEEDED")
             self.assertEqual(runner_execution_manifest["output_smoke_report"]["status"], "PARTIAL")
+            self.assertEqual(runner_execution_manifest["output_comparison_report"]["status"], "MIXED")
             self.assertGreaterEqual(
                 runner_execution_manifest["expected_output_summary"]["found_count"],
                 1,
@@ -1054,6 +1068,13 @@ printf "%s\\n" "$@"
             self.assertGreaterEqual(output_smoke_report["missing_output_count"], 1)
             self.assertEqual(output_smoke_report["sensor_status_counts"]["COMPLETE"], 1)
             self.assertEqual(output_smoke_report["sensor_status_counts"]["MISSING"], 2)
+            self.assertEqual(output_comparison_report["status"], "MIXED")
+            self.assertEqual(output_comparison_report["unexpected_output_count"], 1)
+            self.assertEqual(
+                output_comparison_report["unexpected_outputs"][0]["relative_path"],
+                "extras/debug_extra.json",
+            )
+            self.assertEqual(output_comparison_report["by_sensor"][0]["status"], "MATCHED")
             smoke_roles = {
                 entry["output_role"]: entry for entry in output_smoke_report["by_output_role"]
             }
@@ -1077,7 +1098,9 @@ printf "%s\\n" "$@"
             self.assertTrue(pipeline_summary["expected_outputs"]["inspection_available"])
             self.assertTrue(pipeline_summary["sensor_outputs"]["summary_available"])
             self.assertTrue(pipeline_summary["output_smoke_report"]["available"])
+            self.assertTrue(pipeline_summary["output_comparison"]["available"])
             self.assertEqual(pipeline_summary["output_smoke_report"]["status"], "PARTIAL")
+            self.assertEqual(pipeline_summary["output_comparison"]["status"], "MIXED")
             self.assertEqual(pipeline_summary["sensor_outputs"]["found_sensor_count"], 1)
             self.assertEqual(
                 pipeline_summary["sensor_outputs"]["output_role_counts"]["camera_visible"],
@@ -1123,6 +1146,10 @@ printf "%s\\n" "$@"
             self.assertEqual(
                 pipeline_summary["artifacts"]["backend_output_smoke_report"],
                 str(result.artifacts["backend_output_smoke_report"]),
+            )
+            self.assertEqual(
+                pipeline_summary["artifacts"]["backend_output_comparison_report"],
+                str(result.artifacts["backend_output_comparison_report"]),
             )
 
     def test_renderer_runtime_carla_wrapper_execution_transforms_sensor_mount_json(self) -> None:

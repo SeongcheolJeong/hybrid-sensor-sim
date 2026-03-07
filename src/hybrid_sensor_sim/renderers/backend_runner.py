@@ -376,6 +376,24 @@ def _output_coverage_ratio(*, expected_count: int, found_count: int) -> float | 
     return round(found_count / expected_count, 4)
 
 
+def _output_comparison_status(
+    *,
+    expected_count: int,
+    missing_count: int,
+    unexpected_count: int,
+    discovered_count: int,
+) -> str:
+    if expected_count <= 0 and discovered_count <= 0:
+        return "UNOBSERVED"
+    if missing_count <= 0 and unexpected_count <= 0:
+        return "MATCHED"
+    if missing_count > 0 and unexpected_count <= 0:
+        return "MISSING_EXPECTED"
+    if missing_count <= 0 and unexpected_count > 0:
+        return "UNEXPECTED_OUTPUTS"
+    return "MIXED"
+
+
 def _sensor_export_filename(data_format: str) -> str:
     mapping = {
         "camera_projection_json": "camera_projection.json",
@@ -769,6 +787,8 @@ def _write_execution_manifest(
     sensor_output_summary_path: Path | None,
     output_smoke_report_path: Path | None,
     output_smoke_report: dict[str, Any] | None,
+    output_comparison_report_path: Path | None,
+    output_comparison_report: dict[str, Any] | None,
     stdout_path: Path | None,
     stderr_path: Path | None,
 ) -> None:
@@ -798,12 +818,18 @@ def _write_execution_manifest(
         },
         "expected_outputs": outputs,
         "output_smoke_report": output_smoke_report if isinstance(output_smoke_report, dict) else None,
+        "output_comparison_report": (
+            output_comparison_report if isinstance(output_comparison_report, dict) else None
+        ),
         "artifacts": {
             "backend_sensor_output_summary": (
                 str(sensor_output_summary_path) if sensor_output_summary_path else None
             ),
             "backend_output_smoke_report": (
                 str(output_smoke_report_path) if output_smoke_report_path else None
+            ),
+            "backend_output_comparison_report": (
+                str(output_comparison_report_path) if output_comparison_report_path else None
             ),
             "backend_runner_stdout": str(stdout_path) if stdout_path else None,
             "backend_runner_stderr": str(stderr_path) if stderr_path else None,
@@ -1193,6 +1219,231 @@ def _build_backend_output_smoke_report(
     return report_path, {"backend_output_smoke_report": report_path}, report_payload
 
 
+def _build_backend_output_comparison_report(
+    *,
+    payload: dict[str, Any],
+    expected_outputs: list[dict[str, Any]],
+    output_dir: Path,
+) -> tuple[Path | None, dict[str, Path], dict[str, Any] | None]:
+    raw_output_root = str(payload.get("output_root", "")).strip()
+    if not raw_output_root:
+        raw_env = payload.get("env")
+        if isinstance(raw_env, dict):
+            raw_output_root = str(raw_env.get("BACKEND_OUTPUT_ROOT", "")).strip()
+    if not raw_output_root:
+        return None, {}, None
+
+    output_root = Path(raw_output_root).expanduser().resolve()
+    if not output_root.exists():
+        report_payload = {
+            "status": "UNOBSERVED",
+            "output_root": str(output_root),
+            "output_root_exists": False,
+            "expected_output_count": len(expected_outputs),
+            "discovered_file_count": 0,
+            "matched_file_count": 0,
+            "unexpected_output_count": 0,
+            "canonical_match_count": 0,
+            "candidate_match_count": 0,
+            "embedded_match_count": 0,
+            "unexpected_outputs": [],
+            "matched_outputs": [],
+            "by_sensor": [],
+        }
+        report_path = output_dir / "backend_output_comparison_report.json"
+        report_path.write_text(json.dumps(report_payload, indent=2), encoding="utf-8")
+        return report_path, {"backend_output_comparison_report": report_path}, report_payload
+
+    path_index: dict[str, list[dict[str, Any]]] = {}
+    for entry in expected_outputs:
+        candidate_values: list[str] = []
+        raw_inspected_paths = entry.get("inspected_paths")
+        if isinstance(raw_inspected_paths, list):
+            candidate_values.extend(str(item).strip() for item in raw_inspected_paths)
+        resolved_path = str(entry.get("resolved_path", "")).strip()
+        if resolved_path:
+            candidate_values.append(resolved_path)
+        canonical_path = str(entry.get("path", "")).strip()
+        if canonical_path:
+            candidate_values.append(canonical_path)
+        for candidate_value in candidate_values:
+            if not candidate_value:
+                continue
+            candidate_key = str(Path(candidate_value).expanduser().resolve())
+            indexed_entries = path_index.setdefault(candidate_key, [])
+            artifact_key = str(entry.get("artifact_key", "")).strip()
+            if artifact_key and any(
+                str(item.get("artifact_key", "")).strip() == artifact_key
+                for item in indexed_entries
+            ):
+                continue
+            indexed_entries.append(entry)
+
+    discovered_files = sorted(path for path in output_root.rglob("*") if path.is_file())
+    matched_outputs: list[dict[str, Any]] = []
+    unexpected_outputs: list[dict[str, Any]] = []
+    matched_file_count = 0
+    unexpected_output_count = 0
+    canonical_match_count = 0
+    candidate_match_count = 0
+    embedded_match_count = 0
+    sensor_discovery_counts: dict[str, int] = {}
+    sensor_unexpected_counts: dict[str, int] = {}
+    for discovered_file in discovered_files:
+        key = str(discovered_file.resolve())
+        matching_entries = path_index.get(key, [])
+        relative_path = (
+            str(discovered_file.relative_to(output_root))
+            if discovered_file.is_relative_to(output_root)
+            else discovered_file.name
+        )
+        if not matching_entries:
+            unexpected_output_count += 1
+            unexpected_outputs.append(
+                {
+                    "path": key,
+                    "relative_path": relative_path,
+                    "backend_filename": discovered_file.name,
+                    "size_bytes": discovered_file.stat().st_size,
+                }
+            )
+            sensor_guess = (
+                relative_path.split("/", 3)[2]
+                if relative_path.startswith("sensor_exports/")
+                and len(relative_path.split("/", 3)) >= 3
+                else ""
+            )
+            if sensor_guess:
+                sensor_unexpected_counts[sensor_guess] = (
+                    int(sensor_unexpected_counts.get(sensor_guess, 0)) + 1
+                )
+            continue
+
+        matched_file_count += 1
+        artifact_keys: list[str] = []
+        sensor_ids: list[str] = []
+        output_roles: list[str] = []
+        artifact_types: list[str] = []
+        match_types: list[str] = []
+        for entry in matching_entries:
+            artifact_key = str(entry.get("artifact_key", "")).strip()
+            sensor_id = str(entry.get("sensor_id", "")).strip()
+            output_role = str(entry.get("output_role", "")).strip()
+            artifact_type = str(entry.get("artifact_type", "")).strip()
+            canonical_path_raw = str(entry.get("path", "")).strip()
+            canonical_path = (
+                str(Path(canonical_path_raw).expanduser().resolve())
+                if canonical_path_raw
+                else ""
+            )
+            embedded_output = bool(entry.get("embedded_output", False))
+            if embedded_output:
+                match_type = "EMBEDDED_SHARED"
+                embedded_match_count += 1
+            elif canonical_path and key == canonical_path:
+                match_type = "CANONICAL"
+                canonical_match_count += 1
+            else:
+                match_type = "CANDIDATE"
+                candidate_match_count += 1
+            match_types.append(match_type)
+            if artifact_key and artifact_key not in artifact_keys:
+                artifact_keys.append(artifact_key)
+            if sensor_id and sensor_id not in sensor_ids:
+                sensor_ids.append(sensor_id)
+                sensor_discovery_counts[sensor_id] = int(sensor_discovery_counts.get(sensor_id, 0)) + 1
+            if output_role and output_role not in output_roles:
+                output_roles.append(output_role)
+            if artifact_type and artifact_type not in artifact_types:
+                artifact_types.append(artifact_type)
+        matched_outputs.append(
+            {
+                "path": key,
+                "relative_path": relative_path,
+                "backend_filename": discovered_file.name,
+                "size_bytes": discovered_file.stat().st_size,
+                "artifact_keys": artifact_keys,
+                "sensor_ids": sensor_ids,
+                "output_roles": output_roles,
+                "artifact_types": artifact_types,
+                "match_types": sorted(set(match_types)),
+            }
+        )
+
+    by_sensor: list[dict[str, Any]] = []
+    expected_sensor_ids = sorted(
+        {
+            str(entry.get("sensor_id", "")).strip()
+            for entry in expected_outputs
+            if str(entry.get("sensor_id", "")).strip()
+        }
+    )
+    for sensor_id in expected_sensor_ids:
+        sensor_entries = [
+            entry for entry in expected_outputs if str(entry.get("sensor_id", "")).strip() == sensor_id
+        ]
+        expected_count = len(sensor_entries)
+        missing_count = sum(1 for entry in sensor_entries if not bool(entry.get("exists", False)))
+        found_count = sum(1 for entry in sensor_entries if bool(entry.get("exists", False)))
+        discovered_count = int(sensor_discovery_counts.get(sensor_id, 0))
+        unexpected_count = int(sensor_unexpected_counts.get(sensor_id, 0))
+        by_sensor.append(
+            {
+                "sensor_id": sensor_id,
+                "sensor_name": str(sensor_entries[0].get("sensor_name", "")).strip() or sensor_id,
+                "expected_output_count": expected_count,
+                "found_output_count": found_count,
+                "missing_output_count": missing_count,
+                "discovered_file_count": discovered_count,
+                "unexpected_output_count": unexpected_count,
+                "status": _output_comparison_status(
+                    expected_count=expected_count,
+                    missing_count=missing_count,
+                    unexpected_count=unexpected_count,
+                    discovered_count=discovered_count,
+                ),
+                "output_roles": sorted(
+                    {
+                        str(entry.get("output_role", "")).strip()
+                        for entry in sensor_entries
+                        if str(entry.get("output_role", "")).strip()
+                    }
+                ),
+                "artifact_types": sorted(
+                    {
+                        str(entry.get("artifact_type", "")).strip()
+                        for entry in sensor_entries
+                        if str(entry.get("artifact_type", "")).strip()
+                    }
+                ),
+            }
+        )
+
+    report_payload = {
+        "status": _output_comparison_status(
+            expected_count=len(expected_outputs),
+            missing_count=sum(1 for entry in expected_outputs if not bool(entry.get("exists", False))),
+            unexpected_count=unexpected_output_count,
+            discovered_count=len(discovered_files),
+        ),
+        "output_root": str(output_root),
+        "output_root_exists": True,
+        "expected_output_count": len(expected_outputs),
+        "discovered_file_count": len(discovered_files),
+        "matched_file_count": matched_file_count,
+        "unexpected_output_count": unexpected_output_count,
+        "canonical_match_count": canonical_match_count,
+        "candidate_match_count": candidate_match_count,
+        "embedded_match_count": embedded_match_count,
+        "matched_outputs": matched_outputs,
+        "unexpected_outputs": unexpected_outputs,
+        "by_sensor": by_sensor,
+    }
+    report_path = output_dir / "backend_output_comparison_report.json"
+    report_path.write_text(json.dumps(report_payload, indent=2), encoding="utf-8")
+    return report_path, {"backend_output_comparison_report": report_path}, report_payload
+
+
 def execute_backend_runner_request(
     *,
     request_path: Path,
@@ -1231,6 +1482,8 @@ def execute_backend_runner_request(
             sensor_output_summary_path=None,
             output_smoke_report_path=None,
             output_smoke_report=None,
+            output_comparison_report_path=None,
+            output_comparison_report=None,
             stdout_path=None,
             stderr_path=stderr_path,
         )
@@ -1255,6 +1508,8 @@ def execute_backend_runner_request(
             sensor_output_summary_path=None,
             output_smoke_report_path=None,
             output_smoke_report=None,
+            output_comparison_report_path=None,
+            output_comparison_report=None,
             stdout_path=None,
             stderr_path=stderr_path,
         )
@@ -1280,6 +1535,8 @@ def execute_backend_runner_request(
             sensor_output_summary_path=None,
             output_smoke_report_path=None,
             output_smoke_report=None,
+            output_comparison_report_path=None,
+            output_comparison_report=None,
             stdout_path=None,
             stderr_path=stderr_path,
         )
@@ -1306,6 +1563,8 @@ def execute_backend_runner_request(
             sensor_output_summary_path=None,
             output_smoke_report_path=None,
             output_smoke_report=None,
+            output_comparison_report_path=None,
+            output_comparison_report=None,
             stdout_path=None,
             stderr_path=stderr_path,
         )
@@ -1358,6 +1617,8 @@ def execute_backend_runner_request(
             sensor_output_summary_path=None,
             output_smoke_report_path=None,
             output_smoke_report=None,
+            output_comparison_report_path=None,
+            output_comparison_report=None,
             stdout_path=None,
             stderr_path=stderr_path,
         )
@@ -1386,6 +1647,14 @@ def execute_backend_runner_request(
         )
     )
     artifacts.update(output_smoke_report_artifacts)
+    output_comparison_report_path, output_comparison_report_artifacts, output_comparison_report = (
+        _build_backend_output_comparison_report(
+            payload=payload,
+            expected_outputs=inspected_outputs,
+            output_dir=runner_output_dir,
+        )
+    )
+    artifacts.update(output_comparison_report_artifacts)
     success = proc.returncode == 0
     status = "EXECUTION_SUCCEEDED" if success else "EXECUTION_FAILED"
     message = (
@@ -1406,6 +1675,8 @@ def execute_backend_runner_request(
         sensor_output_summary_path=sensor_output_summary_path,
         output_smoke_report_path=output_smoke_report_path,
         output_smoke_report=output_smoke_report,
+        output_comparison_report_path=output_comparison_report_path,
+        output_comparison_report=output_comparison_report,
         stdout_path=stdout_path,
         stderr_path=stderr_path,
     )
