@@ -229,6 +229,34 @@ class CameraDepthConfig:
 
 
 @dataclass(frozen=True)
+class CameraSemanticConfig:
+    class_version: str = "LEGACY"
+    palette: str = "APPLIED_LEGACY"
+    label_source: str = "ANNOTATION_OR_HEURISTIC"
+    include_actor_id: bool = True
+    include_component_id: bool = True
+    include_material_class: bool = True
+    include_material_uuid: bool = False
+    include_base_map_element: bool = False
+    include_procedural_map_element: bool = False
+    include_lane_marking_id: bool = False
+
+    def to_dict(self) -> dict[str, str | bool]:
+        return {
+            "class_version": self.class_version,
+            "palette": self.palette,
+            "label_source": self.label_source,
+            "include_actor_id": self.include_actor_id,
+            "include_component_id": self.include_component_id,
+            "include_material_class": self.include_material_class,
+            "include_material_uuid": self.include_material_uuid,
+            "include_base_map_element": self.include_base_map_element,
+            "include_procedural_map_element": self.include_procedural_map_element,
+            "include_lane_marking_id": self.include_lane_marking_id,
+        }
+
+
+@dataclass(frozen=True)
 class CameraRollingShutterConfig:
     enabled: bool = False
     col_delay_ns: float = 0.0
@@ -285,6 +313,7 @@ class CameraSensorConfig:
     intrinsics: CameraIntrinsicsConfig = field(default_factory=CameraIntrinsicsConfig)
     distortion_coeffs: CameraDistortionConfig = field(default_factory=CameraDistortionConfig)
     depth_params: CameraDepthConfig = field(default_factory=CameraDepthConfig)
+    semantic_params: CameraSemanticConfig = field(default_factory=CameraSemanticConfig)
     rolling_shutter: CameraRollingShutterConfig = field(default_factory=CameraRollingShutterConfig)
     extrinsics: SensorExtrinsicsConfig = field(default_factory=SensorExtrinsicsConfig)
     behaviors: list[SensorBehaviorConfig] = field(default_factory=list)
@@ -302,6 +331,7 @@ class CameraSensorConfig:
             "intrinsics": self.intrinsics.to_dict(),
             "distortion_coeffs": self.distortion_coeffs.to_dict(),
             "depth_params": self.depth_params.to_dict(),
+            "semantic_params": self.semantic_params.to_dict(),
             "rolling_shutter": self.rolling_shutter.to_dict(),
             "extrinsics": self.extrinsics.to_dict(),
             "behaviors": [behavior.to_dict() for behavior in self.behaviors],
@@ -460,6 +490,54 @@ def _parse_camera_depth(options: Mapping[str, Any]) -> CameraDepthConfig:
     )
 
 
+def _parse_camera_semantic(options: Mapping[str, Any]) -> CameraSemanticConfig:
+    raw = _as_dict(options.get("camera_semantic_params"))
+    class_version = _as_str(
+        raw.get("class_version", options.get("camera_semantic_class_version")),
+        "LEGACY",
+    ).upper()
+    palette_default = "APPLIED_GRANULAR" if class_version == "GRANULAR_SEGMENTATION" else "APPLIED_LEGACY"
+    return CameraSemanticConfig(
+        class_version=class_version,
+        palette=_as_str(raw.get("palette", options.get("camera_semantic_palette")), palette_default).upper(),
+        label_source=_as_str(
+            raw.get("label_source", options.get("camera_semantic_label_source")),
+            "ANNOTATION_OR_HEURISTIC",
+        ).upper(),
+        include_actor_id=_as_bool(
+            raw.get("include_actor_id", options.get("camera_semantic_include_actor_id")),
+            True,
+        ),
+        include_component_id=_as_bool(
+            raw.get("include_component_id", options.get("camera_semantic_include_component_id")),
+            True,
+        ),
+        include_material_class=_as_bool(
+            raw.get("include_material_class", options.get("camera_semantic_include_material_class")),
+            True,
+        ),
+        include_material_uuid=_as_bool(
+            raw.get("include_material_uuid", options.get("camera_semantic_include_material_uuid")),
+            False,
+        ),
+        include_base_map_element=_as_bool(
+            raw.get("include_base_map_element", options.get("camera_semantic_include_base_map_element")),
+            False,
+        ),
+        include_procedural_map_element=_as_bool(
+            raw.get(
+                "include_procedural_map_element",
+                options.get("camera_semantic_include_procedural_map_element"),
+            ),
+            False,
+        ),
+        include_lane_marking_id=_as_bool(
+            raw.get("include_lane_marking_id", options.get("camera_semantic_include_lane_marking_id")),
+            False,
+        ),
+    )
+
+
 def _parse_camera_rolling_shutter(options: Mapping[str, Any]) -> CameraRollingShutterConfig:
     raw = _as_dict(options.get("camera_rolling_shutter"))
     col_delay_ns = _as_float(raw.get("col_delay_ns", options.get("camera_col_delay_ns")), 0.0)
@@ -575,6 +653,7 @@ def build_sensor_sim_config(
                 _as_dict(data.get("camera_distortion_coeffs"))
             ),
             depth_params=_parse_camera_depth(data),
+            semantic_params=_parse_camera_semantic(data),
             rolling_shutter=_parse_camera_rolling_shutter(data),
             extrinsics=_parse_extrinsics(_as_dict(data.get("camera_extrinsics"))),
             behaviors=_parse_behaviors(data, "camera"),

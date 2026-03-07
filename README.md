@@ -103,12 +103,22 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - Supported camera output modes in the local physics preview path:
   - `camera_sensor_type=VISIBLE`
   - `camera_sensor_type=DEPTH`
+  - `camera_sensor_type=SEMANTIC_SEGMENTATION`
 - Depth output controls:
   - `camera_depth_params.min`
   - `camera_depth_params.max`
   - `camera_depth_params.type=LINEAR|LOG|RAW`
   - `camera_depth_params.log_base`
   - `camera_depth_params.bit_depth`
+- Semantic output controls:
+  - `camera_semantic_params.class_version=LEGACY|GRANULAR_SEGMENTATION`
+  - `camera_semantic_params.palette`
+  - `camera_semantic_params.label_source`
+  - `camera_semantic_params.include_actor_id`
+  - `camera_semantic_params.include_component_id`
+  - `camera_semantic_params.include_material_class`
+  - `camera_semantic_params.include_lane_marking_id`
+  - optional explicit per-point overrides via `camera_semantic_point_labels`
 - Rolling shutter timing controls:
   - `camera_rolling_shutter.enabled`
   - `camera_rolling_shutter.row_delay_ns`
@@ -137,6 +147,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - emits `camera_projection_trajectory_sweep.json` with multi-pose frame previews.
   - preview artifacts record `geometry_model` per preview/frame.
   - depth mode emits `preview_depth_samples`.
+  - semantic mode emits `preview_semantic_samples` and `preview_semantic_legend`.
   - rolling shutter mode emits `preview_readout_samples` and timing metadata.
   - when HELIOS trajectory poses are available, rolling shutter preview/sweep applies per-sample pose distortion and records whether the distortion path was actually applied.
 
@@ -186,7 +197,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - references available sensor artifacts (`camera/lidar/radar` preview or sweep) per frame.
   - when survey mapping is enabled, contract also carries `survey_mapping` metadata and related artifact paths.
   - includes `sensor_setup` block with camera/lidar/radar calibration context (`intrinsics`, `distortion`, `extrinsics`, and source).
-  - camera setup now also carries `sensor_type`, `depth_params`, and `rolling_shutter`.
+  - camera setup now also carries `sensor_type`, `depth_params`, `semantic_params`, and `rolling_shutter`.
   - includes `renderer_sensor_mounts` block for renderer-side sensor attach specs (`sensor_id`, `sensor_type`, `attach_to_actor_id`, `extrinsics`).
 - Runtime executor:
   - set `renderer_execute=true` to run renderer command.
@@ -215,6 +226,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `backend_invocation.json`: normalized backend command + preview snapshot.
     - `backend_frame_inputs_manifest.json`: contract frame sources resolved into backend-consumable payload pointers, enriched with `sensor_id` / `data_format` / `attach_to_actor_id`.
       - depth cameras are tagged as `camera_depth_json`.
+      - semantic cameras are tagged as `camera_semantic_json`.
     - `backend_ingestion_profile.json`: backend-specific ingest flag/value expansion generated from frame manifest.
     - `backend_launcher_template.json`: deduplicated backend launch args (`meta_args` + `frame_args`) for direct runner integration.
     - `backend_ingestion_args.sh`: shell-ready `BACKEND_INGEST_ARGS` array generated from launcher template.

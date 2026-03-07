@@ -65,6 +65,14 @@ class SensorConfigTests(unittest.TestCase):
                     "log_base": 2.0,
                     "bit_depth": 32,
                 },
+                "camera_semantic_params": {
+                    "class_version": "GRANULAR_SEGMENTATION",
+                    "palette": "applied_granular",
+                    "include_actor_id": True,
+                    "include_component_id": False,
+                    "include_material_class": True,
+                    "include_lane_marking_id": True,
+                },
                 "camera_rolling_shutter": {
                     "enabled": True,
                     "row_delay_ns": 1000,
@@ -112,6 +120,11 @@ class SensorConfigTests(unittest.TestCase):
         self.assertAlmostEqual(config.camera.distortion_coeffs.k1, 0.1)
         self.assertEqual(config.camera.depth_params.encoding_type, "LOG")
         self.assertAlmostEqual(config.camera.depth_params.log_base, 2.0)
+        self.assertEqual(config.camera.semantic_params.class_version, "GRANULAR_SEGMENTATION")
+        self.assertEqual(config.camera.semantic_params.palette, "APPLIED_GRANULAR")
+        self.assertTrue(config.camera.semantic_params.include_actor_id)
+        self.assertFalse(config.camera.semantic_params.include_component_id)
+        self.assertTrue(config.camera.semantic_params.include_lane_marking_id)
         self.assertTrue(config.camera.rolling_shutter.enabled)
         self.assertEqual(config.camera.rolling_shutter.num_time_steps, 8)
         self.assertEqual(config.camera.rolling_shutter.num_exposure_samples_per_pixel, 4)
@@ -139,9 +152,13 @@ class SensorConfigTests(unittest.TestCase):
                 "renderer_camera_sensor_id": "cam_front",
                 "renderer_lidar_sensor_id": "lidar_roof",
                 "renderer_radar_sensor_id": "radar_front",
-                "camera_sensor_type": "DEPTH",
+                "camera_sensor_type": "SEMANTIC_SEGMENTATION",
                 "camera_geometry": "equidistant",
                 "camera_depth_params": {"min": 1.0, "max": 80.0, "type": "LINEAR"},
+                "camera_semantic_params": {
+                    "class_version": "GRANULAR_SEGMENTATION",
+                    "include_material_class": True,
+                },
                 "camera_row_delay_ns": 5000,
                 "camera_behaviors": [{"point_at": {"id": 3}}],
                 "lidar_scan_type": "flash",
@@ -159,9 +176,16 @@ class SensorConfigTests(unittest.TestCase):
         self.assertEqual(contract["sensor_config_schema_version"], CONFIG_SCHEMA_VERSION)
         self.assertEqual(contract["renderer_backend"], "carla")
         self.assertEqual(contract["renderer_scene"]["ego_actor_id"], "ego_vehicle")
-        self.assertEqual(contract["sensor_setup"]["camera"]["sensor_type"], "DEPTH")
+        self.assertEqual(contract["sensor_setup"]["camera"]["sensor_type"], "SEMANTIC_SEGMENTATION")
         self.assertEqual(contract["sensor_setup"]["camera"]["geometry_model"], "equidistant")
         self.assertEqual(contract["sensor_setup"]["camera"]["depth_params"]["max"], 80.0)
+        self.assertEqual(
+            contract["sensor_setup"]["camera"]["semantic_params"]["class_version"],
+            "GRANULAR_SEGMENTATION",
+        )
+        self.assertTrue(
+            contract["sensor_setup"]["camera"]["semantic_params"]["include_material_class"]
+        )
         self.assertTrue(contract["sensor_setup"]["camera"]["rolling_shutter"]["enabled"])
         self.assertEqual(contract["sensor_setup"]["camera"]["behaviors"][0]["point_at"]["id"], "3")
         self.assertEqual(contract["sensor_setup"]["lidar"]["scan_type"], "flash")

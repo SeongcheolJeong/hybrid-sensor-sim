@@ -4,6 +4,7 @@ import json
 import random
 from math import atan2, log, log10, pi, sqrt
 from pathlib import Path
+from typing import Any
 
 from hybrid_sensor_sim.backends.base import SensorBackend
 from hybrid_sensor_sim.config import CameraSensorConfig, SensorSimConfig, build_sensor_sim_config
@@ -19,6 +20,35 @@ from hybrid_sensor_sim.physics.camera import (
 from hybrid_sensor_sim.renderers import build_renderer_playback_contract
 from hybrid_sensor_sim.renderers import execute_renderer_runtime
 from hybrid_sensor_sim.types import SensorSimRequest, SensorSimResult
+
+_APPLIED_LEGACY_CAMERA_SEMANTICS: dict[int, dict[str, Any]] = {
+    1: {"name": "BUILDINGS", "parent_class": "LEGACY", "color_rgb": [70, 70, 70], "material_class_id": 2100},
+    3: {"name": "OTHER", "parent_class": "LEGACY", "color_rgb": [160, 160, 160], "material_class_id": 2000},
+    4: {"name": "PEDESTRIANS", "parent_class": "LEGACY", "color_rgb": [220, 20, 60], "material_class_id": 4000},
+    5: {"name": "POLES", "parent_class": "LEGACY", "color_rgb": [153, 153, 153], "material_class_id": 2200},
+    6: {"name": "ROADLINES", "parent_class": "LEGACY", "color_rgb": [157, 234, 50], "material_class_id": 1200},
+    7: {"name": "ROADS", "parent_class": "LEGACY", "color_rgb": [128, 64, 128], "material_class_id": 1100},
+    8: {"name": "SIDEWALKS", "parent_class": "LEGACY", "color_rgb": [244, 35, 232], "material_class_id": 1110},
+    9: {"name": "VEGETATION", "parent_class": "LEGACY", "color_rgb": [107, 142, 35], "material_class_id": 3100},
+    10: {"name": "VEHICLES", "parent_class": "LEGACY", "color_rgb": [0, 0, 142], "material_class_id": 2300},
+    12: {"name": "TRAFFICSIGNS", "parent_class": "LEGACY", "color_rgb": [220, 220, 0], "material_class_id": 2400},
+    22: {"name": "SKY", "parent_class": "LEGACY", "color_rgb": [70, 130, 180], "material_class_id": 0},
+}
+
+_APPLIED_GRANULAR_CAMERA_SEMANTICS: dict[int, dict[str, Any]] = {
+    205: {"name": "GENERIC_BUILDING", "parent_class": "BUILDING_COMPONENTS", "color_rgb": [70, 70, 70], "material_class_id": 2100},
+    1002: {"name": "CURB_TOP", "parent_class": "ROAD_EDGE_COMPONENTS", "color_rgb": [196, 196, 196], "material_class_id": 1110},
+    1524: {"name": "CROSSWALK", "parent_class": "ROAD_SURFACE_MARKINGS", "color_rgb": [255, 255, 255], "material_class_id": 1200},
+    2501: {"name": "LANE_LINE", "parent_class": "ROAD_SURFACE_LINES", "color_rgb": [157, 234, 50], "material_class_id": 1200},
+    3005: {"name": "PARKING_SPOT", "parent_class": "ROAD_SURFACE_REGIONS", "color_rgb": [250, 170, 160], "material_class_id": 1100},
+    3500: {"name": "GENERIC_BARRIER", "parent_class": "BARRIERS", "color_rgb": [190, 153, 153], "material_class_id": 2200},
+    3501: {"name": "FENCE", "parent_class": "BARRIERS", "color_rgb": [190, 153, 153], "material_class_id": 2200},
+    4000: {"name": "GENERIC_PEDESTRIAN", "parent_class": "PEDESTRIANS", "color_rgb": [220, 20, 60], "material_class_id": 4000},
+    5000: {"name": "GENERIC_ROAD", "parent_class": "ROADS", "color_rgb": [128, 64, 128], "material_class_id": 1100},
+    5500: {"name": "GENERIC_SIDEWALK", "parent_class": "SIDEWALKS", "color_rgb": [244, 35, 232], "material_class_id": 1110},
+    6003: {"name": "TREE", "parent_class": "FOLIAGE", "color_rgb": [107, 142, 35], "material_class_id": 3100},
+    7501: {"name": "GENERIC_CAR", "parent_class": "VEHICLES", "color_rgb": [0, 0, 142], "material_class_id": 2300},
+}
 
 
 class NativePhysicsBackend(SensorBackend):
@@ -331,8 +361,14 @@ class NativePhysicsBackend(SensorBackend):
         metrics["camera_depth_output_count"] = (
             float(len(projected)) if camera_config.sensor_type.upper() == "DEPTH" else 0.0
         )
+        metrics["camera_semantic_output_count"] = (
+            float(len(projected))
+            if camera_config.sensor_type.upper() == "SEMANTIC_SEGMENTATION"
+            else 0.0
+        )
         preview_count = int(request.options.get("camera_projection_preview_count", 20))
         preview_payload = self._camera_preview_payload(
+            request=request,
             projected=projected,
             camera_config=camera_config,
             intrinsics=intrinsics,
@@ -368,6 +404,7 @@ class NativePhysicsBackend(SensorBackend):
                 runtime=rolling_runtime,
             ),
             "depth_params": camera_config.depth_params.to_dict(),
+            "semantic_params": camera_config.semantic_params.to_dict(),
             **preview_payload,
         }
         output_path = enhanced_output / "camera_projection_preview.json"
@@ -449,6 +486,7 @@ class NativePhysicsBackend(SensorBackend):
             rolling_applied = rolling_applied or bool(rolling_runtime.get("applied"))
             total_output_count += len(projected)
             frame_preview_payload = self._camera_preview_payload(
+                request=request,
                 projected=projected,
                 camera_config=camera_config,
                 intrinsics=intrinsics,
@@ -491,6 +529,11 @@ class NativePhysicsBackend(SensorBackend):
         metrics["camera_depth_trajectory_sweep_total_output_count"] = (
             float(total_output_count) if camera_config.sensor_type.upper() == "DEPTH" else 0.0
         )
+        metrics["camera_semantic_trajectory_sweep_total_output_count"] = (
+            float(total_output_count)
+            if camera_config.sensor_type.upper() == "SEMANTIC_SEGMENTATION"
+            else 0.0
+        )
         preview = {
             "input_point_cloud": str(point_cloud),
             "trajectory_path": str(trajectory_path),
@@ -506,6 +549,7 @@ class NativePhysicsBackend(SensorBackend):
                 },
             ),
             "depth_params": camera_config.depth_params.to_dict(),
+            "semantic_params": camera_config.semantic_params.to_dict(),
             "input_count": len(points_xyz),
             "frame_count": len(frames),
             "reference_point_xyz": {
@@ -524,7 +568,8 @@ class NativePhysicsBackend(SensorBackend):
     def _camera_preview_payload(
         self,
         *,
-        projected: list[tuple[float, float, float]],
+        request: SensorSimRequest,
+        projected: list[dict[str, object]],
         camera_config: CameraSensorConfig,
         intrinsics: CameraIntrinsics,
         preview_count: int,
@@ -533,34 +578,48 @@ class NativePhysicsBackend(SensorBackend):
         payload: dict[str, object] = {
             "output_mode": camera_config.sensor_type,
             "preview_points_uvz": [
-                {"u": u, "v": v, "z": z}
-                for u, v, z in preview_points
+                {"u": float(point["u"]), "v": float(point["v"]), "z": float(point["z"])}
+                for point in preview_points
             ],
             "preview_depth_samples": [],
+            "preview_semantic_samples": [],
         }
         if camera_config.sensor_type.upper() == "DEPTH":
             payload["preview_depth_samples"] = [
                 {
-                    "u": u,
-                    "v": v,
-                    "z_m": z,
+                    "u": float(point["u"]),
+                    "v": float(point["v"]),
+                    "z_m": float(point["z"]),
                     "depth_value": self._encode_camera_depth_value(
-                        depth_m=z,
+                        depth_m=float(point["z"]),
                         camera_config=camera_config,
                     ),
                     "depth_encoding": camera_config.depth_params.encoding_type,
                 }
-                for u, v, z in preview_points
+                for point in preview_points
             ]
+        if camera_config.sensor_type.upper() == "SEMANTIC_SEGMENTATION":
+            semantic_samples = [
+                self._camera_semantic_sample(
+                    request=request,
+                    camera_config=camera_config,
+                    projected_sample=point,
+                )
+                for point in preview_points
+            ]
+            payload["preview_semantic_samples"] = semantic_samples
+            payload["preview_semantic_legend"] = self._camera_semantic_legend(semantic_samples)
+        else:
+            payload["preview_semantic_legend"] = []
         if camera_config.rolling_shutter.enabled:
             payload["preview_readout_samples"] = [
                 self._camera_rolling_shutter_sample(
-                    u=u,
-                    v=v,
+                    u=float(point["u"]),
+                    v=float(point["v"]),
                     camera_config=camera_config,
                     intrinsics=intrinsics,
                 )
-                for u, v, _ in preview_points
+                for point in preview_points
             ]
         else:
             payload["preview_readout_samples"] = []
@@ -577,17 +636,13 @@ class NativePhysicsBackend(SensorBackend):
         base_extrinsics: CameraExtrinsics,
         trajectory_poses: list[TrajectoryPose],
         base_pose: TrajectoryPose | None,
-    ) -> tuple[list[tuple[float, float, float]], dict[str, object]]:
-        camera_points = transform_points_world_to_camera(
+    ) -> tuple[list[dict[str, object]], dict[str, object]]:
+        base_projected = self._project_camera_samples_for_extrinsics(
             points_xyz=points_xyz,
-            extrinsics=base_extrinsics,
-        )
-        base_projected = project_points_brown_conrady(
-            points_xyz=camera_points,
+            camera_config=camera_config,
             intrinsics=intrinsics,
             distortion=distortion,
-            geometry_model=camera_config.geometry_model,
-            clamp_to_image=camera_config.projection_clamp_to_image,
+            extrinsics=base_extrinsics,
         )
         if (
             not camera_config.rolling_shutter.enabled
@@ -602,23 +657,22 @@ class NativePhysicsBackend(SensorBackend):
                 "base_pose_time_s": base_pose.time_s if base_pose is not None else None,
             }
 
-        distorted_points: list[tuple[float, float, float]] = []
-        for point in points_xyz:
-            base_projection = project_points_brown_conrady(
-                points_xyz=[
-                    transform_points_world_to_camera(
-                        points_xyz=[point],
-                        extrinsics=base_extrinsics,
-                    )[0]
-                ],
+        distorted_points: list[dict[str, object]] = []
+        for point_index, point in enumerate(points_xyz):
+            base_projection = self._project_camera_samples_for_extrinsics(
+                points_xyz=[point],
+                camera_config=camera_config,
                 intrinsics=intrinsics,
                 distortion=distortion,
-                geometry_model=camera_config.geometry_model,
+                extrinsics=base_extrinsics,
                 clamp_to_image=False,
+                point_index_offset=point_index,
             )
             if not base_projection:
                 continue
-            base_u, base_v, _ = base_projection[0]
+            base_sample = base_projection[0]
+            base_u = float(base_sample["u"])
+            base_v = float(base_sample["v"])
             readout = self._camera_rolling_shutter_sample(
                 u=base_u,
                 v=base_v,
@@ -636,26 +690,34 @@ class NativePhysicsBackend(SensorBackend):
                     base_pose=base_pose,
                     sample_pose=pose,
                 )
-                projected = project_points_brown_conrady(
-                    points_xyz=transform_points_world_to_camera(
-                        points_xyz=[point],
-                        extrinsics=distorted_extrinsics,
-                    ),
+                projected = self._project_camera_samples_for_extrinsics(
+                    points_xyz=[point],
+                    camera_config=camera_config,
                     intrinsics=intrinsics,
                     distortion=distortion,
-                    geometry_model=camera_config.geometry_model,
-                    clamp_to_image=camera_config.projection_clamp_to_image,
+                    extrinsics=distorted_extrinsics,
+                    point_index_offset=point_index,
                 )
                 if projected:
-                    sample_uvz.append(projected[0])
+                    sample_uvz.append(
+                        (
+                            float(projected[0]["u"]),
+                            float(projected[0]["v"]),
+                            float(projected[0]["z"]),
+                        )
+                    )
             if sample_uvz:
                 count = float(len(sample_uvz))
                 distorted_points.append(
-                    (
-                        sum(value[0] for value in sample_uvz) / count,
-                        sum(value[1] for value in sample_uvz) / count,
-                        sum(value[2] for value in sample_uvz) / count,
-                    )
+                    {
+                        "u": sum(value[0] for value in sample_uvz) / count,
+                        "v": sum(value[1] for value in sample_uvz) / count,
+                        "z": sum(value[2] for value in sample_uvz) / count,
+                        "point_index": point_index,
+                        "world_x": point[0],
+                        "world_y": point[1],
+                        "world_z": point[2],
+                    }
                 )
 
         return distorted_points, {
@@ -665,6 +727,308 @@ class NativePhysicsBackend(SensorBackend):
             "pose_count": len(trajectory_poses),
             "base_pose_time_s": base_pose.time_s,
         }
+
+    def _project_camera_samples_for_extrinsics(
+        self,
+        *,
+        points_xyz: list[tuple[float, float, float]],
+        camera_config: CameraSensorConfig,
+        intrinsics: CameraIntrinsics,
+        distortion: BrownConradyDistortion,
+        extrinsics: CameraExtrinsics,
+        clamp_to_image: bool | None = None,
+        point_index_offset: int = 0,
+    ) -> list[dict[str, object]]:
+        effective_clamp = (
+            camera_config.projection_clamp_to_image
+            if clamp_to_image is None
+            else clamp_to_image
+        )
+        projected_samples: list[dict[str, object]] = []
+        for point_index, point in enumerate(points_xyz):
+            camera_points = transform_points_world_to_camera(
+                points_xyz=[point],
+                extrinsics=extrinsics,
+            )
+            projected = project_points_brown_conrady(
+                points_xyz=camera_points,
+                intrinsics=intrinsics,
+                distortion=distortion,
+                geometry_model=camera_config.geometry_model,
+                clamp_to_image=effective_clamp,
+            )
+            if not projected:
+                continue
+            u, v, z = projected[0]
+            projected_samples.append(
+                {
+                    "u": u,
+                    "v": v,
+                    "z": z,
+                    "point_index": point_index_offset + point_index,
+                    "world_x": point[0],
+                    "world_y": point[1],
+                    "world_z": point[2],
+                }
+            )
+        return projected_samples
+
+    def _camera_semantic_sample(
+        self,
+        *,
+        request: SensorSimRequest,
+        camera_config: CameraSensorConfig,
+        projected_sample: dict[str, object],
+    ) -> dict[str, object]:
+        point_index = int(projected_sample.get("point_index", 0))
+        world_point = (
+            float(projected_sample.get("world_x", 0.0)),
+            float(projected_sample.get("world_y", 0.0)),
+            float(projected_sample.get("world_z", 0.0)),
+        )
+        semantic = self._camera_semantic_override_for_point(
+            request=request,
+            point_index=point_index,
+            default_class_version=camera_config.semantic_params.class_version,
+        )
+        source = "annotation_override"
+        if semantic is None:
+            semantic = self._camera_semantic_fallback_label(
+                world_point=world_point,
+                camera_config=camera_config,
+                point_index=point_index,
+            )
+            source = "heuristic"
+        semantic_payload = {
+            "u": float(projected_sample["u"]),
+            "v": float(projected_sample["v"]),
+            "z_m": float(projected_sample["z"]),
+            "semantic_class_id": int(semantic["semantic_class_id"]),
+            "semantic_class_name": str(semantic["semantic_class_name"]),
+            "semantic_parent_class": str(semantic["semantic_parent_class"]),
+            "color_rgb": list(semantic["color_rgb"]),
+            "source": source,
+        }
+        semantic_params = camera_config.semantic_params
+        if semantic_params.include_actor_id:
+            semantic_payload["actor_id"] = int(semantic["actor_id"])
+        if semantic_params.include_component_id:
+            semantic_payload["component_id"] = int(semantic["component_id"])
+        if semantic_params.include_material_class:
+            semantic_payload["material_class_id"] = int(semantic["material_class_id"])
+        if semantic_params.include_material_uuid:
+            semantic_payload["material_uuid"] = int(semantic["material_uuid"])
+        if semantic_params.include_base_map_element:
+            semantic_payload["base_map_element_id"] = int(semantic["base_map_element_id"])
+        if semantic_params.include_procedural_map_element:
+            semantic_payload["procedural_map_element_id"] = int(
+                semantic["procedural_map_element_id"]
+            )
+        if semantic_params.include_lane_marking_id:
+            semantic_payload["lane_marking_id"] = int(semantic["lane_marking_id"])
+        return semantic_payload
+
+    def _camera_semantic_legend(
+        self,
+        semantic_samples: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        seen: dict[int, dict[str, object]] = {}
+        for sample in semantic_samples:
+            class_id = int(sample.get("semantic_class_id", 0))
+            if class_id in seen:
+                continue
+            seen[class_id] = {
+                "semantic_class_id": class_id,
+                "semantic_class_name": sample.get("semantic_class_name", f"CLASS_{class_id}"),
+                "semantic_parent_class": sample.get("semantic_parent_class", "UNKNOWN"),
+                "color_rgb": sample.get("color_rgb", [0, 0, 0]),
+            }
+        return list(seen.values())
+
+    def _camera_semantic_override_for_point(
+        self,
+        *,
+        request: SensorSimRequest,
+        point_index: int,
+        default_class_version: str,
+    ) -> dict[str, object] | None:
+        raw_overrides = request.options.get("camera_semantic_point_labels")
+        if not isinstance(raw_overrides, list):
+            annotations = request.options.get("camera_semantic_annotations")
+            if isinstance(annotations, dict):
+                raw_overrides = annotations.get("point_labels")
+        if not isinstance(raw_overrides, list):
+            return None
+        for raw_override in raw_overrides:
+            if not isinstance(raw_override, dict):
+                continue
+            override_point_index = self._coerce_int(raw_override.get("point_index"))
+            if override_point_index != point_index:
+                continue
+            class_id = self._coerce_int(raw_override.get("semantic_class_id"), 0)
+            entry = self._camera_semantic_entry_for_class(
+                class_version=(
+                    str(raw_override.get("class_version", "")).strip().upper()
+                    or default_class_version
+                ),
+                class_id=class_id,
+                fallback_name=raw_override.get("semantic_class_name"),
+            )
+            return {
+                "semantic_class_id": class_id,
+                "semantic_class_name": str(
+                    raw_override.get("semantic_class_name", entry["name"])
+                ),
+                "semantic_parent_class": str(
+                    raw_override.get("semantic_parent_class", entry["parent_class"])
+                ),
+                "color_rgb": list(raw_override.get("color_rgb", entry["color_rgb"])),
+                "actor_id": self._coerce_int(raw_override.get("actor_id"), point_index + 1),
+                "component_id": self._coerce_int(
+                    raw_override.get("component_id"),
+                    1000 + point_index,
+                ),
+                "material_class_id": self._coerce_int(
+                    raw_override.get("material_class_id"),
+                    int(entry["material_class_id"]),
+                ),
+                "material_uuid": self._coerce_int(raw_override.get("material_uuid"), 0),
+                "base_map_element_id": self._coerce_int(
+                    raw_override.get("base_map_element_id"),
+                    0,
+                ),
+                "procedural_map_element_id": self._coerce_int(
+                    raw_override.get("procedural_map_element_id"),
+                    0,
+                ),
+                "lane_marking_id": self._coerce_int(raw_override.get("lane_marking_id"), 0),
+            }
+        return None
+
+    def _camera_semantic_fallback_label(
+        self,
+        *,
+        world_point: tuple[float, float, float],
+        camera_config: CameraSensorConfig,
+        point_index: int,
+    ) -> dict[str, object]:
+        x, y, z = world_point
+        class_version = camera_config.semantic_params.class_version.upper()
+        if class_version == "GRANULAR_SEGMENTATION":
+            if abs(y) <= 0.15 and abs(x) <= 0.8:
+                class_id = 2501
+                lane_marking_id = 9000 + point_index
+            elif abs(y) <= 0.4:
+                class_id = 5000
+                lane_marking_id = 0
+            elif abs(y) <= 0.8:
+                class_id = 1002
+                lane_marking_id = 0
+            elif abs(x) <= 1.8 and y > 0.8:
+                class_id = 7501
+                lane_marking_id = 0
+            elif abs(x) <= 3.5 and y > 0.8:
+                class_id = 4000
+                lane_marking_id = 0
+            elif y < -1.0:
+                class_id = 205
+                lane_marking_id = 0
+            elif abs(x) > 6.0:
+                class_id = 3501
+                lane_marking_id = 0
+            else:
+                class_id = 6003
+                lane_marking_id = 0
+        else:
+            if abs(y) <= 0.15 and abs(x) <= 0.8:
+                class_id = 6
+                lane_marking_id = 9000 + point_index
+            elif abs(y) <= 0.4:
+                class_id = 7
+                lane_marking_id = 0
+            elif abs(y) <= 0.8:
+                class_id = 8
+                lane_marking_id = 0
+            elif abs(x) <= 1.8 and y > 0.8:
+                class_id = 10
+                lane_marking_id = 0
+            elif abs(x) <= 3.5 and y > 0.8:
+                class_id = 4
+                lane_marking_id = 0
+            elif y < -1.0:
+                class_id = 1
+                lane_marking_id = 0
+            elif abs(x) > 6.0:
+                class_id = 12
+                lane_marking_id = 0
+            else:
+                class_id = 9
+                lane_marking_id = 0
+        entry = self._camera_semantic_entry_for_class(
+            class_version=class_version,
+            class_id=class_id,
+        )
+        return {
+            "semantic_class_id": class_id,
+            "semantic_class_name": entry["name"],
+            "semantic_parent_class": entry["parent_class"],
+            "color_rgb": entry["color_rgb"],
+            "actor_id": point_index + 1,
+            "component_id": 1000 + point_index,
+            "material_class_id": int(entry["material_class_id"]),
+            "material_uuid": 0,
+            "base_map_element_id": 500 + point_index if class_id in {7, 5000, 8, 5500} else 0,
+            "procedural_map_element_id": 700 + point_index if class_id in {9, 6003} else 0,
+            "lane_marking_id": lane_marking_id,
+        }
+
+    def _camera_semantic_entry_for_class(
+        self,
+        *,
+        class_version: str | None,
+        class_id: int,
+        fallback_name: object | None = None,
+    ) -> dict[str, object]:
+        palette = self._camera_semantic_palette(class_version=class_version)
+        entry = palette.get(class_id)
+        if entry is not None:
+            return entry
+        return {
+            "name": str(fallback_name) if fallback_name is not None else f"CLASS_{class_id}",
+            "parent_class": "UNKNOWN",
+            "color_rgb": self._camera_semantic_color_from_id(class_id),
+            "material_class_id": 0,
+        }
+
+    def _camera_semantic_palette(self, *, class_version: str | None) -> dict[int, dict[str, object]]:
+        normalized = str(class_version or "LEGACY").strip().upper()
+        if normalized == "GRANULAR_SEGMENTATION":
+            return _APPLIED_GRANULAR_CAMERA_SEMANTICS
+        return _APPLIED_LEGACY_CAMERA_SEMANTICS
+
+    def _camera_semantic_color_from_id(self, class_id: int) -> list[int]:
+        value = abs(int(class_id))
+        return [
+            32 + (value * 53) % 192,
+            32 + (value * 97) % 192,
+            32 + (value * 193) % 192,
+        ]
+
+    def _coerce_int(self, raw: object, default: int = 0) -> int:
+        if raw is None:
+            return default
+        if isinstance(raw, bool):
+            return int(raw)
+        if isinstance(raw, int):
+            return raw
+        if isinstance(raw, float):
+            return int(raw)
+        if isinstance(raw, str):
+            try:
+                return int(float(raw.strip()))
+            except ValueError:
+                return default
+        return default
 
     def _encode_camera_depth_value(
         self,
