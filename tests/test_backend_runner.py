@@ -66,6 +66,8 @@ echo "runner_warn" >&2
                                 "backend": "awsim",
                                 "modality": "camera",
                                 "backend_filename": "rgb_frame.json",
+                                "output_role": "camera_visible",
+                                "artifact_type": "awsim_camera_rgb_json",
                                 "sensor_name": "camera",
                                 "sensor_id": "camera_front",
                                 "data_format": "camera_projection_json",
@@ -150,7 +152,16 @@ echo "runner_warn" >&2
             )
             self.assertEqual(sensor_output_summary["sensor_count"], 1)
             self.assertEqual(sensor_output_summary["found_sensor_count"], 1)
+            self.assertEqual(sensor_output_summary["output_role_counts"]["camera_visible"], 1)
+            self.assertEqual(
+                sensor_output_summary["artifact_type_counts"]["awsim_camera_rgb_json"],
+                1,
+            )
             self.assertEqual(sensor_output_summary["sensors"][0]["modality"], "camera")
+            self.assertEqual(
+                sensor_output_summary["sensors"][0]["found_output_roles"],
+                ["camera_visible"],
+            )
             self.assertEqual(
                 sensor_output_summary["sensors"][0]["outputs"][0]["resolved_path"],
                 str(sensor_output_file),
@@ -158,6 +169,10 @@ echo "runner_warn" >&2
             self.assertEqual(
                 sensor_output_summary["sensors"][0]["outputs"][0]["backend_filename"],
                 "rgb_frame.json",
+            )
+            self.assertEqual(
+                sensor_output_summary["sensors"][0]["outputs"][0]["artifact_type"],
+                "awsim_camera_rgb_json",
             )
             self.assertIn("runner_ok", stdout)
             self.assertIn("runner_warn", stderr)

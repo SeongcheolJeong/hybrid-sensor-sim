@@ -78,22 +78,92 @@ _BACKEND_EXPECTED_OUTPUT_PRESETS: dict[str, list[dict[str, Any]]] = {
 
 _BACKEND_SENSOR_EXPORT_LAYOUTS: dict[str, dict[str, dict[str, str]]] = {
     "awsim": {
-        "camera_projection_json": {"modality": "camera", "filename": "rgb_frame.json"},
-        "camera_depth_json": {"modality": "camera", "filename": "depth_frame.json"},
-        "camera_semantic_json": {"modality": "camera", "filename": "semantic_frame.json"},
-        "lidar_points_xyz": {"modality": "lidar", "filename": "point_cloud.xyz"},
-        "lidar_points_json": {"modality": "lidar", "filename": "point_cloud.json"},
-        "lidar_points": {"modality": "lidar", "filename": "point_cloud.bin"},
-        "radar_targets_json": {"modality": "radar", "filename": "targets.json"},
+        "camera_projection_json": {
+            "modality": "camera",
+            "filename": "rgb_frame.json",
+            "output_role": "camera_visible",
+            "artifact_type": "awsim_camera_rgb_json",
+        },
+        "camera_depth_json": {
+            "modality": "camera",
+            "filename": "depth_frame.json",
+            "output_role": "camera_depth",
+            "artifact_type": "awsim_camera_depth_json",
+        },
+        "camera_semantic_json": {
+            "modality": "camera",
+            "filename": "semantic_frame.json",
+            "output_role": "camera_semantic",
+            "artifact_type": "awsim_camera_semantic_json",
+        },
+        "lidar_points_xyz": {
+            "modality": "lidar",
+            "filename": "point_cloud.xyz",
+            "output_role": "lidar_point_cloud",
+            "artifact_type": "awsim_lidar_xyz_point_cloud",
+        },
+        "lidar_points_json": {
+            "modality": "lidar",
+            "filename": "point_cloud.json",
+            "output_role": "lidar_point_cloud",
+            "artifact_type": "awsim_lidar_json_point_cloud",
+        },
+        "lidar_points": {
+            "modality": "lidar",
+            "filename": "point_cloud.bin",
+            "output_role": "lidar_point_cloud",
+            "artifact_type": "awsim_lidar_binary_point_cloud",
+        },
+        "radar_targets_json": {
+            "modality": "radar",
+            "filename": "targets.json",
+            "output_role": "radar_detections",
+            "artifact_type": "awsim_radar_detections_json",
+        },
     },
     "carla": {
-        "camera_projection_json": {"modality": "camera", "filename": "image.json"},
-        "camera_depth_json": {"modality": "camera", "filename": "image_depth.json"},
-        "camera_semantic_json": {"modality": "camera", "filename": "image_semantic.json"},
-        "lidar_points_xyz": {"modality": "lidar", "filename": "point_cloud.xyz"},
-        "lidar_points_json": {"modality": "lidar", "filename": "point_cloud.json"},
-        "lidar_points": {"modality": "lidar", "filename": "point_cloud.bin"},
-        "radar_targets_json": {"modality": "radar", "filename": "detections.json"},
+        "camera_projection_json": {
+            "modality": "camera",
+            "filename": "image.json",
+            "output_role": "camera_visible",
+            "artifact_type": "carla_camera_rgb_json",
+        },
+        "camera_depth_json": {
+            "modality": "camera",
+            "filename": "image_depth.json",
+            "output_role": "camera_depth",
+            "artifact_type": "carla_camera_depth_json",
+        },
+        "camera_semantic_json": {
+            "modality": "camera",
+            "filename": "image_semantic.json",
+            "output_role": "camera_semantic",
+            "artifact_type": "carla_camera_semantic_json",
+        },
+        "lidar_points_xyz": {
+            "modality": "lidar",
+            "filename": "point_cloud.xyz",
+            "output_role": "lidar_point_cloud",
+            "artifact_type": "carla_lidar_xyz_point_cloud",
+        },
+        "lidar_points_json": {
+            "modality": "lidar",
+            "filename": "point_cloud.json",
+            "output_role": "lidar_point_cloud",
+            "artifact_type": "carla_lidar_json_point_cloud",
+        },
+        "lidar_points": {
+            "modality": "lidar",
+            "filename": "point_cloud.bin",
+            "output_role": "lidar_point_cloud",
+            "artifact_type": "carla_lidar_binary_point_cloud",
+        },
+        "radar_targets_json": {
+            "modality": "radar",
+            "filename": "detections.json",
+            "output_role": "radar_detections",
+            "artifact_type": "carla_radar_detections_json",
+        },
     },
 }
 
@@ -232,13 +302,18 @@ def _sensor_export_layout(
     *,
     backend: str,
     data_format: str,
-) -> tuple[str, str, str]:
+) -> tuple[str, str, str, str, str]:
     backend_layout = _BACKEND_SENSOR_EXPORT_LAYOUTS.get(backend, {})
     layout = backend_layout.get(data_format, {})
     modality = str(layout.get("modality", "")).strip() or data_format.split("_", 1)[0]
     backend_filename = str(layout.get("filename", "")).strip() or _sensor_export_filename(data_format)
+    output_role = str(layout.get("output_role", "")).strip() or modality
+    artifact_type = (
+        str(layout.get("artifact_type", "")).strip()
+        or f"{backend}_{_sanitize_artifact_key(data_format)}"
+    )
     fallback_filename = _sensor_export_filename(data_format)
-    return modality, backend_filename, fallback_filename
+    return modality, backend_filename, output_role, artifact_type, fallback_filename
 
 
 def _sensor_export_relative_paths(
@@ -248,7 +323,7 @@ def _sensor_export_relative_paths(
     sensor_name: str,
     data_format: str,
 ) -> tuple[str, list[str]]:
-    modality, export_filename, fallback_filename = _sensor_export_layout(
+    modality, export_filename, _output_role, _artifact_type, fallback_filename = _sensor_export_layout(
         backend=backend,
         data_format=data_format,
     )
@@ -308,7 +383,7 @@ def _build_sensor_expected_output_entries(
             continue
         seen_keys.add(artifact_key)
         sensor_name = str(entry.get("sensor_name", "")).strip() or sensor_id
-        modality, export_filename, _fallback_filename = _sensor_export_layout(
+        modality, export_filename, output_role, artifact_type, _fallback_filename = _sensor_export_layout(
             backend=backend,
             data_format=data_format,
         )
@@ -324,6 +399,8 @@ def _build_sensor_expected_output_entries(
                 "backend": backend,
                 "modality": modality,
                 "backend_filename": export_filename,
+                "output_role": output_role,
+                "artifact_type": artifact_type,
                 "sensor_name": sensor_name,
                 "sensor_id": sensor_id,
                 "data_format": data_format,
@@ -385,6 +462,8 @@ def _build_backend_output_spec(
                 "backend": str(entry.get("backend", "")).strip(),
                 "modality": str(entry.get("modality", "")).strip(),
                 "backend_filename": str(entry.get("backend_filename", "")).strip(),
+                "output_role": str(entry.get("output_role", "")).strip(),
+                "artifact_type": str(entry.get("artifact_type", "")).strip(),
                 "sensor_name": str(entry.get("sensor_name", "")).strip() or sensor_id,
                 "data_format": str(entry.get("data_format", "")).strip(),
                 "relative_path": str(entry.get("relative_path", "")).strip(),
@@ -590,6 +669,8 @@ def _normalize_expected_outputs(raw: Any) -> list[dict[str, Any]]:
                 "backend": str(entry.get("backend", "")).strip(),
                 "modality": str(entry.get("modality", "")).strip(),
                 "backend_filename": str(entry.get("backend_filename", "")).strip(),
+                "output_role": str(entry.get("output_role", "")).strip(),
+                "artifact_type": str(entry.get("artifact_type", "")).strip(),
                 "sensor_name": str(entry.get("sensor_name", "")).strip(),
                 "sensor_id": str(entry.get("sensor_id", "")).strip(),
                 "data_format": str(entry.get("data_format", "")).strip(),
@@ -678,21 +759,42 @@ def _build_sensor_output_summary(
                 "output_count": 0,
                 "found_output_count": 0,
                 "missing_output_count": 0,
+                "output_role_counts": {},
+                "artifact_type_counts": {},
+                "found_output_roles": [],
+                "missing_output_roles": [],
                 "outputs": [],
             },
         )
         exists = bool(entry.get("exists", False))
+        output_role = str(entry.get("output_role", "")).strip()
+        artifact_type = str(entry.get("artifact_type", "")).strip()
         sensor_summary["output_count"] += 1
         if exists:
             sensor_summary["found_output_count"] += 1
             sensor_summary["available"] = True
         else:
             sensor_summary["missing_output_count"] += 1
+        if output_role:
+            role_counts = sensor_summary["output_role_counts"]
+            role_counts[output_role] = int(role_counts.get(output_role, 0)) + 1
+            target_list = (
+                sensor_summary["found_output_roles"]
+                if exists
+                else sensor_summary["missing_output_roles"]
+            )
+            if output_role not in target_list:
+                target_list.append(output_role)
+        if artifact_type:
+            artifact_counts = sensor_summary["artifact_type_counts"]
+            artifact_counts[artifact_type] = int(artifact_counts.get(artifact_type, 0)) + 1
         sensor_summary["outputs"].append(
             {
                 "artifact_key": str(entry.get("artifact_key", "")).strip(),
                 "backend_filename": str(entry.get("backend_filename", "")).strip(),
                 "modality": str(entry.get("modality", "")).strip(),
+                "output_role": output_role,
+                "artifact_type": artifact_type,
                 "data_format": str(entry.get("data_format", "")).strip(),
                 "relative_path": str(entry.get("relative_path", "")).strip(),
                 "resolved_path": str(entry.get("resolved_path", "")).strip() or None,
@@ -700,16 +802,26 @@ def _build_sensor_output_summary(
             }
         )
 
+    output_role_counts: dict[str, int] = {}
+    artifact_type_counts: dict[str, int] = {}
     for sensor_summary in sensors.values():
         if bool(sensor_summary.get("available")):
             found_sensor_count += 1
         else:
             missing_sensor_count += 1
+        for output_role, count in dict(sensor_summary.get("output_role_counts", {})).items():
+            output_role_counts[str(output_role)] = int(output_role_counts.get(str(output_role), 0)) + int(count)
+        for artifact_type, count in dict(sensor_summary.get("artifact_type_counts", {})).items():
+            artifact_type_counts[str(artifact_type)] = int(
+                artifact_type_counts.get(str(artifact_type), 0)
+            ) + int(count)
 
     summary_payload = {
         "sensor_count": len(sensors),
         "found_sensor_count": found_sensor_count,
         "missing_sensor_count": missing_sensor_count,
+        "output_role_counts": output_role_counts,
+        "artifact_type_counts": artifact_type_counts,
         "sensors": [sensors[key] for key in sorted(sensors)],
     }
     summary_path = output_dir / "backend_sensor_output_summary.json"

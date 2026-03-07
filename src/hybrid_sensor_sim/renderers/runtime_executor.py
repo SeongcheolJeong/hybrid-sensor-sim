@@ -625,6 +625,8 @@ def _write_renderer_pipeline_summary(
     found_sensor_output_count = 0
     missing_sensor_output_count = 0
     sensor_output_records: list[dict[str, Any]] = []
+    sensor_output_role_counts: dict[str, int] = {}
+    sensor_artifact_type_counts: dict[str, int] = {}
     sensor_output_payload = (
         _read_contract_payload(sensor_output_summary_path)
         if sensor_output_summary_path
@@ -640,6 +642,20 @@ def _write_renderer_pipeline_summary(
             sensor_output_payload.get("missing_sensor_count"),
             default=0,
         )
+        raw_output_role_counts = sensor_output_payload.get("output_role_counts")
+        if isinstance(raw_output_role_counts, dict):
+            sensor_output_role_counts = {
+                str(key): _coerce_int(value, default=0)
+                for key, value in raw_output_role_counts.items()
+                if str(key).strip()
+            }
+        raw_artifact_type_counts = sensor_output_payload.get("artifact_type_counts")
+        if isinstance(raw_artifact_type_counts, dict):
+            sensor_artifact_type_counts = {
+                str(key): _coerce_int(value, default=0)
+                for key, value in raw_artifact_type_counts.items()
+                if str(key).strip()
+            }
         raw_sensor_output_records = sensor_output_payload.get("sensors")
         if isinstance(raw_sensor_output_records, list):
             sensor_output_records = [item for item in raw_sensor_output_records if isinstance(item, dict)]
@@ -696,6 +712,8 @@ def _write_renderer_pipeline_summary(
             "missing_sensor_count": (
                 missing_sensor_output_count if sensor_output_summary_available else None
             ),
+            "output_role_counts": sensor_output_role_counts,
+            "artifact_type_counts": sensor_artifact_type_counts,
             "sensors": sensor_output_records,
         },
         "artifacts": {

@@ -914,6 +914,11 @@ printf "%s\\n" "$@"
             self.assertEqual(output_spec["backend"], "awsim")
             self.assertEqual(sensor_output_summary["sensor_count"], 3)
             self.assertEqual(sensor_output_summary["found_sensor_count"], 1)
+            self.assertEqual(sensor_output_summary["output_role_counts"]["camera_visible"], 1)
+            self.assertEqual(
+                sensor_output_summary["artifact_type_counts"]["awsim_camera_rgb_json"],
+                1,
+            )
             self.assertTrue(
                 any(
                     sensor["sensor_id"] == "camera_front"
@@ -922,6 +927,8 @@ printf "%s\\n" "$@"
                     and "/sensor_exports/awsim/camera_front/camera/rgb_frame.json"
                     in sensor["outputs"][0]["resolved_path"]
                     and sensor["outputs"][0]["backend_filename"] == "rgb_frame.json"
+                    and sensor["outputs"][0]["output_role"] == "camera_visible"
+                    and sensor["outputs"][0]["artifact_type"] == "awsim_camera_rgb_json"
                     for sensor in sensor_output_summary["sensors"]
                 )
             )
@@ -929,6 +936,14 @@ printf "%s\\n" "$@"
             self.assertTrue(pipeline_summary["expected_outputs"]["inspection_available"])
             self.assertTrue(pipeline_summary["sensor_outputs"]["summary_available"])
             self.assertEqual(pipeline_summary["sensor_outputs"]["found_sensor_count"], 1)
+            self.assertEqual(
+                pipeline_summary["sensor_outputs"]["output_role_counts"]["camera_visible"],
+                1,
+            )
+            self.assertEqual(
+                pipeline_summary["sensor_outputs"]["artifact_type_counts"]["awsim_camera_rgb_json"],
+                1,
+            )
             self.assertIn(
                 "awsim_runtime_state_json",
                 pipeline_summary["expected_outputs"]["found_artifact_keys"],
@@ -941,6 +956,8 @@ printf "%s\\n" "$@"
                 any(
                     sensor["sensor_id"] == "camera_front"
                     and sensor["outputs"][0]["backend_filename"] == "rgb_frame.json"
+                    and sensor["outputs"][0]["output_role"] == "camera_visible"
+                    and sensor["outputs"][0]["artifact_type"] == "awsim_camera_rgb_json"
                     for sensor in pipeline_summary["sensor_outputs"]["sensors"]
                 )
             )
@@ -1537,6 +1554,22 @@ echo "carla_backend_ok"
             self.assertEqual(
                 outputs_by_sensor["camera_front"]["outputs"][0]["modality"],
                 "camera",
+            )
+            self.assertEqual(
+                outputs_by_sensor["camera_front"]["outputs"][0]["output_role"],
+                "camera_visible",
+            )
+            self.assertEqual(
+                outputs_by_sensor["camera_front"]["outputs"][0]["artifact_type"],
+                "carla_camera_rgb_json",
+            )
+            self.assertEqual(
+                outputs_by_sensor["lidar_top"]["outputs"][0]["artifact_type"],
+                "carla_lidar_json_point_cloud",
+            )
+            self.assertEqual(
+                outputs_by_sensor["radar_front"]["outputs"][0]["artifact_type"],
+                "carla_radar_detections_json",
             )
             self.assertIn(
                 "/sensor_exports/carla/camera_front/camera/image.json",
