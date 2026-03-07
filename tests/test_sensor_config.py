@@ -21,6 +21,8 @@ class SensorConfigTests(unittest.TestCase):
         self.assertEqual(config.renderer.ego_actor_id, "ego")
         self.assertEqual(config.camera.geometry_model, "pinhole")
         self.assertEqual(config.camera.intrinsics.fx, 1200.0)
+        self.assertEqual(config.camera.image_chain.iso, 100)
+        self.assertAlmostEqual(config.camera.image_chain.shutter_speed_us, 6000.0)
         self.assertEqual(config.lidar.noise_model, "gaussian")
         self.assertEqual(config.lidar.scan_type, "spin")
         self.assertEqual(config.radar.clutter_model, "basic")
@@ -72,6 +74,21 @@ class SensorConfigTests(unittest.TestCase):
                     "include_component_id": False,
                     "include_material_class": True,
                     "include_lane_marking_id": True,
+                },
+                "camera_image_params": {
+                    "bloom": 0.2,
+                    "shutter_speed": 7200.0,
+                    "iso": 200,
+                    "analog_gain": 1.5,
+                    "digital_gain": 1.2,
+                    "readout_noise": 0.01,
+                    "white_balance": 5000,
+                    "gamma": 2.0,
+                    "seed": 13,
+                    "fixed_pattern_noise": {
+                        "dsnu": 0.0004,
+                        "prnu": 0.0006,
+                    },
                 },
                 "camera_rolling_shutter": {
                     "enabled": True,
@@ -125,6 +142,17 @@ class SensorConfigTests(unittest.TestCase):
         self.assertTrue(config.camera.semantic_params.include_actor_id)
         self.assertFalse(config.camera.semantic_params.include_component_id)
         self.assertTrue(config.camera.semantic_params.include_lane_marking_id)
+        self.assertAlmostEqual(config.camera.image_chain.bloom, 0.2)
+        self.assertAlmostEqual(config.camera.image_chain.shutter_speed_us, 7200.0)
+        self.assertEqual(config.camera.image_chain.iso, 200)
+        self.assertAlmostEqual(config.camera.image_chain.analog_gain, 1.5)
+        self.assertAlmostEqual(config.camera.image_chain.digital_gain, 1.2)
+        self.assertAlmostEqual(config.camera.image_chain.readout_noise, 0.01)
+        self.assertAlmostEqual(config.camera.image_chain.white_balance_kelvin, 5000.0)
+        self.assertAlmostEqual(config.camera.image_chain.gamma, 2.0)
+        self.assertEqual(config.camera.image_chain.seed, 13)
+        self.assertAlmostEqual(config.camera.image_chain.fixed_pattern_noise.dsnu, 0.0004)
+        self.assertAlmostEqual(config.camera.image_chain.fixed_pattern_noise.prnu, 0.0006)
         self.assertTrue(config.camera.rolling_shutter.enabled)
         self.assertEqual(config.camera.rolling_shutter.num_time_steps, 8)
         self.assertEqual(config.camera.rolling_shutter.num_exposure_samples_per_pixel, 4)
@@ -159,6 +187,11 @@ class SensorConfigTests(unittest.TestCase):
                     "class_version": "GRANULAR_SEGMENTATION",
                     "include_material_class": True,
                 },
+                "camera_image_params": {
+                    "iso": 160,
+                    "white_balance": 5200,
+                    "readout_noise": 0.005,
+                },
                 "camera_row_delay_ns": 5000,
                 "camera_behaviors": [{"point_at": {"id": 3}}],
                 "lidar_scan_type": "flash",
@@ -185,6 +218,15 @@ class SensorConfigTests(unittest.TestCase):
         )
         self.assertTrue(
             contract["sensor_setup"]["camera"]["semantic_params"]["include_material_class"]
+        )
+        self.assertEqual(contract["sensor_setup"]["camera"]["image_chain"]["iso"], 160)
+        self.assertEqual(
+            contract["sensor_setup"]["camera"]["image_chain"]["white_balance_kelvin"],
+            5200.0,
+        )
+        self.assertEqual(
+            contract["sensor_setup"]["camera"]["image_chain"]["readout_noise"],
+            0.005,
         )
         self.assertTrue(contract["sensor_setup"]["camera"]["rolling_shutter"]["enabled"])
         self.assertEqual(contract["sensor_setup"]["camera"]["behaviors"][0]["point_at"]["id"], "3")

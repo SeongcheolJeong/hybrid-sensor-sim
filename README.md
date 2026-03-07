@@ -119,6 +119,18 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `camera_semantic_params.include_material_class`
   - `camera_semantic_params.include_lane_marking_id`
   - optional explicit per-point overrides via `camera_semantic_point_labels`
+- Image chain controls:
+  - `camera_image_params.shutter_speed` or `camera_image_params.shutter_speed_us`
+  - `camera_image_params.iso`
+  - `camera_image_params.analog_gain`
+  - `camera_image_params.digital_gain`
+  - `camera_image_params.readout_noise`
+  - `camera_image_params.white_balance` or `camera_image_params.white_balance_kelvin`
+  - `camera_image_params.gamma`
+  - `camera_image_params.bloom`
+  - `camera_image_params.fixed_pattern_noise.dsnu`
+  - `camera_image_params.fixed_pattern_noise.prnu`
+  - `camera_image_params.seed`
 - Rolling shutter timing controls:
   - `camera_rolling_shutter.enabled`
   - `camera_rolling_shutter.row_delay_ns`
@@ -148,6 +160,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - preview artifacts record `geometry_model` per preview/frame.
   - depth mode emits `preview_depth_samples`.
   - semantic mode emits `preview_semantic_samples` and `preview_semantic_legend`.
+  - visible mode emits `preview_image_signal_samples` with exposure, white-balance, photon, and digital RGB preview values.
   - rolling shutter mode emits `preview_readout_samples` and timing metadata.
   - when HELIOS trajectory poses are available, rolling shutter preview/sweep applies per-sample pose distortion and records whether the distortion path was actually applied.
 
@@ -197,7 +210,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - references available sensor artifacts (`camera/lidar/radar` preview or sweep) per frame.
   - when survey mapping is enabled, contract also carries `survey_mapping` metadata and related artifact paths.
   - includes `sensor_setup` block with camera/lidar/radar calibration context (`intrinsics`, `distortion`, `extrinsics`, and source).
-  - camera setup now also carries `sensor_type`, `depth_params`, `semantic_params`, and `rolling_shutter`.
+  - camera setup now also carries `sensor_type`, `depth_params`, `semantic_params`, `image_chain`, and `rolling_shutter`.
   - includes `renderer_sensor_mounts` block for renderer-side sensor attach specs (`sensor_id`, `sensor_type`, `attach_to_actor_id`, `extrinsics`).
 - Runtime executor:
   - set `renderer_execute=true` to run renderer command.

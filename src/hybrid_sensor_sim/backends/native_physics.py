@@ -366,6 +366,16 @@ class NativePhysicsBackend(SensorBackend):
             if camera_config.sensor_type.upper() == "SEMANTIC_SEGMENTATION"
             else 0.0
         )
+        metrics["camera_image_chain_enabled"] = (
+            1.0
+            if camera_config.image_chain.enabled and camera_config.sensor_type.upper() == "VISIBLE"
+            else 0.0
+        )
+        metrics["camera_image_signal_output_count"] = (
+            float(len(projected))
+            if camera_config.image_chain.enabled and camera_config.sensor_type.upper() == "VISIBLE"
+            else 0.0
+        )
         preview_count = int(request.options.get("camera_projection_preview_count", 20))
         preview_payload = self._camera_preview_payload(
             request=request,
@@ -405,6 +415,7 @@ class NativePhysicsBackend(SensorBackend):
             ),
             "depth_params": camera_config.depth_params.to_dict(),
             "semantic_params": camera_config.semantic_params.to_dict(),
+            "image_chain": camera_config.image_chain.to_dict(),
             **preview_payload,
         }
         output_path = enhanced_output / "camera_projection_preview.json"
@@ -534,6 +545,11 @@ class NativePhysicsBackend(SensorBackend):
             if camera_config.sensor_type.upper() == "SEMANTIC_SEGMENTATION"
             else 0.0
         )
+        metrics["camera_image_signal_trajectory_sweep_total_output_count"] = (
+            float(total_output_count)
+            if camera_config.image_chain.enabled and camera_config.sensor_type.upper() == "VISIBLE"
+            else 0.0
+        )
         preview = {
             "input_point_cloud": str(point_cloud),
             "trajectory_path": str(trajectory_path),
@@ -550,6 +566,7 @@ class NativePhysicsBackend(SensorBackend):
             ),
             "depth_params": camera_config.depth_params.to_dict(),
             "semantic_params": camera_config.semantic_params.to_dict(),
+            "image_chain": camera_config.image_chain.to_dict(),
             "input_count": len(points_xyz),
             "frame_count": len(frames),
             "reference_point_xyz": {
@@ -583,6 +600,7 @@ class NativePhysicsBackend(SensorBackend):
             ],
             "preview_depth_samples": [],
             "preview_semantic_samples": [],
+            "preview_image_signal_samples": [],
         }
         if camera_config.sensor_type.upper() == "DEPTH":
             payload["preview_depth_samples"] = [
@@ -611,6 +629,16 @@ class NativePhysicsBackend(SensorBackend):
             payload["preview_semantic_legend"] = self._camera_semantic_legend(semantic_samples)
         else:
             payload["preview_semantic_legend"] = []
+        if camera_config.sensor_type.upper() == "VISIBLE" and camera_config.image_chain.enabled:
+            payload["preview_image_signal_samples"] = [
+                self._camera_image_signal_sample(
+                    request=request,
+                    camera_config=camera_config,
+                    intrinsics=intrinsics,
+                    projected_sample=point,
+                )
+                for point in preview_points
+            ]
         if camera_config.rolling_shutter.enabled:
             payload["preview_readout_samples"] = [
                 self._camera_rolling_shutter_sample(
@@ -1013,6 +1041,131 @@ class NativePhysicsBackend(SensorBackend):
             32 + (value * 97) % 192,
             32 + (value * 193) % 192,
         ]
+
+    def _camera_image_signal_sample(
+        self,
+        *,
+        request: SensorSimRequest,
+        camera_config: CameraSensorConfig,
+        intrinsics: CameraIntrinsics,
+        projected_sample: dict[str, object],
+    ) -> dict[str, object]:
+        point_index = int(projected_sample.get("point_index", 0))
+        z_m = max(float(projected_sample.get("z", 0.0)), 1e-6)
+        u = float(projected_sample.get("u", 0.0))
+        v = float(projected_sample.get("v", 0.0))
+        world_point = (
+            float(projected_sample.get("world_x", 0.0)),
+            float(projected_sample.get("world_y", 0.0)),
+            float(projected_sample.get("world_z", 0.0)),
+        )
+        semantic = self._camera_semantic_override_for_point(
+            request=request,
+            point_index=point_index,
+            default_class_version=camera_config.semantic_params.class_version,
+        )
+        semantic_source = "annotation_override"
+        if semantic is None:
+            semantic = self._camera_semantic_fallback_label(
+                world_point=world_point,
+                camera_config=camera_config,
+                point_index=point_index,
+            )
+            semantic_source = "heuristic"
+
+        image_chain = camera_config.image_chain
+        base_rgb = [float(channel) / 255.0 for channel in semantic["color_rgb"]]
+        distance_attenuation = 1.0 / max(z_m * z_m, 1.0)
+        normalized_u = (u - intrinsics.cx) / float(max(intrinsics.width, 1))
+        normalized_v = (v - intrinsics.cy) / float(max(intrinsics.height, 1))
+        off_axis = sqrt(normalized_u * normalized_u + normalized_v * normalized_v)
+        view_falloff = max(0.45, 1.0 - 0.75 * off_axis)
+        scene_luminance = max(0.05, min(8.0, 220.0 * distance_attenuation * view_falloff))
+        exposure_scale = (
+            image_chain.shutter_speed_us / 6000.0
+            * max(float(image_chain.iso), 1.0) / 100.0
+            * max(image_chain.analog_gain, 1e-6)
+            * max(image_chain.digital_gain, 1e-6)
+        )
+        signal_photons = max(1.0, scene_luminance * exposure_scale * 1000.0)
+        white_balance_gains = self._camera_white_balance_gains(
+            image_chain.white_balance_kelvin
+        )
+
+        linear_rgb: list[float] = []
+        digital_rgb: list[int] = []
+        noisy_signal_rgb: list[float] = []
+        bloom_boost = 0.0
+        for channel_index, base_value in enumerate(base_rgb):
+            channel_rng = random.Random(
+                image_chain.seed
+                + point_index * 9973
+                + channel_index * 101
+                + int(round(u)) * 17
+                + int(round(v)) * 19
+            )
+            photons = max(0.0, signal_photons * base_value * white_balance_gains[channel_index])
+            shot_noise = channel_rng.gauss(0.0, sqrt(max(photons, 1.0))) / 1000.0
+            dsnu = channel_rng.gauss(0.0, image_chain.fixed_pattern_noise.dsnu)
+            prnu = 1.0 + channel_rng.gauss(0.0, image_chain.fixed_pattern_noise.prnu)
+            readout_noise = channel_rng.gauss(0.0, image_chain.readout_noise)
+            channel_linear = max(0.0, photons / 1000.0)
+            channel_linear = channel_linear * prnu + dsnu + shot_noise + readout_noise
+            channel_linear = max(0.0, channel_linear)
+            linear_rgb.append(channel_linear)
+            noisy_signal_rgb.append(channel_linear)
+        if image_chain.bloom > 0.0:
+            bloom_boost = image_chain.bloom * max(max(linear_rgb) - 1.0, 0.0)
+            linear_rgb = [value + bloom_boost for value in linear_rgb]
+        gamma = max(image_chain.gamma, 1e-6)
+        for channel_linear in linear_rgb:
+            encoded = pow(max(min(channel_linear, 1.0), 0.0), 1.0 / gamma)
+            digital_rgb.append(int(round(encoded * 255.0)))
+
+        return {
+            "u": u,
+            "v": v,
+            "z_m": z_m,
+            "semantic_class_id": int(semantic["semantic_class_id"]),
+            "semantic_class_name": str(semantic["semantic_class_name"]),
+            "semantic_source": semantic_source,
+            "base_rgb_linear": base_rgb,
+            "white_balance_gains": white_balance_gains,
+            "scene_luminance": scene_luminance,
+            "signal_photons": signal_photons,
+            "noisy_signal_rgb_linear": noisy_signal_rgb,
+            "post_bloom_rgb_linear": linear_rgb,
+            "digital_rgb": digital_rgb,
+            "exposure_scale": exposure_scale,
+            "iso": image_chain.iso,
+            "shutter_speed_us": image_chain.shutter_speed_us,
+            "analog_gain": image_chain.analog_gain,
+            "digital_gain": image_chain.digital_gain,
+            "readout_noise": image_chain.readout_noise,
+            "white_balance_kelvin": image_chain.white_balance_kelvin,
+            "gamma": image_chain.gamma,
+            "bloom_boost": bloom_boost,
+        }
+
+    def _camera_white_balance_gains(self, kelvin: float) -> list[float]:
+        temperature = min(max(kelvin, 1000.0), 40000.0) / 100.0
+        if temperature <= 66.0:
+            red = 255.0
+            green = 99.4708025861 * log(max(temperature, 1e-6)) - 161.1195681661
+            blue = 0.0 if temperature <= 19.0 else 138.5177312231 * log(temperature - 10.0) - 305.0447927307
+        else:
+            red = 329.698727446 * pow(temperature - 60.0, -0.1332047592)
+            green = 288.1221695283 * pow(temperature - 60.0, -0.0755148492)
+            blue = 255.0
+        gains = [
+            min(max(red, 0.0), 255.0) / 255.0,
+            min(max(green, 0.0), 255.0) / 255.0,
+            min(max(blue, 0.0), 255.0) / 255.0,
+        ]
+        max_gain = max(gains)
+        if max_gain <= 1e-9:
+            return [1.0, 1.0, 1.0]
+        return [value / max_gain for value in gains]
 
     def _coerce_int(self, raw: object, default: int = 0) -> int:
         if raw is None:

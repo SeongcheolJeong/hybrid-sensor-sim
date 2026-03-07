@@ -175,6 +175,96 @@ EOF
             self.assertEqual(preview["geometry_model"], "pinhole")
             self.assertIn("camera_projection_output_count", result.metrics)
 
+    def test_hybrid_generates_visible_image_signal_samples(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+0.0 0.0 10.0
+1.0 1.0 12.0
+2.0 2.0 14.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": True,
+                    "camera_image_params": {
+                        "iso": 120,
+                        "shutter_speed": 4000.0,
+                        "analog_gain": 1.2,
+                        "digital_gain": 1.1,
+                        "readout_noise": 0.0,
+                        "white_balance": 4500,
+                        "gamma": 2.0,
+                        "seed": 7,
+                        "fixed_pattern_noise": {
+                            "dsnu": 0.0,
+                            "prnu": 0.0,
+                        },
+                    },
+                    "camera_intrinsics": {
+                        "fx": 1000.0,
+                        "fy": 1000.0,
+                        "cx": 960.0,
+                        "cy": 540.0,
+                        "width": 1920,
+                        "height": 1080,
+                    },
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            preview = json.loads(
+                result.artifacts["camera_projection_preview"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(preview["sensor_type"], "VISIBLE")
+            self.assertEqual(preview["image_chain"]["iso"], 120)
+            self.assertAlmostEqual(preview["image_chain"]["white_balance_kelvin"], 4500.0)
+            self.assertGreater(len(preview["preview_image_signal_samples"]), 0)
+            sample = preview["preview_image_signal_samples"][0]
+            self.assertEqual(len(sample["digital_rgb"]), 3)
+            self.assertEqual(len(sample["white_balance_gains"]), 3)
+            self.assertGreater(sample["signal_photons"], 0.0)
+            self.assertGreater(sample["white_balance_gains"][0], sample["white_balance_gains"][2])
+            self.assertNotAlmostEqual(
+                sample["noisy_signal_rgb_linear"][0],
+                sample["noisy_signal_rgb_linear"][2],
+                places=6,
+            )
+            self.assertEqual(result.metrics.get("camera_image_chain_enabled"), 1.0)
+            self.assertEqual(result.metrics.get("camera_image_signal_output_count"), 3.0)
+
     def test_hybrid_generates_depth_preview_with_rolling_shutter_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

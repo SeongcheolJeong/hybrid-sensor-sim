@@ -257,6 +257,50 @@ class CameraSemanticConfig:
 
 
 @dataclass(frozen=True)
+class CameraFixedPatternNoiseConfig:
+    dsnu: float = 0.0
+    prnu: float = 0.0
+
+    def to_dict(self) -> dict[str, float]:
+        return {
+            "dsnu": self.dsnu,
+            "prnu": self.prnu,
+        }
+
+
+@dataclass(frozen=True)
+class CameraImageChainConfig:
+    enabled: bool = True
+    bloom: float = 0.0
+    shutter_speed_us: float = 6000.0
+    iso: int = 100
+    analog_gain: float = 1.0
+    digital_gain: float = 1.0
+    readout_noise: float = 0.0
+    white_balance_kelvin: float = 6500.0
+    gamma: float = 2.2
+    seed: int = 0
+    fixed_pattern_noise: CameraFixedPatternNoiseConfig = field(
+        default_factory=CameraFixedPatternNoiseConfig
+    )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "bloom": self.bloom,
+            "shutter_speed_us": self.shutter_speed_us,
+            "iso": self.iso,
+            "analog_gain": self.analog_gain,
+            "digital_gain": self.digital_gain,
+            "readout_noise": self.readout_noise,
+            "white_balance_kelvin": self.white_balance_kelvin,
+            "gamma": self.gamma,
+            "seed": self.seed,
+            "fixed_pattern_noise": self.fixed_pattern_noise.to_dict(),
+        }
+
+
+@dataclass(frozen=True)
 class CameraRollingShutterConfig:
     enabled: bool = False
     col_delay_ns: float = 0.0
@@ -314,6 +358,7 @@ class CameraSensorConfig:
     distortion_coeffs: CameraDistortionConfig = field(default_factory=CameraDistortionConfig)
     depth_params: CameraDepthConfig = field(default_factory=CameraDepthConfig)
     semantic_params: CameraSemanticConfig = field(default_factory=CameraSemanticConfig)
+    image_chain: CameraImageChainConfig = field(default_factory=CameraImageChainConfig)
     rolling_shutter: CameraRollingShutterConfig = field(default_factory=CameraRollingShutterConfig)
     extrinsics: SensorExtrinsicsConfig = field(default_factory=SensorExtrinsicsConfig)
     behaviors: list[SensorBehaviorConfig] = field(default_factory=list)
@@ -332,6 +377,7 @@ class CameraSensorConfig:
             "distortion_coeffs": self.distortion_coeffs.to_dict(),
             "depth_params": self.depth_params.to_dict(),
             "semantic_params": self.semantic_params.to_dict(),
+            "image_chain": self.image_chain.to_dict(),
             "rolling_shutter": self.rolling_shutter.to_dict(),
             "extrinsics": self.extrinsics.to_dict(),
             "behaviors": [behavior.to_dict() for behavior in self.behaviors],
@@ -538,6 +584,36 @@ def _parse_camera_semantic(options: Mapping[str, Any]) -> CameraSemanticConfig:
     )
 
 
+def _parse_camera_image_chain(options: Mapping[str, Any]) -> CameraImageChainConfig:
+    raw = _as_dict(options.get("camera_image_params"))
+    raw_fpn = _as_dict(raw.get("fixed_pattern_noise"))
+    return CameraImageChainConfig(
+        enabled=_as_bool(raw.get("enabled", options.get("camera_image_chain_enabled")), True),
+        bloom=_as_float(raw.get("bloom", options.get("camera_bloom")), 0.0),
+        shutter_speed_us=_as_float(
+            raw.get("shutter_speed_us", raw.get("shutter_speed", options.get("camera_shutter_speed_us"))),
+            6000.0,
+        ),
+        iso=_as_int(raw.get("iso", options.get("camera_iso")), 100),
+        analog_gain=_as_float(raw.get("analog_gain", options.get("camera_analog_gain")), 1.0),
+        digital_gain=_as_float(raw.get("digital_gain", options.get("camera_digital_gain")), 1.0),
+        readout_noise=_as_float(
+            raw.get("readout_noise", options.get("camera_readout_noise")),
+            0.0,
+        ),
+        white_balance_kelvin=_as_float(
+            raw.get("white_balance_kelvin", raw.get("white_balance", options.get("camera_white_balance"))),
+            6500.0,
+        ),
+        gamma=_as_float(raw.get("gamma", options.get("camera_gamma")), 2.2),
+        seed=_as_int(raw.get("seed", options.get("camera_image_seed")), 0),
+        fixed_pattern_noise=CameraFixedPatternNoiseConfig(
+            dsnu=_as_float(raw_fpn.get("dsnu", options.get("camera_fixed_pattern_noise_dsnu")), 0.0),
+            prnu=_as_float(raw_fpn.get("prnu", options.get("camera_fixed_pattern_noise_prnu")), 0.0),
+        ),
+    )
+
+
 def _parse_camera_rolling_shutter(options: Mapping[str, Any]) -> CameraRollingShutterConfig:
     raw = _as_dict(options.get("camera_rolling_shutter"))
     col_delay_ns = _as_float(raw.get("col_delay_ns", options.get("camera_col_delay_ns")), 0.0)
@@ -654,6 +730,7 @@ def build_sensor_sim_config(
             ),
             depth_params=_parse_camera_depth(data),
             semantic_params=_parse_camera_semantic(data),
+            image_chain=_parse_camera_image_chain(data),
             rolling_shutter=_parse_camera_rolling_shutter(data),
             extrinsics=_parse_extrinsics(_as_dict(data.get("camera_extrinsics"))),
             behaviors=_parse_behaviors(data, "camera"),
