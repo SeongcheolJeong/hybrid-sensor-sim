@@ -74,6 +74,97 @@ class RendererBackendPackageAcquireTests(unittest.TestCase):
             )
             self.assertTrue(Path(summary["download"]["target_path"]).exists())
 
+    def test_build_acquire_prefers_existing_local_archive_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            local_archive = root / "Downloads" / "AWSIM-Demo.zip"
+            local_archive.parent.mkdir(parents=True, exist_ok=True)
+            _write_zip(
+                local_archive,
+                {
+                    "AWSIM-Demo/AWSIM-Demo.x86_64": "#!/usr/bin/env bash\nexit 0\n",
+                },
+            )
+            setup_summary = root / "renderer_backend_local_setup.json"
+            setup_summary.write_text(
+                json.dumps(
+                    {
+                        "selection": {
+                            "HELIOS_DOCKER_IMAGE": "heliosplusplus:cli",
+                            "HELIOS_DOCKER_BINARY": "/home/jovyan/helios/build/helios++",
+                        },
+                        "acquisition_hints": {
+                            "awsim": {
+                                "local_download_candidates": [str(local_archive)],
+                                "download_options": [
+                                    {
+                                        "name": "AWSIM-Demo.zip",
+                                        "url": "https://example.invalid/AWSIM-Demo.zip",
+                                    }
+                                ],
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            summary = build_renderer_backend_package_acquire(
+                backend="awsim",
+                repo_root=root / "repo",
+                setup_summary_path=setup_summary,
+                download_dir=root / "other_downloads",
+                output_root=root / "runtime_backends" / "awsim",
+            )
+
+            self.assertEqual(summary["download"]["source"], "local_candidate")
+            self.assertTrue(summary["readiness"]["download_ready"])
+            self.assertFalse(summary["readiness"]["download_performed"])
+            self.assertEqual(summary["download"]["used_local_archive"], str(local_archive.resolve()))
+            self.assertEqual(summary["download"]["target_path"], str(local_archive.resolve()))
+            self.assertTrue(summary["readiness"]["stage_ready"])
+
+    def test_build_acquire_works_with_local_archive_candidate_without_download_url(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            local_archive = root / "Downloads" / "AWSIM-Demo.zip"
+            local_archive.parent.mkdir(parents=True, exist_ok=True)
+            _write_zip(
+                local_archive,
+                {
+                    "AWSIM-Demo/AWSIM-Demo.x86_64": "#!/usr/bin/env bash\nexit 0\n",
+                },
+            )
+            setup_summary = root / "renderer_backend_local_setup.json"
+            setup_summary.write_text(
+                json.dumps(
+                    {
+                        "selection": {
+                            "HELIOS_DOCKER_IMAGE": "heliosplusplus:cli",
+                            "HELIOS_DOCKER_BINARY": "/home/jovyan/helios/build/helios++",
+                        },
+                        "acquisition_hints": {
+                            "awsim": {
+                                "local_download_candidates": [str(local_archive)],
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            summary = build_renderer_backend_package_acquire(
+                backend="awsim",
+                repo_root=root / "repo",
+                setup_summary_path=setup_summary,
+                output_root=root / "runtime_backends" / "awsim",
+            )
+
+            self.assertTrue(summary["readiness"]["download_url_resolved"])
+            self.assertEqual(summary["download"]["source"], "local_candidate")
+            self.assertEqual(summary["download"]["url"], None)
+            self.assertTrue(summary["readiness"]["stage_ready"])
+
     def test_build_acquire_dry_run_resolves_url_without_downloading(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

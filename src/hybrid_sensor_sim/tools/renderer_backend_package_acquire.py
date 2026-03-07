@@ -117,6 +117,26 @@ def _resolve_download_options(setup_summary: dict[str, Any], backend: str) -> li
     return options
 
 
+def _resolve_local_archive_candidates(setup_summary: dict[str, Any], backend: str) -> list[Path]:
+    hints = setup_summary.get("acquisition_hints", {})
+    backend_hints = hints.get(backend, {}) if isinstance(hints, dict) else {}
+    raw_candidates = backend_hints.get("local_download_candidates", [])
+    if not isinstance(raw_candidates, list):
+        return []
+    candidates: list[Path] = []
+    seen: set[str] = set()
+    for item in raw_candidates:
+        if not isinstance(item, str) or not item.strip():
+            continue
+        path = _resolve_path(item)
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        candidates.append(path)
+    return candidates
+
+
 def _resolve_download_choice(
     *,
     backend: str,
@@ -147,6 +167,13 @@ def _resolve_download_choice(
         issues.append(f"Could not determine a download filename for {backend}.")
         return None, None, source, issues, options
     return download_url, selected_name, source, issues, options
+
+
+def _select_existing_local_archive(setup_summary: dict[str, Any], backend: str) -> Path | None:
+    for candidate in _resolve_local_archive_candidates(setup_summary, backend):
+        if candidate.exists():
+            return candidate
+    return None
 
 
 def _download_archive(
@@ -212,13 +239,23 @@ def build_renderer_backend_package_acquire(
         resolved_setup_summary_path = _resolve_path(setup_summary_path)
         setup_summary = _load_json(resolved_setup_summary_path)
 
-    resolved_url, resolved_name, source, issues, candidate_options = _resolve_download_choice(
-        backend=backend,
-        setup_summary=setup_summary,
-        explicit_url=download_url,
-        explicit_name=download_name,
-    )
-    archive_path = (download_dir / resolved_name).resolve() if resolved_name else None
+    local_archive_candidates = _resolve_local_archive_candidates(setup_summary, backend)
+    selected_local_archive = None if download_url else _select_existing_local_archive(setup_summary, backend)
+    if selected_local_archive is not None:
+        resolved_url = None
+        resolved_name = selected_local_archive.name
+        archive_path = selected_local_archive
+        source = "local_candidate"
+        issues: list[str] = []
+        candidate_options = _resolve_download_options(setup_summary, backend)
+    else:
+        resolved_url, resolved_name, source, issues, candidate_options = _resolve_download_choice(
+            backend=backend,
+            setup_summary=setup_summary,
+            explicit_url=download_url,
+            explicit_name=download_name,
+        )
+        archive_path = (download_dir / resolved_name).resolve() if resolved_name else None
     download_reused_existing = False
     download_succeeded = False
     download_bytes = 0
@@ -226,7 +263,12 @@ def build_renderer_backend_package_acquire(
     stage_summary: dict[str, Any] | None = None
     stage_after_download = not download_only
 
-    if resolved_url is not None and archive_path is not None:
+    if selected_local_archive is not None and archive_path is not None:
+        download_succeeded = True
+        download_reused_existing = True
+        download_bytes = archive_path.stat().st_size
+        download_message = "Using existing local archive candidate."
+    elif resolved_url is not None and archive_path is not None:
         if dry_run:
             download_succeeded = archive_path.exists()
             download_reused_existing = archive_path.exists()
@@ -278,7 +320,7 @@ def build_renderer_backend_package_acquire(
         else None
     )
     readiness = {
-        "download_url_resolved": resolved_url is not None,
+        "download_url_resolved": resolved_url is not None or selected_local_archive is not None,
         "download_ready": bool(archive_path and archive_path.exists()),
         "download_performed": bool(not dry_run and download_succeeded and not download_reused_existing),
         "download_reused_existing": download_reused_existing,
@@ -301,6 +343,8 @@ def build_renderer_backend_package_acquire(
             "bytes_downloaded": download_bytes,
             "message": download_message,
             "candidate_options": candidate_options,
+            "local_archive_candidates": [str(path) for path in local_archive_candidates],
+            "used_local_archive": str(selected_local_archive) if selected_local_archive is not None else None,
         },
         "readiness": readiness,
         "dry_run": dry_run,

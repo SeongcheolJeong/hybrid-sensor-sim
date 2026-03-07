@@ -194,6 +194,60 @@ class RendererBackendWorkflowTests(unittest.TestCase):
             self.assertEqual(summary["smoke"]["summary"]["backend"], "awsim")
             self.assertEqual(summary["smoke"]["summary"]["output_comparison"]["status"], "MATCHED")
 
+    def test_workflow_can_stage_existing_local_archive_without_download(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+            local_archive = root / "Downloads" / "AWSIM-Demo.zip"
+            local_archive.parent.mkdir(parents=True, exist_ok=True)
+            _write_fake_backend_archive(local_archive)
+            setup_summary = root / "renderer_backend_local_setup.json"
+            setup_summary.write_text(
+                json.dumps(
+                    {
+                        "selection": {
+                            "HELIOS_BIN": str(fake_helios.resolve()),
+                            "AWSIM_RENDERER_MAP": "Town13",
+                        },
+                        "readiness": {
+                            "helios_ready": True,
+                        },
+                        "acquisition_hints": {
+                            "awsim": {
+                                "local_download_candidates": [str(local_archive)],
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            config_path = self._write_base_config(
+                root=root,
+                survey=survey,
+                helios_bin=fake_helios,
+                output_dir=root / "smoke_base_output",
+            )
+
+            summary = build_renderer_backend_workflow(
+                backend="awsim",
+                repo_root=root / "repo",
+                workflow_root=root / "workflow",
+                setup_summary_path=setup_summary,
+                config_path=config_path,
+                auto_acquire=True,
+            )
+
+            self.assertEqual(summary["status"], "SMOKE_SUCCEEDED")
+            self.assertEqual(summary["acquire"]["download"]["source"], "local_candidate")
+            self.assertEqual(
+                summary["acquire"]["download"]["used_local_archive"],
+                str(local_archive.resolve()),
+            )
+            self.assertTrue(summary["smoke"]["executed"])
+
     def test_workflow_main_writes_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

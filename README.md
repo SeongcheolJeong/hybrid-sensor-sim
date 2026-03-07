@@ -577,6 +577,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - `python3 scripts/acquire_renderer_backend_package.py --backend awsim --setup-summary artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json`
 - `python3 scripts/acquire_renderer_backend_package.py --backend carla --setup-summary artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json --dry-run`
 - behavior:
+  - if `acquisition_hints.<backend>.local_download_candidates` already points to an existing archive, that local archive is reused before any network download
   - resolves the first `acquisition_hints.<backend>.download_options[*].url`
   - downloads the archive into `~/Downloads` by default
   - reuses an existing archive unless `--overwrite-download` is set
