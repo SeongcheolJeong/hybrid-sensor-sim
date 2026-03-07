@@ -16,6 +16,7 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 
 - `src/hybrid_sensor_sim/backends/helios_adapter.py`: external HELIOS execution adapter.
 - `src/hybrid_sensor_sim/backends/native_physics.py`: local physics enhancement layer.
+- `src/hybrid_sensor_sim/config.py`: typed Sensor Sim config translation layer for camera/lidar/radar/renderer blocks.
 - `src/hybrid_sensor_sim/io/survey_mapping.py`: scenario JSON to HELIOS survey XML mapper.
 - `src/hybrid_sensor_sim/renderers/playback_contract.py`: renderer playback contract builder for CARLA/AWSIM bridge.
 - `src/hybrid_sensor_sim/orchestrator.py`: mode selection and pipeline chaining.
@@ -93,6 +94,12 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 
 ## Camera projection notes
 
+- A typed sensor config manifest is emitted as `sensor_sim_config.json` in both native-only and hybrid-enhanced outputs.
+- Supported camera geometry models in the local physics path:
+  - `pinhole`
+  - `rectilinear`
+  - `equidistant`
+  - `orthographic`
 - For large world coordinates, use `camera_reference_mode`:
   - `none` (default): raw coordinates.
   - `first_point` / `mean_point`: xyz recenter.
@@ -111,6 +118,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - enable `camera_projection_trajectory_sweep_enabled=true`
   - set `camera_projection_trajectory_sweep_frames` (default `3`)
   - emits `camera_projection_trajectory_sweep.json` with multi-pose frame previews.
+  - preview artifacts record `geometry_model` per preview/frame.
 
 ## LiDAR/Radar post-physics notes
 

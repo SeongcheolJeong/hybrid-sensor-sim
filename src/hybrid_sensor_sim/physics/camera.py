@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import cos, pi, sin
+from math import atan2, cos, pi, sin, sqrt
 
 
 @dataclass(frozen=True)
@@ -84,15 +84,21 @@ def project_points_brown_conrady(
     points_xyz: list[tuple[float, float, float]],
     intrinsics: CameraIntrinsics,
     distortion: BrownConradyDistortion,
+    geometry_model: str = "pinhole",
     clamp_to_image: bool = True,
 ) -> list[tuple[float, float, float]]:
     projections: list[tuple[float, float, float]] = []
     for x, y, z in points_xyz:
-        if z <= 0.0:
+        normalized = _project_to_normalized_image_plane(
+            x=x,
+            y=y,
+            z=z,
+            geometry_model=geometry_model,
+        )
+        if normalized is None:
             continue
+        xn, yn = normalized
 
-        xn = x / z
-        yn = y / z
         r2 = xn * xn + yn * yn
         r4 = r2 * r2
         r6 = r4 * r2
@@ -112,3 +118,35 @@ def project_points_brown_conrady(
         projections.append((u, v, z))
 
     return projections
+
+
+def _project_to_normalized_image_plane(
+    *,
+    x: float,
+    y: float,
+    z: float,
+    geometry_model: str,
+) -> tuple[float, float] | None:
+    geometry = geometry_model.lower().strip()
+
+    if geometry in {"pinhole", "rectilinear"}:
+        if z <= 0.0:
+            return None
+        return (x / z, y / z)
+
+    if geometry in {"equidistant", "fisheye", "f-theta"}:
+        if z <= 0.0:
+            return None
+        radial_norm = sqrt(x * x + y * y)
+        if radial_norm <= 1e-12:
+            return (0.0, 0.0)
+        theta = atan2(radial_norm, z)
+        scale = theta / radial_norm
+        return (x * scale, y * scale)
+
+    if geometry == "orthographic":
+        if z <= 0.0:
+            return None
+        return (x, y)
+
+    raise ValueError(f"Unsupported camera geometry model: {geometry_model}")

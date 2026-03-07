@@ -42,6 +42,50 @@ class CameraPhysicsTests(unittest.TestCase):
         self.assertNotAlmostEqual(base[0], distorted[0], places=6)
         self.assertNotAlmostEqual(base[1], distorted[1], places=6)
 
+    def test_equidistant_projection_compresses_off_axis_points(self) -> None:
+        intrinsics = CameraIntrinsics(fx=100.0, fy=100.0, cx=0.0, cy=0.0, width=1000, height=1000)
+        distortion = BrownConradyDistortion()
+        point = [(10.0, 0.0, 10.0)]
+
+        rectilinear = project_points_brown_conrady(
+            point,
+            intrinsics,
+            distortion,
+            geometry_model="rectilinear",
+            clamp_to_image=False,
+        )[0]
+        equidistant = project_points_brown_conrady(
+            point,
+            intrinsics,
+            distortion,
+            geometry_model="equidistant",
+            clamp_to_image=False,
+        )[0]
+
+        self.assertAlmostEqual(rectilinear[0], 100.0, places=6)
+        self.assertAlmostEqual(equidistant[0], 78.5398163397, places=5)
+        self.assertLess(equidistant[0], rectilinear[0])
+        self.assertAlmostEqual(equidistant[1], 0.0, places=6)
+
+    def test_orthographic_projection_ignores_depth_scaling(self) -> None:
+        intrinsics = CameraIntrinsics(fx=100.0, fy=100.0, cx=0.0, cy=0.0, width=1000, height=1000)
+        distortion = BrownConradyDistortion()
+        points = [(1.0, 2.0, 10.0), (1.0, 2.0, 20.0)]
+
+        projected = project_points_brown_conrady(
+            points,
+            intrinsics,
+            distortion,
+            geometry_model="orthographic",
+            clamp_to_image=False,
+        )
+
+        self.assertEqual(len(projected), 2)
+        self.assertAlmostEqual(projected[0][0], 100.0, places=6)
+        self.assertAlmostEqual(projected[0][1], 200.0, places=6)
+        self.assertAlmostEqual(projected[1][0], projected[0][0], places=6)
+        self.assertAlmostEqual(projected[1][1], projected[0][1], places=6)
+
     def test_world_to_camera_transform_identity_when_disabled(self) -> None:
         points = [(1.0, 2.0, 3.0)]
         extrinsics = CameraExtrinsics(enabled=False)
@@ -128,6 +172,7 @@ EOF
             preview = json.loads(preview_path.read_text(encoding="utf-8"))
             self.assertGreater(preview["input_count"], 0)
             self.assertGreater(preview["output_count"], 0)
+            self.assertEqual(preview["geometry_model"], "pinhole")
             self.assertIn("camera_projection_output_count", result.metrics)
 
     def test_projection_reference_mode_first_point(self) -> None:
@@ -318,9 +363,11 @@ EOF
 
             sweep_path = result.artifacts["camera_projection_trajectory_sweep"]
             sweep = json.loads(sweep_path.read_text(encoding="utf-8"))
+            self.assertEqual(sweep["geometry_model"], "pinhole")
             self.assertEqual(sweep["frame_count"], 3)
             self.assertEqual(len(sweep["frames"]), 3)
             self.assertGreaterEqual(sweep["frames"][0]["output_count"], 0)
+            self.assertEqual(sweep["frames"][0]["geometry_model"], "pinhole")
 
     def test_hybrid_generates_lidar_and_radar_previews(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

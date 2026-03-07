@@ -105,6 +105,7 @@ class NativePhysicsBackend(SensorBackend):
             enhanced_output=enhanced_output,
             intrinsics=intrinsics,
             distortion=distortion,
+            geometry_model=config.camera.geometry_model,
             extrinsics=extrinsics,
             metrics=metrics,
         )
@@ -116,6 +117,7 @@ class NativePhysicsBackend(SensorBackend):
             enhanced_output=enhanced_output,
             intrinsics=intrinsics,
             distortion=distortion,
+            geometry_model=config.camera.geometry_model,
             extrinsics=extrinsics,
             metrics=metrics,
         )
@@ -267,6 +269,7 @@ class NativePhysicsBackend(SensorBackend):
         enhanced_output: Path,
         intrinsics: CameraIntrinsics,
         distortion: BrownConradyDistortion,
+        geometry_model: str,
         extrinsics: CameraExtrinsics,
         metrics: dict[str, float],
     ) -> Path | None:
@@ -303,6 +306,7 @@ class NativePhysicsBackend(SensorBackend):
             points_xyz=camera_points,
             intrinsics=intrinsics,
             distortion=distortion,
+            geometry_model=geometry_model,
             clamp_to_image=bool(request.options.get("camera_projection_clamp_to_image", True)),
         )
 
@@ -314,6 +318,7 @@ class NativePhysicsBackend(SensorBackend):
         preview_count = int(request.options.get("camera_projection_preview_count", 20))
         preview = {
             "input_point_cloud": str(point_cloud),
+            "geometry_model": geometry_model,
             "input_count": len(points_xyz),
             "output_count": len(projected),
             "reference_point_xyz": {
@@ -349,6 +354,7 @@ class NativePhysicsBackend(SensorBackend):
         enhanced_output: Path,
         intrinsics: CameraIntrinsics,
         distortion: BrownConradyDistortion,
+        geometry_model: str,
         extrinsics: CameraExtrinsics,
         metrics: dict[str, float],
     ) -> Path | None:
@@ -410,6 +416,7 @@ class NativePhysicsBackend(SensorBackend):
                 points_xyz=camera_points,
                 intrinsics=intrinsics,
                 distortion=distortion,
+                geometry_model=geometry_model,
                 clamp_to_image=clamp_to_image,
             )
             total_output_count += len(projected)
@@ -429,6 +436,7 @@ class NativePhysicsBackend(SensorBackend):
                         "pitch_deg": effective.pitch_deg,
                         "yaw_deg": effective.yaw_deg,
                     },
+                    "geometry_model": geometry_model,
                     "output_count": len(projected),
                     "preview_points_uvz": [
                         {"u": u, "v": v, "z": z} for u, v, z in projected[:preview_count]
@@ -441,6 +449,7 @@ class NativePhysicsBackend(SensorBackend):
         preview = {
             "input_point_cloud": str(point_cloud),
             "trajectory_path": str(trajectory_path),
+            "geometry_model": geometry_model,
             "input_count": len(points_xyz),
             "frame_count": len(frames),
             "reference_point_xyz": {
