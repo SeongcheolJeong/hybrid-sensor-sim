@@ -375,6 +375,9 @@ class RendererBackendWorkflowTests(unittest.TestCase):
             self.assertIn("HANDOFF_SCENARIO_PATH", summary["linux_handoff"]["required_env_vars"])
             self.assertIn("HELIOS_BIN", summary["linux_handoff"]["required_env_vars"])
             self.assertIn("renderer_backend_workflow_linux_handoff.sh", summary["recommended_next_command"])
+            self.assertIn("renderer_backend_workflow_linux_handoff_pack.sh", summary["commands"]["linux_handoff_pack"])
+            self.assertGreater(summary["linux_handoff"]["transfer_manifest"]["entry_count"], 0)
+            self.assertGreater(summary["linux_handoff"]["transfer_manifest"]["packable_entry_count"], 0)
             blocker_codes = [entry["code"] for entry in summary["blockers"]]
             self.assertIn("BACKEND_HOST_INCOMPATIBLE", blocker_codes)
             self.assertNotIn("BACKEND_BIN_MISSING", blocker_codes)
@@ -423,6 +426,10 @@ class RendererBackendWorkflowTests(unittest.TestCase):
             linux_handoff_config_path = output_root / "renderer_backend_workflow_linux_handoff_config.json"
             linux_handoff_env_path = output_root / "renderer_backend_workflow_linux_handoff.env.sh"
             linux_handoff_script_path = output_root / "renderer_backend_workflow_linux_handoff.sh"
+            linux_handoff_transfer_manifest_path = (
+                output_root / "renderer_backend_workflow_linux_handoff_transfer_manifest.json"
+            )
+            linux_handoff_pack_script_path = output_root / "renderer_backend_workflow_linux_handoff_pack.sh"
             self.assertTrue(summary_path.exists())
             self.assertTrue(env_path.exists())
             self.assertTrue(report_path.exists())
@@ -432,6 +439,8 @@ class RendererBackendWorkflowTests(unittest.TestCase):
             self.assertTrue(linux_handoff_config_path.exists())
             self.assertTrue(linux_handoff_env_path.exists())
             self.assertTrue(linux_handoff_script_path.exists())
+            self.assertTrue(linux_handoff_transfer_manifest_path.exists())
+            self.assertTrue(linux_handoff_pack_script_path.exists())
             payload = json.loads(summary_path.read_text(encoding="utf-8"))
             env_text = env_path.read_text(encoding="utf-8")
             report_text = report_path.read_text(encoding="utf-8")
@@ -439,8 +448,12 @@ class RendererBackendWorkflowTests(unittest.TestCase):
             smoke_config = json.loads(smoke_config_path.read_text(encoding="utf-8"))
             rerun_smoke_text = rerun_smoke_path.read_text(encoding="utf-8")
             linux_handoff_config = json.loads(linux_handoff_config_path.read_text(encoding="utf-8"))
+            linux_handoff_transfer_manifest = json.loads(
+                linux_handoff_transfer_manifest_path.read_text(encoding="utf-8")
+            )
             linux_handoff_env_text = linux_handoff_env_path.read_text(encoding="utf-8")
             linux_handoff_script_text = linux_handoff_script_path.read_text(encoding="utf-8")
+            linux_handoff_pack_script_text = linux_handoff_pack_script_path.read_text(encoding="utf-8")
             self.assertEqual(payload["status"], "DRY_RUN_BLOCKED")
             self.assertIsNone(payload["refreshed_setup"])
             blocker_codes = [entry["code"] for entry in payload["blockers"]]
@@ -452,13 +465,16 @@ class RendererBackendWorkflowTests(unittest.TestCase):
             self.assertIn("Workflow smoke config is not ready yet", rerun_smoke_text)
             self.assertIn("HANDOFF_SMOKE_CONFIG_PATH", linux_handoff_env_text)
             self.assertIn("run_renderer_backend_smoke.py", linux_handoff_script_text)
+            self.assertIn("HANDOFF_TRANSFER_MANIFEST_PATH", linux_handoff_pack_script_text)
             self.assertIn("error", linux_handoff_config)
             self.assertFalse(payload["linux_handoff"]["ready"])
+            self.assertGreaterEqual(linux_handoff_transfer_manifest["entry_count"], 3)
             self.assertIn("Linux Runner Handoff", report_text)
             self.assertIn("SMOKE_CONFIG_UNRESOLVED", blocker_codes)
             self.assertTrue(os.access(next_step_path, os.X_OK))
             self.assertTrue(os.access(rerun_smoke_path, os.X_OK))
             self.assertTrue(os.access(linux_handoff_script_path, os.X_OK))
+            self.assertTrue(os.access(linux_handoff_pack_script_path, os.X_OK))
             self.assertIn("renderer_backend_workflow_summary.json", stdout.getvalue())
 
 
