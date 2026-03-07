@@ -1064,6 +1064,89 @@ EOF
             self.assertEqual(preview["preview_points"][1]["scan_path_index"], 1)
             self.assertEqual(preview["preview_points"][2]["channel_id"], 2)
 
+    def test_lidar_emitter_params_affect_channel_signal_and_direction(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+10.0 0.0 -0.8749
+10.0 0.0 0.8749
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "radar_postprocess_enabled": False,
+                    "lidar_postprocess_enabled": True,
+                    "lidar_noise": "none",
+                    "lidar_dropout_probability": 0.0,
+                    "lidar_ground_truth_reflectivity": 1.0,
+                    "lidar_intensity": {
+                        "units": "SNR",
+                    },
+                    "lidar_source_angles": [-5.0, 5.0],
+                    "lidar_source_angle_tolerance_deg": 0.6,
+                    "lidar_emitter_params": {
+                        "source_losses": [-6.0, 0.0],
+                        "global_source_loss": -1.0,
+                        "source_divergence": {"az": 0.003, "el": 0.002},
+                        "source_variance": {"az": 0.0004, "el": 0.0},
+                        "peak_power": 2.0,
+                        "optical_loss": [
+                            {"range": 0.0, "loss": 0.0},
+                            {"range": 20.0, "loss": -3.0},
+                        ],
+                    },
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            self.assertEqual(result.metrics.get("lidar_emitter_model_applied"), 1.0)
+            preview = json.loads(
+                result.artifacts["lidar_noisy_preview_json"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(preview["emitter_params"]["source_losses"], [-6.0, 0.0])
+            channel_points = sorted(preview["preview_points"], key=lambda point: point["channel_id"])
+            self.assertEqual([point["channel_id"] for point in channel_points], [0, 1])
+            self.assertLess(channel_points[0]["snr_db"], channel_points[1]["snr_db"])
+            self.assertLess(channel_points[0]["intensity"], channel_points[1]["intensity"])
+            self.assertAlmostEqual(channel_points[0]["channel_loss_db"], -7.0, places=6)
+            self.assertAlmostEqual(channel_points[1]["channel_loss_db"], -1.0, places=6)
+            self.assertGreater(channel_points[0]["beam_footprint_area_m2"], 0.0)
+            self.assertGreater(channel_points[1]["beam_footprint_area_m2"], 0.0)
+            self.assertNotEqual(channel_points[0]["beam_azimuth_offset_deg"], 0.0)
+
     def test_lidar_trajectory_sweep_uses_multi_scan_path_per_frame(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -191,6 +191,17 @@ class SensorConfigTests(unittest.TestCase):
                         },
                     },
                 },
+                "lidar_emitter_params": {
+                    "source_losses": [-1.0, -2.0, -3.0],
+                    "global_source_loss": -0.5,
+                    "source_divergence": {"az": 0.001, "el": 0.002},
+                    "source_variance": {"az": 0.0004, "el": 0.0009},
+                    "peak_power": 2.5,
+                    "optical_loss": [
+                        {"range": 0.0, "loss": 0.0},
+                        {"range": 50.0, "loss": -1.5},
+                    ],
+                },
                 "lidar_behaviors": [{"continuous_motion": {"tx": 0.2, "rz": 0.1}}],
                 "radar_clutter": "none",
                 "radar_range_min_m": "1.5",
@@ -291,6 +302,15 @@ class SensorConfigTests(unittest.TestCase):
         self.assertAlmostEqual(config.lidar.noise_performance.probability_detection, 0.85)
         self.assertAlmostEqual(config.lidar.noise_performance.calibration_target_range_m, 180.0)
         self.assertAlmostEqual(config.lidar.noise_performance.calibration_target_reflectivity, 0.65)
+        self.assertEqual(config.lidar.emitter_params.source_losses_db, [-1.0, -2.0, -3.0])
+        self.assertAlmostEqual(config.lidar.emitter_params.global_source_loss_db, -0.5)
+        self.assertAlmostEqual(config.lidar.emitter_params.source_divergence.az, 0.001)
+        self.assertAlmostEqual(config.lidar.emitter_params.source_divergence.el, 0.002)
+        self.assertAlmostEqual(config.lidar.emitter_params.source_variance.az, 0.0004)
+        self.assertAlmostEqual(config.lidar.emitter_params.source_variance.el, 0.0009)
+        self.assertAlmostEqual(config.lidar.emitter_params.peak_power_w, 2.5)
+        self.assertEqual(len(config.lidar.emitter_params.optical_loss), 2)
+        self.assertAlmostEqual(config.lidar.emitter_params.optical_loss[1].loss_db, -1.5)
         self.assertEqual(config.radar.sensor_id, "radar_bumper")
         self.assertEqual(config.radar.clutter_model, "none")
         self.assertEqual(config.radar.false_target_count, 0)
@@ -348,6 +368,14 @@ class SensorConfigTests(unittest.TestCase):
                 },
                 "lidar_noise_performance": {
                     "probability_false_alarm": 0.01,
+                },
+                "lidar_emitter_params": {
+                    "source_losses": [-0.2, -0.4, -0.6],
+                    "global_source_loss": -0.3,
+                    "source_divergence": {"az": 0.002, "el": 0.001},
+                    "source_variance": {"az": 0.0001, "el": 0.0002},
+                    "peak_power": 1.8,
+                    "optical_loss": [{"range": 25.0, "loss": -0.8}],
                 },
                 "lidar_behaviors": [{"continuous_motion": {"tx": 0.1}}],
                 "radar_clutter": "none",
@@ -407,6 +435,18 @@ class SensorConfigTests(unittest.TestCase):
         self.assertAlmostEqual(
             contract["sensor_setup"]["lidar"]["noise_performance"]["probability_false_alarm"],
             0.01,
+        )
+        self.assertEqual(
+            contract["sensor_setup"]["lidar"]["emitter_params"]["source_losses"],
+            [-0.2, -0.4, -0.6],
+        )
+        self.assertAlmostEqual(
+            contract["sensor_setup"]["lidar"]["emitter_params"]["source_divergence"]["az"],
+            0.002,
+        )
+        self.assertAlmostEqual(
+            contract["sensor_setup"]["lidar"]["emitter_params"]["peak_power"],
+            1.8,
         )
         self.assertEqual(
             contract["sensor_setup"]["radar"]["behaviors"][0]["point_at"]["id"],

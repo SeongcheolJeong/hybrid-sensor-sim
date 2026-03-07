@@ -354,6 +354,7 @@ def build_renderer_playback_contract(
                 "return_model": config.lidar.return_model.to_dict(),
                 "environment_model": config.lidar.environment_model.to_dict(),
                 "noise_performance": config.lidar.noise_performance.to_dict(),
+                "emitter_params": config.lidar.emitter_params.to_dict(),
                 "behaviors": [behavior.to_dict() for behavior in config.lidar.behaviors],
             },
             "radar": {

@@ -213,11 +213,19 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `lidar_noise_performance.probability_false_alarm`
     - `lidar_noise_performance.target_detectability.probability_detection`
     - `lidar_noise_performance.target_detectability.target.{range,reflectivity}`
+  - emitter/channel controls:
+    - `lidar_emitter_params.source_losses`
+    - `lidar_emitter_params.global_source_loss`
+    - `lidar_emitter_params.source_divergence.{az,el}`
+    - `lidar_emitter_params.source_variance.{az,el}`
+    - `lidar_emitter_params.peak_power`
+    - `lidar_emitter_params.optical_loss`
   - emits `lidar_noisy_preview.xyz` and `lidar_noisy_preview.json`.
   - `lidar_noisy_preview.json` preview points include:
     - geometry metadata: `range_m`, `azimuth_deg`, `elevation_deg`, `channel_id`, `scan_path_index`
     - signal metadata: `intensity`, `intensity_units`, `reflectivity`, `ground_truth_reflectivity`, `laser_cross_section`, `signal_power_dbw`, `ambient_power_dbw`, `signal_photons`, `ambient_photons`, `snr`, `snr_db`, `return_id`
     - multi-return/weather metadata: `path_length_offset_m`, `ground_truth_hit_index`, `ground_truth_last_bounce_index`, `weather_extinction_factor`, `ground_truth_detection_type`
+    - emitter metadata: `channel_loss_db`, `optical_loss_db`, `peak_power_w`, `beam_divergence_az_rad`, `beam_divergence_el_rad`, `beam_footprint_area_m2`, `beam_azimuth_offset_deg`, `beam_elevation_offset_deg`
 - LiDAR trajectory sweep preview:
   - enable `lidar_trajectory_sweep_enabled=true`
   - set `lidar_trajectory_sweep_frames` and `lidar_preview_points_per_frame`
@@ -229,7 +237,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `lidar_extrinsics_auto_use_position=none|xy|xyz`
     - `lidar_extrinsics_auto_use_orientation=true|false`
     - `lidar_extrinsics_auto_offsets`
-  - emits `lidar_trajectory_sweep.json` with `preview_points_xyz` and structured `preview_points` metadata (`range_m`, `azimuth_deg`, `elevation_deg`, `channel_id`, `scan_path_index`, `intensity`, `snr_db`, `return_id`, `ground_truth_hit_index`, `weather_extinction_factor`).
+  - emits `lidar_trajectory_sweep.json` with `preview_points_xyz` and structured `preview_points` metadata (`range_m`, `azimuth_deg`, `elevation_deg`, `channel_id`, `scan_path_index`, `intensity`, `snr_db`, `return_id`, `ground_truth_hit_index`, `weather_extinction_factor`, `channel_loss_db`).
 - Radar target preview:
   - enable `radar_postprocess_enabled=true`
   - core controls: `radar_max_targets`, `radar_range_min_m`, `radar_range_max_m`

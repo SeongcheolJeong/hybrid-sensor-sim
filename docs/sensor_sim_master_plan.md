@@ -580,10 +580,15 @@ Current status:
     - backscatter/noise returns using `backscatter_scale`
     - synthetic precipitation/noise detections
     - detector `probability_false_alarm` surface
+  - emitter/channel surface:
+    - `source_losses` and `global_source_loss`
+    - `source_divergence` and `source_variance`
+    - `peak_power` and range-dependent `optical_loss`
+    - per-point channel radiometric metadata in preview artifacts
 - next missing items:
-  - per-channel divergence/loss calibration
   - geometry-aware multipath and non-synthetic return selection
   - richer rain/snow particle field calibration beyond current preview heuristic
+  - channel profile / sidelobe modeling beyond current scalar divergence-loss approximation
 
 ### Phase 3: Radar Core Feature Expansion
 

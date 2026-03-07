@@ -452,6 +452,50 @@ class LidarNoisePerformanceConfig:
 
 
 @dataclass(frozen=True)
+class LidarRangeLossPointConfig:
+    range_m: float
+    loss_db: float
+
+    def to_dict(self) -> dict[str, float]:
+        return {
+            "range": self.range_m,
+            "loss": self.loss_db,
+        }
+
+
+@dataclass(frozen=True)
+class LidarAngularPairConfig:
+    az: float = 0.0
+    el: float = 0.0
+
+    def to_dict(self) -> dict[str, float]:
+        return {
+            "az": self.az,
+            "el": self.el,
+        }
+
+
+@dataclass(frozen=True)
+class LidarEmitterConfig:
+    source_losses_db: list[float] = field(default_factory=list)
+    global_source_loss_db: float = 0.0
+    source_divergence: LidarAngularPairConfig = field(default_factory=LidarAngularPairConfig)
+    source_variance: LidarAngularPairConfig = field(default_factory=LidarAngularPairConfig)
+    peak_power_w: float = 1.0
+    optical_loss: list[LidarRangeLossPointConfig] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "source_losses": list(self.source_losses_db),
+            "global_source_loss": self.global_source_loss_db,
+            "source_divergence": self.source_divergence.to_dict(),
+            "source_variance": self.source_variance.to_dict(),
+            "peak_power": self.peak_power_w,
+            "optical_loss": [point.to_dict() for point in self.optical_loss],
+        }
+
+
+@dataclass(frozen=True)
 class CameraRollingShutterConfig:
     enabled: bool = False
     col_delay_ns: float = 0.0
@@ -569,6 +613,7 @@ class LidarSensorConfig:
     return_model: LidarReturnModelConfig = field(default_factory=LidarReturnModelConfig)
     environment_model: LidarEnvironmentConfig = field(default_factory=LidarEnvironmentConfig)
     noise_performance: LidarNoisePerformanceConfig = field(default_factory=LidarNoisePerformanceConfig)
+    emitter_params: LidarEmitterConfig = field(default_factory=LidarEmitterConfig)
     extrinsics: SensorExtrinsicsConfig = field(default_factory=SensorExtrinsicsConfig)
     behaviors: list[SensorBehaviorConfig] = field(default_factory=list)
 
@@ -610,6 +655,7 @@ class LidarSensorConfig:
             "return_model": self.return_model.to_dict(),
             "environment_model": self.environment_model.to_dict(),
             "noise_performance": self.noise_performance.to_dict(),
+            "emitter_params": self.emitter_params.to_dict(),
             "extrinsics": self.extrinsics.to_dict(),
             "behaviors": [behavior.to_dict() for behavior in self.behaviors],
         }
@@ -1017,6 +1063,57 @@ def _parse_lidar_noise_performance(options: Mapping[str, Any]) -> LidarNoisePerf
     )
 
 
+def _parse_lidar_angular_pair(raw: Mapping[str, Any], *, az_key: str, el_key: str) -> LidarAngularPairConfig:
+    return LidarAngularPairConfig(
+        az=_as_float(raw.get(az_key), 0.0),
+        el=_as_float(raw.get(el_key), 0.0),
+    )
+
+
+def _parse_lidar_emitter_params(options: Mapping[str, Any]) -> LidarEmitterConfig:
+    raw = _as_dict(options.get("lidar_emitter_params"))
+    raw_divergence = _as_dict(raw.get("source_divergence"))
+    raw_variance = _as_dict(raw.get("source_variance"))
+    optical_loss: list[LidarRangeLossPointConfig] = []
+    for point in _as_list(raw.get("optical_loss", options.get("lidar_optical_loss"))):
+        point_raw = _as_dict(point)
+        if not point_raw:
+            continue
+        optical_loss.append(
+            LidarRangeLossPointConfig(
+                range_m=_as_float(point_raw.get("range"), 0.0),
+                loss_db=_as_float(point_raw.get("loss"), 0.0),
+            )
+        )
+    return LidarEmitterConfig(
+        source_losses_db=_parse_float_list(
+            raw.get("source_losses", options.get("lidar_source_losses"))
+        ),
+        global_source_loss_db=_as_float(
+            raw.get("global_source_loss", options.get("lidar_global_source_loss")),
+            0.0,
+        ),
+        source_divergence=_parse_lidar_angular_pair(
+            {
+                "az": raw_divergence.get("az", options.get("lidar_source_divergence_az")),
+                "el": raw_divergence.get("el", options.get("lidar_source_divergence_el")),
+            },
+            az_key="az",
+            el_key="el",
+        ),
+        source_variance=_parse_lidar_angular_pair(
+            {
+                "az": raw_variance.get("az", options.get("lidar_source_variance_az")),
+                "el": raw_variance.get("el", options.get("lidar_source_variance_el")),
+            },
+            az_key="az",
+            el_key="el",
+        ),
+        peak_power_w=_as_float(raw.get("peak_power", options.get("lidar_peak_power")), 1.0),
+        optical_loss=optical_loss,
+    )
+
+
 def _parse_behaviors(options: Mapping[str, Any], sensor_name: str) -> list[SensorBehaviorConfig]:
     nested = _as_dict(options.get("sensor_behaviors")).get(sensor_name)
     raw_behaviors = options.get(f"{sensor_name}_behaviors", nested)
@@ -1190,6 +1287,7 @@ def build_sensor_sim_config(
             return_model=_parse_lidar_return_model(data),
             environment_model=_parse_lidar_environment_model(data),
             noise_performance=_parse_lidar_noise_performance(data),
+            emitter_params=_parse_lidar_emitter_params(data),
             extrinsics=_parse_extrinsics(_as_dict(data.get("lidar_extrinsics"))),
             behaviors=_parse_behaviors(data, "lidar"),
         ),

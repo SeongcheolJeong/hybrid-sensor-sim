@@ -1537,6 +1537,7 @@ class NativePhysicsBackend(SensorBackend):
                     "return_model": lidar_config.return_model.to_dict(),
                     "environment_model": lidar_config.environment_model.to_dict(),
                     "noise_performance": lidar_config.noise_performance.to_dict(),
+                    "emitter_params": lidar_config.emitter_params.to_dict(),
                     "preview_points": preview_points,
                 },
                 indent=2,
@@ -1722,6 +1723,7 @@ class NativePhysicsBackend(SensorBackend):
             "return_model": lidar_config.return_model.to_dict(),
             "environment_model": lidar_config.environment_model.to_dict(),
             "noise_performance": lidar_config.noise_performance.to_dict(),
+            "emitter_params": lidar_config.emitter_params.to_dict(),
             "frames": frames,
         }
         output_path = enhanced_output / "lidar_trajectory_sweep.json"
@@ -1793,12 +1795,22 @@ class NativePhysicsBackend(SensorBackend):
                 point_xyz=(x, y, z),
                 base_metadata=base_metadata,
             )
+            emitter_adjustment = self._lidar_emitter_adjustment(
+                lidar_config=lidar_config,
+                base_metadata=base_metadata,
+                rng=rng,
+            )
             for return_point, signal_metadata in return_series:
                 if not bool(signal_metadata.get("detected", True)):
                     continue
                 if dropout_prob > 0.0 and rng.random() < dropout_prob:
                     continue
-                rx, ry, rz = return_point
+                adjusted_return_point = self._lidar_apply_emitter_adjustment_to_point(
+                    point_xyz=return_point,
+                    az_offset_rad=emitter_adjustment["az_offset_rad"],
+                    el_offset_rad=emitter_adjustment["el_offset_rad"],
+                )
+                rx, ry, rz = adjusted_return_point
                 if noise_model == "gaussian":
                     noisy_point = (
                         rx + rng.gauss(0.0, noise_stddev),
@@ -1810,6 +1822,7 @@ class NativePhysicsBackend(SensorBackend):
                 noisy_points.append(noisy_point)
                 payload = dict(base_metadata)
                 payload.update(signal_metadata)
+                payload.update(emitter_adjustment["metadata"])
                 payload.pop("detected", None)
                 noisy_metadata.append(payload)
         false_alarm_points, false_alarm_metadata = self._generate_lidar_false_alarm_points(
@@ -2081,6 +2094,14 @@ class NativePhysicsBackend(SensorBackend):
                     "ground_truth_hit_index": base.get("ground_truth_hit_index"),
                     "ground_truth_last_bounce_index": base.get("ground_truth_last_bounce_index"),
                     "weather_extinction_factor": base.get("weather_extinction_factor"),
+                    "channel_loss_db": base.get("channel_loss_db"),
+                    "optical_loss_db": base.get("optical_loss_db"),
+                    "peak_power_w": base.get("peak_power_w"),
+                    "beam_divergence_az_rad": base.get("beam_divergence_az_rad"),
+                    "beam_divergence_el_rad": base.get("beam_divergence_el_rad"),
+                    "beam_footprint_area_m2": base.get("beam_footprint_area_m2"),
+                    "beam_azimuth_offset_deg": base.get("beam_azimuth_offset_deg"),
+                    "beam_elevation_offset_deg": base.get("beam_elevation_offset_deg"),
                     "ground_truth_detection_type": base.get("ground_truth_detection_type"),
                 }
             )
@@ -2192,6 +2213,20 @@ class NativePhysicsBackend(SensorBackend):
         x, y, z = point_xyz
         range_m = float(base_metadata.get("range_m", sqrt(x * x + y * y + z * z)))
         environment_model = lidar_config.environment_model
+        channel_id = base_metadata.get("channel_id")
+        channel_loss_db = self._lidar_channel_loss_db(
+            emitter_params=lidar_config.emitter_params,
+            channel_id=channel_id if isinstance(channel_id, int) else None,
+        )
+        optical_loss_db = self._lidar_interpolate_optical_loss_db(
+            emitter_params=lidar_config.emitter_params,
+            range_m=range_m,
+        )
+        peak_power_w = max(float(lidar_config.emitter_params.peak_power_w), 0.0)
+        divergence_scale, beam_footprint_area_m2 = self._lidar_divergence_scale(
+            emitter_params=lidar_config.emitter_params,
+            range_m=range_m,
+        )
         ground_truth_reflectivity = self._lidar_ground_truth_reflectivity(
             request=request,
             base_metadata=base_metadata,
@@ -2207,8 +2242,11 @@ class NativePhysicsBackend(SensorBackend):
         )
         signal_power_linear = (
             reflectivity
+            * max(peak_power_w, 0.0)
             * exp(-attenuation_rate * range_m)
             * weather_extinction
+            * pow(10.0, (channel_loss_db + optical_loss_db) / 10.0)
+            * divergence_scale
             / max(range_m * range_m, 1.0)
         )
         ambient_power_dbw = float(lidar_config.physics_model.ambient_power_dbw)
@@ -2250,6 +2288,12 @@ class NativePhysicsBackend(SensorBackend):
             "ground_truth_hit_index": 0,
             "ground_truth_last_bounce_index": 0,
             "weather_extinction_factor": weather_extinction,
+            "channel_loss_db": channel_loss_db,
+            "optical_loss_db": optical_loss_db,
+            "peak_power_w": peak_power_w,
+            "beam_divergence_az_rad": float(lidar_config.emitter_params.source_divergence.az),
+            "beam_divergence_el_rad": float(lidar_config.emitter_params.source_divergence.el),
+            "beam_footprint_area_m2": beam_footprint_area_m2,
             "ground_truth_detection_type": "TARGET",
         }
 
@@ -2272,6 +2316,110 @@ class NativePhysicsBackend(SensorBackend):
         ):
             return min(max(float(channel_reflectivities[channel_id]), 0.0), 1.0)
         return min(max(float(request.options.get("lidar_ground_truth_reflectivity", 0.35)), 0.0), 1.0)
+
+    def _lidar_channel_loss_db(
+        self,
+        *,
+        emitter_params: Any,
+        channel_id: int | None,
+    ) -> float:
+        loss_db = float(emitter_params.global_source_loss_db)
+        if (
+            channel_id is not None
+            and 0 <= channel_id < len(emitter_params.source_losses_db)
+        ):
+            loss_db += float(emitter_params.source_losses_db[channel_id])
+        return loss_db
+
+    def _lidar_interpolate_optical_loss_db(self, *, emitter_params: Any, range_m: float) -> float:
+        points = sorted(
+            [
+                {
+                    "range": float(point.range_m),
+                    "loss": float(point.loss_db),
+                }
+                for point in getattr(emitter_params, "optical_loss", [])
+            ],
+            key=lambda point: point["range"],
+        )
+        if not points:
+            return 0.0
+        if range_m <= points[0]["range"]:
+            return points[0]["loss"]
+        if range_m >= points[-1]["range"]:
+            return points[-1]["loss"]
+        for index in range(1, len(points)):
+            left = points[index - 1]
+            right = points[index]
+            if range_m > right["range"]:
+                continue
+            delta = right["range"] - left["range"]
+            if abs(delta) <= 1e-9:
+                return right["loss"]
+            alpha = (range_m - left["range"]) / delta
+            return left["loss"] + (right["loss"] - left["loss"]) * alpha
+        return 0.0
+
+    def _lidar_divergence_scale(self, *, emitter_params: Any, range_m: float) -> tuple[float, float]:
+        divergence_az = abs(float(emitter_params.source_divergence.az))
+        divergence_el = abs(float(emitter_params.source_divergence.el))
+        width_m = max(range_m * divergence_az, 0.1)
+        height_m = max(range_m * divergence_el, 0.1)
+        beam_footprint_area_m2 = width_m * height_m
+        reference_area_m2 = 0.01
+        divergence_scale = min(1.0, reference_area_m2 / max(beam_footprint_area_m2, reference_area_m2))
+        return divergence_scale, beam_footprint_area_m2
+
+    def _lidar_emitter_adjustment(
+        self,
+        *,
+        lidar_config: Any,
+        base_metadata: dict[str, object],
+        rng: random.Random,
+    ) -> dict[str, object]:
+        variance_az = max(float(lidar_config.emitter_params.source_variance.az), 0.0)
+        variance_el = max(float(lidar_config.emitter_params.source_variance.el), 0.0)
+        az_offset_rad = rng.gauss(0.0, sqrt(variance_az)) if variance_az > 0.0 else 0.0
+        el_offset_rad = rng.gauss(0.0, sqrt(variance_el)) if variance_el > 0.0 else 0.0
+        channel_id = base_metadata.get("channel_id")
+        return {
+            "az_offset_rad": az_offset_rad,
+            "el_offset_rad": el_offset_rad,
+            "metadata": {
+                "beam_azimuth_offset_deg": az_offset_rad * 180.0 / pi,
+                "beam_elevation_offset_deg": el_offset_rad * 180.0 / pi,
+                "channel_loss_db": self._lidar_channel_loss_db(
+                    emitter_params=lidar_config.emitter_params,
+                    channel_id=channel_id if isinstance(channel_id, int) else None,
+                ),
+                "peak_power_w": float(lidar_config.emitter_params.peak_power_w),
+                "beam_divergence_az_rad": float(lidar_config.emitter_params.source_divergence.az),
+                "beam_divergence_el_rad": float(lidar_config.emitter_params.source_divergence.el),
+            },
+        }
+
+    def _lidar_apply_emitter_adjustment_to_point(
+        self,
+        *,
+        point_xyz: tuple[float, float, float],
+        az_offset_rad: float,
+        el_offset_rad: float,
+    ) -> tuple[float, float, float]:
+        x, y, z = point_xyz
+        range_m = sqrt(x * x + y * y + z * z)
+        if range_m <= 1e-9 or (abs(az_offset_rad) <= 1e-12 and abs(el_offset_rad) <= 1e-12):
+            return point_xyz
+        base_azimuth_rad = atan2(y, x)
+        horizontal = sqrt(x * x + y * y)
+        base_elevation_rad = atan2(z, max(horizontal, 1e-9))
+        azimuth_rad = base_azimuth_rad + az_offset_rad
+        elevation_rad = base_elevation_rad + el_offset_rad
+        xy = range_m * cos(elevation_rad)
+        return (
+            xy * cos(azimuth_rad),
+            xy * sin(azimuth_rad),
+            range_m * sin(elevation_rad),
+        )
 
     def _lidar_weather_extinction_factor(self, *, lidar_config: Any, range_m: float) -> float:
         fog_density = min(max(float(lidar_config.environment_model.fog_density), 0.0), 1.0)
@@ -2543,6 +2691,16 @@ class NativePhysicsBackend(SensorBackend):
             for point in preview_points
             if isinstance(point, dict) and str(point.get("ground_truth_detection_type", "")).upper() == "NOISE"
         ]
+        beam_offset_values = [
+            abs(float(point["beam_azimuth_offset_deg"]))
+            for point in preview_points
+            if isinstance(point, dict) and point.get("beam_azimuth_offset_deg") is not None
+        ]
+        channel_loss_values = [
+            float(point["channel_loss_db"])
+            for point in preview_points
+            if isinstance(point, dict) and point.get("channel_loss_db") is not None
+        ]
         metrics["lidar_secondary_return_count"] = float(
             sum(1 for return_id in return_ids if return_id > 0)
         )
@@ -2556,6 +2714,19 @@ class NativePhysicsBackend(SensorBackend):
         metrics["lidar_false_alarm_probability"] = float(
             lidar_config.noise_performance.probability_false_alarm
         )
+        metrics["lidar_emitter_model_applied"] = 1.0 if (
+            bool(lidar_config.emitter_params.source_losses_db)
+            or abs(float(lidar_config.emitter_params.global_source_loss_db)) > 1e-12
+            or abs(float(lidar_config.emitter_params.source_divergence.az)) > 1e-12
+            or abs(float(lidar_config.emitter_params.source_divergence.el)) > 1e-12
+            or abs(float(lidar_config.emitter_params.source_variance.az)) > 1e-12
+            or abs(float(lidar_config.emitter_params.source_variance.el)) > 1e-12
+            or abs(float(lidar_config.emitter_params.peak_power_w) - 1.0) > 1e-12
+            or bool(lidar_config.emitter_params.optical_loss)
+        ) else 0.0
+        metrics["lidar_peak_power_w"] = float(lidar_config.emitter_params.peak_power_w)
+        metrics["lidar_max_channel_loss_db"] = max(channel_loss_values) if channel_loss_values else 0.0
+        metrics["lidar_max_beam_azimuth_offset_deg"] = max(beam_offset_values) if beam_offset_values else 0.0
         if snr_db_values:
             metrics["lidar_min_snr_db"] = float(min(snr_db_values))
             metrics["lidar_max_snr_db"] = float(max(snr_db_values))
