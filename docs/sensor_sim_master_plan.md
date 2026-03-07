@@ -595,10 +595,11 @@ Current status:
     - `shared_channel_profile.profile_data.{file_uri,half_angle,scale}`
     - built-in `CROSS`, `GRID`, `RING` synthetic profile fallback
     - off-axis `SIDELOBE` preview returns with profile offsets and weights
+    - file-backed profile ingestion for `json/csv/txt/npy` and `.exr` sidecar fallback
 - next missing items:
   - stronger raytracing fidelity beyond current selection/merge approximation
   - richer rain/snow particle field calibration beyond current preview heuristic
-  - EXR-driven profile ingestion beyond current synthetic profile fallback
+  - native EXR decode beyond current sidecar fallback
 
 ### Phase 3: Radar Core Feature Expansion
 

@@ -6,6 +6,11 @@ from math import atan2, cos, exp, log, log10, pi, sin, sqrt
 from pathlib import Path
 from typing import Any
 
+try:
+    import numpy as np
+except ImportError:  # pragma: no cover - numpy is available in test env, but keep runtime optional.
+    np = None
+
 from hybrid_sensor_sim.backends.base import SensorBackend
 from hybrid_sensor_sim.config import CameraSensorConfig, SensorSimConfig, build_sensor_sim_config
 from hybrid_sensor_sim.io.pointcloud_xyz import read_xyz_points, write_xyz_points
@@ -2114,6 +2119,8 @@ class NativePhysicsBackend(SensorBackend):
                     "multipath_reflection_point": base.get("multipath_reflection_point"),
                     "channel_profile_pattern": base.get("channel_profile_pattern"),
                     "channel_profile_file_uri": base.get("channel_profile_file_uri"),
+                    "channel_profile_source": base.get("channel_profile_source"),
+                    "channel_profile_resolved_path": base.get("channel_profile_resolved_path"),
                     "channel_profile_weight": base.get("channel_profile_weight"),
                     "channel_profile_scale": base.get("channel_profile_scale"),
                     "channel_profile_offset_az_deg": base.get("channel_profile_offset_az_deg"),
@@ -2292,13 +2299,15 @@ class NativePhysicsBackend(SensorBackend):
         if not bool(channel_profile.enabled):
             return []
         profile_data = channel_profile.profile_data
-        pattern = str(profile_data.pattern).upper().strip()
-        if pattern == "NONE":
-            return []
         scale = max(float(profile_data.scale), 0.0)
         if scale <= 1e-12:
             return []
-        taps = self._lidar_channel_profile_taps(profile_data=profile_data)
+        profile_spec = self._lidar_channel_profile_spec(
+            request=request,
+            lidar_config=lidar_config,
+        )
+        pattern = str(profile_spec.get("pattern", "NONE")).upper().strip()
+        taps = profile_spec.get("taps", [])
         if not taps:
             return []
         returns: list[tuple[tuple[float, float, float], dict[str, object]]] = []
@@ -2326,6 +2335,8 @@ class NativePhysicsBackend(SensorBackend):
                 profile_weight=float(tap["weight"]),
                 az_offset_rad=az_offset_rad,
                 el_offset_rad=el_offset_rad,
+                source=str(profile_spec.get("source", "PATTERN")),
+                resolved_path=profile_spec.get("resolved_path"),
             )
             returns.append((profile_point, metadata))
         return returns
@@ -2375,6 +2386,218 @@ class NativePhysicsBackend(SensorBackend):
             return base_taps[:sample_count]
         return base_taps
 
+    def _lidar_channel_profile_spec(
+        self,
+        *,
+        request: SensorSimRequest,
+        lidar_config: Any,
+    ) -> dict[str, object]:
+        profile_data = lidar_config.channel_profile.profile_data
+        file_uri = str(profile_data.file_uri).strip()
+        cache_key = (
+            str(request.scenario_path.resolve()),
+            file_uri,
+            str(profile_data.pattern).upper().strip(),
+            float(profile_data.half_angle_rad),
+            float(profile_data.scale),
+            int(profile_data.sample_count),
+            float(profile_data.sidelobe_gain),
+        )
+        cache = getattr(self, "_lidar_channel_profile_cache", {})
+        if cache_key in cache:
+            return cache[cache_key]
+
+        pattern = str(profile_data.pattern).upper().strip()
+        taps: list[dict[str, float]] = []
+        source = "PATTERN"
+        resolved_path: str | None = None
+        if file_uri:
+            file_spec = self._lidar_channel_profile_spec_from_file(
+                request=request,
+                lidar_config=lidar_config,
+            )
+            if file_spec is not None:
+                taps = file_spec["taps"]
+                resolved_path = file_spec.get("resolved_path")
+                source = str(file_spec.get("source", "FILE"))
+                pattern = "FILE"
+        if not taps:
+            taps = self._lidar_channel_profile_taps(profile_data=profile_data)
+        spec = {
+            "pattern": pattern or "NONE",
+            "taps": taps,
+            "source": source,
+            "resolved_path": resolved_path,
+        }
+        cache[cache_key] = spec
+        self._lidar_channel_profile_cache = cache
+        return spec
+
+    def _lidar_channel_profile_spec_from_file(
+        self,
+        *,
+        request: SensorSimRequest,
+        lidar_config: Any,
+    ) -> dict[str, object] | None:
+        profile_data = lidar_config.channel_profile.profile_data
+        resolved_path = self._resolve_channel_profile_uri(
+            request=request,
+            file_uri=str(profile_data.file_uri),
+        )
+        if resolved_path is None:
+            return None
+        candidate_paths = self._channel_profile_candidate_paths(resolved_path)
+        for candidate_path, source in candidate_paths:
+            if not candidate_path.exists():
+                continue
+            taps = self._load_channel_profile_taps_from_path(
+                path=candidate_path,
+                sample_count=int(profile_data.sample_count),
+            )
+            if taps:
+                return {
+                    "taps": taps,
+                    "resolved_path": str(candidate_path),
+                    "source": source,
+                }
+        return None
+
+    def _resolve_channel_profile_uri(
+        self,
+        *,
+        request: SensorSimRequest,
+        file_uri: str,
+    ) -> Path | None:
+        normalized = file_uri.strip()
+        if not normalized:
+            return None
+        if normalized.startswith("scenario://workspace/"):
+            suffix = normalized.removeprefix("scenario://workspace/")
+            return request.scenario_path.parent / suffix
+        if normalized.startswith("scenario://"):
+            suffix = normalized.removeprefix("scenario://")
+            return request.scenario_path.parent / suffix
+        path = Path(normalized)
+        if path.is_absolute():
+            return path
+        return request.scenario_path.parent / path
+
+    def _channel_profile_candidate_paths(self, resolved_path: Path) -> list[tuple[Path, str]]:
+        candidates: list[tuple[Path, str]] = []
+        suffix = resolved_path.suffix.lower()
+        if suffix in {".json", ".csv", ".txt", ".npy"}:
+            candidates.append((resolved_path, f"FILE_{suffix[1:].upper()}"))
+            return candidates
+        if suffix == ".exr":
+            sidecars = [
+                (resolved_path.with_suffix(".json"), "FILE_JSON_SIDECAR"),
+                (resolved_path.with_suffix(".csv"), "FILE_CSV_SIDECAR"),
+                (resolved_path.with_suffix(".txt"), "FILE_TXT_SIDECAR"),
+                (resolved_path.with_suffix(".npy"), "FILE_NPY_SIDECAR"),
+                (Path(str(resolved_path) + ".json"), "FILE_JSON_SIDECAR"),
+                (Path(str(resolved_path) + ".csv"), "FILE_CSV_SIDECAR"),
+                (Path(str(resolved_path) + ".txt"), "FILE_TXT_SIDECAR"),
+                (Path(str(resolved_path) + ".npy"), "FILE_NPY_SIDECAR"),
+            ]
+            candidates.extend(sidecars)
+        return candidates
+
+    def _load_channel_profile_taps_from_path(
+        self,
+        *,
+        path: Path,
+        sample_count: int,
+    ) -> list[dict[str, float]]:
+        suffix = path.suffix.lower()
+        if suffix == ".json":
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict) and isinstance(payload.get("taps"), list):
+                taps = []
+                for raw_tap in payload["taps"]:
+                    if not isinstance(raw_tap, dict):
+                        continue
+                    taps.append(
+                        {
+                            "az": float(raw_tap.get("az", 0.0)),
+                            "el": float(raw_tap.get("el", 0.0)),
+                            "weight": max(float(raw_tap.get("weight", 0.0)), 0.0),
+                        }
+                    )
+                if sample_count > 0:
+                    return taps[:sample_count]
+                return taps
+            grid = payload.get("weights", payload.get("data", payload.get("grid", payload))) if isinstance(payload, dict) else payload
+            return self._channel_profile_taps_from_grid(grid=grid, sample_count=sample_count)
+        if suffix in {".csv", ".txt"}:
+            rows: list[list[float]] = []
+            for raw_line in path.read_text(encoding="utf-8").splitlines():
+                line = raw_line.strip()
+                if not line:
+                    continue
+                if "," in line:
+                    tokens = [token.strip() for token in line.split(",")]
+                else:
+                    tokens = line.split()
+                rows.append([float(token) for token in tokens if token])
+            return self._channel_profile_taps_from_grid(grid=rows, sample_count=sample_count)
+        if suffix == ".npy" and np is not None:
+            grid = np.load(path, allow_pickle=False)
+            return self._channel_profile_taps_from_grid(grid=grid, sample_count=sample_count)
+        return []
+
+    def _channel_profile_taps_from_grid(
+        self,
+        *,
+        grid: Any,
+        sample_count: int,
+    ) -> list[dict[str, float]]:
+        if np is None:
+            return []
+        try:
+            array = np.asarray(grid, dtype=float)
+        except Exception:
+            return []
+        if array.ndim == 3:
+            array = array[..., 0]
+        if array.ndim != 2 or array.size == 0:
+            return []
+        max_value = float(array.max())
+        if max_value <= 1e-12:
+            return []
+        height, width = int(array.shape[0]), int(array.shape[1])
+        center_x = (width - 1) * 0.5
+        center_y = (height - 1) * 0.5
+        norm_x = max(center_x, 1.0)
+        norm_y = max(center_y, 1.0)
+        taps: list[dict[str, float]] = []
+        nonzero_indices = np.argwhere(array > 0.0)
+        weights = sorted(
+            [
+                (
+                    float(array[row, col]),
+                    int(row),
+                    int(col),
+                )
+                for row, col in nonzero_indices
+            ],
+            reverse=True,
+        )
+        if sample_count > 0:
+            weights = weights[:sample_count]
+        for value, row, col in weights:
+            az = (float(col) - center_x) / norm_x
+            el = (center_y - float(row)) / norm_y
+            if abs(az) <= 1e-9 and abs(el) <= 1e-9:
+                continue
+            taps.append(
+                {
+                    "az": max(min(az, 1.0), -1.0),
+                    "el": max(min(el, 1.0), -1.0),
+                    "weight": value / max_value,
+                }
+            )
+        return taps
+
     def _lidar_channel_profile_metadata(
         self,
         *,
@@ -2387,6 +2610,8 @@ class NativePhysicsBackend(SensorBackend):
         profile_weight: float,
         az_offset_rad: float,
         el_offset_rad: float,
+        source: str,
+        resolved_path: object | None,
     ) -> dict[str, object]:
         profile_data = lidar_config.channel_profile.profile_data
         effective_gain = max(float(profile_data.scale), 0.0) * max(float(profile_data.sidelobe_gain), 0.0) * max(profile_weight, 0.0)
@@ -2443,6 +2668,8 @@ class NativePhysicsBackend(SensorBackend):
                 "weather_extinction_factor": float(primary_metadata.get("weather_extinction_factor", 1.0)),
                 "channel_profile_pattern": pattern,
                 "channel_profile_file_uri": str(profile_data.file_uri),
+                "channel_profile_source": source,
+                "channel_profile_resolved_path": str(resolved_path) if resolved_path is not None else None,
                 "channel_profile_weight": profile_weight,
                 "channel_profile_scale": float(profile_data.scale),
                 "channel_profile_offset_az_deg": az_offset_rad * 180.0 / pi,
@@ -3375,6 +3602,11 @@ class NativePhysicsBackend(SensorBackend):
             for point in preview_points
             if isinstance(point, dict) and str(point.get("ground_truth_detection_type", "")).upper() == "SIDELOBE"
         ]
+        channel_profile_sources = [
+            str(point["channel_profile_source"])
+            for point in preview_points
+            if isinstance(point, dict) and point.get("channel_profile_source")
+        ]
         beam_offset_values = [
             abs(float(point["beam_azimuth_offset_deg"]))
             for point in preview_points
@@ -3401,10 +3633,19 @@ class NativePhysicsBackend(SensorBackend):
         metrics["lidar_sidelobe_return_count"] = float(len(sidelobe_points))
         metrics["lidar_channel_profile_applied"] = 1.0 if (
             bool(lidar_config.channel_profile.enabled)
-            and str(lidar_config.channel_profile.profile_data.pattern).upper().strip() != "NONE"
+            and (
+                str(lidar_config.channel_profile.profile_data.pattern).upper().strip() != "NONE"
+                or bool(str(lidar_config.channel_profile.profile_data.file_uri).strip())
+            )
             and float(lidar_config.channel_profile.profile_data.scale) > 0.0
         ) else 0.0
         metrics["lidar_channel_profile_scale"] = float(lidar_config.channel_profile.profile_data.scale)
+        metrics["lidar_channel_profile_file_loaded"] = 1.0 if any(
+            source.startswith("FILE_") for source in channel_profile_sources
+        ) else 0.0
+        metrics["lidar_channel_profile_sidecar_used"] = 1.0 if any(
+            "SIDECAR" in source for source in channel_profile_sources
+        ) else 0.0
         metrics["lidar_weather_model_applied"] = 1.0 if (
             float(lidar_config.environment_model.fog_density) > 0.0
             or float(lidar_config.environment_model.precipitation_rate) > 0.0

@@ -1254,6 +1254,116 @@ EOF
                 all(point["snr_db"] < preview["preview_points"][0]["snr_db"] for point in sidelobe_points)
             )
 
+    def test_lidar_channel_profile_loads_exr_sidecar_profile_data(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            model_data = root / "model_data"
+            model_data.mkdir(parents=True, exist_ok=True)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            (model_data / "custom_profile.exr.json").write_text(
+                json.dumps(
+                    {
+                        "weights": [
+                            [0.0, 0.0, 0.0],
+                            [0.0, 0.0, 1.0],
+                            [0.0, 0.0, 0.0],
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+10.0 0.0 0.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "radar_postprocess_enabled": False,
+                    "lidar_postprocess_enabled": True,
+                    "lidar_noise": "none",
+                    "lidar_dropout_probability": 0.0,
+                    "lidar_ground_truth_reflectivity": 1.0,
+                    "lidar_physics_model": {
+                        "reflectivity_coefficient": 1.0,
+                        "ambient_power_dbw": -30.0,
+                        "signal_photon_scale": 10000.0,
+                        "ambient_photon_scale": 1000.0,
+                        "minimum_detection_snr_db": 0.0,
+                        "return_all_hits": True,
+                    },
+                    "lidar_return_model": {
+                        "mode": "DUAL",
+                        "max_returns": 2,
+                        "selection_mode": "FIRST",
+                        "signal_decay": 0.0,
+                    },
+                    "lidar_shared_channel_profile": {
+                        "profile_data": {
+                            "file_uri": "scenario://workspace/model_data/custom_profile.exr",
+                            "half_angle": 0.07,
+                            "scale": 3.0,
+                            "sample_count": 1,
+                            "sidelobe_gain": 0.1,
+                        }
+                    },
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            self.assertEqual(result.metrics.get("lidar_channel_profile_applied"), 1.0)
+            self.assertEqual(result.metrics.get("lidar_channel_profile_file_loaded"), 1.0)
+            self.assertEqual(result.metrics.get("lidar_channel_profile_sidecar_used"), 1.0)
+            preview = json.loads(
+                result.artifacts["lidar_noisy_preview_json"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(preview["output_count"], 2)
+            sidelobe_points = [
+                point
+                for point in preview["preview_points"]
+                if point["ground_truth_detection_type"] == "SIDELOBE"
+            ]
+            self.assertEqual(len(sidelobe_points), 1)
+            sidelobe_point = sidelobe_points[0]
+            self.assertEqual(sidelobe_point["channel_profile_pattern"], "FILE")
+            self.assertEqual(sidelobe_point["channel_profile_source"], "FILE_JSON_SIDECAR")
+            self.assertTrue(
+                sidelobe_point["channel_profile_resolved_path"].endswith("custom_profile.exr.json")
+            )
+            self.assertGreater(sidelobe_point["channel_profile_offset_az_deg"], 0.0)
+            self.assertAlmostEqual(sidelobe_point["channel_profile_offset_el_deg"], 0.0, places=6)
+
     def test_lidar_trajectory_sweep_uses_multi_scan_path_per_frame(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
