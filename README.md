@@ -603,6 +603,8 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_next_step.sh`
   - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_smoke_config.json`
   - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_rerun_smoke.sh`
+  - `artifacts/renderer_backend_workflow/<backend>/local_setup_refreshed/renderer_backend_local_setup.json`
+  - `artifacts/renderer_backend_workflow/<backend>/local_setup_refreshed/renderer_backend_local.env.sh`
   - plus smoke artifacts/reports when smoke executes
 - the workflow summary/report now includes structured blocker codes and a recommended next command
 

@@ -309,6 +309,44 @@ def _build_or_load_setup_summary(
     return summary, summary_path, True
 
 
+def _reuse_search_roots_from_setup(summary: dict[str, Any]) -> list[Path]:
+    raw_search_roots = summary.get("search_roots", [])
+    if not isinstance(raw_search_roots, list):
+        return []
+    roots: list[Path] = []
+    seen: set[str] = set()
+    for item in raw_search_roots:
+        if not isinstance(item, str) or not item.strip():
+            continue
+        path = _resolve_path(item)
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        roots.append(path)
+    return roots
+
+
+def _refresh_setup_summary(
+    *,
+    repo_root: Path,
+    workflow_root: Path,
+    prior_summary: dict[str, Any],
+) -> tuple[dict[str, Any], Path, Path]:
+    refresh_root = workflow_root / "local_setup_refreshed"
+    refreshed = build_renderer_backend_local_setup(
+        repo_root=repo_root,
+        search_roots=_reuse_search_roots_from_setup(prior_summary),
+        output_dir=refresh_root,
+        include_default_search_roots=False,
+    )
+    summary_path = Path(refreshed["artifacts"]["summary_path"])
+    env_path = Path(refreshed["artifacts"]["env_path"])
+    _write_json(summary_path, refreshed)
+    _write_text(env_path, _render_local_setup_env_file(refreshed))
+    return refreshed, summary_path, env_path
+
+
 def _build_blockers(
     *,
     backend: str,
@@ -484,6 +522,9 @@ def build_renderer_backend_workflow(
     backend_env_var, map_env_var = _BACKEND_ENV_VARS[backend]
 
     acquire_summary: dict[str, Any] | None = None
+    refreshed_setup_summary: dict[str, Any] | None = None
+    refreshed_setup_summary_path: Path | None = None
+    refreshed_setup_env_path: Path | None = None
     selected_backend_bin = (
         str(_resolve_path(backend_bin_override))
         if backend_bin_override
@@ -513,19 +554,39 @@ def build_renderer_backend_workflow(
                     selected_backend_bin = _selection_value(stage_selection, backend_env_var)
                 if selected_renderer_map is None:
                     selected_renderer_map = _selection_value(stage_selection, map_env_var)
+        if acquire_summary.get("readiness", {}).get("stage_ready") and not dry_run:
+            (
+                refreshed_setup_summary,
+                refreshed_setup_summary_path,
+                refreshed_setup_env_path,
+            ) = _refresh_setup_summary(
+                repo_root=repo_root,
+                workflow_root=workflow_root,
+                prior_summary=setup_summary,
+            )
+            refreshed_selection = refreshed_setup_summary.get("selection", {})
+            if isinstance(refreshed_selection, dict):
+                selected_backend_bin = _selection_value(refreshed_selection, backend_env_var) or selected_backend_bin
+                if selected_renderer_map is None:
+                    selected_renderer_map = _selection_value(refreshed_selection, map_env_var)
+
+    active_setup_summary = refreshed_setup_summary or setup_summary
+    active_setup_summary_path = refreshed_setup_summary_path or resolved_setup_summary_path
+    active_setup_selection = dict(active_setup_summary.get("selection", {}))
+    active_setup_readiness = active_setup_summary.get("readiness", {})
 
     smoke_config_path, smoke_config_source = _determine_smoke_config(
         backend=backend,
         repo_root=repo_root,
         explicit_config=config_path,
-        selection=setup_selection,
+        selection=active_setup_selection,
     )
     helios_ready = bool(
-        setup_readiness.get("helios_ready")
-        or _selection_value(setup_selection, "HELIOS_BIN")
+        active_setup_readiness.get("helios_ready")
+        or _selection_value(active_setup_selection, "HELIOS_BIN")
         or (
-            _selection_value(setup_selection, "HELIOS_DOCKER_IMAGE")
-            and _selection_value(setup_selection, "HELIOS_DOCKER_BINARY")
+            _selection_value(active_setup_selection, "HELIOS_DOCKER_IMAGE")
+            and _selection_value(active_setup_selection, "HELIOS_DOCKER_BINARY")
         )
     )
     smoke_output_dir = workflow_root / "smoke_run"
@@ -613,7 +674,7 @@ def build_renderer_backend_workflow(
     summary_path = workflow_root / "renderer_backend_workflow_summary.json"
     env_path = workflow_root / "renderer_backend_workflow.env.sh"
     report_path = workflow_root / "renderer_backend_workflow_report.md"
-    final_selection = dict(setup_selection)
+    final_selection = dict(active_setup_selection)
     final_selection[backend_env_var] = selected_backend_bin
     if selected_renderer_map is not None:
         final_selection[map_env_var] = selected_renderer_map
@@ -621,7 +682,7 @@ def build_renderer_backend_workflow(
     if status in {"BLOCKED", "DRY_RUN_BLOCKED", "ACQUIRE_BLOCKED"}:
         recommended_next_command = (
             "python3 scripts/acquire_renderer_backend_package.py "
-            f"--backend {backend} --setup-summary {resolved_setup_summary_path}"
+            f"--backend {backend} --setup-summary {active_setup_summary_path}"
         )
     elif status == "DRY_RUN_READY":
         recommended_next_command = "python3 scripts/run_renderer_backend_smoke.py " + " ".join(
@@ -656,6 +717,17 @@ def build_renderer_backend_workflow(
             "selection": setup_selection,
             "commands": setup_summary.get("commands"),
         },
+        "refreshed_setup": (
+            {
+                "summary_path": str(refreshed_setup_summary_path),
+                "env_path": str(refreshed_setup_env_path),
+                "readiness": refreshed_setup_summary.get("readiness"),
+                "selection": refreshed_setup_summary.get("selection"),
+                "commands": refreshed_setup_summary.get("commands"),
+            }
+            if refreshed_setup_summary is not None
+            else None
+        ),
         "acquire": acquire_summary,
         "smoke": {
             "ready": smoke_ready,
@@ -690,7 +762,7 @@ def build_renderer_backend_workflow(
             else None,
             "acquire": (
                 "python3 scripts/acquire_renderer_backend_package.py "
-                f"--backend {backend} --setup-summary {resolved_setup_summary_path}"
+                f"--backend {backend} --setup-summary {active_setup_summary_path}"
             ),
         },
         "artifacts": {
@@ -700,6 +772,12 @@ def build_renderer_backend_workflow(
             "next_step_script_path": str(workflow_root / "renderer_backend_workflow_next_step.sh"),
             "smoke_config_path": str(workflow_smoke_config_path),
             "rerun_smoke_script_path": str(workflow_rerun_smoke_script_path),
+            "refreshed_setup_summary_path": (
+                str(refreshed_setup_summary_path) if refreshed_setup_summary_path is not None else None
+            ),
+            "refreshed_setup_env_path": (
+                str(refreshed_setup_env_path) if refreshed_setup_env_path is not None else None
+            ),
         },
     }
 

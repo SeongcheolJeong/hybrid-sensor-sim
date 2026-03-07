@@ -228,6 +228,11 @@ class RendererBackendWorkflowTests(unittest.TestCase):
             self.assertTrue(summary["smoke"]["planned_effective_config_ready"])
             self.assertTrue(summary["final_selection"]["AWSIM_BIN"])
             self.assertEqual(summary["final_selection"]["AWSIM_RENDERER_MAP"], "Town12")
+            self.assertIsNotNone(summary["refreshed_setup"])
+            self.assertEqual(
+                summary["refreshed_setup"]["selection"]["AWSIM_BIN"],
+                summary["final_selection"]["AWSIM_BIN"],
+            )
             self.assertEqual(
                 summary["commands"]["rerun_smoke"].startswith("python3 scripts/run_renderer_backend_smoke.py"),
                 True,
@@ -292,6 +297,7 @@ class RendererBackendWorkflowTests(unittest.TestCase):
             )
             self.assertTrue(summary["smoke"]["executed"])
             self.assertEqual(summary["final_selection"]["AWSIM_RENDERER_MAP"], "Town13")
+            self.assertIsNotNone(summary["refreshed_setup"])
             self.assertEqual(
                 summary["recommended_next_command"],
                 None,
@@ -351,6 +357,7 @@ class RendererBackendWorkflowTests(unittest.TestCase):
             smoke_config = json.loads(smoke_config_path.read_text(encoding="utf-8"))
             rerun_smoke_text = rerun_smoke_path.read_text(encoding="utf-8")
             self.assertEqual(payload["status"], "DRY_RUN_BLOCKED")
+            self.assertIsNone(payload["refreshed_setup"])
             blocker_codes = [entry["code"] for entry in payload["blockers"]]
             self.assertIn("AWSIM_BIN", env_text)
             self.assertIn("Renderer Backend Workflow Report", report_text)
