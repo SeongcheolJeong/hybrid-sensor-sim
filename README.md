@@ -526,6 +526,8 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - [configs/renderer_backend_smoke.carla.example.json](/Users/seongcheoljeong/Documents/Test/configs/renderer_backend_smoke.carla.example.json): CARLA smoke preset with the same sensor contract surface.
 - [configs/renderer_backend_smoke.awsim.local.example.json](/Users/seongcheoljeong/Documents/Test/configs/renderer_backend_smoke.awsim.local.example.json): env-driven AWSIM local smoke preset using `${HELIOS_BIN}`, `${AWSIM_BIN}`, `${AWSIM_RENDERER_MAP}`.
 - [configs/renderer_backend_smoke.carla.local.example.json](/Users/seongcheoljeong/Documents/Test/configs/renderer_backend_smoke.carla.local.example.json): env-driven CARLA local smoke preset using `${HELIOS_BIN}`, `${CARLA_BIN}`, `${CARLA_RENDERER_MAP}`.
+- [configs/renderer_backend_smoke.awsim.local.docker.example.json](/Users/seongcheoljeong/Documents/Test/configs/renderer_backend_smoke.awsim.local.docker.example.json): env-driven AWSIM local smoke preset using HELIOS docker runtime (`${HELIOS_DOCKER_IMAGE}`, `${AWSIM_BIN}`).
+- [configs/renderer_backend_smoke.carla.local.docker.example.json](/Users/seongcheoljeong/Documents/Test/configs/renderer_backend_smoke.carla.local.docker.example.json): env-driven CARLA local smoke preset using HELIOS docker runtime (`${HELIOS_DOCKER_IMAGE}`, `${CARLA_BIN}`).
 
 ### Local runtime discovery
 
@@ -534,9 +536,13 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `artifacts/renderer_backend_local_setup/renderer_backend_local.env.sh`
 - the summary reports:
   - selected `HELIOS_BIN`, `AWSIM_BIN`, `CARLA_BIN`
-  - `helios_ready`, `awsim_ready`, `carla_ready`
-  - `awsim_smoke_ready`, `carla_smoke_ready`
+  - selected `HELIOS_DOCKER_IMAGE`
+  - `helios_binary_ready`, `helios_docker_ready`, `helios_ready`
+  - `awsim_ready`, `carla_ready`
+  - `awsim_smoke_ready_binary`, `awsim_smoke_ready_docker`, `awsim_smoke_ready`
+  - `carla_smoke_ready_binary`, `carla_smoke_ready_docker`, `carla_smoke_ready`
   - reference repo roots versus executable runtime candidates
+- when `heliosplusplus:cli` is present in Docker Desktop, discovery can mark HELIOS as docker-ready even if `HELIOS_BIN` is unset.
 - use `--no-default-search-roots` when you want discovery to only scan explicit `--search-root` inputs plus the repo root.
 
 ## Next implementation target

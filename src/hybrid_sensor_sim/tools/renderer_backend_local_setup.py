@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import shlex
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,10 @@ _DEFAULT_BACKEND_MAPS = {
     "awsim": "SampleMap",
     "carla": "Town03",
 }
+
+_DEFAULT_HELIOS_DOCKER_IMAGE = "heliosplusplus:cli"
+_DEFAULT_HELIOS_DOCKER_BINARY = "/home/jovyan/helios/build/helios++"
+_DEFAULT_HELIOS_DOCKER_MOUNT_POINT = "/workspace"
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -185,6 +190,72 @@ def _select_preferred_candidate(candidates: list[dict[str, Any]]) -> dict[str, A
     return None
 
 
+def _docker_daemon_status() -> tuple[bool, str]:
+    try:
+        proc = subprocess.run(
+            ["docker", "info"],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return False, "docker CLI is not installed."
+    if proc.returncode != 0:
+        stderr = proc.stderr.strip()
+        return False, stderr if stderr else "docker daemon is not reachable."
+    return True, ""
+
+
+def _docker_image_present(image: str) -> tuple[bool, str]:
+    try:
+        proc = subprocess.run(
+            ["docker", "image", "inspect", image],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return False, "docker CLI is not installed."
+    if proc.returncode != 0:
+        try:
+            list_proc = subprocess.run(
+                ["docker", "images", "--format", "{{.Repository}}:{{.Tag}}"],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except FileNotFoundError:
+            return False, "docker CLI is not installed."
+        if list_proc.returncode == 0:
+            tags = {line.strip() for line in list_proc.stdout.splitlines() if line.strip()}
+            if image in tags:
+                return True, "image found via docker images listing."
+        stderr = proc.stderr.strip()
+        return False, stderr if stderr else f"docker image not found: {image}"
+    return True, ""
+
+
+def _inspect_helios_docker_runtime() -> dict[str, Any]:
+    image = os.getenv("HELIOS_DOCKER_IMAGE", _DEFAULT_HELIOS_DOCKER_IMAGE).strip()
+    binary = os.getenv("HELIOS_DOCKER_BINARY", _DEFAULT_HELIOS_DOCKER_BINARY).strip()
+    mount_point = os.getenv("HELIOS_DOCKER_MOUNT_POINT", _DEFAULT_HELIOS_DOCKER_MOUNT_POINT).strip()
+    daemon_ready, daemon_message = _docker_daemon_status()
+    image_ready = False
+    image_message = "docker daemon unavailable."
+    if daemon_ready:
+        image_ready, image_message = _docker_image_present(image)
+    return {
+        "image": image,
+        "binary": binary,
+        "mount_point": mount_point,
+        "daemon_ready": daemon_ready,
+        "daemon_message": daemon_message,
+        "image_ready": image_ready,
+        "image_message": image_message,
+        "ready": daemon_ready and image_ready,
+    }
+
+
 def _discover_backend_candidates(
     *,
     repo_root: Path,
@@ -235,6 +306,8 @@ def _render_env_file(summary: dict[str, Any]) -> str:
     ]
     for env_key in (
         "HELIOS_BIN",
+        "HELIOS_DOCKER_IMAGE",
+        "HELIOS_DOCKER_BINARY",
         "AWSIM_BIN",
         "AWSIM_RENDERER_MAP",
         "CARLA_BIN",
@@ -248,12 +321,15 @@ def _render_env_file(summary: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
+            f"# helios_binary_ready={readiness.get('helios_binary_ready', False)}",
+            f"# helios_docker_ready={readiness.get('helios_docker_ready', False)}",
             f"# awsim_smoke_ready={readiness.get('awsim_smoke_ready', False)}",
             f"# carla_smoke_ready={readiness.get('carla_smoke_ready', False)}",
             "#",
             "# Example:",
             "# source artifacts/renderer_backend_local_setup/renderer_backend_local.env.sh",
             "# python3 scripts/run_renderer_backend_smoke.py --config configs/renderer_backend_smoke.awsim.local.example.json --backend awsim",
+            "# python3 scripts/run_renderer_backend_smoke.py --config configs/renderer_backend_smoke.awsim.local.docker.example.json --backend awsim",
             "",
         ]
     )
@@ -291,6 +367,7 @@ def build_renderer_backend_local_setup(
 
     reference_roots = _discover_reference_roots(all_search_roots)
     repo_candidates = _candidate_paths_for_repo(repo_root)
+    helios_docker = _inspect_helios_docker_runtime()
     helios = _discover_backend_candidates(
         repo_root=repo_root,
         search_roots=all_search_roots,
@@ -318,22 +395,38 @@ def build_renderer_backend_local_setup(
 
     selection = {
         "HELIOS_BIN": helios.get("selected_path"),
+        "HELIOS_DOCKER_IMAGE": helios_docker["image"],
+        "HELIOS_DOCKER_BINARY": helios_docker["binary"],
         "AWSIM_BIN": awsim.get("selected_path"),
         "AWSIM_RENDERER_MAP": os.getenv("AWSIM_RENDERER_MAP", _DEFAULT_BACKEND_MAPS["awsim"]),
         "CARLA_BIN": carla.get("selected_path"),
         "CARLA_RENDERER_MAP": os.getenv("CARLA_RENDERER_MAP", _DEFAULT_BACKEND_MAPS["carla"]),
     }
     readiness = {
-        "helios_ready": bool(helios.get("ready")),
+        "helios_binary_ready": bool(helios.get("ready")),
+        "helios_docker_ready": bool(helios_docker.get("ready")),
         "awsim_ready": bool(awsim.get("ready")),
         "carla_ready": bool(carla.get("ready")),
     }
-    readiness["awsim_smoke_ready"] = readiness["helios_ready"] and readiness["awsim_ready"]
-    readiness["carla_smoke_ready"] = readiness["helios_ready"] and readiness["carla_ready"]
+    readiness["helios_ready"] = readiness["helios_binary_ready"] or readiness["helios_docker_ready"]
+    readiness["awsim_smoke_ready_binary"] = readiness["helios_binary_ready"] and readiness["awsim_ready"]
+    readiness["awsim_smoke_ready_docker"] = readiness["helios_docker_ready"] and readiness["awsim_ready"]
+    readiness["carla_smoke_ready_binary"] = readiness["helios_binary_ready"] and readiness["carla_ready"]
+    readiness["carla_smoke_ready_docker"] = readiness["helios_docker_ready"] and readiness["carla_ready"]
+    readiness["awsim_smoke_ready"] = (
+        readiness["awsim_smoke_ready_binary"] or readiness["awsim_smoke_ready_docker"]
+    )
+    readiness["carla_smoke_ready"] = (
+        readiness["carla_smoke_ready_binary"] or readiness["carla_smoke_ready_docker"]
+    )
 
     issues: list[str] = []
-    if not readiness["helios_ready"]:
+    if not readiness["helios_binary_ready"] and not readiness["helios_docker_ready"]:
         issues.append("HELIOS binary is not resolved.")
+        if not helios_docker["daemon_ready"]:
+            issues.append(f"HELIOS docker runtime unavailable: {helios_docker['daemon_message']}")
+        elif not helios_docker["image_ready"]:
+            issues.append(f"HELIOS docker image unavailable: {helios_docker['image_message']}")
     if not readiness["awsim_ready"]:
         issues.append("AWSIM runtime binary is not resolved.")
     if not readiness["carla_ready"]:
@@ -347,23 +440,46 @@ def build_renderer_backend_local_setup(
     env_path = output_root / "renderer_backend_local.env.sh"
     summary_path = output_root / "renderer_backend_local_setup.json"
     commands = {
-        "awsim_smoke": (
+        "awsim_smoke_binary": (
             f"source {shlex.quote(str(env_path))} && "
             "python3 scripts/run_renderer_backend_smoke.py "
             "--config configs/renderer_backend_smoke.awsim.local.example.json --backend awsim"
         ),
-        "carla_smoke": (
+        "awsim_smoke_docker": (
+            f"source {shlex.quote(str(env_path))} && "
+            "python3 scripts/run_renderer_backend_smoke.py "
+            "--config configs/renderer_backend_smoke.awsim.local.docker.example.json --backend awsim"
+        ),
+        "carla_smoke_binary": (
             f"source {shlex.quote(str(env_path))} && "
             "python3 scripts/run_renderer_backend_smoke.py "
             "--config configs/renderer_backend_smoke.carla.local.example.json --backend carla"
         ),
+        "carla_smoke_docker": (
+            f"source {shlex.quote(str(env_path))} && "
+            "python3 scripts/run_renderer_backend_smoke.py "
+            "--config configs/renderer_backend_smoke.carla.local.docker.example.json --backend carla"
+        ),
     }
+    commands["awsim_smoke"] = (
+        commands["awsim_smoke_binary"]
+        if readiness["awsim_smoke_ready_binary"]
+        else commands["awsim_smoke_docker"]
+    )
+    commands["carla_smoke"] = (
+        commands["carla_smoke_binary"]
+        if readiness["carla_smoke_ready_binary"]
+        else commands["carla_smoke_docker"]
+    )
     return {
         "search_roots": [str(path) for path in all_search_roots],
         "backends": {
             "helios": helios,
             "awsim": awsim,
             "carla": carla,
+        },
+        "runtimes": {
+            "helios_docker": helios_docker,
         },
         "selection": selection,
         "readiness": readiness,
