@@ -474,14 +474,15 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
       - `radar_tracks_json` exports also expose an embedded `radar_detections` logical output role from the same artifact when track mode is enabled.
     - `backend_direct_run_command.sh`: executable shell command generated from `backend_runner_request.json`.
     - `backend_runner_execution_manifest.json`: standalone runner execution status and artifact pointers, including grouped expected-output discovery by `output_role` and `artifact_type`.
-    - `backend_sensor_output_summary.json`: sensor-grouped output discovery summary generated from expected-output inspection, including `output_role_counts`, `artifact_type_counts`, `output_roles`, and `artifact_types`.
+    - `backend_sensor_output_summary.json`: sensor-grouped output discovery summary generated from expected-output inspection, including `status`, `coverage_ratio`, `output_role_counts`, `artifact_type_counts`, `output_roles`, and `artifact_types`.
+    - `backend_output_smoke_report.json`: completeness-oriented output smoke report with overall `COMPLETE|PARTIAL|MISSING|UNOBSERVED` status plus grouped summaries by sensor, `output_role`, and `artifact_type`.
     - `backend_runner_stdout.log` / `backend_runner_stderr.log`: stdout/stderr captured by standalone runner execution.
     - `backend_wrapper_invocation.json`: wrapper input/output args snapshot (when wrapper path is used and execution is enabled).
   - direct execution:
     - `renderer_execute_via_runner=true` executes the backend using `backend_runner_request.json` instead of the wrapper/renderer command path.
     - in that mode, plan/invocation/run-manifest keep both the planned wrapper path and the actual `execution_command` / `execution_command_source=backend_runner`.
     - the same request can be executed standalone via `python -m hybrid_sensor_sim.renderers.backend_runner <backend_runner_request.json>`.
-    - standalone runner execution inspects `expected_outputs` from `backend_output_spec.json` and records found/missing output artifacts in `backend_runner_execution_manifest.json`.
+    - standalone runner execution inspects `expected_outputs` from `backend_output_spec.json`, records found/missing output artifacts in `backend_runner_execution_manifest.json`, and writes `backend_output_smoke_report.json` for quick completeness checks.
   - contract argument controls:
     - `renderer_contract_flag` (default `--contract`)
     - `renderer_inject_contract_arg` / `renderer_contract_positional`

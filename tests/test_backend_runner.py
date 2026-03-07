@@ -130,11 +130,15 @@ echo "runner_warn" >&2
             self.assertIn("awsim_runtime_state_json", result.artifacts)
             self.assertIn("sensor_output_camera_front", result.artifacts)
             self.assertIn("backend_sensor_output_summary", result.artifacts)
+            self.assertIn("backend_output_smoke_report", result.artifacts)
             manifest = json.loads(
                 result.artifacts["backend_runner_execution_manifest"].read_text(encoding="utf-8")
             )
             sensor_output_summary = json.loads(
                 result.artifacts["backend_sensor_output_summary"].read_text(encoding="utf-8")
+            )
+            output_smoke_report = json.loads(
+                result.artifacts["backend_output_smoke_report"].read_text(encoding="utf-8")
             )
             stdout = result.artifacts["backend_runner_stdout"].read_text(encoding="utf-8")
             stderr = result.artifacts["backend_runner_stderr"].read_text(encoding="utf-8")
@@ -154,6 +158,11 @@ echo "runner_warn" >&2
                 manifest["expected_output_summary"]["by_artifact_type"][0]["artifact_type"],
                 "awsim_camera_rgb_json",
             )
+            self.assertEqual(
+                manifest["artifacts"]["backend_output_smoke_report"],
+                str(result.artifacts["backend_output_smoke_report"]),
+            )
+            self.assertEqual(manifest["output_smoke_report"]["status"], "COMPLETE")
             self.assertTrue(
                 any(
                     entry["artifact_key"] == "sensor_output_camera_front"
@@ -164,6 +173,7 @@ echo "runner_warn" >&2
             )
             self.assertEqual(sensor_output_summary["sensor_count"], 1)
             self.assertEqual(sensor_output_summary["found_sensor_count"], 1)
+            self.assertEqual(sensor_output_summary["status"], "COMPLETE")
             self.assertEqual(sensor_output_summary["output_role_counts"]["camera_visible"], 1)
             self.assertEqual(
                 sensor_output_summary["artifact_type_counts"]["awsim_camera_rgb_json"],
@@ -193,6 +203,18 @@ echo "runner_warn" >&2
             self.assertEqual(
                 sensor_output_summary["sensors"][0]["outputs"][0]["artifact_type"],
                 "awsim_camera_rgb_json",
+            )
+            self.assertEqual(output_smoke_report["status"], "COMPLETE")
+            self.assertEqual(output_smoke_report["found_output_count"], 2)
+            self.assertEqual(output_smoke_report["missing_output_count"], 0)
+            self.assertEqual(output_smoke_report["sensor_status_counts"]["COMPLETE"], 1)
+            self.assertEqual(
+                output_smoke_report["by_output_role"][0]["status"],
+                "COMPLETE",
+            )
+            self.assertEqual(
+                output_smoke_report["by_sensor"][0]["status"],
+                "COMPLETE",
             )
             self.assertIn("runner_ok", stdout)
             self.assertIn("runner_warn", stderr)

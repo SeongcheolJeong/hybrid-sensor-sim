@@ -334,6 +334,27 @@ def _group_expected_outputs(
     return [groups[key] for key in sorted(groups)]
 
 
+def _output_smoke_status(
+    *,
+    expected_count: int,
+    found_count: int,
+    missing_count: int,
+) -> str:
+    if expected_count <= 0:
+        return "UNOBSERVED"
+    if found_count <= 0:
+        return "MISSING"
+    if missing_count <= 0 and found_count >= expected_count:
+        return "COMPLETE"
+    return "PARTIAL"
+
+
+def _output_coverage_ratio(*, expected_count: int, found_count: int) -> float | None:
+    if expected_count <= 0:
+        return None
+    return round(found_count / expected_count, 4)
+
+
 def _sensor_export_filename(data_format: str) -> str:
     mapping = {
         "camera_projection_json": "camera_projection.json",
@@ -725,6 +746,8 @@ def _write_execution_manifest(
     found_expected_outputs: int = 0,
     missing_expected_outputs: int = 0,
     sensor_output_summary_path: Path | None,
+    output_smoke_report_path: Path | None,
+    output_smoke_report: dict[str, Any] | None,
     stdout_path: Path | None,
     stderr_path: Path | None,
 ) -> None:
@@ -753,9 +776,13 @@ def _write_execution_manifest(
             ),
         },
         "expected_outputs": outputs,
+        "output_smoke_report": output_smoke_report if isinstance(output_smoke_report, dict) else None,
         "artifacts": {
             "backend_sensor_output_summary": (
                 str(sensor_output_summary_path) if sensor_output_summary_path else None
+            ),
+            "backend_output_smoke_report": (
+                str(output_smoke_report_path) if output_smoke_report_path else None
             ),
             "backend_runner_stdout": str(stdout_path) if stdout_path else None,
             "backend_runner_stderr": str(stderr_path) if stderr_path else None,
@@ -931,6 +958,18 @@ def _build_sensor_output_summary(
         )
 
     for sensor_summary in sensors.values():
+        expected_count = int(sensor_summary.get("output_count", 0))
+        found_count = int(sensor_summary.get("found_output_count", 0))
+        missing_count = int(sensor_summary.get("missing_output_count", 0))
+        sensor_summary["status"] = _output_smoke_status(
+            expected_count=expected_count,
+            found_count=found_count,
+            missing_count=missing_count,
+        )
+        sensor_summary["coverage_ratio"] = _output_coverage_ratio(
+            expected_count=expected_count,
+            found_count=found_count,
+        )
         if bool(sensor_summary.get("available")):
             found_sensor_count += 1
         else:
@@ -945,10 +984,27 @@ def _build_sensor_output_summary(
         if artifact_type:
             artifact_type_counts[artifact_type] = int(artifact_type_counts.get(artifact_type, 0)) + 1
 
+    status_counts: dict[str, int] = {}
+    for sensor_summary in sensors.values():
+        status = str(sensor_summary.get("status", "")).strip()
+        if not status:
+            continue
+        status_counts[status] = int(status_counts.get(status, 0)) + 1
+
     summary_payload = {
         "sensor_count": len(sensors),
         "found_sensor_count": found_sensor_count,
         "missing_sensor_count": missing_sensor_count,
+        "status": _output_smoke_status(
+            expected_count=len(sensors),
+            found_count=found_sensor_count,
+            missing_count=missing_sensor_count,
+        ),
+        "coverage_ratio": _output_coverage_ratio(
+            expected_count=len(sensors),
+            found_count=found_sensor_count,
+        ),
+        "status_counts": status_counts,
         "output_role_counts": output_role_counts,
         "artifact_type_counts": artifact_type_counts,
         "output_roles": _group_expected_outputs(
@@ -966,6 +1022,154 @@ def _build_sensor_output_summary(
     summary_path = output_dir / "backend_sensor_output_summary.json"
     summary_path.write_text(json.dumps(summary_payload, indent=2), encoding="utf-8")
     return summary_path, {"backend_sensor_output_summary": summary_path}
+
+
+def _build_backend_output_smoke_report(
+    *,
+    expected_outputs: list[dict[str, Any]],
+    output_dir: Path,
+) -> tuple[Path, dict[str, Path], dict[str, Any]]:
+    found_count = sum(1 for entry in expected_outputs if bool(entry.get("exists", False)))
+    missing_count = max(0, len(expected_outputs) - found_count)
+    found_artifact_keys = sorted(
+        {
+            str(entry.get("artifact_key", "")).strip()
+            for entry in expected_outputs
+            if bool(entry.get("exists", False)) and str(entry.get("artifact_key", "")).strip()
+        }
+    )
+    missing_artifact_keys = sorted(
+        {
+            str(entry.get("artifact_key", "")).strip()
+            for entry in expected_outputs
+            if not bool(entry.get("exists", False)) and str(entry.get("artifact_key", "")).strip()
+        }
+    )
+
+    def _annotate_group(
+        group: dict[str, Any],
+        *,
+        expected_field: str = "expected_count",
+        found_field: str = "found_count",
+        missing_field: str = "missing_count",
+    ) -> dict[str, Any]:
+        expected_count = int(group.get(expected_field, 0))
+        found_group_count = int(group.get(found_field, 0))
+        missing_group_count = int(group.get(missing_field, 0))
+        return {
+            **group,
+            "status": _output_smoke_status(
+                expected_count=expected_count,
+                found_count=found_group_count,
+                missing_count=missing_group_count,
+            ),
+            "coverage_ratio": _output_coverage_ratio(
+                expected_count=expected_count,
+                found_count=found_group_count,
+            ),
+        }
+
+    output_role_groups = [
+        _annotate_group(group)
+        for group in _group_expected_outputs(
+            expected_outputs=expected_outputs,
+            field="output_role",
+            group_key_name="output_role",
+        )
+    ]
+    artifact_type_groups = [
+        _annotate_group(group)
+        for group in _group_expected_outputs(
+            expected_outputs=expected_outputs,
+            field="artifact_type",
+            group_key_name="artifact_type",
+        )
+    ]
+
+    sensors: dict[str, dict[str, Any]] = {}
+    for entry in expected_outputs:
+        sensor_id = str(entry.get("sensor_id", "")).strip()
+        if not sensor_id:
+            continue
+        sensor_summary = sensors.setdefault(
+            sensor_id,
+            {
+                "sensor_id": sensor_id,
+                "sensor_name": str(entry.get("sensor_name", "")).strip() or sensor_id,
+                "backend": str(entry.get("backend", "")).strip(),
+                "modality": str(entry.get("modality", "")).strip(),
+                "expected_output_count": 0,
+                "found_output_count": 0,
+                "missing_output_count": 0,
+                "artifact_keys": [],
+                "found_artifact_keys": [],
+                "missing_artifact_keys": [],
+                "output_roles": [],
+                "artifact_types": [],
+            },
+        )
+        artifact_key = str(entry.get("artifact_key", "")).strip()
+        output_role = str(entry.get("output_role", "")).strip()
+        artifact_type = str(entry.get("artifact_type", "")).strip()
+        exists = bool(entry.get("exists", False))
+        sensor_summary["expected_output_count"] += 1
+        if exists:
+            sensor_summary["found_output_count"] += 1
+        else:
+            sensor_summary["missing_output_count"] += 1
+        if artifact_key and artifact_key not in sensor_summary["artifact_keys"]:
+            sensor_summary["artifact_keys"].append(artifact_key)
+        target_keys = (
+            sensor_summary["found_artifact_keys"]
+            if exists
+            else sensor_summary["missing_artifact_keys"]
+        )
+        if artifact_key and artifact_key not in target_keys:
+            target_keys.append(artifact_key)
+        if output_role and output_role not in sensor_summary["output_roles"]:
+            sensor_summary["output_roles"].append(output_role)
+        if artifact_type and artifact_type not in sensor_summary["artifact_types"]:
+            sensor_summary["artifact_types"].append(artifact_type)
+
+    sensor_summaries = [
+        _annotate_group(
+            summary,
+            expected_field="expected_output_count",
+            found_field="found_output_count",
+            missing_field="missing_output_count",
+        )
+        for summary in (sensors[key] for key in sorted(sensors))
+    ]
+    sensor_status_counts: dict[str, int] = {}
+    for summary in sensor_summaries:
+        status = str(summary.get("status", "")).strip()
+        if not status:
+            continue
+        sensor_status_counts[status] = int(sensor_status_counts.get(status, 0)) + 1
+
+    report_payload = {
+        "status": _output_smoke_status(
+            expected_count=len(expected_outputs),
+            found_count=found_count,
+            missing_count=missing_count,
+        ),
+        "coverage_ratio": _output_coverage_ratio(
+            expected_count=len(expected_outputs),
+            found_count=found_count,
+        ),
+        "expected_output_count": len(expected_outputs),
+        "found_output_count": found_count,
+        "missing_output_count": missing_count,
+        "found_artifact_keys": found_artifact_keys,
+        "missing_artifact_keys": missing_artifact_keys,
+        "by_output_role": output_role_groups,
+        "by_artifact_type": artifact_type_groups,
+        "by_sensor": sensor_summaries,
+        "sensor_status_counts": sensor_status_counts,
+    }
+    report_path = output_dir / "backend_output_smoke_report.json"
+    report_path.write_text(json.dumps(report_payload, indent=2), encoding="utf-8")
+    return report_path, {"backend_output_smoke_report": report_path}, report_payload
 
 
 def execute_backend_runner_request(
@@ -1004,6 +1208,8 @@ def execute_backend_runner_request(
             found_expected_outputs=0,
             missing_expected_outputs=0,
             sensor_output_summary_path=None,
+            output_smoke_report_path=None,
+            output_smoke_report=None,
             stdout_path=None,
             stderr_path=stderr_path,
         )
@@ -1026,6 +1232,8 @@ def execute_backend_runner_request(
             found_expected_outputs=0,
             missing_expected_outputs=0,
             sensor_output_summary_path=None,
+            output_smoke_report_path=None,
+            output_smoke_report=None,
             stdout_path=None,
             stderr_path=stderr_path,
         )
@@ -1049,6 +1257,8 @@ def execute_backend_runner_request(
             found_expected_outputs=0,
             missing_expected_outputs=0,
             sensor_output_summary_path=None,
+            output_smoke_report_path=None,
+            output_smoke_report=None,
             stdout_path=None,
             stderr_path=stderr_path,
         )
@@ -1073,6 +1283,8 @@ def execute_backend_runner_request(
             found_expected_outputs=0,
             missing_expected_outputs=0,
             sensor_output_summary_path=None,
+            output_smoke_report_path=None,
+            output_smoke_report=None,
             stdout_path=None,
             stderr_path=stderr_path,
         )
@@ -1123,6 +1335,8 @@ def execute_backend_runner_request(
             found_expected_outputs=0,
             missing_expected_outputs=len(expected_outputs),
             sensor_output_summary_path=None,
+            output_smoke_report_path=None,
+            output_smoke_report=None,
             stdout_path=None,
             stderr_path=stderr_path,
         )
@@ -1144,6 +1358,13 @@ def execute_backend_runner_request(
         output_dir=runner_output_dir,
     )
     artifacts.update(sensor_output_summary_artifacts)
+    output_smoke_report_path, output_smoke_report_artifacts, output_smoke_report = (
+        _build_backend_output_smoke_report(
+            expected_outputs=inspected_outputs,
+            output_dir=runner_output_dir,
+        )
+    )
+    artifacts.update(output_smoke_report_artifacts)
     success = proc.returncode == 0
     status = "EXECUTION_SUCCEEDED" if success else "EXECUTION_FAILED"
     message = (
@@ -1162,6 +1383,8 @@ def execute_backend_runner_request(
         found_expected_outputs=found_count,
         missing_expected_outputs=missing_count,
         sensor_output_summary_path=sensor_output_summary_path,
+        output_smoke_report_path=output_smoke_report_path,
+        output_smoke_report=output_smoke_report,
         stdout_path=stdout_path,
         stderr_path=stderr_path,
     )

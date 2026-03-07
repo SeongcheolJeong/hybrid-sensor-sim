@@ -405,6 +405,7 @@ def _write_backend_run_manifest(
     ingestion_entry_count: int,
     launcher_arg_count: int,
     sensor_output_summary_path: Path | None = None,
+    output_smoke_report_path: Path | None = None,
 ) -> None:
     payload = {
         "backend": backend,
@@ -439,6 +440,9 @@ def _write_backend_run_manifest(
             ),
             "backend_sensor_output_summary": (
                 str(sensor_output_summary_path) if sensor_output_summary_path else None
+            ),
+            "backend_output_smoke_report": (
+                str(output_smoke_report_path) if output_smoke_report_path else None
             ),
             "backend_wrapper_invocation": str(wrapper_dump_path) if wrapper_dump_path else None,
             "renderer_stdout": str(stdout_path) if stdout_path else None,
@@ -532,6 +536,7 @@ def _write_renderer_pipeline_summary(
     direct_run_command_path: Path | None,
     runner_execution_manifest_path: Path | None,
     sensor_output_summary_path: Path | None,
+    output_smoke_report_path: Path | None,
     wrapper_dump_path: Path | None,
     stdout_path: Path | None,
     stderr_path: Path | None,
@@ -698,6 +703,46 @@ def _write_renderer_pipeline_summary(
         if isinstance(raw_sensor_output_records, list):
             sensor_output_records = [item for item in raw_sensor_output_records if isinstance(item, dict)]
 
+    smoke_report_available = False
+    smoke_report_status: str | None = None
+    smoke_report_coverage_ratio: float | None = None
+    smoke_report_by_output_role: list[dict[str, Any]] = []
+    smoke_report_by_artifact_type: list[dict[str, Any]] = []
+    smoke_report_by_sensor: list[dict[str, Any]] = []
+    smoke_report_sensor_status_counts: dict[str, int] = {}
+    smoke_report_payload = (
+        _read_contract_payload(output_smoke_report_path)
+        if output_smoke_report_path
+        else None
+    )
+    if isinstance(smoke_report_payload, dict):
+        smoke_report_available = True
+        raw_status = smoke_report_payload.get("status")
+        smoke_report_status = str(raw_status).strip() if raw_status is not None else None
+        raw_coverage_ratio = smoke_report_payload.get("coverage_ratio")
+        if isinstance(raw_coverage_ratio, (int, float)):
+            smoke_report_coverage_ratio = float(raw_coverage_ratio)
+        raw_by_output_role = smoke_report_payload.get("by_output_role")
+        if isinstance(raw_by_output_role, list):
+            smoke_report_by_output_role = [
+                item for item in raw_by_output_role if isinstance(item, dict)
+            ]
+        raw_by_artifact_type = smoke_report_payload.get("by_artifact_type")
+        if isinstance(raw_by_artifact_type, list):
+            smoke_report_by_artifact_type = [
+                item for item in raw_by_artifact_type if isinstance(item, dict)
+            ]
+        raw_by_sensor = smoke_report_payload.get("by_sensor")
+        if isinstance(raw_by_sensor, list):
+            smoke_report_by_sensor = [item for item in raw_by_sensor if isinstance(item, dict)]
+        raw_sensor_status_counts = smoke_report_payload.get("sensor_status_counts")
+        if isinstance(raw_sensor_status_counts, dict):
+            smoke_report_sensor_status_counts = {
+                str(key): _coerce_int(value, default=0)
+                for key, value in raw_sensor_status_counts.items()
+                if str(key).strip()
+            }
+
     payload = {
         "backend": backend,
         "execute_requested": execute,
@@ -758,6 +803,15 @@ def _write_renderer_pipeline_summary(
             "artifact_types": sensor_artifact_type_groups,
             "sensors": sensor_output_records,
         },
+        "output_smoke_report": {
+            "available": smoke_report_available,
+            "status": smoke_report_status,
+            "coverage_ratio": smoke_report_coverage_ratio,
+            "by_output_role": smoke_report_by_output_role,
+            "by_artifact_type": smoke_report_by_artifact_type,
+            "by_sensor": smoke_report_by_sensor,
+            "sensor_status_counts": smoke_report_sensor_status_counts,
+        },
         "artifacts": {
             "renderer_execution_plan": str(plan_path),
             "backend_invocation": str(backend_invocation_path),
@@ -775,6 +829,9 @@ def _write_renderer_pipeline_summary(
             "backend_sensor_output_summary": (
                 str(sensor_output_summary_path) if sensor_output_summary_path else None
             ),
+            "backend_output_smoke_report": (
+                str(output_smoke_report_path) if output_smoke_report_path else None
+            ),
             "backend_wrapper_invocation": str(wrapper_dump_path) if wrapper_dump_path else None,
             "renderer_stdout": str(stdout_path) if stdout_path else None,
             "renderer_stderr": str(stderr_path) if stderr_path else None,
@@ -790,6 +847,9 @@ def _write_renderer_pipeline_summary(
         ),
         "renderer_pipeline_sensor_output_summary_available": (
             1.0 if sensor_output_summary_available else 0.0
+        ),
+        "renderer_pipeline_output_smoke_report_available": (
+            1.0 if smoke_report_available else 0.0
         ),
         "renderer_pipeline_expected_output_count": float(expected_output_count),
         "renderer_pipeline_expected_output_found_count": float(found_output_count),
@@ -1765,6 +1825,7 @@ def execute_renderer_runtime(
     pipeline_summary_path = runtime_dir / "renderer_pipeline_summary.json"
     runner_execution_manifest_path: Path | None = None
     sensor_output_summary_path: Path | None = None
+    output_smoke_report_path: Path | None = None
     runner_stdout_path: Path | None = None
     runner_stderr_path: Path | None = None
     artifacts: dict[str, Path] = {
@@ -1816,8 +1877,9 @@ def execute_renderer_runtime(
         stderr_path_for_summary: Path | None,
         runner_execution_manifest_path_for_summary: Path | None,
         sensor_output_summary_path_for_summary: Path | None,
-        runner_stdout_path_for_summary: Path | None,
-        runner_stderr_path_for_summary: Path | None,
+        output_smoke_report_path_for_summary: Path | None = None,
+        runner_stdout_path_for_summary: Path | None = None,
+        runner_stderr_path_for_summary: Path | None = None,
     ) -> None:
         artifacts["renderer_pipeline_summary"] = pipeline_summary_path
         metrics.update(
@@ -1853,6 +1915,7 @@ def execute_renderer_runtime(
                 direct_run_command_path=direct_run_command_path,
                 runner_execution_manifest_path=runner_execution_manifest_path_for_summary,
                 sensor_output_summary_path=sensor_output_summary_path_for_summary,
+                output_smoke_report_path=output_smoke_report_path_for_summary,
                 wrapper_dump_path=wrapper_dump_path_for_summary,
                 stdout_path=stdout_path_for_summary,
                 stderr_path=stderr_path_for_summary,
@@ -2047,6 +2110,7 @@ def execute_renderer_runtime(
             "backend_runner_execution_manifest"
         )
         sensor_output_summary_path = runner_result.artifacts.get("backend_sensor_output_summary")
+        output_smoke_report_path = runner_result.artifacts.get("backend_output_smoke_report")
         runner_stdout_path = runner_result.artifacts.get("backend_runner_stdout")
         runner_stderr_path = runner_result.artifacts.get("backend_runner_stderr")
         artifacts.update(runner_result.artifacts)
@@ -2084,6 +2148,7 @@ def execute_renderer_runtime(
                 direct_run_command_path=direct_run_command_path,
                 runner_execution_manifest_path=runner_execution_manifest_path,
                 sensor_output_summary_path=sensor_output_summary_path,
+                output_smoke_report_path=output_smoke_report_path,
                 wrapper_dump_path=None,
                 stdout_path=stdout_path if runner_stdout_path is not None else None,
                 stderr_path=stderr_path if runner_stderr_path is not None else None,
@@ -2106,6 +2171,7 @@ def execute_renderer_runtime(
                 stderr_path_for_summary=stderr_path if runner_stderr_path is not None else None,
                 runner_execution_manifest_path_for_summary=runner_execution_manifest_path,
                 sensor_output_summary_path_for_summary=sensor_output_summary_path,
+                output_smoke_report_path_for_summary=output_smoke_report_path,
                 runner_stdout_path_for_summary=runner_stdout_path,
                 runner_stderr_path_for_summary=runner_stderr_path,
             )
@@ -2140,6 +2206,7 @@ def execute_renderer_runtime(
             direct_run_command_path=direct_run_command_path,
             runner_execution_manifest_path=runner_execution_manifest_path,
             sensor_output_summary_path=sensor_output_summary_path,
+            output_smoke_report_path=output_smoke_report_path,
             wrapper_dump_path=None,
             stdout_path=stdout_path if runner_stdout_path is not None else None,
             stderr_path=stderr_path if runner_stderr_path is not None else None,
@@ -2162,6 +2229,7 @@ def execute_renderer_runtime(
             stderr_path_for_summary=stderr_path if runner_stderr_path is not None else None,
             runner_execution_manifest_path_for_summary=runner_execution_manifest_path,
             sensor_output_summary_path_for_summary=sensor_output_summary_path,
+            output_smoke_report_path_for_summary=output_smoke_report_path,
             runner_stdout_path_for_summary=runner_stdout_path,
             runner_stderr_path_for_summary=runner_stderr_path,
         )

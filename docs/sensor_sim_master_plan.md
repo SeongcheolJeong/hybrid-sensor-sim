@@ -231,6 +231,7 @@ Primary code references:
   - ingestion profile generation
   - backend sensor bundle summary generation
   - backend output spec generation and expected-output inspection
+  - backend output smoke report generation with grouped completeness status
   - sensor-specific expected export paths derived from runtime ingestion data
   - backend-namespaced sensor export candidate paths and sensor output summary generation
   - backend-specific sensor export filename conventions (for example AWSIM vs CARLA camera outputs)
