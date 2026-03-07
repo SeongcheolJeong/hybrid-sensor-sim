@@ -83,10 +83,12 @@ class RendererRuntimeTests(unittest.TestCase):
             self.assertIn("backend_runner_request", result.artifacts)
             self.assertIn("backend_direct_run_command", result.artifacts)
             self.assertIn("backend_output_spec", result.artifacts)
+            self.assertIn("renderer_pipeline_summary", result.artifacts)
             self.assertEqual(result.metrics.get("renderer_runtime_planned"), 1.0)
             self.assertEqual(result.metrics.get("renderer_execute_requested"), 0.0)
             self.assertEqual(result.metrics.get("renderer_runtime_success"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_run_manifest_written"), 1.0)
+            self.assertEqual(result.metrics.get("renderer_pipeline_summary_written"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_run_planned_only"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_runner_request_written"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_runner_command_written"), 1.0)
@@ -104,10 +106,19 @@ class RendererRuntimeTests(unittest.TestCase):
             output_spec = json.loads(
                 result.artifacts["backend_output_spec"].read_text(encoding="utf-8")
             )
+            pipeline_summary = json.loads(
+                result.artifacts["renderer_pipeline_summary"].read_text(encoding="utf-8")
+            )
             self.assertFalse(plan["execute"])
             self.assertIn(str(contract_path), plan["command"])
             self.assertEqual(run_manifest["status"], "PLANNED_ONLY")
             self.assertIsNone(run_manifest["return_code"])
+            self.assertEqual(pipeline_summary["status"], "PLANNED_ONLY")
+            self.assertFalse(pipeline_summary["expected_outputs"]["inspection_available"])
+            self.assertEqual(
+                pipeline_summary["artifacts"]["backend_run_manifest"],
+                str(result.artifacts["backend_run_manifest"]),
+            )
             self.assertEqual(
                 run_manifest["artifacts"]["backend_sensor_bundle_summary"],
                 str(result.artifacts["backend_sensor_bundle_summary"]),
@@ -815,9 +826,11 @@ printf "%s\\n" "$@"
             self.assertIn("backend_output_spec", result.artifacts)
             self.assertIn("awsim_runtime_state_json", result.artifacts)
             self.assertIn("sensor_output_camera_front", result.artifacts)
+            self.assertIn("renderer_pipeline_summary", result.artifacts)
             self.assertEqual(result.metrics.get("renderer_execute_via_runner_requested"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_runner_execution_used"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_execution_wrapper_used"), 0.0)
+            self.assertEqual(result.metrics.get("renderer_pipeline_summary_written"), 1.0)
             stdout = result.artifacts["renderer_stdout"].read_text(encoding="utf-8")
             self.assertIn("direct_backend", stdout)
             self.assertIn("--mount-sensor", stdout)
@@ -841,6 +854,9 @@ printf "%s\\n" "$@"
             )
             output_spec = json.loads(
                 result.artifacts["backend_output_spec"].read_text(encoding="utf-8")
+            )
+            pipeline_summary = json.loads(
+                result.artifacts["renderer_pipeline_summary"].read_text(encoding="utf-8")
             )
             self.assertTrue(plan["execute_via_runner"])
             self.assertEqual(plan["command_source"], "backend_wrapper")
@@ -884,6 +900,20 @@ printf "%s\\n" "$@"
                 )
             )
             self.assertEqual(output_spec["backend"], "awsim")
+            self.assertEqual(pipeline_summary["status"], "EXECUTION_SUCCEEDED")
+            self.assertTrue(pipeline_summary["expected_outputs"]["inspection_available"])
+            self.assertIn(
+                "awsim_runtime_state_json",
+                pipeline_summary["expected_outputs"]["found_artifact_keys"],
+            )
+            self.assertIn(
+                "sensor_output_camera_front",
+                pipeline_summary["expected_outputs"]["found_artifact_keys"],
+            )
+            self.assertEqual(
+                pipeline_summary["artifacts"]["backend_runner_execution_manifest"],
+                str(result.artifacts["backend_runner_execution_manifest"]),
+            )
 
     def test_renderer_runtime_carla_wrapper_execution_transforms_sensor_mount_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

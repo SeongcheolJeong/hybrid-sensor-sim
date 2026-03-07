@@ -495,6 +495,205 @@ def _coerce_float(value: Any, *, default: float = 0.0) -> float:
         return default
 
 
+def _write_renderer_pipeline_summary(
+    *,
+    path: Path,
+    backend: str,
+    execute: bool,
+    execute_via_runner: bool,
+    status: str,
+    success: bool,
+    message: str,
+    failure_reason: str | None,
+    return_code: int | None,
+    command_source: str,
+    execution_command_source: str,
+    backend_wrapper_used: bool,
+    execution_backend_wrapper_used: bool,
+    frame_count: int,
+    sensor_bindings: int,
+    complete_frame_count: int,
+    ingestion_entry_count: int,
+    launcher_arg_count: int,
+    runner_arg_count: int,
+    plan_path: Path,
+    backend_invocation_path: Path,
+    backend_run_manifest_path: Path,
+    frame_manifest_path: Path | None,
+    ingestion_profile_path: Path | None,
+    bundle_summary_path: Path | None,
+    output_spec_path: Path | None,
+    launcher_template_path: Path | None,
+    runner_request_path: Path | None,
+    direct_run_command_path: Path | None,
+    runner_execution_manifest_path: Path | None,
+    wrapper_dump_path: Path | None,
+    stdout_path: Path | None,
+    stderr_path: Path | None,
+    runner_stdout_path: Path | None,
+    runner_stderr_path: Path | None,
+) -> dict[str, float]:
+    ingestion_sensor_ids: set[str] = set()
+    ingestion_data_formats: set[str] = set()
+    ingestion_payload = _read_contract_payload(ingestion_profile_path) if ingestion_profile_path else None
+    if isinstance(ingestion_payload, dict):
+        raw_entries = ingestion_payload.get("entries")
+        if isinstance(raw_entries, list):
+            for entry in raw_entries:
+                if not isinstance(entry, dict):
+                    continue
+                sensor_id = str(entry.get("sensor_id", "")).strip()
+                data_format = str(entry.get("data_format", "")).strip()
+                if sensor_id:
+                    ingestion_sensor_ids.add(sensor_id)
+                if data_format:
+                    ingestion_data_formats.add(data_format)
+
+    expected_sensors: list[str] = []
+    incomplete_frame_count = max(0, frame_count - complete_frame_count)
+    availability_patterns: list[dict[str, Any]] = []
+    bundle_payload = _read_contract_payload(bundle_summary_path) if bundle_summary_path else None
+    if isinstance(bundle_payload, dict):
+        raw_expected_sensors = bundle_payload.get("expected_sensors")
+        if isinstance(raw_expected_sensors, list):
+            expected_sensors = [str(item) for item in raw_expected_sensors if str(item).strip()]
+        incomplete_frame_count = _coerce_int(
+            bundle_payload.get("incomplete_frame_count"),
+            default=incomplete_frame_count,
+        )
+        raw_patterns = bundle_payload.get("availability_patterns")
+        if isinstance(raw_patterns, list):
+            availability_patterns = [item for item in raw_patterns if isinstance(item, dict)]
+
+    expected_output_count = 0
+    expected_output_keys: list[str] = []
+    output_spec_payload = _read_contract_payload(output_spec_path) if output_spec_path else None
+    if isinstance(output_spec_payload, dict):
+        expected_output_count = _coerce_int(
+            output_spec_payload.get("expected_output_count"),
+            default=0,
+        )
+        raw_expected_outputs = output_spec_payload.get("expected_outputs")
+        if isinstance(raw_expected_outputs, list):
+            expected_output_keys = [
+                str(entry.get("artifact_key", "")).strip()
+                for entry in raw_expected_outputs
+                if isinstance(entry, dict) and str(entry.get("artifact_key", "")).strip()
+            ]
+            if expected_output_count <= 0:
+                expected_output_count = len(expected_output_keys)
+
+    inspection_available = False
+    found_output_count = 0
+    missing_output_count = 0
+    found_output_keys: list[str] = []
+    missing_output_keys: list[str] = []
+    runner_execution_payload = (
+        _read_contract_payload(runner_execution_manifest_path)
+        if runner_execution_manifest_path
+        else None
+    )
+    if isinstance(runner_execution_payload, dict):
+        inspection_available = True
+        raw_summary = runner_execution_payload.get("expected_output_summary")
+        if isinstance(raw_summary, dict):
+            found_output_count = _coerce_int(raw_summary.get("found_count"), default=0)
+            missing_output_count = _coerce_int(raw_summary.get("missing_count"), default=0)
+        raw_expected_outputs = runner_execution_payload.get("expected_outputs")
+        if isinstance(raw_expected_outputs, list):
+            for entry in raw_expected_outputs:
+                if not isinstance(entry, dict):
+                    continue
+                artifact_key = str(entry.get("artifact_key", "")).strip()
+                if not artifact_key:
+                    continue
+                if bool(entry.get("exists", False)):
+                    found_output_keys.append(artifact_key)
+                else:
+                    missing_output_keys.append(artifact_key)
+            if found_output_count <= 0:
+                found_output_count = len(found_output_keys)
+            if missing_output_count <= 0:
+                missing_output_count = len(missing_output_keys)
+
+    payload = {
+        "backend": backend,
+        "execute_requested": execute,
+        "execute_via_runner": execute_via_runner,
+        "status": status,
+        "success": success,
+        "message": message,
+        "failure_reason": failure_reason,
+        "return_code": return_code,
+        "execution": {
+            "command_source": command_source,
+            "execution_command_source": execution_command_source,
+            "backend_wrapper_used": backend_wrapper_used,
+            "execution_backend_wrapper_used": execution_backend_wrapper_used,
+        },
+        "counts": {
+            "frame_count": frame_count,
+            "sensor_bindings": sensor_bindings,
+            "complete_frame_count": complete_frame_count,
+            "incomplete_frame_count": incomplete_frame_count,
+            "ingestion_entry_count": ingestion_entry_count,
+            "launcher_arg_count": launcher_arg_count,
+            "runner_arg_count": runner_arg_count,
+            "expected_sensor_count": len(expected_sensors),
+            "ingestion_sensor_count": len(ingestion_sensor_ids),
+            "expected_output_count": expected_output_count,
+        },
+        "ingestion": {
+            "sensor_ids": sorted(ingestion_sensor_ids),
+            "data_formats": sorted(ingestion_data_formats),
+        },
+        "sensor_bundle": {
+            "expected_sensors": expected_sensors,
+            "availability_patterns": availability_patterns,
+        },
+        "expected_outputs": {
+            "inspection_available": inspection_available,
+            "expected_count": expected_output_count,
+            "expected_artifact_keys": expected_output_keys,
+            "found_count": found_output_count if inspection_available else None,
+            "missing_count": missing_output_count if inspection_available else None,
+            "found_artifact_keys": sorted(set(found_output_keys)),
+            "missing_artifact_keys": sorted(set(missing_output_keys)),
+        },
+        "artifacts": {
+            "renderer_execution_plan": str(plan_path),
+            "backend_invocation": str(backend_invocation_path),
+            "backend_run_manifest": str(backend_run_manifest_path),
+            "backend_frame_inputs_manifest": str(frame_manifest_path) if frame_manifest_path else None,
+            "backend_ingestion_profile": str(ingestion_profile_path) if ingestion_profile_path else None,
+            "backend_sensor_bundle_summary": str(bundle_summary_path) if bundle_summary_path else None,
+            "backend_output_spec": str(output_spec_path) if output_spec_path else None,
+            "backend_launcher_template": str(launcher_template_path) if launcher_template_path else None,
+            "backend_runner_request": str(runner_request_path) if runner_request_path else None,
+            "backend_direct_run_command": str(direct_run_command_path) if direct_run_command_path else None,
+            "backend_runner_execution_manifest": (
+                str(runner_execution_manifest_path) if runner_execution_manifest_path else None
+            ),
+            "backend_wrapper_invocation": str(wrapper_dump_path) if wrapper_dump_path else None,
+            "renderer_stdout": str(stdout_path) if stdout_path else None,
+            "renderer_stderr": str(stderr_path) if stderr_path else None,
+            "backend_runner_stdout": str(runner_stdout_path) if runner_stdout_path else None,
+            "backend_runner_stderr": str(runner_stderr_path) if runner_stderr_path else None,
+        },
+    }
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return {
+        "renderer_pipeline_summary_written": 1.0,
+        "renderer_pipeline_expected_output_inspection_available": (
+            1.0 if inspection_available else 0.0
+        ),
+        "renderer_pipeline_expected_output_count": float(expected_output_count),
+        "renderer_pipeline_expected_output_found_count": float(found_output_count),
+        "renderer_pipeline_expected_output_missing_count": float(missing_output_count),
+        "renderer_pipeline_ingestion_sensor_count": float(len(ingestion_sensor_ids)),
+    }
+
+
 def _resolve_artifact_path(*, raw: Any, cwd: Path) -> Path | None:
     text = str(raw).strip() if raw is not None else ""
     if not text:
@@ -1447,6 +1646,7 @@ def execute_renderer_runtime(
         encoding="utf-8",
     )
     backend_run_manifest_path = runtime_dir / "backend_run_manifest.json"
+    pipeline_summary_path = runtime_dir / "renderer_pipeline_summary.json"
     runner_execution_manifest_path: Path | None = None
     runner_stdout_path: Path | None = None
     runner_stderr_path: Path | None = None
@@ -1487,6 +1687,61 @@ def execute_renderer_runtime(
     metrics.update(launcher_template_metrics)
     metrics.update(runner_metrics)
 
+    def _record_pipeline_summary(
+        *,
+        status: str,
+        success: bool,
+        message: str,
+        failure_reason: str | None,
+        return_code: int | None,
+        wrapper_dump_path_for_summary: Path | None,
+        stdout_path_for_summary: Path | None,
+        stderr_path_for_summary: Path | None,
+        runner_execution_manifest_path_for_summary: Path | None,
+        runner_stdout_path_for_summary: Path | None,
+        runner_stderr_path_for_summary: Path | None,
+    ) -> None:
+        artifacts["renderer_pipeline_summary"] = pipeline_summary_path
+        metrics.update(
+            _write_renderer_pipeline_summary(
+                path=pipeline_summary_path,
+                backend=backend,
+                execute=execute,
+                execute_via_runner=execute_via_runner,
+                status=status,
+                success=success,
+                message=message,
+                failure_reason=failure_reason,
+                return_code=return_code,
+                command_source=command_source,
+                execution_command_source=execution_command_source,
+                backend_wrapper_used=backend_wrapper_used,
+                execution_backend_wrapper_used=execution_backend_wrapper_used,
+                frame_count=frame_count,
+                sensor_bindings=sensor_bindings,
+                complete_frame_count=complete_frame_count,
+                ingestion_entry_count=ingestion_entry_count,
+                launcher_arg_count=launcher_arg_count,
+                runner_arg_count=runner_arg_count,
+                plan_path=plan_path,
+                backend_invocation_path=backend_invocation_path,
+                backend_run_manifest_path=backend_run_manifest_path,
+                frame_manifest_path=frame_manifest_path,
+                ingestion_profile_path=ingestion_profile_path,
+                bundle_summary_path=bundle_summary_path,
+                output_spec_path=output_spec_path,
+                launcher_template_path=launcher_template_path,
+                runner_request_path=runner_request_path,
+                direct_run_command_path=direct_run_command_path,
+                runner_execution_manifest_path=runner_execution_manifest_path_for_summary,
+                wrapper_dump_path=wrapper_dump_path_for_summary,
+                stdout_path=stdout_path_for_summary,
+                stderr_path=stderr_path_for_summary,
+                runner_stdout_path=runner_stdout_path_for_summary,
+                runner_stderr_path=runner_stderr_path_for_summary,
+            )
+        )
+
     if backend in {"", "none"}:
         _write_backend_run_manifest(
             path=backend_run_manifest_path,
@@ -1520,6 +1775,21 @@ def execute_renderer_runtime(
             complete_frame_count=complete_frame_count,
             ingestion_entry_count=ingestion_entry_count,
             launcher_arg_count=launcher_arg_count,
+        )
+        _record_pipeline_summary(
+            status="SKIPPED",
+            success=True,
+            message="Renderer runtime skipped: renderer_backend is none.",
+            failure_reason=None,
+            return_code=None,
+            wrapper_dump_path_for_summary=(
+                wrapper_dump_path if execution_backend_wrapper_used else None
+            ),
+            stdout_path_for_summary=None,
+            stderr_path_for_summary=None,
+            runner_execution_manifest_path_for_summary=None,
+            runner_stdout_path_for_summary=None,
+            runner_stderr_path_for_summary=None,
         )
         metrics.update(_backend_run_status_metrics("SKIPPED"))
         return RendererRuntimeResult(
@@ -1562,6 +1832,21 @@ def execute_renderer_runtime(
             ingestion_entry_count=ingestion_entry_count,
             launcher_arg_count=launcher_arg_count,
         )
+        _record_pipeline_summary(
+            status="PLAN_ERROR",
+            success=False,
+            message=f"Renderer runtime plan error: {build_error}",
+            failure_reason="BUILD_ERROR",
+            return_code=None,
+            wrapper_dump_path_for_summary=(
+                wrapper_dump_path if execution_backend_wrapper_used else None
+            ),
+            stdout_path_for_summary=None,
+            stderr_path_for_summary=None,
+            runner_execution_manifest_path_for_summary=None,
+            runner_stdout_path_for_summary=None,
+            runner_stderr_path_for_summary=None,
+        )
         metrics.update(_backend_run_status_metrics("PLAN_ERROR"))
         return RendererRuntimeResult(
             success=False,
@@ -1602,6 +1887,21 @@ def execute_renderer_runtime(
             complete_frame_count=complete_frame_count,
             ingestion_entry_count=ingestion_entry_count,
             launcher_arg_count=launcher_arg_count,
+        )
+        _record_pipeline_summary(
+            status="PLANNED_ONLY",
+            success=True,
+            message="Renderer runtime plan generated only (renderer_execute=false).",
+            failure_reason=None,
+            return_code=None,
+            wrapper_dump_path_for_summary=(
+                wrapper_dump_path if execution_backend_wrapper_used else None
+            ),
+            stdout_path_for_summary=None,
+            stderr_path_for_summary=None,
+            runner_execution_manifest_path_for_summary=None,
+            runner_stdout_path_for_summary=None,
+            runner_stderr_path_for_summary=None,
         )
         metrics.update(_backend_run_status_metrics("PLANNED_ONLY"))
         return RendererRuntimeResult(
@@ -1668,6 +1968,19 @@ def execute_renderer_runtime(
                 ingestion_entry_count=ingestion_entry_count,
                 launcher_arg_count=launcher_arg_count,
             )
+            _record_pipeline_summary(
+                status=status,
+                success=False,
+                message=runner_result.message,
+                failure_reason=failure_reason,
+                return_code=runner_result.return_code,
+                wrapper_dump_path_for_summary=None,
+                stdout_path_for_summary=stdout_path if runner_stdout_path is not None else None,
+                stderr_path_for_summary=stderr_path if runner_stderr_path is not None else None,
+                runner_execution_manifest_path_for_summary=runner_execution_manifest_path,
+                runner_stdout_path_for_summary=runner_stdout_path,
+                runner_stderr_path_for_summary=runner_stderr_path,
+            )
             metrics.update(_backend_run_status_metrics(status))
             return RendererRuntimeResult(
                 success=False,
@@ -1708,6 +2021,19 @@ def execute_renderer_runtime(
             complete_frame_count=complete_frame_count,
             ingestion_entry_count=ingestion_entry_count,
             launcher_arg_count=launcher_arg_count,
+        )
+        _record_pipeline_summary(
+            status="EXECUTION_SUCCEEDED",
+            success=True,
+            message=runner_result.message,
+            failure_reason=None,
+            return_code=runner_result.return_code,
+            wrapper_dump_path_for_summary=None,
+            stdout_path_for_summary=stdout_path if runner_stdout_path is not None else None,
+            stderr_path_for_summary=stderr_path if runner_stderr_path is not None else None,
+            runner_execution_manifest_path_for_summary=runner_execution_manifest_path,
+            runner_stdout_path_for_summary=runner_stdout_path,
+            runner_stderr_path_for_summary=runner_stderr_path,
         )
         metrics.update(_backend_run_status_metrics("EXECUTION_SUCCEEDED"))
         return RendererRuntimeResult(
@@ -1775,6 +2101,23 @@ def execute_renderer_runtime(
                 ingestion_entry_count=ingestion_entry_count,
                 launcher_arg_count=launcher_arg_count,
             )
+            _record_pipeline_summary(
+                status="EXECUTION_FAILED",
+                success=False,
+                message=f"Renderer runtime command failed with exit code {proc.returncode}.",
+                failure_reason="NONZERO_EXIT",
+                return_code=proc.returncode,
+                wrapper_dump_path_for_summary=(
+                    wrapper_dump_path
+                    if execution_backend_wrapper_used and wrapper_dump_path.exists()
+                    else None
+                ),
+                stdout_path_for_summary=stdout_path,
+                stderr_path_for_summary=stderr_path,
+                runner_execution_manifest_path_for_summary=None,
+                runner_stdout_path_for_summary=None,
+                runner_stderr_path_for_summary=None,
+            )
             metrics.update(_backend_run_status_metrics("EXECUTION_FAILED"))
             return RendererRuntimeResult(
                 success=False,
@@ -1825,6 +2168,23 @@ def execute_renderer_runtime(
             ingestion_entry_count=ingestion_entry_count,
             launcher_arg_count=launcher_arg_count,
         )
+        _record_pipeline_summary(
+            status="PROCESS_ERROR",
+            success=False,
+            message=f"Renderer runtime process error: {exc}",
+            failure_reason="PROCESS_ERROR",
+            return_code=-1,
+            wrapper_dump_path_for_summary=(
+                wrapper_dump_path
+                if execution_backend_wrapper_used and wrapper_dump_path.exists()
+                else None
+            ),
+            stdout_path_for_summary=None,
+            stderr_path_for_summary=stderr_path,
+            runner_execution_manifest_path_for_summary=None,
+            runner_stdout_path_for_summary=None,
+            runner_stderr_path_for_summary=None,
+        )
         metrics.update(_backend_run_status_metrics("PROCESS_ERROR"))
         return RendererRuntimeResult(
             success=False,
@@ -1867,6 +2227,21 @@ def execute_renderer_runtime(
         complete_frame_count=complete_frame_count,
         ingestion_entry_count=ingestion_entry_count,
         launcher_arg_count=launcher_arg_count,
+    )
+    _record_pipeline_summary(
+        status="EXECUTION_SUCCEEDED",
+        success=True,
+        message="Renderer runtime execution completed.",
+        failure_reason=None,
+        return_code=_coerce_int(metrics.get("renderer_return_code"), default=0),
+        wrapper_dump_path_for_summary=(
+            wrapper_dump_path if execution_backend_wrapper_used and wrapper_dump_path.exists() else None
+        ),
+        stdout_path_for_summary=stdout_path,
+        stderr_path_for_summary=stderr_path,
+        runner_execution_manifest_path_for_summary=None,
+        runner_stdout_path_for_summary=None,
+        runner_stderr_path_for_summary=None,
     )
     metrics.update(_backend_run_status_metrics("EXECUTION_SUCCEEDED"))
     return RendererRuntimeResult(
