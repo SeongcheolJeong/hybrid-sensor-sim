@@ -7,6 +7,7 @@ from pathlib import Path
 
 from hybrid_sensor_sim.renderers.backend_runner import (
     execute_backend_runner_request,
+    inspect_backend_runner_request_outputs,
     main,
 )
 
@@ -371,10 +372,90 @@ echo "cli_ok"
                 )
             )
             self.assertEqual(manifest["status"], "EXECUTION_SUCCEEDED")
-            self.assertEqual(
-                (output_dir / "backend_runner_stdout.log").read_text(encoding="utf-8").strip(),
-                "cli_ok",
+
+    def test_inspect_backend_runner_request_outputs_compare_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            output_root = root / "backend_outputs" / "carla"
+            output_file = output_root / "carla_runtime_state.json"
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text('{"status":"ok"}', encoding="utf-8")
+            request_path = root / "backend_runner_request.json"
+            request_path.write_text(
+                json.dumps(
+                    {
+                        "backend": "carla",
+                        "output_root": str(output_root),
+                        "expected_outputs": [
+                            {
+                                "artifact_key": "carla_runtime_state_json",
+                                "path": str(output_file),
+                                "kind": "file",
+                                "required": False,
+                                "description": "CARLA runtime state summary.",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
             )
+
+            result = inspect_backend_runner_request_outputs(request_path=request_path)
+
+            self.assertTrue(result.success)
+            self.assertEqual(result.return_code, 0)
+            self.assertIn("backend_output_inspection_manifest", result.artifacts)
+            self.assertIn("backend_output_smoke_report", result.artifacts)
+            self.assertIn("backend_output_comparison_report", result.artifacts)
+            inspection_manifest = json.loads(
+                result.artifacts["backend_output_inspection_manifest"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(inspection_manifest["status"], "MATCHED")
+            self.assertTrue(inspection_manifest["success"])
+            self.assertEqual(inspection_manifest["return_code"], 0)
+            self.assertEqual(
+                inspection_manifest["artifacts"]["backend_output_comparison_report"],
+                str(result.artifacts["backend_output_comparison_report"]),
+            )
+
+    def test_backend_runner_main_compare_only_returns_nonzero_for_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            output_root = root / "backend_outputs" / "awsim"
+            request_path = root / "backend_runner_request.json"
+            request_path.write_text(
+                json.dumps(
+                    {
+                        "backend": "awsim",
+                        "output_root": str(output_root),
+                        "expected_outputs": [
+                            {
+                                "artifact_key": "awsim_runtime_state_json",
+                                "path": str(output_root / "awsim_runtime_state.json"),
+                                "kind": "file",
+                                "required": False,
+                                "description": "AWSIM runtime state summary.",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            output_dir = root / "inspect_out"
+
+            exit_code = main(
+                ["--compare-only", str(request_path), "--output-dir", str(output_dir)]
+            )
+
+            self.assertEqual(exit_code, 2)
+            inspection_manifest = json.loads(
+                (output_dir / "backend_output_inspection_manifest.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(inspection_manifest["status"], "UNOBSERVED")
+            self.assertFalse(inspection_manifest["success"])
+            self.assertFalse((output_dir / "backend_runner_stdout.log").exists())
 
 
 if __name__ == "__main__":

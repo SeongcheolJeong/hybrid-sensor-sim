@@ -188,6 +188,21 @@ class BackendRunnerExecutionResult:
     artifacts: dict[str, Path] = field(default_factory=dict)
 
 
+def _load_backend_runner_request_payload(
+    *,
+    request_path: Path,
+) -> tuple[dict[str, Any] | None, str | None]:
+    try:
+        payload = json.loads(request_path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        return None, f"Backend runner request read error: {exc}"
+    except json.JSONDecodeError as exc:
+        return None, f"Backend runner request decode error: {exc}"
+    if not isinstance(payload, dict):
+        return None, "Backend runner request payload must be a JSON object."
+    return payload, None
+
+
 def _coerce_arg_list(raw: Any) -> list[str]:
     if raw is None:
         return []
@@ -864,6 +879,48 @@ def _write_execution_manifest(
             ),
             "backend_runner_stdout": str(stdout_path) if stdout_path else None,
             "backend_runner_stderr": str(stderr_path) if stderr_path else None,
+        },
+    }
+    path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+
+def _write_output_inspection_manifest(
+    *,
+    path: Path,
+    request_path: Path,
+    payload: dict[str, Any] | None,
+    status: str,
+    success: bool,
+    message: str,
+    return_code: int | None,
+    sensor_output_summary_path: Path | None,
+    output_smoke_report_path: Path | None,
+    output_smoke_report: dict[str, Any] | None,
+    output_comparison_report_path: Path | None,
+    output_comparison_report: dict[str, Any] | None,
+) -> None:
+    manifest = {
+        "request_path": str(request_path),
+        "backend": str(payload.get("backend", "")) if isinstance(payload, dict) else "",
+        "status": status,
+        "success": success,
+        "message": message,
+        "return_code": return_code,
+        "output_root": str(payload.get("output_root", "")) if isinstance(payload, dict) else "",
+        "output_smoke_report": output_smoke_report if isinstance(output_smoke_report, dict) else None,
+        "output_comparison_report": (
+            output_comparison_report if isinstance(output_comparison_report, dict) else None
+        ),
+        "artifacts": {
+            "backend_sensor_output_summary": (
+                str(sensor_output_summary_path) if sensor_output_summary_path else None
+            ),
+            "backend_output_smoke_report": (
+                str(output_smoke_report_path) if output_smoke_report_path else None
+            ),
+            "backend_output_comparison_report": (
+                str(output_comparison_report_path) if output_comparison_report_path else None
+            ),
         },
     }
     path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
@@ -1677,15 +1734,14 @@ def execute_backend_runner_request(
         "backend_runner_stderr": stderr_path,
     }
 
-    try:
-        payload = json.loads(resolved_request_path.read_text(encoding="utf-8"))
-    except OSError as exc:
-        stderr_path.write_text(str(exc), encoding="utf-8")
+    payload, request_error = _load_backend_runner_request_payload(request_path=resolved_request_path)
+    if request_error is not None:
+        stderr_path.write_text(request_error, encoding="utf-8")
         _write_execution_manifest(
             path=execution_manifest_path,
             request_path=resolved_request_path,
             status="REQUEST_ERROR",
-            message=f"Backend runner request read error: {exc}",
+            message=request_error,
             return_code=None,
             payload=None,
             expected_outputs=None,
@@ -1701,60 +1757,7 @@ def execute_backend_runner_request(
         )
         return BackendRunnerExecutionResult(
             success=False,
-            message=f"Backend runner request read error: {exc}",
-            return_code=None,
-            artifacts=artifacts,
-        )
-    except json.JSONDecodeError as exc:
-        stderr_path.write_text(str(exc), encoding="utf-8")
-        _write_execution_manifest(
-            path=execution_manifest_path,
-            request_path=resolved_request_path,
-            status="REQUEST_ERROR",
-            message=f"Backend runner request decode error: {exc}",
-            return_code=None,
-            payload=None,
-            expected_outputs=None,
-            found_expected_outputs=0,
-            missing_expected_outputs=0,
-            sensor_output_summary_path=None,
-            output_smoke_report_path=None,
-            output_smoke_report=None,
-            output_comparison_report_path=None,
-            output_comparison_report=None,
-            stdout_path=None,
-            stderr_path=stderr_path,
-        )
-        return BackendRunnerExecutionResult(
-            success=False,
-            message=f"Backend runner request decode error: {exc}",
-            return_code=None,
-            artifacts=artifacts,
-        )
-
-    if not isinstance(payload, dict):
-        stderr_path.write_text("backend runner request payload must be a JSON object", encoding="utf-8")
-        _write_execution_manifest(
-            path=execution_manifest_path,
-            request_path=resolved_request_path,
-            status="REQUEST_ERROR",
-            message="Backend runner request payload must be a JSON object.",
-            return_code=None,
-            payload=None,
-            expected_outputs=None,
-            found_expected_outputs=0,
-            missing_expected_outputs=0,
-            sensor_output_summary_path=None,
-            output_smoke_report_path=None,
-            output_smoke_report=None,
-            output_comparison_report_path=None,
-            output_comparison_report=None,
-            stdout_path=None,
-            stderr_path=stderr_path,
-        )
-        return BackendRunnerExecutionResult(
-            success=False,
-            message="Backend runner request payload must be a JSON object.",
+            message=request_error,
             return_code=None,
             artifacts=artifacts,
         )
@@ -1903,6 +1906,105 @@ def execute_backend_runner_request(
     )
 
 
+def inspect_backend_runner_request_outputs(
+    *,
+    request_path: Path,
+    output_dir: Path | None = None,
+) -> BackendRunnerExecutionResult:
+    resolved_request_path = request_path.expanduser().resolve()
+    inspection_output_dir = (
+        output_dir.expanduser().resolve()
+        if output_dir is not None
+        else resolved_request_path.parent
+    )
+    inspection_output_dir.mkdir(parents=True, exist_ok=True)
+    inspection_manifest_path = inspection_output_dir / "backend_output_inspection_manifest.json"
+    artifacts = {
+        "backend_output_inspection_manifest": inspection_manifest_path,
+    }
+
+    payload, request_error = _load_backend_runner_request_payload(request_path=resolved_request_path)
+    if request_error is not None:
+        _write_output_inspection_manifest(
+            path=inspection_manifest_path,
+            request_path=resolved_request_path,
+            payload=None,
+            status="REQUEST_ERROR",
+            success=False,
+            message=request_error,
+            return_code=1,
+            sensor_output_summary_path=None,
+            output_smoke_report_path=None,
+            output_smoke_report=None,
+            output_comparison_report_path=None,
+            output_comparison_report=None,
+        )
+        return BackendRunnerExecutionResult(
+            success=False,
+            message=request_error,
+            return_code=1,
+            artifacts=artifacts,
+        )
+
+    expected_outputs = _normalize_expected_outputs(payload.get("expected_outputs"))
+    inspected_outputs, discovered_artifacts, _found_count, _missing_count = _inspect_expected_outputs(
+        expected_outputs
+    )
+    artifacts.update(discovered_artifacts)
+    sensor_output_summary_path, sensor_output_summary_artifacts = _build_sensor_output_summary(
+        expected_outputs=inspected_outputs,
+        output_dir=inspection_output_dir,
+    )
+    artifacts.update(sensor_output_summary_artifacts)
+    output_smoke_report_path, output_smoke_report_artifacts, output_smoke_report = (
+        _build_backend_output_smoke_report(
+            expected_outputs=inspected_outputs,
+            output_dir=inspection_output_dir,
+        )
+    )
+    artifacts.update(output_smoke_report_artifacts)
+    output_comparison_report_path, output_comparison_report_artifacts, output_comparison_report = (
+        _build_backend_output_comparison_report(
+            payload=payload,
+            expected_outputs=inspected_outputs,
+            output_dir=inspection_output_dir,
+        )
+    )
+    artifacts.update(output_comparison_report_artifacts)
+    comparison_status = (
+        str(output_comparison_report.get("status", "")).strip()
+        if isinstance(output_comparison_report, dict)
+        else "UNOBSERVED"
+    )
+    success = comparison_status == "MATCHED"
+    return_code = 0 if success else 2
+    message = (
+        "Backend output inspection matched the contract."
+        if success
+        else f"Backend output inspection detected {comparison_status.lower()} state."
+    )
+    _write_output_inspection_manifest(
+        path=inspection_manifest_path,
+        request_path=resolved_request_path,
+        payload=payload,
+        status=comparison_status,
+        success=success,
+        message=message,
+        return_code=return_code,
+        sensor_output_summary_path=sensor_output_summary_path,
+        output_smoke_report_path=output_smoke_report_path,
+        output_smoke_report=output_smoke_report,
+        output_comparison_report_path=output_comparison_report_path,
+        output_comparison_report=output_comparison_report,
+    )
+    return BackendRunnerExecutionResult(
+        success=success,
+        message=message,
+        return_code=return_code,
+        artifacts=artifacts,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Execute a backend runner request JSON.")
     parser.add_argument("request_path", help="Path to backend_runner_request.json")
@@ -1910,12 +2012,23 @@ def main(argv: list[str] | None = None) -> int:
         "--output-dir",
         help="Directory for backend_runner execution artifacts. Defaults to request directory.",
     )
+    parser.add_argument(
+        "--compare-only",
+        action="store_true",
+        help="Inspect existing backend outputs without executing the backend command.",
+    )
     args = parser.parse_args(argv)
     output_dir = Path(args.output_dir).expanduser() if args.output_dir else None
-    result = execute_backend_runner_request(
-        request_path=Path(args.request_path),
-        output_dir=output_dir,
-    )
+    if args.compare_only:
+        result = inspect_backend_runner_request_outputs(
+            request_path=Path(args.request_path),
+            output_dir=output_dir,
+        )
+    else:
+        result = execute_backend_runner_request(
+            request_path=Path(args.request_path),
+            output_dir=output_dir,
+        )
     stream = sys.stdout if result.success else sys.stderr
     print(result.message, file=stream)
     if result.success:

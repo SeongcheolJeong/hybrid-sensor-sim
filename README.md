@@ -475,6 +475,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
       - `radar_tracks_json` exports also expose an embedded `radar_detections` logical output role from the same artifact when track mode is enabled.
     - `backend_direct_run_command.sh`: executable shell command generated from `backend_runner_request.json`.
     - `backend_runner_execution_manifest.json`: standalone runner execution status and artifact pointers, including grouped expected-output discovery by `output_role` and `artifact_type`.
+    - `backend_output_inspection_manifest.json`: compare-only inspection summary for existing backend outputs, generated without executing the backend binary.
     - `backend_sensor_output_summary.json`: sensor-grouped output discovery summary generated from expected-output inspection, including `status`, `coverage_ratio`, `output_role_counts`, `artifact_type_counts`, `output_roles`, and `artifact_types`.
     - `backend_output_smoke_report.json`: completeness-oriented output smoke report with overall `COMPLETE|PARTIAL|MISSING|UNOBSERVED` status plus grouped summaries by sensor, `output_role`, and `artifact_type`.
       - grouped summaries now retain `found_sensor_ids` / `missing_sensor_ids`, `data_formats`, `carrier_data_formats`, `backend_filenames`, and `embedded_output_count`.
@@ -488,6 +489,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - in that mode, plan/invocation/run-manifest keep both the planned wrapper path and the actual `execution_command` / `execution_command_source=backend_runner`.
     - the same request can be executed standalone via `python -m hybrid_sensor_sim.renderers.backend_runner <backend_runner_request.json>`.
     - standalone runner execution inspects `expected_outputs` from `backend_output_spec.json`, records found/missing output artifacts in `backend_runner_execution_manifest.json`, and writes both `backend_output_smoke_report.json` and `backend_output_comparison_report.json` for completeness and unexpected-output checks.
+    - `python -m hybrid_sensor_sim.renderers.backend_runner --compare-only <backend_runner_request.json>` skips backend execution and re-runs output inspection/comparison against an existing `output_root`.
   - contract argument controls:
     - `renderer_contract_flag` (default `--contract`)
     - `renderer_inject_contract_arg` / `renderer_contract_positional`
