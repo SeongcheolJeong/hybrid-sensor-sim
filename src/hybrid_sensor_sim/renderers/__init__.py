@@ -1,6 +1,7 @@
 from hybrid_sensor_sim.renderers.backend_runner import (
     BackendRunnerExecutionResult,
     build_backend_runner_artifacts,
+    execute_and_inspect_backend_runner_request,
     execute_backend_runner_request,
     inspect_backend_runner_request_outputs,
 )
@@ -14,6 +15,7 @@ __all__ = [
     "BackendRunnerExecutionResult",
     "build_backend_runner_artifacts",
     "build_renderer_playback_contract",
+    "execute_and_inspect_backend_runner_request",
     "execute_backend_runner_request",
     "inspect_backend_runner_request_outputs",
     "execute_renderer_runtime",

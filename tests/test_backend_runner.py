@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from hybrid_sensor_sim.renderers.backend_runner import (
+    execute_and_inspect_backend_runner_request,
     execute_backend_runner_request,
     inspect_backend_runner_request_outputs,
     main,
@@ -13,6 +14,82 @@ from hybrid_sensor_sim.renderers.backend_runner import (
 
 
 class BackendRunnerTests(unittest.TestCase):
+    def test_execute_and_inspect_backend_runner_request_writes_smoke_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_backend = root / "fake_backend.sh"
+            fake_backend.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+mkdir -p "${BACKEND_OUTPUT_ROOT}"
+printf '{"status":"ok"}\n' > "${BACKEND_OUTPUT_ROOT}/carla_runtime_state.json"
+echo "smoke_ok"
+""",
+                encoding="utf-8",
+            )
+            fake_backend.chmod(0o755)
+
+            output_root = root / "backend_outputs" / "carla"
+            request_path = root / "backend_runner_request.json"
+            request_path.write_text(
+                json.dumps(
+                    {
+                        "backend": "carla",
+                        "cwd": str(root),
+                        "runner_mode": "direct_backend",
+                        "output_root": str(output_root),
+                        "command": [str(fake_backend)],
+                        "env": {
+                            "BACKEND_OUTPUT_ROOT": str(output_root),
+                        },
+                        "expected_outputs": [
+                            {
+                                "artifact_key": "carla_runtime_state_json",
+                                "path": str(output_root / "carla_runtime_state.json"),
+                                "kind": "file",
+                                "required": False,
+                                "description": "CARLA runtime state summary.",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = execute_and_inspect_backend_runner_request(request_path=request_path)
+
+            self.assertTrue(result.success)
+            self.assertEqual(result.return_code, 0)
+            self.assertIn("backend_runner_smoke_manifest", result.artifacts)
+            self.assertIn("backend_runner_execution_manifest", result.artifacts)
+            self.assertIn("backend_output_inspection_manifest", result.artifacts)
+            smoke_manifest = json.loads(
+                result.artifacts["backend_runner_smoke_manifest"].read_text(encoding="utf-8")
+            )
+            inspection_manifest = json.loads(
+                result.artifacts["backend_output_inspection_manifest"].read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(smoke_manifest["status"], "SMOKE_SUCCEEDED")
+            self.assertTrue(smoke_manifest["success"])
+            self.assertEqual(smoke_manifest["return_code"], 0)
+            self.assertEqual(smoke_manifest["execution"]["status"], "EXECUTION_SUCCEEDED")
+            self.assertEqual(smoke_manifest["inspection"]["status"], "MATCHED")
+            self.assertEqual(
+                smoke_manifest["artifacts"]["backend_output_inspection_manifest"],
+                str(result.artifacts["backend_output_inspection_manifest"]),
+            )
+            self.assertEqual(
+                smoke_manifest["artifacts"]["backend_runner_execution_manifest"],
+                str(result.artifacts["backend_runner_execution_manifest"]),
+            )
+            self.assertEqual(
+                smoke_manifest["output_comparison_report"]["status"],
+                "MATCHED",
+            )
+            self.assertEqual(inspection_manifest["status"], "MATCHED")
+
     def test_execute_backend_runner_request_writes_execution_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -456,6 +533,68 @@ echo "cli_ok"
             self.assertEqual(inspection_manifest["status"], "UNOBSERVED")
             self.assertFalse(inspection_manifest["success"])
             self.assertFalse((output_dir / "backend_runner_stdout.log").exists())
+
+    def test_backend_runner_main_execute_and_inspect_returns_nonzero_for_inspection_failure(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_backend = root / "fake_backend.sh"
+            fake_backend.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+echo "audit_only"
+""",
+                encoding="utf-8",
+            )
+            fake_backend.chmod(0o755)
+
+            output_root = root / "backend_outputs" / "awsim"
+            request_path = root / "backend_runner_request.json"
+            request_path.write_text(
+                json.dumps(
+                    {
+                        "backend": "awsim",
+                        "cwd": str(root),
+                        "runner_mode": "direct_backend",
+                        "output_root": str(output_root),
+                        "command": [str(fake_backend)],
+                        "expected_outputs": [
+                            {
+                                "artifact_key": "awsim_runtime_state_json",
+                                "path": str(output_root / "awsim_runtime_state.json"),
+                                "kind": "file",
+                                "required": False,
+                                "description": "AWSIM runtime state summary.",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            output_dir = root / "smoke_out"
+
+            exit_code = main(
+                ["--execute-and-inspect", str(request_path), "--output-dir", str(output_dir)]
+            )
+
+            self.assertEqual(exit_code, 2)
+            smoke_manifest = json.loads(
+                (output_dir / "backend_runner_smoke_manifest.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            inspection_manifest = json.loads(
+                (output_dir / "backend_output_inspection_manifest.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(smoke_manifest["status"], "INSPECTION_FAILED")
+            self.assertFalse(smoke_manifest["success"])
+            self.assertEqual(smoke_manifest["execution"]["status"], "EXECUTION_SUCCEEDED")
+            self.assertEqual(smoke_manifest["inspection"]["status"], "MISSING_EXPECTED")
+            self.assertFalse(inspection_manifest["success"])
+            self.assertEqual(inspection_manifest["status"], "MISSING_EXPECTED")
 
 
 if __name__ == "__main__":

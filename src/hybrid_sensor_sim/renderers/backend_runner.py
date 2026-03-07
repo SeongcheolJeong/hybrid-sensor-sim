@@ -188,6 +188,16 @@ class BackendRunnerExecutionResult:
     artifacts: dict[str, Path] = field(default_factory=dict)
 
 
+def _read_json_payload(path: Path | None) -> dict[str, Any] | None:
+    if path is None or not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
 def _load_backend_runner_request_payload(
     *,
     request_path: Path,
@@ -924,6 +934,140 @@ def _write_output_inspection_manifest(
         },
     }
     path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+
+def _write_backend_runner_smoke_manifest(
+    *,
+    path: Path,
+    request_path: Path,
+    execution_result: BackendRunnerExecutionResult,
+    inspection_result: BackendRunnerExecutionResult,
+    execution_manifest_path: Path | None,
+    inspection_manifest_path: Path | None,
+) -> None:
+    execution_manifest = _read_json_payload(execution_manifest_path)
+    inspection_manifest = _read_json_payload(inspection_manifest_path)
+    execution_status = (
+        str(execution_manifest.get("status", "")).strip()
+        if isinstance(execution_manifest, dict)
+        else ""
+    )
+    inspection_status = (
+        str(inspection_manifest.get("status", "")).strip()
+        if isinstance(inspection_manifest, dict)
+        else ""
+    )
+    if execution_status == "REQUEST_ERROR" or inspection_status == "REQUEST_ERROR":
+        status = "REQUEST_ERROR"
+    elif execution_status == "PROCESS_ERROR":
+        status = "PROCESS_ERROR"
+    elif execution_result.success and inspection_result.success:
+        status = "SMOKE_SUCCEEDED"
+    elif not execution_result.success and not inspection_result.success:
+        status = "SMOKE_FAILED"
+    elif not execution_result.success:
+        status = "EXECUTION_FAILED"
+    else:
+        status = "INSPECTION_FAILED"
+
+    success = execution_result.success and inspection_result.success
+    if success:
+        message = "Backend runner execution and inspection completed."
+    elif not execution_result.success and not inspection_result.success:
+        message = (
+            f"{execution_result.message} Inspection follow-up: {inspection_result.message}"
+        )
+    elif not execution_result.success:
+        message = execution_result.message
+    else:
+        message = inspection_result.message
+
+    return_code = 0
+    if not execution_result.success and execution_result.return_code not in (None, 0):
+        return_code = execution_result.return_code
+    elif not inspection_result.success and inspection_result.return_code not in (None, 0):
+        return_code = inspection_result.return_code
+    elif not execution_result.success:
+        return_code = execution_result.return_code if execution_result.return_code is not None else 1
+    elif not inspection_result.success:
+        return_code = (
+            inspection_result.return_code if inspection_result.return_code is not None else 1
+        )
+
+    backend = ""
+    output_root = ""
+    if isinstance(execution_manifest, dict):
+        backend = str(execution_manifest.get("backend", "")).strip()
+    if not backend and isinstance(inspection_manifest, dict):
+        backend = str(inspection_manifest.get("backend", "")).strip()
+    if isinstance(inspection_manifest, dict):
+        output_root = str(inspection_manifest.get("output_root", "")).strip()
+
+    payload = {
+        "request_path": str(request_path),
+        "backend": backend,
+        "status": status,
+        "success": success,
+        "message": message,
+        "return_code": return_code,
+        "output_root": output_root,
+        "execution": {
+            "status": execution_status,
+            "success": execution_result.success,
+            "message": execution_result.message,
+            "return_code": execution_result.return_code,
+        },
+        "inspection": {
+            "status": inspection_status,
+            "success": inspection_result.success,
+            "message": inspection_result.message,
+            "return_code": inspection_result.return_code,
+        },
+        "artifacts": {
+            "backend_runner_execution_manifest": (
+                str(execution_manifest_path) if execution_manifest_path else None
+            ),
+            "backend_output_inspection_manifest": (
+                str(inspection_manifest_path) if inspection_manifest_path else None
+            ),
+            "backend_runner_stdout": (
+                str(execution_result.artifacts["backend_runner_stdout"])
+                if "backend_runner_stdout" in execution_result.artifacts
+                else None
+            ),
+            "backend_runner_stderr": (
+                str(execution_result.artifacts["backend_runner_stderr"])
+                if "backend_runner_stderr" in execution_result.artifacts
+                else None
+            ),
+            "backend_sensor_output_summary": (
+                str(inspection_result.artifacts["backend_sensor_output_summary"])
+                if "backend_sensor_output_summary" in inspection_result.artifacts
+                else None
+            ),
+            "backend_output_smoke_report": (
+                str(inspection_result.artifacts["backend_output_smoke_report"])
+                if "backend_output_smoke_report" in inspection_result.artifacts
+                else None
+            ),
+            "backend_output_comparison_report": (
+                str(inspection_result.artifacts["backend_output_comparison_report"])
+                if "backend_output_comparison_report" in inspection_result.artifacts
+                else None
+            ),
+        },
+        "output_smoke_report": (
+            inspection_manifest.get("output_smoke_report")
+            if isinstance(inspection_manifest, dict)
+            else None
+        ),
+        "output_comparison_report": (
+            inspection_manifest.get("output_comparison_report")
+            if isinstance(inspection_manifest, dict)
+            else None
+        ),
+    }
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def _normalize_expected_outputs(raw: Any) -> list[dict[str, Any]]:
@@ -2005,6 +2149,78 @@ def inspect_backend_runner_request_outputs(
     )
 
 
+def execute_and_inspect_backend_runner_request(
+    *,
+    request_path: Path,
+    output_dir: Path | None = None,
+) -> BackendRunnerExecutionResult:
+    resolved_request_path = request_path.expanduser().resolve()
+    smoke_output_dir = (
+        output_dir.expanduser().resolve()
+        if output_dir is not None
+        else resolved_request_path.parent
+    )
+    smoke_output_dir.mkdir(parents=True, exist_ok=True)
+    smoke_manifest_path = smoke_output_dir / "backend_runner_smoke_manifest.json"
+    artifacts: dict[str, Path] = {
+        "backend_runner_smoke_manifest": smoke_manifest_path,
+    }
+
+    execution_result = execute_backend_runner_request(
+        request_path=resolved_request_path,
+        output_dir=smoke_output_dir,
+    )
+    artifacts.update(execution_result.artifacts)
+    inspection_result = inspect_backend_runner_request_outputs(
+        request_path=resolved_request_path,
+        output_dir=smoke_output_dir,
+    )
+    artifacts.update(inspection_result.artifacts)
+
+    execution_manifest_path = execution_result.artifacts.get("backend_runner_execution_manifest")
+    inspection_manifest_path = inspection_result.artifacts.get("backend_output_inspection_manifest")
+    _write_backend_runner_smoke_manifest(
+        path=smoke_manifest_path,
+        request_path=resolved_request_path,
+        execution_result=execution_result,
+        inspection_result=inspection_result,
+        execution_manifest_path=execution_manifest_path,
+        inspection_manifest_path=inspection_manifest_path,
+    )
+
+    success = execution_result.success and inspection_result.success
+    if success:
+        message = "Backend runner execution and inspection completed."
+    elif not execution_result.success and not inspection_result.success:
+        message = (
+            f"{execution_result.message} Inspection follow-up: {inspection_result.message}"
+        )
+    elif not execution_result.success:
+        message = execution_result.message
+    else:
+        message = inspection_result.message
+
+    if not execution_result.success and execution_result.return_code not in (None, 0):
+        return_code = execution_result.return_code
+    elif not inspection_result.success and inspection_result.return_code not in (None, 0):
+        return_code = inspection_result.return_code
+    elif not execution_result.success:
+        return_code = execution_result.return_code if execution_result.return_code is not None else 1
+    elif not inspection_result.success:
+        return_code = (
+            inspection_result.return_code if inspection_result.return_code is not None else 1
+        )
+    else:
+        return_code = 0
+
+    return BackendRunnerExecutionResult(
+        success=success,
+        message=message,
+        return_code=return_code,
+        artifacts=artifacts,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Execute a backend runner request JSON.")
     parser.add_argument("request_path", help="Path to backend_runner_request.json")
@@ -2012,15 +2228,26 @@ def main(argv: list[str] | None = None) -> int:
         "--output-dir",
         help="Directory for backend_runner execution artifacts. Defaults to request directory.",
     )
-    parser.add_argument(
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
         "--compare-only",
         action="store_true",
         help="Inspect existing backend outputs without executing the backend command.",
+    )
+    mode_group.add_argument(
+        "--execute-and-inspect",
+        action="store_true",
+        help="Execute the backend command and then run compare-only inspection in the same output directory.",
     )
     args = parser.parse_args(argv)
     output_dir = Path(args.output_dir).expanduser() if args.output_dir else None
     if args.compare_only:
         result = inspect_backend_runner_request_outputs(
+            request_path=Path(args.request_path),
+            output_dir=output_dir,
+        )
+    elif args.execute_and_inspect:
+        result = execute_and_inspect_backend_runner_request(
             request_path=Path(args.request_path),
             output_dir=output_dir,
         )
