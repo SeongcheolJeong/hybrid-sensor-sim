@@ -317,20 +317,41 @@ def _group_expected_outputs(
                 "missing_count": 0,
                 "artifact_keys": [],
                 "sensor_ids": [],
+                "found_sensor_ids": [],
+                "missing_sensor_ids": [],
+                "data_formats": [],
+                "carrier_data_formats": [],
+                "backend_filenames": [],
+                "embedded_output_count": 0,
             },
         )
         summary["expected_count"] += 1
         artifact_key = str(entry.get("artifact_key", "")).strip()
         sensor_id = str(entry.get("sensor_id", "")).strip()
+        data_format = str(entry.get("data_format", "")).strip()
+        carrier_data_format = str(entry.get("carrier_data_format", "")).strip()
+        backend_filename = str(entry.get("backend_filename", "")).strip()
         if artifact_key and artifact_key not in summary["artifact_keys"]:
             summary["artifact_keys"].append(artifact_key)
         if sensor_id and sensor_id not in summary["sensor_ids"]:
             summary["sensor_ids"].append(sensor_id)
+        if data_format and data_format not in summary["data_formats"]:
+            summary["data_formats"].append(data_format)
+        if carrier_data_format and carrier_data_format not in summary["carrier_data_formats"]:
+            summary["carrier_data_formats"].append(carrier_data_format)
+        if backend_filename and backend_filename not in summary["backend_filenames"]:
+            summary["backend_filenames"].append(backend_filename)
+        if bool(entry.get("embedded_output", False)):
+            summary["embedded_output_count"] += 1
         if "exists" in entry:
             if bool(entry.get("exists", False)):
                 summary["found_count"] += 1
+                if sensor_id and sensor_id not in summary["found_sensor_ids"]:
+                    summary["found_sensor_ids"].append(sensor_id)
             else:
                 summary["missing_count"] += 1
+                if sensor_id and sensor_id not in summary["missing_sensor_ids"]:
+                    summary["missing_sensor_ids"].append(sensor_id)
     return [groups[key] for key in sorted(groups)]
 
 

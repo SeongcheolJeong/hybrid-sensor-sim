@@ -155,6 +155,10 @@ echo "runner_warn" >&2
                 1,
             )
             self.assertEqual(
+                manifest["expected_output_summary"]["by_output_role"][0]["backend_filenames"],
+                ["rgb_frame.json"],
+            )
+            self.assertEqual(
                 manifest["expected_output_summary"]["by_artifact_type"][0]["artifact_type"],
                 "awsim_camera_rgb_json",
             )
@@ -211,6 +215,10 @@ echo "runner_warn" >&2
             self.assertEqual(
                 output_smoke_report["by_output_role"][0]["status"],
                 "COMPLETE",
+            )
+            self.assertEqual(
+                output_smoke_report["by_output_role"][0]["found_sensor_ids"],
+                ["camera_front"],
             )
             self.assertEqual(
                 output_smoke_report["by_sensor"][0]["status"],

@@ -379,17 +379,35 @@ class RendererRuntimeTests(unittest.TestCase):
             self.assertIn("radar_detections", role_groups)
             self.assertEqual(role_groups["radar_tracks"]["expected_count"], 1)
             self.assertEqual(role_groups["radar_detections"]["expected_count"], 1)
+            self.assertEqual(role_groups["radar_tracks"]["embedded_output_count"], 0)
+            self.assertEqual(role_groups["radar_detections"]["embedded_output_count"], 1)
+            self.assertEqual(
+                role_groups["radar_tracks"]["backend_filenames"],
+                ["tracks.json"],
+            )
+            self.assertEqual(
+                role_groups["radar_detections"]["carrier_data_formats"],
+                ["radar_tracks_json"],
+            )
             artifact_groups = {
                 entry["artifact_type"]: entry
                 for entry in output_spec["expected_outputs_by_artifact_type"]
             }
             self.assertIn("carla_radar_tracks_json", artifact_groups)
             self.assertIn("carla_radar_detections_json", artifact_groups)
+            self.assertEqual(
+                artifact_groups["carla_radar_detections_json"]["embedded_output_count"],
+                1,
+            )
             pipeline_role_groups = {
                 entry["output_role"]: entry for entry in pipeline_summary["expected_outputs"]["by_output_role"]
             }
             self.assertIn("radar_tracks", pipeline_role_groups)
             self.assertIn("radar_detections", pipeline_role_groups)
+            self.assertEqual(
+                pipeline_role_groups["radar_detections"]["carrier_data_formats"],
+                ["radar_tracks_json"],
+            )
             self.assertFalse(pipeline_summary["expected_outputs"]["inspection_available"])
 
     def test_renderer_runtime_can_disable_frame_manifest_arg_injection(self) -> None:
@@ -1036,6 +1054,12 @@ printf "%s\\n" "$@"
             self.assertGreaterEqual(output_smoke_report["missing_output_count"], 1)
             self.assertEqual(output_smoke_report["sensor_status_counts"]["COMPLETE"], 1)
             self.assertEqual(output_smoke_report["sensor_status_counts"]["MISSING"], 2)
+            smoke_roles = {
+                entry["output_role"]: entry for entry in output_smoke_report["by_output_role"]
+            }
+            self.assertEqual(smoke_roles["camera_visible"]["found_sensor_ids"], ["camera_front"])
+            self.assertEqual(smoke_roles["camera_visible"]["backend_filenames"], ["rgb_frame.json"])
+            self.assertEqual(smoke_roles["lidar_point_cloud"]["missing_sensor_ids"], ["lidar_top"])
             self.assertTrue(
                 any(
                     sensor["sensor_id"] == "camera_front"
