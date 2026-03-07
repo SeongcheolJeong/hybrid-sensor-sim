@@ -258,6 +258,102 @@ EOF
             self.assertIn("camera_depth_output_count", result.metrics)
             self.assertEqual(result.metrics.get("camera_rolling_shutter_enabled"), 1.0)
 
+    def test_hybrid_rolling_shutter_applies_pose_distortion_with_trajectory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+5.0 0.0 10.0
+EOF
+cat > "${rootdir}/scan_trajectory.txt" <<EOF
+0.0 0.0 0.0 0.0 0.0 0.0 0.0
+2.0 0.0 0.0 1.0 0.0 0.0 0.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            base_options = {
+                "execute_helios": True,
+                "camera_projection_enabled": True,
+                "camera_projection_clamp_to_image": False,
+                "camera_intrinsics": {
+                    "fx": 100.0,
+                    "fy": 100.0,
+                    "cx": 0.0,
+                    "cy": 0.0,
+                    "width": 100,
+                    "height": 100,
+                },
+            }
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            no_rs = orchestrator.run(
+                SensorSimRequest(
+                    scenario_path=survey,
+                    output_dir=root / "out_no_rs",
+                    options=base_options,
+                ),
+                BackendMode.HYBRID_AUTO,
+            )
+            with_rs = orchestrator.run(
+                SensorSimRequest(
+                    scenario_path=survey,
+                    output_dir=root / "out_rs",
+                    options={
+                        **base_options,
+                        "camera_rolling_shutter": {
+                            "enabled": True,
+                            "row_delay_ns": 0,
+                            "col_delay_ns": 10_000_000,
+                            "num_time_steps": 1,
+                            "num_exposure_samples_per_pixel": 1,
+                        },
+                    },
+                ),
+                BackendMode.HYBRID_AUTO,
+            )
+
+            self.assertTrue(no_rs.success)
+            self.assertTrue(with_rs.success)
+
+            no_rs_preview = json.loads(
+                no_rs.artifacts["camera_projection_preview"].read_text(encoding="utf-8")
+            )
+            with_rs_preview = json.loads(
+                with_rs.artifacts["camera_projection_preview"].read_text(encoding="utf-8")
+            )
+            base_u = no_rs_preview["preview_points_uvz"][0]["u"]
+            distorted_u = with_rs_preview["preview_points_uvz"][0]["u"]
+
+            self.assertAlmostEqual(base_u, 50.0, places=4)
+            self.assertLess(distorted_u, base_u)
+            self.assertTrue(with_rs_preview["rolling_shutter"]["applied"])
+            self.assertTrue(with_rs_preview["rolling_shutter"]["trajectory_available"])
+            self.assertEqual(with_rs.metrics.get("camera_rolling_shutter_applied"), 1.0)
+
     def test_projection_reference_mode_first_point(self) -> None:
         backend = NativePhysicsBackend()
         request = SensorSimRequest(

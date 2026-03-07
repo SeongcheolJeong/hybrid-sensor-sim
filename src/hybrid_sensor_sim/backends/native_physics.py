@@ -291,23 +291,30 @@ class NativePhysicsBackend(SensorBackend):
             points_xyz=points_xyz,
             request=request,
         )
+        trajectory_path = artifacts.get("trajectory_primary")
+        rolling_poses = self._read_camera_rolling_shutter_poses(
+            request=request,
+            trajectory_path=trajectory_path,
+        )
+        rolling_base_pose = self._select_camera_rolling_shutter_base_pose(
+            request=request,
+            poses=rolling_poses,
+        )
         effective_extrinsics, extrinsics_meta = self._resolve_effective_extrinsics(
             request=request,
             artifacts=artifacts,
             base_extrinsics=extrinsics,
             reference_point=reference_point,
         )
-        camera_points = transform_points_world_to_camera(
+        projected, rolling_runtime = self._project_camera_points_with_optional_rolling_shutter(
+            request=request,
             points_xyz=transformed_points,
-            extrinsics=effective_extrinsics,
-        )
-
-        projected = project_points_brown_conrady(
-            points_xyz=camera_points,
+            camera_config=camera_config,
             intrinsics=intrinsics,
             distortion=distortion,
-            geometry_model=camera_config.geometry_model,
-            clamp_to_image=camera_config.projection_clamp_to_image,
+            base_extrinsics=effective_extrinsics,
+            trajectory_poses=rolling_poses,
+            base_pose=rolling_base_pose,
         )
 
         metrics["camera_projection_input_count"] = float(len(points_xyz))
@@ -317,6 +324,9 @@ class NativePhysicsBackend(SensorBackend):
         )
         metrics["camera_rolling_shutter_enabled"] = (
             1.0 if camera_config.rolling_shutter.enabled else 0.0
+        )
+        metrics["camera_rolling_shutter_applied"] = (
+            1.0 if bool(rolling_runtime.get("applied")) else 0.0
         )
         metrics["camera_depth_output_count"] = (
             float(len(projected)) if camera_config.sensor_type.upper() == "DEPTH" else 0.0
@@ -355,6 +365,7 @@ class NativePhysicsBackend(SensorBackend):
             "rolling_shutter": self._camera_rolling_shutter_payload(
                 camera_config=camera_config,
                 intrinsics=intrinsics,
+                runtime=rolling_runtime,
             ),
             "depth_params": camera_config.depth_params.to_dict(),
             **preview_payload,
@@ -401,9 +412,9 @@ class NativePhysicsBackend(SensorBackend):
             points_xyz=points_xyz,
             request=request,
         )
-        poses = read_trajectory_poses(
-            trajectory_path,
-            max_rows=int(request.options.get("camera_extrinsics_auto_max_rows", 20000)),
+        poses = self._read_camera_rolling_shutter_poses(
+            request=request,
+            trajectory_path=trajectory_path,
         )
         if not poses:
             metrics["camera_projection_trajectory_sweep_frame_count"] = 0.0
@@ -416,6 +427,7 @@ class NativePhysicsBackend(SensorBackend):
         preview_count = int(request.options.get("camera_projection_preview_count", 20))
         frames: list[dict[str, object]] = []
         total_output_count = 0
+        rolling_applied = False
         for pose_index, pose in selected_poses:
             effective = self._build_extrinsics_from_pose(
                 request=request,
@@ -424,17 +436,17 @@ class NativePhysicsBackend(SensorBackend):
                 reference_point=reference_point,
                 force_enable=True,
             )
-            camera_points = transform_points_world_to_camera(
+            projected, rolling_runtime = self._project_camera_points_with_optional_rolling_shutter(
+                request=request,
                 points_xyz=transformed_points,
-                extrinsics=effective,
-            )
-            projected = project_points_brown_conrady(
-                points_xyz=camera_points,
+                camera_config=camera_config,
                 intrinsics=intrinsics,
                 distortion=distortion,
-                geometry_model=camera_config.geometry_model,
-                clamp_to_image=clamp_to_image,
+                base_extrinsics=effective,
+                trajectory_poses=poses,
+                base_pose=pose,
             )
+            rolling_applied = rolling_applied or bool(rolling_runtime.get("applied"))
             total_output_count += len(projected)
             frame_preview_payload = self._camera_preview_payload(
                 projected=projected,
@@ -463,6 +475,7 @@ class NativePhysicsBackend(SensorBackend):
                     "rolling_shutter": self._camera_rolling_shutter_payload(
                         camera_config=camera_config,
                         intrinsics=intrinsics,
+                        runtime=rolling_runtime,
                     ),
                     "output_count": len(projected),
                     **frame_preview_payload,
@@ -474,6 +487,7 @@ class NativePhysicsBackend(SensorBackend):
         metrics["camera_rolling_shutter_enabled"] = (
             1.0 if camera_config.rolling_shutter.enabled else 0.0
         )
+        metrics["camera_rolling_shutter_applied"] = 1.0 if rolling_applied else 0.0
         metrics["camera_depth_trajectory_sweep_total_output_count"] = (
             float(total_output_count) if camera_config.sensor_type.upper() == "DEPTH" else 0.0
         )
@@ -485,6 +499,11 @@ class NativePhysicsBackend(SensorBackend):
             "rolling_shutter": self._camera_rolling_shutter_payload(
                 camera_config=camera_config,
                 intrinsics=intrinsics,
+                runtime={
+                    "applied": rolling_applied,
+                    "trajectory_available": bool(poses),
+                    "pose_count": len(poses),
+                },
             ),
             "depth_params": camera_config.depth_params.to_dict(),
             "input_count": len(points_xyz),
@@ -547,6 +566,106 @@ class NativePhysicsBackend(SensorBackend):
             payload["preview_readout_samples"] = []
         return payload
 
+    def _project_camera_points_with_optional_rolling_shutter(
+        self,
+        *,
+        request: SensorSimRequest,
+        points_xyz: list[tuple[float, float, float]],
+        camera_config: CameraSensorConfig,
+        intrinsics: CameraIntrinsics,
+        distortion: BrownConradyDistortion,
+        base_extrinsics: CameraExtrinsics,
+        trajectory_poses: list[TrajectoryPose],
+        base_pose: TrajectoryPose | None,
+    ) -> tuple[list[tuple[float, float, float]], dict[str, object]]:
+        camera_points = transform_points_world_to_camera(
+            points_xyz=points_xyz,
+            extrinsics=base_extrinsics,
+        )
+        base_projected = project_points_brown_conrady(
+            points_xyz=camera_points,
+            intrinsics=intrinsics,
+            distortion=distortion,
+            geometry_model=camera_config.geometry_model,
+            clamp_to_image=camera_config.projection_clamp_to_image,
+        )
+        if (
+            not camera_config.rolling_shutter.enabled
+            or len(trajectory_poses) < 2
+            or base_pose is None
+        ):
+            return base_projected, {
+                "enabled": camera_config.rolling_shutter.enabled,
+                "applied": False,
+                "trajectory_available": len(trajectory_poses) >= 2,
+                "pose_count": len(trajectory_poses),
+                "base_pose_time_s": base_pose.time_s if base_pose is not None else None,
+            }
+
+        distorted_points: list[tuple[float, float, float]] = []
+        for point in points_xyz:
+            base_projection = project_points_brown_conrady(
+                points_xyz=[
+                    transform_points_world_to_camera(
+                        points_xyz=[point],
+                        extrinsics=base_extrinsics,
+                    )[0]
+                ],
+                intrinsics=intrinsics,
+                distortion=distortion,
+                geometry_model=camera_config.geometry_model,
+                clamp_to_image=False,
+            )
+            if not base_projection:
+                continue
+            base_u, base_v, _ = base_projection[0]
+            readout = self._camera_rolling_shutter_sample(
+                u=base_u,
+                v=base_v,
+                camera_config=camera_config,
+                intrinsics=intrinsics,
+            )
+            sample_uvz: list[tuple[float, float, float]] = []
+            for relative_time_s in readout["sample_times_s"]:
+                pose = self._interpolate_trajectory_pose_at_time(
+                    poses=trajectory_poses,
+                    target_time_s=base_pose.time_s + float(relative_time_s),
+                )
+                distorted_extrinsics = self._apply_camera_pose_delta_to_extrinsics(
+                    base_extrinsics=base_extrinsics,
+                    base_pose=base_pose,
+                    sample_pose=pose,
+                )
+                projected = project_points_brown_conrady(
+                    points_xyz=transform_points_world_to_camera(
+                        points_xyz=[point],
+                        extrinsics=distorted_extrinsics,
+                    ),
+                    intrinsics=intrinsics,
+                    distortion=distortion,
+                    geometry_model=camera_config.geometry_model,
+                    clamp_to_image=camera_config.projection_clamp_to_image,
+                )
+                if projected:
+                    sample_uvz.append(projected[0])
+            if sample_uvz:
+                count = float(len(sample_uvz))
+                distorted_points.append(
+                    (
+                        sum(value[0] for value in sample_uvz) / count,
+                        sum(value[1] for value in sample_uvz) / count,
+                        sum(value[2] for value in sample_uvz) / count,
+                    )
+                )
+
+        return distorted_points, {
+            "enabled": True,
+            "applied": True,
+            "trajectory_available": True,
+            "pose_count": len(trajectory_poses),
+            "base_pose_time_s": base_pose.time_s,
+        }
+
     def _encode_camera_depth_value(
         self,
         *,
@@ -566,6 +685,7 @@ class NativePhysicsBackend(SensorBackend):
         *,
         camera_config: CameraSensorConfig,
         intrinsics: CameraIntrinsics,
+        runtime: dict[str, object] | None = None,
     ) -> dict[str, object]:
         config = camera_config.rolling_shutter
         row_delay_s = max(config.row_delay_ns, 0.0) / 1_000_000_000.0
@@ -575,7 +695,7 @@ class NativePhysicsBackend(SensorBackend):
             + col_delay_s * max(intrinsics.width - 1, 0)
         )
         exposure_duration_s = total_readout_s / float(max(config.num_time_steps, 1))
-        return {
+        payload = {
             "enabled": config.enabled,
             "row_delay_ns": config.row_delay_ns,
             "col_delay_ns": config.col_delay_ns,
@@ -586,6 +706,12 @@ class NativePhysicsBackend(SensorBackend):
             "total_readout_s": total_readout_s,
             "exposure_duration_s": exposure_duration_s,
         }
+        if runtime is not None:
+            payload["applied"] = bool(runtime.get("applied", False))
+            payload["trajectory_available"] = bool(runtime.get("trajectory_available", False))
+            payload["pose_count"] = int(runtime.get("pose_count", 0))
+            payload["base_pose_time_s"] = runtime.get("base_pose_time_s")
+        return payload
 
     def _camera_rolling_shutter_sample(
         self,
@@ -647,6 +773,96 @@ class NativePhysicsBackend(SensorBackend):
         if normalized in {"BOTTOM_TO_TOP", "RIGHT_TO_LEFT"}:
             return (size - 1) - index
         return index
+
+    def _read_camera_rolling_shutter_poses(
+        self,
+        *,
+        request: SensorSimRequest,
+        trajectory_path: Path | None,
+    ) -> list[TrajectoryPose]:
+        if trajectory_path is None or not trajectory_path.exists():
+            return []
+        return read_trajectory_poses(
+            trajectory_path,
+            max_rows=int(request.options.get("camera_extrinsics_auto_max_rows", 20000)),
+        )
+
+    def _select_camera_rolling_shutter_base_pose(
+        self,
+        *,
+        request: SensorSimRequest,
+        poses: list[TrajectoryPose],
+    ) -> TrajectoryPose | None:
+        if not poses:
+            return None
+        if bool(request.options.get("camera_extrinsics_auto_from_trajectory", False)):
+            return self._select_trajectory_pose(
+                poses=poses,
+                selector=str(request.options.get("camera_extrinsics_auto_pose", "first")),
+            )
+        return poses[0]
+
+    def _apply_camera_pose_delta_to_extrinsics(
+        self,
+        *,
+        base_extrinsics: CameraExtrinsics,
+        base_pose: TrajectoryPose,
+        sample_pose: TrajectoryPose,
+    ) -> CameraExtrinsics:
+        dx = sample_pose.x - base_pose.x
+        dy = sample_pose.y - base_pose.y
+        dz = sample_pose.z - base_pose.z
+        droll = sample_pose.roll_deg - base_pose.roll_deg
+        dpitch = sample_pose.pitch_deg - base_pose.pitch_deg
+        dyaw = sample_pose.yaw_deg - base_pose.yaw_deg
+        return CameraExtrinsics(
+            tx=base_extrinsics.tx + dx,
+            ty=base_extrinsics.ty + dy,
+            tz=base_extrinsics.tz + dz,
+            roll_deg=base_extrinsics.roll_deg + droll,
+            pitch_deg=base_extrinsics.pitch_deg + dpitch,
+            yaw_deg=base_extrinsics.yaw_deg + dyaw,
+            enabled=base_extrinsics.enabled
+            or abs(dx) > 1e-9
+            or abs(dy) > 1e-9
+            or abs(dz) > 1e-9
+            or abs(droll) > 1e-9
+            or abs(dpitch) > 1e-9
+            or abs(dyaw) > 1e-9,
+        )
+
+    def _interpolate_trajectory_pose_at_time(
+        self,
+        *,
+        poses: list[TrajectoryPose],
+        target_time_s: float,
+    ) -> TrajectoryPose:
+        if not poses:
+            raise ValueError("poses must not be empty")
+        if len(poses) == 1 or target_time_s <= poses[0].time_s:
+            return poses[0]
+        if target_time_s >= poses[-1].time_s:
+            return poses[-1]
+
+        for index in range(1, len(poses)):
+            right = poses[index]
+            if target_time_s > right.time_s:
+                continue
+            left = poses[index - 1]
+            dt = right.time_s - left.time_s
+            if dt <= 1e-9:
+                return right
+            alpha = (target_time_s - left.time_s) / dt
+            return TrajectoryPose(
+                x=left.x + (right.x - left.x) * alpha,
+                y=left.y + (right.y - left.y) * alpha,
+                z=left.z + (right.z - left.z) * alpha,
+                time_s=target_time_s,
+                roll_deg=left.roll_deg + (right.roll_deg - left.roll_deg) * alpha,
+                pitch_deg=left.pitch_deg + (right.pitch_deg - left.pitch_deg) * alpha,
+                yaw_deg=left.yaw_deg + (right.yaw_deg - left.yaw_deg) * alpha,
+            )
+        return poses[-1]
 
     def _generate_lidar_noisy_pointcloud_if_available(
         self,

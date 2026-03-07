@@ -301,11 +301,11 @@ Primary code references:
 
 | Block | Current Level | Target Level | Priority |
 | --- | --- | --- | --- |
-| Sensor config schema | ad hoc `options` dict | typed sensor model schema with validation | P0 |
+| Sensor config schema | typed camera/lidar/radar/renderer/behavior config layer implemented; validation still thin | typed sensor model schema with validation | P0 |
 | Sensor behavior engine | missing | `point_at`, `continuous_motion`, transform updates | P1 |
-| Camera geometry families | pinhole only | rectilinear + equidistant + orthographic + projection field adapter | P1 |
-| Camera temporal model | missing | rolling shutter + exposure sampling | P1 |
-| Camera image chain | minimal | noise, gain, white balance, depth/semantic variants | P2 |
+| Camera geometry families | `pinhole` + `rectilinear` + `equidistant` + `orthographic` implemented in local physics path | rectilinear + equidistant + orthographic + projection field adapter | P1 |
+| Camera temporal model | rolling shutter timing + trajectory pose-distortion implemented; behavior-driven motion still missing | rolling shutter + exposure sampling | P1 |
+| Camera image chain | depth output implemented; semantic/noise/gain/white-balance still missing | noise, gain, white balance, depth/semantic variants | P2 |
 | Lidar scan generation | preview only | source angles + scan path + scan type engine | P1 |
 | Lidar signal/intensity | very weak | reflectivity, SNR/intensity units, returns, weather | P1 |
 | Lidar multipath/material model | missing | HELIOS-backed or local hybrid path | P2 |
@@ -506,6 +506,19 @@ Deliverables:
 - exposure sampling hooks
 - depth and semantic image output modes
 - camera behavior integration with mounts
+
+Current status:
+
+- implemented:
+  - typed camera config path
+  - rectilinear/equidistant/orthographic projection modes
+  - depth preview output path
+  - rolling shutter timing metadata
+  - rolling shutter pose-distortion using HELIOS trajectory poses
+- next missing items:
+  - semantic output mode
+  - richer image chain noise/exposure controls
+  - behavior-driven motion updates for rolling shutter
 
 Primary references:
 

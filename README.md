@@ -138,6 +138,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - preview artifacts record `geometry_model` per preview/frame.
   - depth mode emits `preview_depth_samples`.
   - rolling shutter mode emits `preview_readout_samples` and timing metadata.
+  - when HELIOS trajectory poses are available, rolling shutter preview/sweep applies per-sample pose distortion and records whether the distortion path was actually applied.
 
 ## LiDAR/Radar post-physics notes
 
