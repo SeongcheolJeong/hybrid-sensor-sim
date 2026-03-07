@@ -544,6 +544,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `awsim_smoke_ready_binary`, `awsim_smoke_ready_docker`, `awsim_smoke_ready`
   - `carla_smoke_ready_binary`, `carla_smoke_ready_docker`, `carla_smoke_ready`
   - reference repo roots versus executable runtime candidates
+  - `acquisition_hints` with backend-specific download/build guidance and platform constraints
 - when `heliosplusplus:cli` is present in Docker Desktop, discovery can mark HELIOS as docker-ready even if `HELIOS_BIN` is unset.
 - `--probe-helios-docker-demo` runs the configured docker demo and records actual HELIOS execution success/failure in `probes.helios_docker_demo`.
 - use `--no-default-search-roots` when you want discovery to only scan explicit `--search-root` inputs plus the repo root.

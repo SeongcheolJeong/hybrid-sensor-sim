@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform
 import shlex
 import subprocess
 from pathlib import Path
@@ -391,6 +392,156 @@ def _run_hybrid_config(config_path: Path) -> dict[str, Any]:
     }
 
 
+def _existing_path_or_none(path: Path) -> str | None:
+    return str(path.resolve()) if path.exists() else None
+
+
+def _host_platform_summary() -> dict[str, str]:
+    return {
+        "system": platform.system(),
+        "machine": platform.machine(),
+    }
+
+
+def _build_acquisition_hints(
+    *,
+    repo_root: Path,
+    backends: dict[str, Any],
+    runtimes: dict[str, Any],
+    readiness: dict[str, Any],
+) -> dict[str, Any]:
+    host = _host_platform_summary()
+    system = host["system"]
+    helios = backends["helios"]
+    awsim = backends["awsim"]
+    carla = backends["carla"]
+    helios_docker = runtimes["helios_docker"]
+
+    helios_hints = {
+        "status": (
+            "docker_ready"
+            if readiness.get("helios_docker_ready")
+            else "binary_ready"
+            if readiness.get("helios_binary_ready")
+            else "missing_runtime"
+        ),
+        "recommended_runtime": (
+            "docker"
+            if readiness.get("helios_docker_ready")
+            else "binary"
+            if readiness.get("helios_binary_ready")
+            else "docker_build_or_binary_build"
+        ),
+        "next_actions": [
+            {
+                "type": "docker_build",
+                "command": "bash scripts/docker_build_helios_cli.sh heliosplusplus:cli",
+                "source": _existing_path_or_none(repo_root / "scripts/docker_build_helios_cli.sh"),
+            },
+            {
+                "type": "binary_build",
+                "command": "bash scripts/setup_helios.sh",
+                "source": _existing_path_or_none(repo_root / "scripts/setup_helios.sh"),
+            },
+            {
+                "type": "docker_demo",
+                "command": "bash scripts/run_hybrid_docker_demo.sh configs/hybrid_sensor_sim.helios_docker.json",
+                "source": _existing_path_or_none(repo_root / "scripts/run_hybrid_docker_demo.sh"),
+            },
+        ],
+        "reference_docs": [
+            _existing_path_or_none(repo_root / "README.md"),
+            _existing_path_or_none(repo_root / "configs/hybrid_sensor_sim.helios_docker.json"),
+        ],
+        "docker": {
+            "image": helios_docker.get("image"),
+            "ready": helios_docker.get("ready"),
+            "message": helios_docker.get("image_message") or helios_docker.get("daemon_message"),
+        },
+    }
+
+    awsim_hints = {
+        "status": "runtime_available" if awsim.get("ready") else "source_only" if awsim.get("source_only") else "missing_runtime",
+        "platform_supported": system == "Linux",
+        "platform_note": (
+            "AWSIM quick-start docs assume Ubuntu 22.04 with NVIDIA RTX and driver 570+."
+            if system != "Linux"
+            else "Ubuntu 22.04 with NVIDIA RTX is the documented target."
+        ),
+        "recommended_executable_name": "AWSIM-Demo.x86_64",
+        "download_options": [
+            {
+                "name": "AWSIM-Demo.zip",
+                "url": "https://github.com/tier4/AWSIM/releases/download/v2.0.1/AWSIM-Demo.zip",
+            },
+            {
+                "name": "AWSIM-Demo-Lightweight.zip",
+                "url": "https://github.com/tier4/AWSIM/releases/download/v2.0.1/AWSIM-Demo-Lightweight.zip",
+            },
+        ],
+        "next_actions": [
+            "Download an AWSIM demo package and extract it.",
+            "Mark AWSIM-Demo.x86_64 executable and export AWSIM_BIN to that path.",
+            "Re-run local discovery and then run the docker-backed AWSIM smoke preset.",
+        ],
+        "reference_docs": [
+            _existing_path_or_none(
+                Path("/Users/seongcheoljeong/Documents/Autonomy-E2E/_reference_repos/awsim/docs/Downloads/index.md")
+            ),
+            _existing_path_or_none(
+                Path("/Users/seongcheoljeong/Documents/Autonomy-E2E/_reference_repos/awsim/docs/GettingStarted/QuickStartDemo/index.md")
+            ),
+        ],
+    }
+
+    carla_hints = {
+        "status": "runtime_available" if carla.get("ready") else "source_only" if carla.get("source_only") else "missing_runtime",
+        "platform_supported": system in {"Linux", "Windows"},
+        "platform_note": (
+            "CARLA UE5 package docs target Ubuntu 22.04 or Windows 11. On this host, use a Linux or Windows runner."
+            if system not in {"Linux", "Windows"}
+            else "CARLA UE5 docs target Ubuntu 22.04 or Windows 11."
+        ),
+        "download_options": [
+            {
+                "name": "CARLA 0.10.0 release page",
+                "url": "https://github.com/carla-simulator/carla/releases/tag/0.10.0",
+            },
+            {
+                "name": "CARLA Nightly Build (Linux)",
+                "url": "https://s3.us-east-005.backblazeb2.com/carla-releases/Linux/Dev/CARLA_UE5_Latest.tar.gz",
+            },
+            {
+                "name": "CARLA Docker image",
+                "command": "docker pull carlasim/carla:0.10.0",
+            },
+        ],
+        "next_actions": [
+            "Use a packaged CARLA release or Linux Docker image on a supported Linux/Windows runner.",
+            "If building from source, run ./CarlaSetup.sh --interactive in a Linux CARLA UE5 checkout.",
+            "Export CARLA_BIN to CarlaUnreal.sh or the packaged launcher path and re-run local discovery.",
+        ],
+        "reference_docs": [
+            _existing_path_or_none(
+                Path("/Users/seongcheoljeong/Documents/Autonomy-E2E/_reference_repos/carla/Docs/start_quickstart.md")
+            ),
+            _existing_path_or_none(
+                Path("/Users/seongcheoljeong/Documents/Autonomy-E2E/_reference_repos/carla/Docs/download.md")
+            ),
+            _existing_path_or_none(
+                Path("/Users/seongcheoljeong/Documents/Autonomy-E2E/_reference_repos/carla/Docs/build_docker.md")
+            ),
+        ],
+    }
+
+    return {
+        "host_platform": host,
+        "helios": helios_hints,
+        "awsim": awsim_hints,
+        "carla": carla_hints,
+    }
+
+
 def build_renderer_backend_local_setup(
     *,
     repo_root: Path,
@@ -565,6 +716,18 @@ def build_renderer_backend_local_setup(
             )
         _write_json(probe_path, probe_summary)
         probes["helios_docker_demo"] = probe_summary
+    acquisition_hints = _build_acquisition_hints(
+        repo_root=repo_root,
+        backends={
+            "helios": helios,
+            "awsim": awsim,
+            "carla": carla,
+        },
+        runtimes={
+            "helios_docker": helios_docker,
+        },
+        readiness=readiness,
+    )
     return {
         "search_roots": [str(path) for path in all_search_roots],
         "backends": {
@@ -576,6 +739,7 @@ def build_renderer_backend_local_setup(
             "helios_docker": helios_docker,
         },
         "probes": probes,
+        "acquisition_hints": acquisition_hints,
         "selection": selection,
         "readiness": readiness,
         "issues": issues,

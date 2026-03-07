@@ -107,6 +107,21 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertIn(str(helios_root.resolve()), summary["backends"]["helios"]["reference_roots"])
             self.assertIn(str(awsim_root.resolve()), summary["backends"]["awsim"]["reference_roots"])
             self.assertIn(str(carla_root.resolve()), summary["backends"]["carla"]["reference_roots"])
+            self.assertEqual(summary["acquisition_hints"]["helios"]["status"], "missing_runtime")
+            self.assertEqual(summary["acquisition_hints"]["awsim"]["status"], "source_only")
+            self.assertEqual(summary["acquisition_hints"]["carla"]["status"], "source_only")
+            self.assertEqual(
+                summary["acquisition_hints"]["awsim"]["recommended_executable_name"],
+                "AWSIM-Demo.x86_64",
+            )
+            self.assertIn(
+                "https://github.com/carla-simulator/carla/releases/tag/0.10.0",
+                [
+                    item["url"]
+                    for item in summary["acquisition_hints"]["carla"]["download_options"]
+                    if "url" in item
+                ],
+            )
 
     def test_build_renderer_backend_local_setup_discovers_ready_backends(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -158,6 +173,7 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertEqual(summary["selection"]["CARLA_BIN"], str(carla_bin.resolve()))
             self.assertEqual(summary["selection"]["AWSIM_RENDERER_MAP"], "EnvAwsimMap")
             self.assertEqual(summary["selection"]["CARLA_RENDERER_MAP"], "EnvTown05")
+            self.assertEqual(summary["acquisition_hints"]["helios"]["status"], "docker_ready")
 
     def test_build_renderer_backend_local_setup_uses_docker_when_binary_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -188,6 +204,7 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertTrue(summary["readiness"]["awsim_smoke_ready_docker"])
             self.assertTrue(summary["readiness"]["awsim_smoke_ready"])
             self.assertEqual(summary["commands"]["awsim_smoke"], summary["commands"]["awsim_smoke_docker"])
+            self.assertEqual(summary["acquisition_hints"]["helios"]["recommended_runtime"], "docker")
 
     def test_build_renderer_backend_local_setup_writes_probe_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -279,6 +296,7 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertEqual(summary["selection"]["AWSIM_BIN"], str(awsim_bin.resolve()))
             self.assertIsNone(summary["selection"]["CARLA_BIN"])
             self.assertFalse(summary["readiness"]["carla_smoke_ready"])
+            self.assertIn("acquisition_hints", summary)
             self.assertIn("export HELIOS_BIN=", env_text)
             self.assertIn("export HELIOS_DOCKER_IMAGE=", env_text)
             self.assertIn("export HELIOS_DOCKER_BINARY=", env_text)
