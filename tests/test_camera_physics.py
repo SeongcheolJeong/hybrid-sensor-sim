@@ -1943,16 +1943,43 @@ EOF
                 output_dir=root / "clear_out",
                 options=base_options,
             )
-            weather_request = SensorSimRequest(
+            rain_request = SensorSimRequest(
                 scenario_path=survey,
-                output_dir=root / "weather_out",
+                output_dir=root / "rain_out",
                 options={
                     **base_options,
                     "lidar_environment_model": {
-                        "fog_density": 1.0,
-                        "extinction_coefficient_scale": 0.1,
+                        "fog_density": 0.0,
+                        "extinction_coefficient_scale": 0.05,
                         "backscatter_scale": 0.8,
                         "precipitation_rate": 60.0,
+                        "precipitation_type": "rain",
+                        "particle_density_scale": 1.0,
+                        "particle_diameter_mm": 1.4,
+                        "field_seed": 11,
+                    },
+                    "lidar_noise_performance": {
+                        "probability_false_alarm": 0.2,
+                    },
+                },
+            )
+            snow_request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "snow_out",
+                options={
+                    **base_options,
+                    "lidar_environment_model": {
+                        "fog_density": 0.0,
+                        "extinction_coefficient_scale": 0.05,
+                        "backscatter_scale": 0.8,
+                        "precipitation_rate": 60.0,
+                        "precipitation_type": "snow",
+                        "particle_density_scale": 1.4,
+                        "particle_diameter_mm": 5.0,
+                        "terminal_velocity_mps": 1.2,
+                        "particle_reflectivity": 0.25,
+                        "backscatter_jitter": 0.18,
+                        "field_seed": 11,
                     },
                     "lidar_noise_performance": {
                         "probability_false_alarm": 0.2,
@@ -1965,38 +1992,68 @@ EOF
                 native=NativePhysicsBackend(),
             )
             clear_result = orchestrator.run(clear_request, BackendMode.HYBRID_AUTO)
-            weather_result = orchestrator.run(weather_request, BackendMode.HYBRID_AUTO)
+            rain_result = orchestrator.run(rain_request, BackendMode.HYBRID_AUTO)
+            snow_result = orchestrator.run(snow_request, BackendMode.HYBRID_AUTO)
 
             self.assertTrue(clear_result.success)
-            self.assertTrue(weather_result.success)
+            self.assertTrue(rain_result.success)
+            self.assertTrue(snow_result.success)
             clear_preview = json.loads(
                 clear_result.artifacts["lidar_noisy_preview_json"].read_text(encoding="utf-8")
             )
-            weather_preview = json.loads(
-                weather_result.artifacts["lidar_noisy_preview_json"].read_text(encoding="utf-8")
+            rain_preview = json.loads(
+                rain_result.artifacts["lidar_noisy_preview_json"].read_text(encoding="utf-8")
+            )
+            snow_preview = json.loads(
+                snow_result.artifacts["lidar_noisy_preview_json"].read_text(encoding="utf-8")
             )
             clear_target = clear_preview["preview_points"][0]
-            weather_targets = [
+            rain_targets = [
                 point
-                for point in weather_preview["preview_points"]
+                for point in rain_preview["preview_points"]
                 if point["ground_truth_detection_type"] == "TARGET"
             ]
-            weather_noise = [
+            rain_noise = [
                 point
-                for point in weather_preview["preview_points"]
+                for point in rain_preview["preview_points"]
                 if point["ground_truth_detection_type"] == "NOISE"
             ]
-            self.assertTrue(weather_targets)
-            self.assertTrue(weather_noise)
-            self.assertLess(weather_targets[0]["snr_db"], clear_target["snr_db"])
+            snow_targets = [
+                point
+                for point in snow_preview["preview_points"]
+                if point["ground_truth_detection_type"] == "TARGET"
+            ]
+            snow_noise = [
+                point
+                for point in snow_preview["preview_points"]
+                if point["ground_truth_detection_type"] == "NOISE"
+            ]
+            self.assertTrue(rain_targets)
+            self.assertTrue(rain_noise)
+            self.assertTrue(snow_targets)
+            self.assertTrue(snow_noise)
+            self.assertLess(rain_targets[0]["snr_db"], clear_target["snr_db"])
+            self.assertLess(snow_targets[0]["snr_db"], clear_target["snr_db"])
             self.assertLess(
-                weather_targets[0]["weather_extinction_factor"],
+                rain_targets[0]["weather_extinction_factor"],
                 clear_target["weather_extinction_factor"],
             )
-            self.assertGreater(weather_result.metrics.get("lidar_backscatter_or_noise_count"), 0.0)
-            self.assertEqual(weather_result.metrics.get("lidar_weather_model_applied"), 1.0)
-            self.assertGreater(weather_result.metrics.get("lidar_false_alarm_probability"), 0.0)
-            self.assertGreater(weather_preview["output_count"], clear_preview["output_count"])
+            self.assertLess(
+                snow_targets[0]["weather_extinction_factor"],
+                rain_targets[0]["weather_extinction_factor"],
+            )
+            self.assertEqual(rain_noise[0]["precipitation_type"], "RAIN")
+            self.assertEqual(snow_noise[0]["precipitation_type"], "SNOW")
+            self.assertGreater(snow_noise[0]["particle_field_density"], rain_noise[0]["particle_field_density"])
+            self.assertGreater(rain_result.metrics.get("lidar_backscatter_or_noise_count"), 0.0)
+            self.assertGreater(snow_result.metrics.get("lidar_backscatter_or_noise_count"), 0.0)
+            self.assertEqual(rain_result.metrics.get("lidar_weather_model_applied"), 1.0)
+            self.assertEqual(snow_result.metrics.get("lidar_precipitation_model_applied"), 1.0)
+            self.assertGreater(snow_result.metrics.get("lidar_precipitation_particle_density"), 0.0)
+            self.assertGreater(snow_result.metrics.get("lidar_precipitation_particle_density"), rain_result.metrics.get("lidar_precipitation_particle_density"))
+            self.assertGreater(rain_result.metrics.get("lidar_false_alarm_probability"), 0.0)
+            self.assertGreater(rain_preview["output_count"], clear_preview["output_count"])
+            self.assertGreater(snow_preview["output_count"], clear_preview["output_count"])
 
     def test_radar_trajectory_sweep_uses_local_velocity_per_frame(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -422,8 +422,15 @@ class LidarEnvironmentConfig:
     backscatter_scale: float = 0.0
     disable_backscatter: bool = False
     precipitation_rate: float = 0.0
+    precipitation_type: str = "RAIN"
+    particle_density_scale: float = 1.0
+    particle_diameter_mm: float = 0.0
+    terminal_velocity_mps: float = 0.0
+    particle_reflectivity: float = 0.0
+    backscatter_jitter: float = 0.1
+    field_seed: int = 0
 
-    def to_dict(self) -> dict[str, float | bool]:
+    def to_dict(self) -> dict[str, float | bool | int | str]:
         return {
             "enable_ambient": self.enable_ambient,
             "fog_density": self.fog_density,
@@ -431,6 +438,13 @@ class LidarEnvironmentConfig:
             "backscatter_scale": self.backscatter_scale,
             "disable_backscatter": self.disable_backscatter,
             "precipitation_rate": self.precipitation_rate,
+            "precipitation_type": self.precipitation_type,
+            "particle_density_scale": self.particle_density_scale,
+            "particle_diameter_mm": self.particle_diameter_mm,
+            "terminal_velocity_mps": self.terminal_velocity_mps,
+            "particle_reflectivity": self.particle_reflectivity,
+            "backscatter_jitter": self.backscatter_jitter,
+            "field_seed": self.field_seed,
         }
 
 
@@ -1095,6 +1109,7 @@ def _parse_lidar_return_model(options: Mapping[str, Any]) -> LidarReturnModelCon
 
 def _parse_lidar_environment_model(options: Mapping[str, Any]) -> LidarEnvironmentConfig:
     raw = _as_dict(options.get("lidar_environment_model"))
+    particle_field = _as_dict(raw.get("particle_field"))
     return LidarEnvironmentConfig(
         enable_ambient=_as_bool(
             raw.get("enable_ambient", options.get("lidar_enable_ambient")),
@@ -1119,6 +1134,58 @@ def _parse_lidar_environment_model(options: Mapping[str, Any]) -> LidarEnvironme
         precipitation_rate=_as_float(
             raw.get("precipitation_rate", options.get("lidar_precipitation_rate")),
             0.0,
+        ),
+        precipitation_type=_as_str(
+            raw.get(
+                "precipitation_type",
+                particle_field.get("type", options.get("lidar_precipitation_type")),
+            ),
+            "RAIN",
+        ).upper(),
+        particle_density_scale=_as_float(
+            raw.get(
+                "particle_density_scale",
+                particle_field.get("density_scale", options.get("lidar_particle_density_scale")),
+            ),
+            1.0,
+        ),
+        particle_diameter_mm=_as_float(
+            raw.get(
+                "particle_diameter_mm",
+                particle_field.get("diameter_mm", options.get("lidar_particle_diameter_mm")),
+            ),
+            0.0,
+        ),
+        terminal_velocity_mps=_as_float(
+            raw.get(
+                "terminal_velocity_mps",
+                particle_field.get(
+                    "terminal_velocity_mps",
+                    options.get("lidar_particle_terminal_velocity_mps"),
+                ),
+            ),
+            0.0,
+        ),
+        particle_reflectivity=_as_float(
+            raw.get(
+                "particle_reflectivity",
+                particle_field.get("reflectivity", options.get("lidar_particle_reflectivity")),
+            ),
+            0.0,
+        ),
+        backscatter_jitter=_as_float(
+            raw.get(
+                "backscatter_jitter",
+                particle_field.get("backscatter_jitter", options.get("lidar_backscatter_jitter")),
+            ),
+            0.1,
+        ),
+        field_seed=_as_int(
+            raw.get(
+                "field_seed",
+                particle_field.get("seed", options.get("lidar_particle_field_seed")),
+            ),
+            0,
         ),
     )
 

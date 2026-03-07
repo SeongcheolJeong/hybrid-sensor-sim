@@ -584,7 +584,12 @@ Current status:
   - environment/weather surface:
     - fog attenuation with `fog_density * extinction_coefficient_scale`
     - backscatter/noise returns using `backscatter_scale`
-    - synthetic precipitation/noise detections
+    - type-specific precipitation particle field:
+      - `precipitation_type=RAIN|SNOW|HAIL`
+      - `particle_density_scale`, `particle_diameter_mm`, `terminal_velocity_mps`
+      - `particle_reflectivity`, `backscatter_jitter`, `field_seed`
+      - precipitation attenuation folded into `weather_extinction_factor`
+      - precipitation metadata emitted into preview artifacts
     - detector `probability_false_alarm` surface
   - emitter/channel surface:
     - `source_losses` and `global_source_loss`
@@ -598,7 +603,7 @@ Current status:
     - file-backed profile ingestion for `json/csv/txt/npy` and `.exr` sidecar fallback
 - next missing items:
   - stronger raytracing fidelity beyond current selection/merge approximation
-  - richer rain/snow particle field calibration beyond current preview heuristic
+  - richer rain/snow particle field calibration beyond current type-specific heuristic
   - native EXR decode beyond current sidecar fallback
 
 ### Phase 3: Radar Core Feature Expansion

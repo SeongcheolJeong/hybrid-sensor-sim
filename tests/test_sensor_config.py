@@ -185,6 +185,15 @@ class SensorConfigTests(unittest.TestCase):
                     "backscatter_scale": 0.6,
                     "disable_backscatter": False,
                     "precipitation_rate": 35.0,
+                    "precipitation_type": "snow",
+                    "particle_field": {
+                        "density_scale": 1.6,
+                        "diameter_mm": 5.2,
+                        "terminal_velocity_mps": 1.1,
+                        "reflectivity": 0.28,
+                        "backscatter_jitter": 0.22,
+                        "seed": 17,
+                    },
                 },
                 "lidar_noise_performance": {
                     "probability_false_alarm": 0.02,
@@ -326,6 +335,13 @@ class SensorConfigTests(unittest.TestCase):
         self.assertAlmostEqual(config.lidar.environment_model.backscatter_scale, 0.6)
         self.assertFalse(config.lidar.environment_model.disable_backscatter)
         self.assertAlmostEqual(config.lidar.environment_model.precipitation_rate, 35.0)
+        self.assertEqual(config.lidar.environment_model.precipitation_type, "SNOW")
+        self.assertAlmostEqual(config.lidar.environment_model.particle_density_scale, 1.6)
+        self.assertAlmostEqual(config.lidar.environment_model.particle_diameter_mm, 5.2)
+        self.assertAlmostEqual(config.lidar.environment_model.terminal_velocity_mps, 1.1)
+        self.assertAlmostEqual(config.lidar.environment_model.particle_reflectivity, 0.28)
+        self.assertAlmostEqual(config.lidar.environment_model.backscatter_jitter, 0.22)
+        self.assertEqual(config.lidar.environment_model.field_seed, 17)
         self.assertAlmostEqual(config.lidar.noise_performance.probability_false_alarm, 0.02)
         self.assertAlmostEqual(config.lidar.noise_performance.probability_detection, 0.85)
         self.assertAlmostEqual(config.lidar.noise_performance.calibration_target_range_m, 180.0)
@@ -415,6 +431,9 @@ class SensorConfigTests(unittest.TestCase):
                     "fog_density": 0.4,
                     "backscatter_scale": 0.3,
                     "precipitation_rate": 12.0,
+                    "precipitation_type": "hail",
+                    "particle_density_scale": 1.2,
+                    "particle_diameter_mm": 7.0,
                 },
                 "lidar_noise_performance": {
                     "probability_false_alarm": 0.01,
@@ -503,6 +522,18 @@ class SensorConfigTests(unittest.TestCase):
         self.assertAlmostEqual(
             contract["sensor_setup"]["lidar"]["environment_model"]["fog_density"],
             0.4,
+        )
+        self.assertEqual(
+            contract["sensor_setup"]["lidar"]["environment_model"]["precipitation_type"],
+            "HAIL",
+        )
+        self.assertAlmostEqual(
+            contract["sensor_setup"]["lidar"]["environment_model"]["particle_density_scale"],
+            1.2,
+        )
+        self.assertAlmostEqual(
+            contract["sensor_setup"]["lidar"]["environment_model"]["particle_diameter_mm"],
+            7.0,
         )
         self.assertAlmostEqual(
             contract["sensor_setup"]["lidar"]["noise_performance"]["probability_false_alarm"],

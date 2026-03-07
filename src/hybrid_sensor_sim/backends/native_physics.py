@@ -55,6 +55,33 @@ _APPLIED_GRANULAR_CAMERA_SEMANTICS: dict[int, dict[str, Any]] = {
     7501: {"name": "GENERIC_CAR", "parent_class": "VEHICLES", "color_rgb": [0, 0, 142], "material_class_id": 2300},
 }
 
+_LIDAR_PRECIPITATION_DEFAULTS: dict[str, dict[str, float]] = {
+    "RAIN": {
+        "particle_diameter_mm": 1.4,
+        "terminal_velocity_mps": 7.5,
+        "particle_reflectivity": 0.65,
+        "density_coefficient": 0.010,
+        "extinction_coefficient": 0.040,
+        "backscatter_gain": 0.75,
+    },
+    "SNOW": {
+        "particle_diameter_mm": 4.5,
+        "terminal_velocity_mps": 1.4,
+        "particle_reflectivity": 0.35,
+        "density_coefficient": 0.018,
+        "extinction_coefficient": 0.026,
+        "backscatter_gain": 0.55,
+    },
+    "HAIL": {
+        "particle_diameter_mm": 6.5,
+        "terminal_velocity_mps": 11.0,
+        "particle_reflectivity": 0.90,
+        "density_coefficient": 0.007,
+        "extinction_coefficient": 0.045,
+        "backscatter_gain": 1.05,
+    },
+}
+
 
 class NativePhysicsBackend(SensorBackend):
     def name(self) -> str:
@@ -2103,6 +2130,13 @@ class NativePhysicsBackend(SensorBackend):
                     "ground_truth_hit_index": base.get("ground_truth_hit_index"),
                     "ground_truth_last_bounce_index": base.get("ground_truth_last_bounce_index"),
                     "weather_extinction_factor": base.get("weather_extinction_factor"),
+                    "precipitation_type": base.get("precipitation_type"),
+                    "particle_field_density": base.get("particle_field_density"),
+                    "particle_diameter_mm": base.get("particle_diameter_mm"),
+                    "particle_terminal_velocity_mps": base.get("particle_terminal_velocity_mps"),
+                    "particle_reflectivity": base.get("particle_reflectivity"),
+                    "particle_backscatter_strength": base.get("particle_backscatter_strength"),
+                    "precipitation_extinction_alpha": base.get("precipitation_extinction_alpha"),
                     "channel_loss_db": base.get("channel_loss_db"),
                     "optical_loss_db": base.get("optical_loss_db"),
                     "peak_power_w": base.get("peak_power_w"),
@@ -3088,6 +3122,13 @@ class NativePhysicsBackend(SensorBackend):
                 "ground_truth_hit_index": 1,
                 "ground_truth_last_bounce_index": 1,
                 "weather_extinction_factor": multipath_weather,
+                "precipitation_type": primary_metadata.get("precipitation_type"),
+                "particle_field_density": primary_metadata.get("particle_field_density"),
+                "particle_diameter_mm": primary_metadata.get("particle_diameter_mm"),
+                "particle_terminal_velocity_mps": primary_metadata.get("particle_terminal_velocity_mps"),
+                "particle_reflectivity": primary_metadata.get("particle_reflectivity"),
+                "particle_backscatter_strength": primary_metadata.get("particle_backscatter_strength"),
+                "precipitation_extinction_alpha": primary_metadata.get("precipitation_extinction_alpha"),
                 "multipath_surface": surface,
                 "multipath_path_length_m": path_length_m,
                 "multipath_base_range_m": primary_range_m,
@@ -3114,6 +3155,7 @@ class NativePhysicsBackend(SensorBackend):
         x, y, z = point_xyz
         range_m = float(base_metadata.get("range_m", sqrt(x * x + y * y + z * z)))
         environment_model = lidar_config.environment_model
+        precipitation_profile = self._lidar_precipitation_profile(environment_model=environment_model)
         channel_id = base_metadata.get("channel_id")
         channel_loss_db = self._lidar_channel_loss_db(
             emitter_params=lidar_config.emitter_params,
@@ -3189,6 +3231,15 @@ class NativePhysicsBackend(SensorBackend):
             "ground_truth_hit_index": 0,
             "ground_truth_last_bounce_index": 0,
             "weather_extinction_factor": weather_extinction,
+            "precipitation_type": str(precipitation_profile["precipitation_type"]),
+            "particle_field_density": float(precipitation_profile["particle_field_density"]),
+            "particle_diameter_mm": float(precipitation_profile["particle_diameter_mm"]),
+            "particle_terminal_velocity_mps": float(precipitation_profile["terminal_velocity_mps"]),
+            "particle_reflectivity": float(precipitation_profile["particle_reflectivity"]),
+            "particle_backscatter_strength": float(precipitation_profile["particle_backscatter_strength"]),
+            "precipitation_extinction_alpha": float(
+                precipitation_profile["precipitation_extinction_alpha"]
+            ),
             "channel_loss_db": channel_loss_db,
             "optical_loss_db": optical_loss_db,
             "peak_power_w": peak_power_w,
@@ -3322,10 +3373,73 @@ class NativePhysicsBackend(SensorBackend):
             range_m * sin(elevation_rad),
         )
 
+    def _lidar_precipitation_profile(self, *, environment_model: Any) -> dict[str, float | int | str]:
+        precipitation_rate = max(float(environment_model.precipitation_rate), 0.0)
+        configured_type = str(getattr(environment_model, "precipitation_type", "RAIN")).upper().strip() or "RAIN"
+        normalized_type = configured_type if configured_type in _LIDAR_PRECIPITATION_DEFAULTS else "RAIN"
+        resolved_type = normalized_type if precipitation_rate > 0.0 else "NONE"
+        defaults = _LIDAR_PRECIPITATION_DEFAULTS[normalized_type]
+        particle_density_scale = max(float(getattr(environment_model, "particle_density_scale", 1.0)), 0.0)
+        particle_diameter_override_mm = max(float(getattr(environment_model, "particle_diameter_mm", 0.0)), 0.0)
+        particle_diameter_mm = (
+            particle_diameter_override_mm
+            if particle_diameter_override_mm > 0.0
+            else defaults["particle_diameter_mm"]
+        )
+        terminal_velocity_override_mps = max(
+            float(getattr(environment_model, "terminal_velocity_mps", 0.0)),
+            0.0,
+        )
+        terminal_velocity_mps = (
+            terminal_velocity_override_mps
+            if terminal_velocity_override_mps > 0.0
+            else defaults["terminal_velocity_mps"]
+        )
+        particle_reflectivity_override = float(getattr(environment_model, "particle_reflectivity", 0.0))
+        particle_reflectivity = min(
+            max(
+                particle_reflectivity_override
+                if particle_reflectivity_override > 0.0
+                else defaults["particle_reflectivity"],
+                0.0,
+            ),
+            1.0,
+        )
+        backscatter_jitter = max(float(getattr(environment_model, "backscatter_jitter", 0.1)), 0.0)
+        field_seed = int(getattr(environment_model, "field_seed", 0))
+        particle_field_density = precipitation_rate * particle_density_scale * defaults["density_coefficient"]
+        precipitation_extinction_alpha = particle_field_density * defaults["extinction_coefficient"] * (
+            particle_diameter_mm / max(defaults["particle_diameter_mm"], 1e-9)
+        )
+        particle_backscatter_strength = particle_field_density * defaults["backscatter_gain"] * max(
+            particle_reflectivity,
+            0.05,
+        )
+        return {
+            "configured_type": normalized_type,
+            "precipitation_type": resolved_type,
+            "precipitation_rate": precipitation_rate,
+            "particle_density_scale": particle_density_scale,
+            "particle_diameter_mm": particle_diameter_mm,
+            "terminal_velocity_mps": terminal_velocity_mps,
+            "particle_reflectivity": particle_reflectivity,
+            "backscatter_jitter": backscatter_jitter,
+            "field_seed": field_seed,
+            "particle_field_density": particle_field_density,
+            "precipitation_extinction_alpha": precipitation_extinction_alpha,
+            "particle_backscatter_strength": particle_backscatter_strength,
+        }
+
     def _lidar_weather_extinction_factor(self, *, lidar_config: Any, range_m: float) -> float:
         fog_density = min(max(float(lidar_config.environment_model.fog_density), 0.0), 1.0)
         extinction_scale = max(float(lidar_config.environment_model.extinction_coefficient_scale), 0.0)
-        alpha = fog_density * extinction_scale
+        precipitation_profile = self._lidar_precipitation_profile(
+            environment_model=lidar_config.environment_model,
+        )
+        alpha = (
+            fog_density * extinction_scale
+            + float(precipitation_profile["precipitation_extinction_alpha"])
+        )
         return exp(-2.0 * alpha * max(range_m, 0.0))
 
     def _lidar_environment_backscatter_returns(
@@ -3340,9 +3454,13 @@ class NativePhysicsBackend(SensorBackend):
         if bool(lidar_config.environment_model.disable_backscatter):
             return []
         fog_density = min(max(float(lidar_config.environment_model.fog_density), 0.0), 1.0)
-        precipitation_rate = max(float(lidar_config.environment_model.precipitation_rate), 0.0)
+        precipitation_profile = self._lidar_precipitation_profile(
+            environment_model=lidar_config.environment_model,
+        )
         backscatter_scale = max(float(lidar_config.environment_model.backscatter_scale), 0.0)
-        environment_strength = (fog_density + min(precipitation_rate / 100.0, 1.0)) * backscatter_scale
+        environment_strength = (
+            fog_density + float(precipitation_profile["particle_backscatter_strength"])
+        ) * backscatter_scale
         if environment_strength <= 1e-9:
             return []
 
@@ -3350,7 +3468,27 @@ class NativePhysicsBackend(SensorBackend):
         if range_m <= max(lidar_config.range_min_m + 0.5, 1.0):
             return []
 
-        backscatter_fraction = min(max(0.15 + 0.35 * environment_strength, 0.1), 0.85)
+        point_index_raw = base_metadata.get("point_index", 0)
+        point_index = int(point_index_raw) if isinstance(point_index_raw, (int, float)) else 0
+        channel_id_raw = base_metadata.get("channel_id", 0)
+        channel_id = int(channel_id_raw) if isinstance(channel_id_raw, (int, float)) else 0
+        rng = random.Random(
+            int(request.seed)
+            + int(precipitation_profile["field_seed"])
+            + point_index * 9973
+            + channel_id * 31337
+        )
+        jitter = min(float(precipitation_profile["backscatter_jitter"]), 2.0)
+        backscatter_fraction = min(
+            max(
+                0.15
+                + 0.18 * fog_density
+                + 0.24 * float(precipitation_profile["particle_field_density"])
+                + rng.gauss(0.0, jitter * 0.03),
+                0.1,
+            ),
+            0.9,
+        )
         backscatter_range = max(lidar_config.range_min_m + 0.25, range_m * backscatter_fraction)
         backscatter_point = self._lidar_offset_point_along_ray(
             point_xyz=point_xyz,
@@ -3360,7 +3498,14 @@ class NativePhysicsBackend(SensorBackend):
         signal_power_linear = pow(
             10.0,
             float(primary_metadata.get("signal_power_dbw", -120.0)) / 10.0,
-        ) * min(max(environment_strength * 0.6, 0.02), 0.8)
+        ) * min(
+            max(
+                environment_strength
+                * (0.22 + 0.35 * float(precipitation_profile["particle_reflectivity"])),
+                0.02,
+            ),
+            0.8,
+        )
         signal_photons = signal_power_linear * max(float(lidar_config.physics_model.signal_photon_scale), 0.0)
         snr = signal_photons / max(ambient_photons, 1e-9)
         snr_db = 10.0 * log10(max(snr, 1e-9))
@@ -3371,7 +3516,13 @@ class NativePhysicsBackend(SensorBackend):
         detected = bool(lidar_config.physics_model.return_all_hits) or snr_db >= min_backscatter_snr_db
         if not detected:
             return []
-        reflectivity = min(float(primary_metadata.get("reflectivity", 0.0)) * environment_strength, 1.0)
+        reflectivity = min(
+            max(
+                float(precipitation_profile["particle_reflectivity"]) * environment_strength,
+                0.0,
+            ),
+            1.0,
+        )
         intensity_value = self._lidar_intensity_value(
             intensity_config=lidar_config.intensity,
             signal_power_linear=signal_power_linear,
@@ -3403,6 +3554,15 @@ class NativePhysicsBackend(SensorBackend):
                 "weather_extinction_factor": self._lidar_weather_extinction_factor(
                     lidar_config=lidar_config,
                     range_m=backscatter_range,
+                ),
+                "precipitation_type": str(precipitation_profile["precipitation_type"]),
+                "particle_field_density": float(precipitation_profile["particle_field_density"]),
+                "particle_diameter_mm": float(precipitation_profile["particle_diameter_mm"]),
+                "particle_terminal_velocity_mps": float(precipitation_profile["terminal_velocity_mps"]),
+                "particle_reflectivity": float(precipitation_profile["particle_reflectivity"]),
+                "particle_backscatter_strength": float(precipitation_profile["particle_backscatter_strength"]),
+                "precipitation_extinction_alpha": float(
+                    precipitation_profile["precipitation_extinction_alpha"]
                 ),
                 "ground_truth_detection_type": "NOISE",
             }
@@ -3646,10 +3806,22 @@ class NativePhysicsBackend(SensorBackend):
         metrics["lidar_channel_profile_sidecar_used"] = 1.0 if any(
             "SIDECAR" in source for source in channel_profile_sources
         ) else 0.0
+        precipitation_profile = self._lidar_precipitation_profile(
+            environment_model=lidar_config.environment_model,
+        )
         metrics["lidar_weather_model_applied"] = 1.0 if (
             float(lidar_config.environment_model.fog_density) > 0.0
-            or float(lidar_config.environment_model.precipitation_rate) > 0.0
+            or float(precipitation_profile["precipitation_rate"]) > 0.0
         ) else 0.0
+        metrics["lidar_precipitation_model_applied"] = 1.0 if (
+            float(precipitation_profile["precipitation_rate"]) > 0.0
+        ) else 0.0
+        metrics["lidar_precipitation_particle_density"] = float(
+            precipitation_profile["particle_field_density"]
+        )
+        metrics["lidar_precipitation_extinction_alpha"] = float(
+            precipitation_profile["precipitation_extinction_alpha"]
+        )
         metrics["lidar_false_alarm_probability"] = float(
             lidar_config.noise_performance.probability_false_alarm
         )

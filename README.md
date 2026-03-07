@@ -224,6 +224,13 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `lidar_environment_model.backscatter_scale`
     - `lidar_environment_model.disable_backscatter`
     - `lidar_environment_model.precipitation_rate`
+    - `lidar_environment_model.precipitation_type=RAIN|SNOW|HAIL`
+    - `lidar_environment_model.particle_density_scale`
+    - `lidar_environment_model.particle_diameter_mm`
+    - `lidar_environment_model.terminal_velocity_mps`
+    - `lidar_environment_model.particle_reflectivity`
+    - `lidar_environment_model.backscatter_jitter`
+    - `lidar_environment_model.field_seed`
     - `lidar_noise_performance.probability_false_alarm`
     - `lidar_noise_performance.target_detectability.probability_detection`
     - `lidar_noise_performance.target_detectability.target.{range,reflectivity}`
@@ -250,6 +257,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - geometry metadata: `range_m`, `azimuth_deg`, `elevation_deg`, `channel_id`, `scan_path_index`
     - signal metadata: `intensity`, `intensity_units`, `reflectivity`, `ground_truth_reflectivity`, `laser_cross_section`, `signal_power_dbw`, `ambient_power_dbw`, `signal_photons`, `ambient_photons`, `snr`, `snr_db`, `return_id`
     - multi-return/weather metadata: `path_length_offset_m`, `ground_truth_hit_index`, `ground_truth_last_bounce_index`, `weather_extinction_factor`, `ground_truth_detection_type`
+    - precipitation particle metadata: `precipitation_type`, `particle_field_density`, `particle_diameter_mm`, `particle_terminal_velocity_mps`, `particle_reflectivity`, `particle_backscatter_strength`, `precipitation_extinction_alpha`
     - multipath metadata: `multipath_surface`, `multipath_path_length_m`, `multipath_base_range_m`, `multipath_surface_reflectivity`, `multipath_model_mode`, `multipath_reflection_point`
     - channel profile metadata: `channel_profile_pattern`, `channel_profile_file_uri`, `channel_profile_weight`, `channel_profile_scale`, `channel_profile_offset_az_deg`, `channel_profile_offset_el_deg`, `channel_profile_half_angle_deg`
     - channel profile loading metadata: `channel_profile_source`, `channel_profile_resolved_path`
@@ -266,7 +274,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `lidar_extrinsics_auto_use_position=none|xy|xyz`
     - `lidar_extrinsics_auto_use_orientation=true|false`
     - `lidar_extrinsics_auto_offsets`
-  - emits `lidar_trajectory_sweep.json` with `preview_points_xyz` and structured `preview_points` metadata (`range_m`, `azimuth_deg`, `elevation_deg`, `channel_id`, `scan_path_index`, `intensity`, `snr_db`, `return_id`, `ground_truth_hit_index`, `weather_extinction_factor`, `channel_loss_db`).
+  - emits `lidar_trajectory_sweep.json` with `preview_points_xyz` and structured `preview_points` metadata (`range_m`, `azimuth_deg`, `elevation_deg`, `channel_id`, `scan_path_index`, `intensity`, `snr_db`, `return_id`, `ground_truth_hit_index`, `weather_extinction_factor`, `precipitation_type`, `particle_field_density`, `channel_loss_db`).
 - Radar target preview:
   - enable `radar_postprocess_enabled=true`
   - core controls: `radar_max_targets`, `radar_range_min_m`, `radar_range_max_m`
