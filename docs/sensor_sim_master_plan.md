@@ -571,10 +571,14 @@ Current status:
     - `REFLECTIVITY`, `REFLECTIVITY_SCALED`, `SNR`, `SNR_SCALED`, `POWER`, `LASER_CROSS_SECTION`, `GROUND_TRUTH_REFLECTIVITY`
     - `signal_photons`, `ambient_photons`, `snr`, `snr_db`, `return_id` preview fields
     - SNR-threshold based detection gating with `return_all_hits` override
+  - synthetic multi-return surface:
+    - `SINGLE`, `DUAL`, `MULTI` return modes
+    - `max_returns`, `range_separation_m`, `signal_decay`, `minimum_secondary_snr_db`
+    - per-return `ground_truth_hit_index` and `ground_truth_last_bounce_index` preview metadata
 - next missing items:
   - per-channel divergence/loss calibration
-  - multi-return generation beyond single-return `return_id=0`
   - weather attenuation / backscatter / false detections
+  - geometry-aware multipath and non-synthetic return selection
 
 ### Phase 3: Radar Core Feature Expansion
 

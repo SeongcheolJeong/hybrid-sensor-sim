@@ -393,6 +393,24 @@ class LidarPhysicsModelConfig:
 
 
 @dataclass(frozen=True)
+class LidarReturnModelConfig:
+    mode: str = "SINGLE"
+    max_returns: int = 1
+    range_separation_m: float = 0.35
+    signal_decay: float = 0.55
+    minimum_secondary_snr_db: float = -8.0
+
+    def to_dict(self) -> dict[str, float | int | str]:
+        return {
+            "mode": self.mode,
+            "max_returns": self.max_returns,
+            "range_separation_m": self.range_separation_m,
+            "signal_decay": self.signal_decay,
+            "minimum_secondary_snr_db": self.minimum_secondary_snr_db,
+        }
+
+
+@dataclass(frozen=True)
 class CameraRollingShutterConfig:
     enabled: bool = False
     col_delay_ns: float = 0.0
@@ -507,6 +525,7 @@ class LidarSensorConfig:
     range_max_m: float = 200.0
     intensity: LidarIntensityConfig = field(default_factory=LidarIntensityConfig)
     physics_model: LidarPhysicsModelConfig = field(default_factory=LidarPhysicsModelConfig)
+    return_model: LidarReturnModelConfig = field(default_factory=LidarReturnModelConfig)
     extrinsics: SensorExtrinsicsConfig = field(default_factory=SensorExtrinsicsConfig)
     behaviors: list[SensorBehaviorConfig] = field(default_factory=list)
 
@@ -545,6 +564,7 @@ class LidarSensorConfig:
             },
             "intensity": self.intensity.to_dict(),
             "physics_model": self.physics_model.to_dict(),
+            "return_model": self.return_model.to_dict(),
             "extrinsics": self.extrinsics.to_dict(),
             "behaviors": [behavior.to_dict() for behavior in self.behaviors],
         }
@@ -860,6 +880,41 @@ def _parse_lidar_physics_model(options: Mapping[str, Any]) -> LidarPhysicsModelC
     )
 
 
+def _parse_lidar_return_model(options: Mapping[str, Any]) -> LidarReturnModelConfig:
+    raw = _as_dict(options.get("lidar_return_model"))
+    max_returns = max(
+        1,
+        _as_int(raw.get("max_returns", options.get("lidar_max_returns")), 1),
+    )
+    mode = _as_str(raw.get("mode", options.get("lidar_return_mode")), "")
+    if not mode:
+        if max_returns <= 1:
+            mode = "SINGLE"
+        elif max_returns == 2:
+            mode = "DUAL"
+        else:
+            mode = "MULTI"
+    return LidarReturnModelConfig(
+        mode=mode.upper(),
+        max_returns=max_returns,
+        range_separation_m=_as_float(
+            raw.get("range_separation_m", options.get("lidar_return_range_separation_m")),
+            0.35,
+        ),
+        signal_decay=_as_float(
+            raw.get("signal_decay", options.get("lidar_return_signal_decay")),
+            0.55,
+        ),
+        minimum_secondary_snr_db=_as_float(
+            raw.get(
+                "minimum_secondary_snr_db",
+                options.get("lidar_minimum_secondary_snr_db"),
+            ),
+            -8.0,
+        ),
+    )
+
+
 def _parse_behaviors(options: Mapping[str, Any], sensor_name: str) -> list[SensorBehaviorConfig]:
     nested = _as_dict(options.get("sensor_behaviors")).get(sensor_name)
     raw_behaviors = options.get(f"{sensor_name}_behaviors", nested)
@@ -1030,6 +1085,7 @@ def build_sensor_sim_config(
             range_max_m=_as_float(data.get("lidar_range_max_m"), 200.0),
             intensity=_parse_lidar_intensity(data),
             physics_model=_parse_lidar_physics_model(data),
+            return_model=_parse_lidar_return_model(data),
             extrinsics=_parse_extrinsics(_as_dict(data.get("lidar_extrinsics"))),
             behaviors=_parse_behaviors(data, "lidar"),
         ),

@@ -31,6 +31,8 @@ class SensorConfigTests(unittest.TestCase):
         self.assertEqual(config.lidar.source_angles_deg, [])
         self.assertEqual(config.lidar.intensity.units, "REFLECTIVITY")
         self.assertAlmostEqual(config.lidar.physics_model.reflectivity_coefficient, 1.0)
+        self.assertEqual(config.lidar.return_model.mode, "SINGLE")
+        self.assertEqual(config.lidar.return_model.max_returns, 1)
         self.assertEqual(config.radar.clutter_model, "basic")
         self.assertEqual(config.radar.range_min_m, 0.5)
 
@@ -161,6 +163,13 @@ class SensorConfigTests(unittest.TestCase):
                     "minimum_detection_snr_db": 6.0,
                     "return_all_hits": True,
                 },
+                "lidar_return_model": {
+                    "mode": "dual",
+                    "max_returns": 2,
+                    "range_separation_m": 0.8,
+                    "signal_decay": 0.45,
+                    "minimum_secondary_snr_db": -4.0,
+                },
                 "lidar_behaviors": [{"continuous_motion": {"tx": 0.2, "rz": 0.1}}],
                 "radar_clutter": "none",
                 "radar_range_min_m": "1.5",
@@ -246,6 +255,11 @@ class SensorConfigTests(unittest.TestCase):
         self.assertAlmostEqual(config.lidar.physics_model.ambient_photon_scale, 500.0)
         self.assertAlmostEqual(config.lidar.physics_model.minimum_detection_snr_db, 6.0)
         self.assertTrue(config.lidar.physics_model.return_all_hits)
+        self.assertEqual(config.lidar.return_model.mode, "DUAL")
+        self.assertEqual(config.lidar.return_model.max_returns, 2)
+        self.assertAlmostEqual(config.lidar.return_model.range_separation_m, 0.8)
+        self.assertAlmostEqual(config.lidar.return_model.signal_decay, 0.45)
+        self.assertAlmostEqual(config.lidar.return_model.minimum_secondary_snr_db, -4.0)
         self.assertEqual(config.radar.sensor_id, "radar_bumper")
         self.assertEqual(config.radar.clutter_model, "none")
         self.assertEqual(config.radar.false_target_count, 0)
@@ -290,6 +304,11 @@ class SensorConfigTests(unittest.TestCase):
                 "lidar_physics_model": {
                     "reflectivity_coefficient": 0.6,
                     "minimum_detection_snr_db": -12.0,
+                },
+                "lidar_return_model": {
+                    "mode": "multi",
+                    "max_returns": 3,
+                    "range_separation_m": 0.6,
                 },
                 "lidar_behaviors": [{"continuous_motion": {"tx": 0.1}}],
                 "radar_clutter": "none",
@@ -340,6 +359,8 @@ class SensorConfigTests(unittest.TestCase):
             contract["sensor_setup"]["lidar"]["physics_model"]["reflectivity_coefficient"],
             0.6,
         )
+        self.assertEqual(contract["sensor_setup"]["lidar"]["return_model"]["mode"], "MULTI")
+        self.assertEqual(contract["sensor_setup"]["lidar"]["return_model"]["max_returns"], 3)
         self.assertEqual(
             contract["sensor_setup"]["radar"]["behaviors"][0]["point_at"]["id"],
             "vehicle_9",
