@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from hybrid_sensor_sim.config import SensorSimConfig, build_sensor_sim_config
+
 
 def _read_json(path: Path) -> dict[str, Any] | None:
     if not path.exists():
@@ -74,7 +76,7 @@ def _frame_source(
 
 def _build_renderer_sensor_mounts(
     *,
-    options: dict[str, Any],
+    config: SensorSimConfig,
     camera_extrinsics: dict[str, Any] | None,
     camera_extrinsics_source: str,
     lidar_extrinsics: dict[str, Any] | None,
@@ -85,26 +87,25 @@ def _build_renderer_sensor_mounts(
     lidar_available: bool,
     radar_available: bool,
 ) -> list[dict[str, Any]]:
-    ego_actor_id = str(options.get("renderer_ego_actor_id", "ego"))
     mounts: list[dict[str, Any]] = []
 
     mounts.append(
         {
-            "sensor_id": str(options.get("renderer_camera_sensor_id", "camera_front")),
+            "sensor_id": config.camera.sensor_id,
             "sensor_type": "camera",
-            "attach_to_actor_id": ego_actor_id,
+            "attach_to_actor_id": config.camera.attach_to_actor_id,
             "enabled": camera_available,
             "extrinsics_source": camera_extrinsics_source,
             "extrinsics": camera_extrinsics,
-            "intrinsics": _dict_or_none(options.get("camera_intrinsics")) or {},
-            "distortion_coeffs": _dict_or_none(options.get("camera_distortion_coeffs")) or {},
+            "intrinsics": config.camera.intrinsics.to_dict(),
+            "distortion_coeffs": config.camera.distortion_coeffs.to_dict(),
         }
     )
     mounts.append(
         {
-            "sensor_id": str(options.get("renderer_lidar_sensor_id", "lidar_top")),
+            "sensor_id": config.lidar.sensor_id,
             "sensor_type": "lidar",
-            "attach_to_actor_id": ego_actor_id,
+            "attach_to_actor_id": config.lidar.attach_to_actor_id,
             "enabled": lidar_available,
             "extrinsics_source": lidar_extrinsics_source,
             "extrinsics": lidar_extrinsics,
@@ -112,9 +113,9 @@ def _build_renderer_sensor_mounts(
     )
     mounts.append(
         {
-            "sensor_id": str(options.get("renderer_radar_sensor_id", "radar_front")),
+            "sensor_id": config.radar.sensor_id,
             "sensor_type": "radar",
-            "attach_to_actor_id": ego_actor_id,
+            "attach_to_actor_id": config.radar.attach_to_actor_id,
             "enabled": radar_available,
             "extrinsics_source": radar_extrinsics_source,
             "extrinsics": radar_extrinsics,
@@ -128,7 +129,8 @@ def build_renderer_playback_contract(
     options: dict[str, Any],
     artifacts: dict[str, Path],
 ) -> dict[str, Any] | None:
-    if not bool(options.get("renderer_bridge_enabled", False)):
+    config = build_sensor_sim_config(options=options)
+    if not config.renderer.bridge_enabled:
         return None
 
     camera_sweep = artifacts.get("camera_projection_trajectory_sweep")
@@ -150,7 +152,10 @@ def build_renderer_playback_contract(
     camera_preview_payload = _read_json(camera_preview) if camera_preview is not None else None
     radar_preview_payload = _read_json(radar_preview) if radar_preview is not None else None
 
-    camera_extrinsics_option = _dict_or_none(options.get("camera_extrinsics"))
+    camera_extrinsics_option_raw = _dict_or_none(options.get("camera_extrinsics"))
+    camera_extrinsics_option = (
+        config.camera.extrinsics.to_dict() if camera_extrinsics_option_raw is not None else None
+    )
     camera_extrinsics_sweep = _frame_first_dict(camera_sweep_payload, "camera_extrinsics")
     camera_extrinsics_preview = (
         camera_preview_payload.get("camera_extrinsics")
@@ -167,22 +172,28 @@ def build_renderer_playback_contract(
         camera_extrinsics_source = str(
             camera_preview_payload.get("camera_extrinsics_source", "camera_preview")
         )
-    elif camera_extrinsics_option is not None:
+    elif camera_extrinsics_option:
         camera_extrinsics = camera_extrinsics_option
         camera_extrinsics_source = "options"
 
-    lidar_extrinsics_option = _dict_or_none(options.get("lidar_extrinsics"))
+    lidar_extrinsics_option_raw = _dict_or_none(options.get("lidar_extrinsics"))
+    lidar_extrinsics_option = (
+        config.lidar.extrinsics.to_dict() if lidar_extrinsics_option_raw is not None else None
+    )
     lidar_extrinsics_sweep = _frame_first_dict(lidar_sweep_payload, "lidar_extrinsics")
     lidar_extrinsics: dict[str, Any] | None = None
     lidar_extrinsics_source = "none"
     if isinstance(lidar_extrinsics_sweep, dict):
         lidar_extrinsics = lidar_extrinsics_sweep
         lidar_extrinsics_source = "lidar_sweep_frame0"
-    elif lidar_extrinsics_option is not None:
+    elif lidar_extrinsics_option:
         lidar_extrinsics = lidar_extrinsics_option
         lidar_extrinsics_source = "options"
 
-    radar_extrinsics_option = _dict_or_none(options.get("radar_extrinsics"))
+    radar_extrinsics_option_raw = _dict_or_none(options.get("radar_extrinsics"))
+    radar_extrinsics_option = (
+        config.radar.extrinsics.to_dict() if radar_extrinsics_option_raw is not None else None
+    )
     radar_extrinsics_sweep = _frame_first_dict(radar_sweep_payload, "radar_extrinsics")
     radar_extrinsics_preview = (
         radar_preview_payload.get("radar_extrinsics")
@@ -197,7 +208,7 @@ def build_renderer_playback_contract(
     elif isinstance(radar_extrinsics_preview, dict):
         radar_extrinsics = radar_extrinsics_preview
         radar_extrinsics_source = "radar_preview"
-    elif radar_extrinsics_option is not None:
+    elif radar_extrinsics_option:
         radar_extrinsics = radar_extrinsics_option
         radar_extrinsics_source = "options"
 
@@ -250,7 +261,7 @@ def build_renderer_playback_contract(
     lidar_available = (lidar_sweep is not None) or (lidar_preview is not None)
     radar_available = (radar_sweep is not None) or (radar_preview is not None)
     renderer_sensor_mounts = _build_renderer_sensor_mounts(
-        options=options,
+        config=config,
         camera_extrinsics=camera_extrinsics,
         camera_extrinsics_source=camera_extrinsics_source,
         lidar_extrinsics=lidar_extrinsics,
@@ -264,12 +275,13 @@ def build_renderer_playback_contract(
 
     return {
         "schema_version": "1.0",
-        "renderer_backend": str(options.get("renderer_backend", "none")),
+        "sensor_config_schema_version": config.schema_version,
+        "renderer_backend": config.renderer.backend,
         "renderer_scene": {
-            "map": str(options.get("renderer_map", "")),
-            "weather": str(options.get("renderer_weather", "default")),
-            "scene_seed": int(options.get("renderer_scene_seed", 0)),
-            "ego_actor_id": str(options.get("renderer_ego_actor_id", "ego")),
+            "map": config.renderer.map_name,
+            "weather": config.renderer.weather,
+            "scene_seed": config.renderer.scene_seed,
+            "ego_actor_id": config.renderer.ego_actor_id,
         },
         "input_artifacts": {
             "point_cloud_primary": str(artifacts["point_cloud_primary"])
@@ -298,32 +310,31 @@ def build_renderer_playback_contract(
         },
         "sensor_setup": {
             "camera": {
-                "geometry_model": str(options.get("camera_geometry", "pinhole")),
-                "distortion_model": str(options.get("camera_distortion", "brown-conrady")),
-                "intrinsics": _dict_or_none(options.get("camera_intrinsics")) or {},
-                "distortion_coeffs": _dict_or_none(options.get("camera_distortion_coeffs")) or {},
+                "geometry_model": config.camera.geometry_model,
+                "distortion_model": config.camera.distortion_model,
+                "intrinsics": config.camera.intrinsics.to_dict(),
+                "distortion_coeffs": config.camera.distortion_coeffs.to_dict(),
                 "extrinsics": camera_extrinsics,
                 "extrinsics_source": camera_extrinsics_source,
+                "behaviors": [behavior.to_dict() for behavior in config.camera.behaviors],
             },
             "lidar": {
                 "extrinsics": lidar_extrinsics,
                 "extrinsics_source": lidar_extrinsics_source,
-                "trajectory_sweep_enabled": bool(
-                    options.get("lidar_trajectory_sweep_enabled", False)
-                ),
-                "motion_compensation_enabled": bool(
-                    options.get("lidar_motion_compensation_enabled", True)
-                ),
-                "scan_duration_s": float(options.get("lidar_scan_duration_s", 0.1)),
+                "trajectory_sweep_enabled": config.lidar.trajectory_sweep_enabled,
+                "motion_compensation_enabled": config.lidar.motion_compensation_enabled,
+                "scan_duration_s": config.lidar.scan_duration_s,
+                "scan_type": config.lidar.scan_type,
+                "behaviors": [behavior.to_dict() for behavior in config.lidar.behaviors],
             },
             "radar": {
                 "extrinsics": radar_extrinsics,
                 "extrinsics_source": radar_extrinsics_source,
-                "trajectory_sweep_enabled": bool(
-                    options.get("radar_trajectory_sweep_enabled", False)
-                ),
-                "range_min_m": float(options.get("radar_range_min_m", 0.5)),
-                "range_max_m": float(options.get("radar_range_max_m", 200.0)),
+                "trajectory_sweep_enabled": config.radar.trajectory_sweep_enabled,
+                "range_min_m": config.radar.range_min_m,
+                "range_max_m": config.radar.range_max_m,
+                "clutter_model": config.radar.clutter_model,
+                "behaviors": [behavior.to_dict() for behavior in config.radar.behaviors],
             },
         },
         "renderer_sensor_mounts": renderer_sensor_mounts,

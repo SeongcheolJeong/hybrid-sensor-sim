@@ -6,6 +6,7 @@ from math import atan2, log10, pi, sqrt
 from pathlib import Path
 
 from hybrid_sensor_sim.backends.base import SensorBackend
+from hybrid_sensor_sim.config import SensorSimConfig, build_sensor_sim_config
 from hybrid_sensor_sim.io.pointcloud_xyz import read_xyz_points, write_xyz_points
 from hybrid_sensor_sim.io.trajectory_txt import TrajectoryPose, read_trajectory_poses
 from hybrid_sensor_sim.physics.camera import (
@@ -27,17 +28,22 @@ class NativePhysicsBackend(SensorBackend):
     def simulate(self, request: SensorSimRequest) -> SensorSimResult:
         native_output = request.output_dir / "native_only"
         native_output.mkdir(parents=True, exist_ok=True)
-        intrinsics = self._camera_intrinsics_from_options(request)
-        distortion = self._camera_distortion_from_options(request)
-        extrinsics = self._camera_extrinsics_from_options(request)
+        config = self._sensor_config_from_request(request)
+        intrinsics = config.camera.intrinsics.to_camera_intrinsics()
+        distortion = config.camera.distortion_coeffs.to_brown_conrady()
+        extrinsics = config.camera.extrinsics.to_camera_extrinsics()
+        config_path = native_output / "sensor_sim_config.json"
+        config_path.write_text(json.dumps(config.to_manifest(), indent=2), encoding="utf-8")
         payload = {
             "mode": "native_only",
             "scenario": str(request.scenario_path),
             "sensor_profile": request.sensor_profile,
+            "config_schema_version": config.schema_version,
+            "sensor_setup": config.to_manifest(),
             "physics": {
-                "camera_distortion": request.options.get("camera_distortion", "brown-conrady"),
-                "lidar_noise": request.options.get("lidar_noise", "gaussian"),
-                "radar_clutter": request.options.get("radar_clutter", "basic"),
+                "camera_distortion": config.camera.distortion_model,
+                "lidar_noise": config.lidar.noise_model,
+                "radar_clutter": config.radar.clutter_model,
             },
             "camera_intrinsics": {
                 "fx": intrinsics.fx,
@@ -69,7 +75,10 @@ class NativePhysicsBackend(SensorBackend):
         return SensorSimResult(
             backend=self.name(),
             success=True,
-            artifacts={"native_physics": out_path},
+            artifacts={
+                "native_physics": out_path,
+                "sensor_sim_config": config_path,
+            },
             message="Native simulation completed.",
         )
 
@@ -80,12 +89,16 @@ class NativePhysicsBackend(SensorBackend):
     ) -> SensorSimResult:
         enhanced_output = request.output_dir / "hybrid_enhanced"
         enhanced_output.mkdir(parents=True, exist_ok=True)
-        intrinsics = self._camera_intrinsics_from_options(request)
-        distortion = self._camera_distortion_from_options(request)
-        extrinsics = self._camera_extrinsics_from_options(request)
+        config = self._sensor_config_from_request(request)
+        intrinsics = config.camera.intrinsics.to_camera_intrinsics()
+        distortion = config.camera.distortion_coeffs.to_brown_conrady()
+        extrinsics = config.camera.extrinsics.to_camera_extrinsics()
+        config_path = enhanced_output / "sensor_sim_config.json"
+        config_path.write_text(json.dumps(config.to_manifest(), indent=2), encoding="utf-8")
 
         artifacts = {**helios_result.artifacts}
         metrics = dict(helios_result.metrics)
+        artifacts["sensor_sim_config"] = config_path
         camera_projection_artifact = self._project_xyz_if_available(
             request=request,
             artifacts=artifacts,
@@ -166,9 +179,11 @@ class NativePhysicsBackend(SensorBackend):
             "mode": "hybrid_enhanced",
             "source_backend": helios_result.backend,
             "source_artifacts": {k: str(v) for k, v in artifacts.items()},
+            "config_schema_version": config.schema_version,
+            "sensor_setup": config.to_manifest(),
             "enhancements": {
-                "camera_geometry": request.options.get("camera_geometry", "pinhole"),
-                "distortion_model": request.options.get("camera_distortion", "brown-conrady"),
+                "camera_geometry": config.camera.geometry_model,
+                "distortion_model": config.camera.distortion_model,
                 "motion_compensation": request.options.get("motion_compensation", True),
                 "camera_intrinsics": {
                     "fx": intrinsics.fx,
@@ -194,18 +209,14 @@ class NativePhysicsBackend(SensorBackend):
                     "pitch_deg": extrinsics.pitch_deg,
                     "yaw_deg": extrinsics.yaw_deg,
                 },
-                "camera_projection_enabled": bool(request.options.get("camera_projection_enabled", True)),
-                "lidar_postprocess_enabled": bool(request.options.get("lidar_postprocess_enabled", True)),
-                "lidar_trajectory_sweep_enabled": bool(
-                    request.options.get("lidar_trajectory_sweep_enabled", False)
-                ),
-                "radar_postprocess_enabled": bool(request.options.get("radar_postprocess_enabled", True)),
-                "radar_trajectory_sweep_enabled": bool(
-                    request.options.get("radar_trajectory_sweep_enabled", False)
-                ),
-                "renderer_bridge_enabled": bool(request.options.get("renderer_bridge_enabled", False)),
-                "renderer_backend": str(request.options.get("renderer_backend", "none")),
-                "renderer_execute": bool(request.options.get("renderer_execute", False)),
+                "camera_projection_enabled": config.camera.projection_enabled,
+                "lidar_postprocess_enabled": config.lidar.postprocess_enabled,
+                "lidar_trajectory_sweep_enabled": config.lidar.trajectory_sweep_enabled,
+                "radar_postprocess_enabled": config.radar.postprocess_enabled,
+                "radar_trajectory_sweep_enabled": config.radar.trajectory_sweep_enabled,
+                "renderer_bridge_enabled": config.renderer.bridge_enabled,
+                "renderer_backend": config.renderer.backend,
+                "renderer_execute": config.renderer.execute,
             },
         }
         out_path = enhanced_output / "hybrid_physics.json"
@@ -232,40 +243,22 @@ class NativePhysicsBackend(SensorBackend):
             message=result_message,
         )
 
-    def _camera_intrinsics_from_options(self, request: SensorSimRequest) -> CameraIntrinsics:
-        data = request.options.get("camera_intrinsics", {})
-        return CameraIntrinsics(
-            fx=float(data.get("fx", 1200.0)),
-            fy=float(data.get("fy", 1200.0)),
-            cx=float(data.get("cx", 960.0)),
-            cy=float(data.get("cy", 540.0)),
-            width=int(data.get("width", 1920)),
-            height=int(data.get("height", 1080)),
+    def _sensor_config_from_request(self, request: SensorSimRequest) -> SensorSimConfig:
+        return build_sensor_sim_config(
+            sensor_profile=request.sensor_profile,
+            options=request.options,
         )
+
+    def _camera_intrinsics_from_options(self, request: SensorSimRequest) -> CameraIntrinsics:
+        return self._sensor_config_from_request(request).camera.intrinsics.to_camera_intrinsics()
 
     def _camera_distortion_from_options(
         self, request: SensorSimRequest
     ) -> BrownConradyDistortion:
-        data = request.options.get("camera_distortion_coeffs", {})
-        return BrownConradyDistortion(
-            k1=float(data.get("k1", 0.0)),
-            k2=float(data.get("k2", 0.0)),
-            p1=float(data.get("p1", 0.0)),
-            p2=float(data.get("p2", 0.0)),
-            k3=float(data.get("k3", 0.0)),
-        )
+        return self._sensor_config_from_request(request).camera.distortion_coeffs.to_brown_conrady()
 
     def _camera_extrinsics_from_options(self, request: SensorSimRequest) -> CameraExtrinsics:
-        data = request.options.get("camera_extrinsics", {})
-        return CameraExtrinsics(
-            tx=float(data.get("tx", 0.0)),
-            ty=float(data.get("ty", 0.0)),
-            tz=float(data.get("tz", 0.0)),
-            roll_deg=float(data.get("roll_deg", 0.0)),
-            pitch_deg=float(data.get("pitch_deg", 0.0)),
-            yaw_deg=float(data.get("yaw_deg", 0.0)),
-            enabled=bool(data.get("enabled", False)),
-        )
+        return self._sensor_config_from_request(request).camera.extrinsics.to_camera_extrinsics()
 
     def _project_xyz_if_available(
         self,
@@ -682,18 +675,7 @@ class NativePhysicsBackend(SensorBackend):
         return compensated
 
     def _lidar_extrinsics_from_options(self, request: SensorSimRequest) -> CameraExtrinsics:
-        data = request.options.get("lidar_extrinsics", {})
-        if not isinstance(data, dict):
-            return CameraExtrinsics(enabled=False)
-        return CameraExtrinsics(
-            tx=float(data.get("tx", 0.0)),
-            ty=float(data.get("ty", 0.0)),
-            tz=float(data.get("tz", 0.0)),
-            roll_deg=float(data.get("roll_deg", 0.0)),
-            pitch_deg=float(data.get("pitch_deg", 0.0)),
-            yaw_deg=float(data.get("yaw_deg", 0.0)),
-            enabled=bool(data.get("enabled", False)),
-        )
+        return self._sensor_config_from_request(request).lidar.extrinsics.to_camera_extrinsics()
 
     def _build_lidar_extrinsics_from_pose(
         self,
@@ -1052,18 +1034,7 @@ class NativePhysicsBackend(SensorBackend):
         return selected, false_added
 
     def _radar_extrinsics_from_options(self, request: SensorSimRequest) -> CameraExtrinsics:
-        data = request.options.get("radar_extrinsics", {})
-        if not isinstance(data, dict):
-            return CameraExtrinsics(enabled=False)
-        return CameraExtrinsics(
-            tx=float(data.get("tx", 0.0)),
-            ty=float(data.get("ty", 0.0)),
-            tz=float(data.get("tz", 0.0)),
-            roll_deg=float(data.get("roll_deg", 0.0)),
-            pitch_deg=float(data.get("pitch_deg", 0.0)),
-            yaw_deg=float(data.get("yaw_deg", 0.0)),
-            enabled=bool(data.get("enabled", False)),
-        )
+        return self._sensor_config_from_request(request).radar.extrinsics.to_camera_extrinsics()
 
     def _build_radar_extrinsics_from_pose(
         self,
