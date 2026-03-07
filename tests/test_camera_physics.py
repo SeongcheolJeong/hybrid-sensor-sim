@@ -2675,6 +2675,181 @@ EOF
             self.assertIn("ground_truth_actor_id", camera_preview["preview_ground_truth_samples"][0])
             self.assertIn("coverage_targets", camera_preview)
 
+    def test_camera_point_at_behavior_reorients_preview(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+10.0 0.0 0.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": True,
+                    "camera_intrinsics": {
+                        "fx": 120.0,
+                        "fy": 120.0,
+                        "cx": 320.0,
+                        "cy": 180.0,
+                        "width": 640,
+                        "height": 360,
+                    },
+                    "camera_behaviors": [{"point_at": {"id": 1}}],
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            self.assertEqual(result.metrics.get("camera_behavior_applied"), 1.0)
+            preview = json.loads(
+                result.artifacts["camera_projection_preview"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(preview["output_count"], 1)
+            self.assertTrue(preview["camera_behavior"]["applied"])
+            self.assertEqual(preview["camera_behavior"]["behavior_kind"], "point_at")
+            self.assertTrue(preview["camera_behavior"]["target_found"])
+            self.assertAlmostEqual(preview["camera_extrinsics"]["yaw_deg"], 0.0, places=5)
+            self.assertAlmostEqual(preview["camera_extrinsics"]["pitch_deg"], -90.0, places=5)
+
+    def test_lidar_and_radar_continuous_motion_behavior_updates_preview_pose(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+0.0 0.0 10.0
+1.0 0.0 10.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "lidar_postprocess_enabled": True,
+                    "lidar_noise": "none",
+                    "lidar_dropout_probability": 0.0,
+                    "lidar_extrinsics": {
+                        "enabled": True,
+                        "tx": 0.0,
+                        "ty": 0.0,
+                        "tz": 0.0,
+                        "roll_deg": 0.0,
+                        "pitch_deg": 0.0,
+                        "yaw_deg": 0.0,
+                    },
+                    "lidar_behaviors": [{"continuous_motion": {"tx": 1.0, "rz": 0.5}}],
+                    "lidar_behavior_time_s": 2.0,
+                    "radar_postprocess_enabled": True,
+                    "radar_clutter": "none",
+                    "radar_false_target_count": 0,
+                    "radar_vertical_fov_deg": 90.0,
+                    "radar_extrinsics": {
+                        "enabled": True,
+                        "tx": 0.0,
+                        "ty": 0.0,
+                        "tz": 0.0,
+                        "roll_deg": 0.0,
+                        "pitch_deg": 0.0,
+                        "yaw_deg": 0.0,
+                    },
+                    "radar_behaviors": [{"continuous_motion": {"tx": 0.5, "rz": 0.25}}],
+                    "radar_behavior_time_s": 2.0,
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            self.assertEqual(result.metrics.get("lidar_behavior_applied"), 1.0)
+            self.assertEqual(result.metrics.get("radar_behavior_applied"), 1.0)
+
+            lidar_preview = json.loads(
+                result.artifacts["lidar_noisy_preview_json"].read_text(encoding="utf-8")
+            )
+            self.assertTrue(lidar_preview["lidar_behavior"]["applied"])
+            self.assertEqual(
+                lidar_preview["lidar_behavior"]["behavior_kind"],
+                "continuous_motion",
+            )
+            self.assertAlmostEqual(lidar_preview["lidar_extrinsics"]["tx"], 2.0, places=5)
+            self.assertAlmostEqual(
+                lidar_preview["lidar_extrinsics"]["yaw_deg"],
+                0.5 * 2.0 * 180.0 / 3.141592653589793,
+                places=5,
+            )
+
+            radar_preview = json.loads(
+                result.artifacts["radar_targets_preview"].read_text(encoding="utf-8")
+            )
+            self.assertTrue(radar_preview["radar_behavior"]["applied"])
+            self.assertEqual(
+                radar_preview["radar_behavior"]["behavior_kind"],
+                "continuous_motion",
+            )
+            self.assertAlmostEqual(radar_preview["radar_extrinsics"]["tx"], 1.0, places=5)
+            self.assertAlmostEqual(
+                radar_preview["radar_extrinsics"]["yaw_deg"],
+                0.25 * 2.0 * 180.0 / 3.141592653589793,
+                places=5,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

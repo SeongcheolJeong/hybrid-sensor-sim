@@ -158,6 +158,18 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - `camera_extrinsics` is applied as `p_cam = R(roll,pitch,yaw) * (p_world - t)`:
   - `tx,ty,tz`: camera translation.
   - `roll_deg,pitch_deg,yaw_deg`: ZYX Euler rotation in degrees.
+- Sensor behavior controls:
+  - only the first behavior is applied, matching the current Applied beta behavior contract
+  - `camera_behaviors`, `lidar_behaviors`, `radar_behaviors`, or nested `sensor_behaviors.{camera,lidar,radar}`
+  - `point_at.id`
+  - `point_at.target_center_offset.{x,y,z}`
+  - `continuous_motion.{tx,ty,tz,rx,ry,rz}`
+  - preview-time evaluation controls:
+    - `camera_behavior_time_s`
+    - `lidar_behavior_time_s`
+    - `radar_behavior_time_s`
+    - fallback `sensor_behavior_time_s`
+  - explicit target positions can be supplied with `sensor_behavior_actor_positions` / `actor_positions`
 - Optional auto extrinsics from HELIOS trajectory:
   - enable `camera_extrinsics_auto_from_trajectory=true`
   - choose pose with `camera_extrinsics_auto_pose=first|middle|last`
@@ -171,6 +183,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - emits `camera_projection_trajectory_sweep.json` with multi-pose frame previews.
   - preview artifacts record `geometry_model` per preview/frame.
   - all camera preview modes now emit `preview_ground_truth_samples` plus `ground_truth_fields` and aggregated `coverage_targets`.
+  - applied behavior runtime is emitted as `camera_behavior`.
   - depth mode emits `preview_depth_samples`.
   - semantic mode emits `preview_semantic_samples` and `preview_semantic_legend`.
   - visible mode emits `preview_image_signal_samples` with exposure, white-balance, vignetting, flare, spot blur radius, photon, and digital RGB preview values.
@@ -272,6 +285,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - selection metadata: `merged_return_count`, `range_discrimination_m`
     - emitter metadata: `channel_loss_db`, `optical_loss_db`, `peak_power_w`, `beam_divergence_az_rad`, `beam_divergence_el_rad`, `beam_footprint_area_m2`, `beam_azimuth_offset_deg`, `beam_elevation_offset_deg`
   - LiDAR preview and sweep payloads also expose `ground_truth_fields`, `coverage_metric_name`, and aggregated `coverage_targets`.
+  - LiDAR preview/sweep now emit resolved `lidar_extrinsics` and `lidar_behavior`.
 - LiDAR trajectory sweep preview:
   - enable `lidar_trajectory_sweep_enabled=true`
   - set `lidar_trajectory_sweep_frames` and `lidar_preview_points_per_frame`
@@ -349,6 +363,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
       - `raytracing_subdivision_level`
       - `raytracing_mode`
   - Radar preview and sweep payloads also expose `ground_truth_fields`, `coverage_metric_name`, and aggregated `coverage_targets`.
+  - Radar preview/sweep now emit resolved `radar_behavior`.
 - Radar trajectory sweep preview:
   - enable `radar_trajectory_sweep_enabled=true`
   - set `radar_trajectory_sweep_frames` and `radar_preview_targets_per_frame`

@@ -322,9 +322,9 @@ Primary code references:
 | Block | Current Level | Target Level | Priority |
 | --- | --- | --- | --- |
 | Sensor config schema | typed camera/lidar/radar/renderer/behavior config layer implemented; validation still thin | typed sensor model schema with validation | P0 |
-| Sensor behavior engine | missing | `point_at`, `continuous_motion`, transform updates | P1 |
+| Sensor behavior engine | first behavior now applied for camera/lidar/radar; `point_at` and `continuous_motion` update resolved extrinsics in preview/sweep paths | `point_at`, `continuous_motion`, transform updates | P1 |
 | Camera geometry families | `pinhole` + `rectilinear` + `equidistant` + `orthographic` implemented in local physics path | rectilinear + equidistant + orthographic + projection field adapter | P1 |
-| Camera temporal model | rolling shutter timing + trajectory pose-distortion implemented; behavior-driven motion still missing | rolling shutter + exposure sampling | P1 |
+| Camera temporal model | rolling shutter timing + trajectory pose-distortion implemented; behavior-driven pose updates now connected | rolling shutter + exposure sampling | P1 |
 | Camera image chain | depth + semantic + visible image-chain preview implemented; vignetting/lens flare/spot blur added, richer optical artifacts still missing | noise, gain, white balance, depth/semantic variants | P2 |
 | Lidar scan generation | source angles + scan field + scan path + multi-scan path metadata/filtering implemented in local preview path | source angles + scan path + scan type engine | P1 |
 | Lidar signal/intensity | reflectivity/SNR/intensity units/returns/weather/emitter/channel profile implemented in local preview path | reflectivity, SNR/intensity units, returns, weather | P1 |

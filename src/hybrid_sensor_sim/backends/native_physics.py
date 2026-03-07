@@ -363,6 +363,10 @@ class NativePhysicsBackend(SensorBackend):
             points_xyz=points_xyz,
             request=request,
         )
+        behavior_actor_positions = self._sensor_behavior_actor_position_map(
+            request=request,
+            points_xyz=transformed_points,
+        )
         trajectory_path = artifacts.get("trajectory_primary")
         rolling_poses = self._read_camera_rolling_shutter_poses(
             request=request,
@@ -377,6 +381,15 @@ class NativePhysicsBackend(SensorBackend):
             artifacts=artifacts,
             base_extrinsics=extrinsics,
             reference_point=reference_point,
+        )
+        effective_extrinsics, behavior_runtime = self._apply_sensor_behaviors_to_extrinsics(
+            request=request,
+            sensor_name="camera",
+            base_extrinsics=effective_extrinsics,
+            behaviors=list(camera_config.behaviors),
+            actor_positions=behavior_actor_positions,
+            points_xyz=transformed_points,
+            eval_time_s=float(request.options.get("camera_behavior_time_s", request.options.get("sensor_behavior_time_s", 0.0))),
         )
         projected, rolling_runtime = self._project_camera_points_with_optional_rolling_shutter(
             request=request,
@@ -428,6 +441,7 @@ class NativePhysicsBackend(SensorBackend):
             if camera_config.image_chain.enabled and camera_config.sensor_type.upper() == "VISIBLE"
             else 0.0
         )
+        metrics["camera_behavior_applied"] = 1.0 if bool(behavior_runtime.get("applied")) else 0.0
         preview_count = int(request.options.get("camera_projection_preview_count", 20))
         preview_payload = self._camera_preview_payload(
             request=request,
@@ -460,6 +474,7 @@ class NativePhysicsBackend(SensorBackend):
             },
             "camera_extrinsics_source": extrinsics_meta.get("source", "manual"),
             "camera_extrinsics_trajectory_pose": extrinsics_meta.get("trajectory_pose"),
+            "camera_behavior": behavior_runtime,
             "rolling_shutter": self._camera_rolling_shutter_payload(
                 camera_config=camera_config,
                 intrinsics=intrinsics,
@@ -529,6 +544,11 @@ class NativePhysicsBackend(SensorBackend):
         frames: list[dict[str, object]] = []
         total_output_count = 0
         rolling_applied = False
+        behavior_actor_positions = self._sensor_behavior_actor_position_map(
+            request=request,
+            points_xyz=transformed_points,
+        )
+        behavior_time_origin_s = float(selected_poses[0][1].time_s) if selected_poses else 0.0
         camera_coverage_threshold = max(
             self._sensor_config_from_request(request).coverage.camera_min_pixels_on_target,
             1,
@@ -544,6 +564,15 @@ class NativePhysicsBackend(SensorBackend):
                 pose=pose,
                 reference_point=reference_point,
                 force_enable=True,
+            )
+            effective, behavior_runtime = self._apply_sensor_behaviors_to_extrinsics(
+                request=request,
+                sensor_name="camera",
+                base_extrinsics=effective,
+                behaviors=list(camera_config.behaviors),
+                actor_positions=behavior_actor_positions,
+                points_xyz=transformed_points,
+                eval_time_s=float(pose.time_s - behavior_time_origin_s),
             )
             projected, rolling_runtime = self._project_camera_points_with_optional_rolling_shutter(
                 request=request,
@@ -592,6 +621,7 @@ class NativePhysicsBackend(SensorBackend):
                     },
                     "sensor_type": camera_config.sensor_type,
                     "geometry_model": camera_config.geometry_model,
+                    "camera_behavior": behavior_runtime,
                     "rolling_shutter": self._camera_rolling_shutter_payload(
                         camera_config=camera_config,
                         intrinsics=intrinsics,
@@ -621,6 +651,10 @@ class NativePhysicsBackend(SensorBackend):
             if camera_config.image_chain.enabled and camera_config.sensor_type.upper() == "VISIBLE"
             else 0.0
         )
+        metrics["camera_behavior_applied"] = 1.0 if any(
+            bool(frame.get("camera_behavior", {}).get("applied"))
+            for frame in frames
+        ) else 0.0
         preview = {
             "input_point_cloud": str(point_cloud),
             "trajectory_path": str(trajectory_path),
@@ -807,6 +841,302 @@ class NativePhysicsBackend(SensorBackend):
             "GROUND_TRUTH_SEMANTIC_CLASS",
             "GROUND_TRUTH_ACTOR_ID",
         ]
+
+    def _rotation_matrix_from_extrinsics(
+        self,
+        *,
+        extrinsics: CameraExtrinsics,
+    ) -> tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]:
+        roll = extrinsics.roll_deg * pi / 180.0
+        pitch = extrinsics.pitch_deg * pi / 180.0
+        yaw = extrinsics.yaw_deg * pi / 180.0
+
+        cr = cos(roll)
+        sr = sin(roll)
+        cp = cos(pitch)
+        sp = sin(pitch)
+        cy = cos(yaw)
+        sy = sin(yaw)
+
+        return (
+            (
+                cy * cp,
+                cy * sp * sr - sy * cr,
+                cy * sp * cr + sy * sr,
+            ),
+            (
+                sy * cp,
+                sy * sp * sr + cy * cr,
+                sy * sp * cr - cy * sr,
+            ),
+            (
+                -sp,
+                cp * sr,
+                cp * cr,
+            ),
+        )
+
+    def _rotate_sensor_vector_to_world(
+        self,
+        *,
+        extrinsics: CameraExtrinsics,
+        vector_xyz: tuple[float, float, float],
+    ) -> tuple[float, float, float]:
+        rotation = self._rotation_matrix_from_extrinsics(extrinsics=extrinsics)
+        vx, vy, vz = vector_xyz
+        return (
+            rotation[0][0] * vx + rotation[1][0] * vy + rotation[2][0] * vz,
+            rotation[0][1] * vx + rotation[1][1] * vy + rotation[2][1] * vz,
+            rotation[0][2] * vx + rotation[1][2] * vy + rotation[2][2] * vz,
+        )
+
+    def _parse_position_vector(
+        self,
+        *,
+        raw: object,
+        reference_point: tuple[float, float, float] | None = None,
+    ) -> tuple[float, float, float] | None:
+        position: tuple[float, float, float] | None = None
+        if isinstance(raw, dict):
+            position = (
+                float(raw.get("x", raw.get("tx", 0.0))),
+                float(raw.get("y", raw.get("ty", 0.0))),
+                float(raw.get("z", raw.get("tz", 0.0))),
+            )
+        elif isinstance(raw, (list, tuple)) and len(raw) >= 3:
+            position = (float(raw[0]), float(raw[1]), float(raw[2]))
+        if position is None:
+            return None
+        if reference_point is None:
+            return position
+        return (
+            position[0] - reference_point[0],
+            position[1] - reference_point[1],
+            position[2] - reference_point[2],
+        )
+
+    def _sensor_behavior_actor_position_map(
+        self,
+        *,
+        request: SensorSimRequest,
+        points_xyz: list[tuple[float, float, float]],
+        reference_point: tuple[float, float, float] | None = None,
+    ) -> dict[str, tuple[float, float, float]]:
+        positions: dict[str, tuple[float, float, float]] = {}
+        for option_name in ("sensor_behavior_actor_positions", "behavior_actor_positions", "actor_positions"):
+            raw_positions = request.options.get(option_name)
+            if not isinstance(raw_positions, dict):
+                continue
+            for actor_id, value in raw_positions.items():
+                parsed = self._parse_position_vector(raw=value, reference_point=reference_point)
+                if parsed is not None:
+                    positions[str(actor_id)] = parsed
+
+        sums: dict[str, list[float]] = {}
+
+        def accumulate(actor_key: str, point_xyz: tuple[float, float, float]) -> None:
+            bucket = sums.setdefault(actor_key, [0.0, 0.0, 0.0, 0.0])
+            bucket[0] += point_xyz[0]
+            bucket[1] += point_xyz[1]
+            bucket[2] += point_xyz[2]
+            bucket[3] += 1.0
+
+        for option_name in ("camera_point_actor_ids", "lidar_point_actor_ids", "radar_point_actor_ids"):
+            raw_actor_ids = request.options.get(option_name)
+            if not isinstance(raw_actor_ids, list):
+                continue
+            for point_index, raw_actor_id in enumerate(raw_actor_ids):
+                if point_index >= len(points_xyz):
+                    break
+                actor_id = self._coerce_actor_id(raw_actor_id)
+                if actor_id is None:
+                    continue
+                accumulate(actor_id, points_xyz[point_index])
+
+        raw_semantic_labels = request.options.get("camera_semantic_point_labels")
+        if isinstance(raw_semantic_labels, list):
+            for point_index, label in enumerate(raw_semantic_labels):
+                if point_index >= len(points_xyz) or not isinstance(label, dict):
+                    continue
+                actor_id = self._coerce_actor_id(label.get("actor_id"))
+                if actor_id is None:
+                    continue
+                accumulate(actor_id, points_xyz[point_index])
+
+        for actor_id, bucket in sums.items():
+            if actor_id in positions or bucket[3] <= 0.0:
+                continue
+            positions[actor_id] = (
+                bucket[0] / bucket[3],
+                bucket[1] / bucket[3],
+                bucket[2] / bucket[3],
+            )
+        return positions
+
+    def _sensor_behavior_target_position(
+        self,
+        *,
+        actor_positions: dict[str, tuple[float, float, float]],
+        target_actor_id: str | None,
+        points_xyz: list[tuple[float, float, float]],
+    ) -> tuple[float, float, float] | None:
+        actor_id = self._coerce_actor_id(target_actor_id)
+        if actor_id is None:
+            return None
+        if actor_id in actor_positions:
+            return actor_positions[actor_id]
+        try:
+            fallback_index = int(actor_id) - 1
+        except ValueError:
+            return None
+        if 0 <= fallback_index < len(points_xyz):
+            return points_xyz[fallback_index]
+        return None
+
+    def _point_at_pitch_yaw(
+        self,
+        *,
+        direction_xyz: tuple[float, float, float],
+        roll_deg: float,
+    ) -> tuple[float, float] | None:
+        dx, dy, dz = direction_xyz
+        direction_norm = sqrt(dx * dx + dy * dy + dz * dz)
+        if direction_norm <= 1e-9:
+            return None
+        roll_rad = roll_deg * pi / 180.0
+        cr = cos(roll_rad)
+        sr = sin(roll_rad)
+        rolled_x = dx
+        rolled_y = cr * dy - sr * dz
+        rolled_z = sr * dy + cr * dz
+        yaw_deg = atan2(rolled_y, rolled_x) * 180.0 / pi
+        pitch_deg = -atan2(
+            sqrt(rolled_x * rolled_x + rolled_y * rolled_y),
+            rolled_z,
+        ) * 180.0 / pi
+        return pitch_deg, yaw_deg
+
+    def _apply_sensor_behaviors_to_extrinsics(
+        self,
+        *,
+        request: SensorSimRequest,
+        sensor_name: str,
+        base_extrinsics: CameraExtrinsics,
+        behaviors: list[Any],
+        actor_positions: dict[str, tuple[float, float, float]],
+        points_xyz: list[tuple[float, float, float]],
+        eval_time_s: float,
+    ) -> tuple[CameraExtrinsics, dict[str, object]]:
+        if not behaviors:
+            return base_extrinsics, {
+                "applied": False,
+                "behavior_kind": None,
+                "note": "no_behavior",
+                "time_s": eval_time_s,
+            }
+        behavior = behaviors[0]
+        behavior_kind = str(getattr(behavior, "kind", "")).strip().lower()
+        if behavior_kind == "continuous_motion":
+            delta_world = self._rotate_sensor_vector_to_world(
+                extrinsics=base_extrinsics,
+                vector_xyz=(
+                    float(getattr(behavior, "tx", 0.0)) * eval_time_s,
+                    float(getattr(behavior, "ty", 0.0)) * eval_time_s,
+                    float(getattr(behavior, "tz", 0.0)) * eval_time_s,
+                ),
+            )
+            adjusted = CameraExtrinsics(
+                tx=base_extrinsics.tx + delta_world[0],
+                ty=base_extrinsics.ty + delta_world[1],
+                tz=base_extrinsics.tz + delta_world[2],
+                roll_deg=base_extrinsics.roll_deg + float(getattr(behavior, "rx", 0.0)) * eval_time_s * 180.0 / pi,
+                pitch_deg=base_extrinsics.pitch_deg + float(getattr(behavior, "ry", 0.0)) * eval_time_s * 180.0 / pi,
+                yaw_deg=base_extrinsics.yaw_deg + float(getattr(behavior, "rz", 0.0)) * eval_time_s * 180.0 / pi,
+                enabled=True,
+            )
+            return adjusted, {
+                "applied": True,
+                "behavior_kind": "continuous_motion",
+                "time_s": eval_time_s,
+                "translation_delta_m": {
+                    "x": delta_world[0],
+                    "y": delta_world[1],
+                    "z": delta_world[2],
+                },
+                "rotation_delta_deg": {
+                    "roll": float(getattr(behavior, "rx", 0.0)) * eval_time_s * 180.0 / pi,
+                    "pitch": float(getattr(behavior, "ry", 0.0)) * eval_time_s * 180.0 / pi,
+                    "yaw": float(getattr(behavior, "rz", 0.0)) * eval_time_s * 180.0 / pi,
+                },
+            }
+        if behavior_kind == "point_at":
+            target_position = self._sensor_behavior_target_position(
+                actor_positions=actor_positions,
+                target_actor_id=getattr(behavior, "target_actor_id", None),
+                points_xyz=points_xyz,
+            )
+            if target_position is None:
+                return base_extrinsics, {
+                    "applied": False,
+                    "behavior_kind": "point_at",
+                    "time_s": eval_time_s,
+                    "target_actor_id": getattr(behavior, "target_actor_id", None),
+                    "target_found": False,
+                }
+            offset = getattr(behavior, "target_center_offset", None)
+            offset_x = float(getattr(offset, "x", 0.0)) if offset is not None else 0.0
+            offset_y = float(getattr(offset, "y", 0.0)) if offset is not None else 0.0
+            offset_z = float(getattr(offset, "z", 0.0)) if offset is not None else 0.0
+            target_xyz = (
+                target_position[0] + offset_x,
+                target_position[1] + offset_y,
+                target_position[2] + offset_z,
+            )
+            pitch_yaw = self._point_at_pitch_yaw(
+                direction_xyz=(
+                    target_xyz[0] - base_extrinsics.tx,
+                    target_xyz[1] - base_extrinsics.ty,
+                    target_xyz[2] - base_extrinsics.tz,
+                ),
+                roll_deg=base_extrinsics.roll_deg,
+            )
+            if pitch_yaw is None:
+                return base_extrinsics, {
+                    "applied": False,
+                    "behavior_kind": "point_at",
+                    "time_s": eval_time_s,
+                    "target_actor_id": getattr(behavior, "target_actor_id", None),
+                    "target_found": True,
+                    "degenerate_target_direction": True,
+                }
+            adjusted = CameraExtrinsics(
+                tx=base_extrinsics.tx,
+                ty=base_extrinsics.ty,
+                tz=base_extrinsics.tz,
+                roll_deg=base_extrinsics.roll_deg,
+                pitch_deg=pitch_yaw[0],
+                yaw_deg=pitch_yaw[1],
+                enabled=True,
+            )
+            return adjusted, {
+                "applied": True,
+                "behavior_kind": "point_at",
+                "time_s": eval_time_s,
+                "target_actor_id": getattr(behavior, "target_actor_id", None),
+                "target_found": True,
+                "target_position_xyz": {
+                    "x": target_xyz[0],
+                    "y": target_xyz[1],
+                    "z": target_xyz[2],
+                },
+                "locked_roll_deg": base_extrinsics.roll_deg,
+            }
+        return base_extrinsics, {
+            "applied": False,
+            "behavior_kind": behavior_kind or None,
+            "note": f"unsupported_behavior_for_{sensor_name}",
+            "time_s": eval_time_s,
+        }
 
     def _coverage_identity_list(self, raw: object) -> list[object]:
         if isinstance(raw, list):
@@ -2222,9 +2552,27 @@ class NativePhysicsBackend(SensorBackend):
             return None, None
 
         lidar_config = self._sensor_config_from_request(request).lidar
-        scan_points, scan_meta = self._apply_lidar_scan_model(
+        base_extrinsics = self._lidar_extrinsics_from_options(request)
+        behavior_actor_positions = self._sensor_behavior_actor_position_map(
             request=request,
             points_xyz=points_xyz,
+        )
+        effective_extrinsics, behavior_runtime = self._apply_sensor_behaviors_to_extrinsics(
+            request=request,
+            sensor_name="lidar",
+            base_extrinsics=base_extrinsics,
+            behaviors=list(lidar_config.behaviors),
+            actor_positions=behavior_actor_positions,
+            points_xyz=points_xyz,
+            eval_time_s=float(request.options.get("lidar_behavior_time_s", request.options.get("sensor_behavior_time_s", 0.0))),
+        )
+        points_lidar = transform_points_world_to_camera(
+            points_xyz=points_xyz,
+            extrinsics=effective_extrinsics,
+        )
+        scan_points, scan_meta = self._apply_lidar_scan_model(
+            request=request,
+            points_xyz=points_lidar,
             lidar_config=lidar_config,
             frame_id=0,
             frame_count=1,
@@ -2287,6 +2635,16 @@ class NativePhysicsBackend(SensorBackend):
                     "emitter_params": lidar_config.emitter_params.to_dict(),
                     "channel_profile": lidar_config.channel_profile.to_dict(),
                     "multipath_model": lidar_config.multipath_model.to_dict(),
+                    "lidar_extrinsics": {
+                        "enabled": effective_extrinsics.enabled,
+                        "tx": effective_extrinsics.tx,
+                        "ty": effective_extrinsics.ty,
+                        "tz": effective_extrinsics.tz,
+                        "roll_deg": effective_extrinsics.roll_deg,
+                        "pitch_deg": effective_extrinsics.pitch_deg,
+                        "yaw_deg": effective_extrinsics.yaw_deg,
+                    },
+                    "lidar_behavior": behavior_runtime,
                     "ground_truth_fields": self._lidar_ground_truth_fields(),
                     "coverage_metric_name": "lidar_points_on_target",
                     "coverage_total_observation_count": coverage_summary[
@@ -2318,6 +2676,7 @@ class NativePhysicsBackend(SensorBackend):
         metrics["lidar_scan_model_applied"] = 1.0 if scan_meta["applied"] else 0.0
         metrics["lidar_source_angle_count"] = float(len(lidar_config.source_angles_deg))
         metrics["lidar_scan_path_point_count"] = float(len(scan_meta["scan_path_deg"]))
+        metrics["lidar_behavior_applied"] = 1.0 if bool(behavior_runtime.get("applied")) else 0.0
         self._update_lidar_signal_metrics(metrics=metrics, preview_points=preview_points, lidar_config=lidar_config)
         return output_path, metadata_path
 
@@ -2368,6 +2727,11 @@ class NativePhysicsBackend(SensorBackend):
         scan_duration_s = float(request.options.get("lidar_scan_duration_s", 0.1))
         base_extrinsics = self._lidar_extrinsics_from_options(request)
         lidar_config = self._sensor_config_from_request(request).lidar
+        behavior_actor_positions = self._sensor_behavior_actor_position_map(
+            request=request,
+            points_xyz=points_xyz,
+        )
+        behavior_time_origin_s = float(selected_poses[0][1].time_s) if selected_poses else 0.0
         lidar_coverage_threshold = max(
             self._sensor_config_from_request(request).coverage.lidar_min_points_on_target,
             1,
@@ -2386,6 +2750,15 @@ class NativePhysicsBackend(SensorBackend):
                 base_extrinsics=base_extrinsics,
                 pose=pose,
                 force_enable=True,
+            )
+            effective_extrinsics, behavior_runtime = self._apply_sensor_behaviors_to_extrinsics(
+                request=request,
+                sensor_name="lidar",
+                base_extrinsics=effective_extrinsics,
+                behaviors=list(lidar_config.behaviors),
+                actor_positions=behavior_actor_positions,
+                points_xyz=points_xyz,
+                eval_time_s=float(pose.time_s - behavior_time_origin_s),
             )
             ego_velocity = self._estimate_ego_velocity_for_pose_index(poses=poses, pose_index=pose_index)
             compensated_world_points = points_xyz
@@ -2470,6 +2843,7 @@ class NativePhysicsBackend(SensorBackend):
                         "yaw_deg": effective_extrinsics.yaw_deg,
                     },
                     "motion_compensation_enabled": motion_comp_enabled,
+                    "lidar_behavior": behavior_runtime,
                     "output_count": len(noisy_points),
                     "preview_points_xyz": [
                         {"x": x, "y": y, "z": z}
@@ -2502,6 +2876,10 @@ class NativePhysicsBackend(SensorBackend):
             len(lidar_config.scan_path_deg)
             + sum(len(path) for path in lidar_config.multi_scan_path_deg)
         )
+        metrics["lidar_behavior_applied"] = 1.0 if any(
+            bool(frame.get("lidar_behavior", {}).get("applied"))
+            for frame in frames
+        ) else 0.0
         payload = {
             "input_point_cloud": str(point_cloud),
             "trajectory_path": str(trajectory_path),
@@ -4859,7 +5237,20 @@ class NativePhysicsBackend(SensorBackend):
             metrics["radar_target_count"] = 0.0
             return None
 
-        extrinsics = self._radar_extrinsics_from_options(request)
+        base_extrinsics = self._radar_extrinsics_from_options(request)
+        behavior_actor_positions = self._sensor_behavior_actor_position_map(
+            request=request,
+            points_xyz=points_xyz,
+        )
+        extrinsics, behavior_runtime = self._apply_sensor_behaviors_to_extrinsics(
+            request=request,
+            sensor_name="radar",
+            base_extrinsics=base_extrinsics,
+            behaviors=list(radar_config.behaviors),
+            actor_positions=behavior_actor_positions,
+            points_xyz=points_xyz,
+            eval_time_s=float(request.options.get("radar_behavior_time_s", request.options.get("sensor_behavior_time_s", 0.0))),
+        )
         points_radar = transform_points_world_to_camera(points_xyz=points_xyz, extrinsics=extrinsics)
         rng = random.Random(int(request.seed) + 137)
         ego_vx, ego_vy, ego_vz = self._estimate_ego_velocity_from_trajectory(request, artifacts)
@@ -4915,6 +5306,7 @@ class NativePhysicsBackend(SensorBackend):
                 "vz": ego_vz,
             },
             "radar_config": radar_config.to_dict(),
+            "radar_behavior": behavior_runtime,
             "ground_truth_fields": self._radar_ground_truth_fields(),
             "coverage_metric_name": "radar_detections_on_target",
             "coverage_total_observation_count": coverage_summary[
@@ -4949,6 +5341,7 @@ class NativePhysicsBackend(SensorBackend):
         metrics["radar_false_alarm_probability"] = float(radar_config.detector.probability_false_alarm)
         metrics["radar_multipath_enabled"] = 1.0 if radar_config.fidelity.multipath_enabled else 0.0
         metrics["radar_multipath_target_count"] = float(multipath_target_count)
+        metrics["radar_behavior_applied"] = 1.0 if bool(behavior_runtime.get("applied")) else 0.0
         metrics["radar_micro_doppler_enabled"] = 1.0 if radar_config.fidelity.enable_micro_doppler else 0.0
         metrics["radar_micro_doppler_target_count"] = float(micro_doppler_target_count)
         metrics["radar_directivity_model_applied"] = 1.0 if (
@@ -5006,6 +5399,11 @@ class NativePhysicsBackend(SensorBackend):
         false_target_count = int(radar_config.false_target_count)
         preview_targets_per_frame = int(request.options.get("radar_preview_targets_per_frame", 16))
         base_extrinsics = self._radar_extrinsics_from_options(request)
+        behavior_actor_positions = self._sensor_behavior_actor_position_map(
+            request=request,
+            points_xyz=points_xyz,
+        )
+        behavior_time_origin_s = float(selected_poses[0][1].time_s) if selected_poses else 0.0
         radar_coverage_threshold = max(
             self._sensor_config_from_request(request).coverage.radar_min_detections_on_target,
             1,
@@ -5025,6 +5423,15 @@ class NativePhysicsBackend(SensorBackend):
                 base_extrinsics=base_extrinsics,
                 pose=pose,
                 force_enable=True,
+            )
+            effective_extrinsics, behavior_runtime = self._apply_sensor_behaviors_to_extrinsics(
+                request=request,
+                sensor_name="radar",
+                base_extrinsics=effective_extrinsics,
+                behaviors=list(radar_config.behaviors),
+                actor_positions=behavior_actor_positions,
+                points_xyz=points_xyz,
+                eval_time_s=float(pose.time_s - behavior_time_origin_s),
             )
             points_radar = transform_points_world_to_camera(
                 points_xyz=points_xyz,
@@ -5098,6 +5505,7 @@ class NativePhysicsBackend(SensorBackend):
                     },
                     "target_count": len(targets),
                     "track_count": len(tracks),
+                    "radar_behavior": behavior_runtime,
                     "multipath_target_count": frame_multipath_target_count,
                     "adaptive_sampling_target_count": frame_adaptive_sampling_target_count,
                     "false_target_count": false_added,
@@ -5128,6 +5536,10 @@ class NativePhysicsBackend(SensorBackend):
         metrics["radar_trajectory_sweep_total_adaptive_sampling_target_count"] = float(
             total_adaptive_sampling_targets
         )
+        metrics["radar_behavior_applied"] = 1.0 if any(
+            bool(frame.get("radar_behavior", {}).get("applied"))
+            for frame in frames
+        ) else 0.0
         payload = {
             "input_point_cloud": str(point_cloud),
             "trajectory_path": str(trajectory_path),
