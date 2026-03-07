@@ -503,6 +503,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
       - runtime artifacts under the chosen `output_dir`
       - `comparison_table.sensor_rows` and `comparison_table.role_rows` for quick mismatch triage
       - the Markdown/HTML reports expose the same sensor/role mismatch tables for faster human review
+    - config files may use `${ENV_NAME}` or `${ENV_NAME:-default}` placeholders for local binary/map/output wiring
   - contract argument controls:
     - `renderer_contract_flag` (default `--contract`)
     - `renderer_inject_contract_arg` / `renderer_contract_positional`
@@ -522,6 +523,8 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - [configs/hybrid_sensor_sim.helios_docker.auto_extrinsics.json](/Users/seongcheoljeong/Documents/Test/configs/hybrid_sensor_sim.helios_docker.auto_extrinsics.json): docker demo with trajectory-based auto extrinsics.
 - [configs/renderer_backend_smoke.awsim.example.json](/Users/seongcheoljeong/Documents/Test/configs/renderer_backend_smoke.awsim.example.json): AWSIM smoke preset with camera/lidar/radar contract coverage enabled.
 - [configs/renderer_backend_smoke.carla.example.json](/Users/seongcheoljeong/Documents/Test/configs/renderer_backend_smoke.carla.example.json): CARLA smoke preset with the same sensor contract surface.
+- [configs/renderer_backend_smoke.awsim.local.example.json](/Users/seongcheoljeong/Documents/Test/configs/renderer_backend_smoke.awsim.local.example.json): env-driven AWSIM local smoke preset using `${HELIOS_BIN}`, `${AWSIM_BIN}`, `${AWSIM_RENDERER_MAP}`.
+- [configs/renderer_backend_smoke.carla.local.example.json](/Users/seongcheoljeong/Documents/Test/configs/renderer_backend_smoke.carla.local.example.json): env-driven CARLA local smoke preset using `${HELIOS_BIN}`, `${CARLA_BIN}`, `${CARLA_RENDERER_MAP}`.
 
 ## Next implementation target
 

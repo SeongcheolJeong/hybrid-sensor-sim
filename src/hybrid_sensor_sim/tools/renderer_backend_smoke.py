@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,8 @@ from hybrid_sensor_sim.backends.helios_adapter import HeliosAdapter
 from hybrid_sensor_sim.backends.native_physics import NativePhysicsBackend
 from hybrid_sensor_sim.orchestrator import HybridOrchestrator
 from hybrid_sensor_sim.types import BackendMode, SensorSimRequest, SensorSimResult
+
+_ENV_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-(.*?))?\}")
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -83,6 +86,38 @@ def _resolve_runtime_path(raw: Any) -> Path:
     if path.is_absolute():
         return path.resolve()
     return (Path.cwd() / path).resolve()
+
+
+def _expand_env_string(raw: str) -> str:
+    def _replace(match: re.Match[str]) -> str:
+        env_name = match.group(1)
+        default_value = match.group(2)
+        env_value = None
+        try:
+            from os import environ
+
+            env_value = environ.get(env_name)
+        except Exception:
+            env_value = None
+        if env_value is not None:
+            return env_value
+        if default_value is not None:
+            return default_value
+        raise ValueError(f"Missing required environment variable: {env_name}")
+
+    if "${" not in raw:
+        return raw
+    return _ENV_PATTERN.sub(_replace, raw)
+
+
+def _resolve_env_payload(payload: Any) -> Any:
+    if isinstance(payload, dict):
+        return {str(key): _resolve_env_payload(value) for key, value in payload.items()}
+    if isinstance(payload, list):
+        return [_resolve_env_payload(item) for item in payload]
+    if isinstance(payload, str):
+        return _expand_env_string(payload)
+    return payload
 
 
 def _parse_option_override(raw: str) -> tuple[str, Any]:
@@ -577,7 +612,7 @@ def _build_effective_config(
     option_overrides: list[str],
     repo_root: Path,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    effective = dict(base_config)
+    effective = dict(_resolve_env_payload(base_config))
     options = dict(effective.get("options", {}))
     forced_options: dict[str, Any] = {
         "renderer_bridge_enabled": True,
@@ -608,6 +643,17 @@ def _build_effective_config(
         effective["output_dir"] = str(_resolve_runtime_path(effective["output_dir"]))
     if effective.get("helios_bin"):
         effective["helios_bin"] = str(_resolve_runtime_path(effective["helios_bin"]))
+    for option_key in (
+        "renderer_cwd",
+        "renderer_bin",
+        "awsim_bin",
+        "carla_bin",
+        "awsim_wrapper",
+        "carla_wrapper",
+    ):
+        option_value = options.get(option_key)
+        if option_value:
+            options[option_key] = str(_resolve_runtime_path(option_value))
     return effective, forced_options
 
 

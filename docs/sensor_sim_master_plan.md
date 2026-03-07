@@ -243,6 +243,7 @@ Primary code references:
   - generic AWSIM/CARLA smoke launcher script with merged config + summary artifact
   - smoke summary now exposes compact sensor/role diff tables for backend triage
   - smoke launcher now also emits Markdown/HTML reports so mismatch triage does not require opening raw JSON
+  - local env-driven smoke presets now exist for AWSIM/CARLA so binary/map wiring can be swapped without editing tracked JSON by hand
   - sensor-specific expected export paths derived from runtime ingestion data
   - backend-namespaced sensor export candidate paths and sensor output summary generation
   - backend-specific sensor export filename conventions (for example AWSIM vs CARLA camera outputs)
