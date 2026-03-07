@@ -763,6 +763,10 @@ for entry in payload.get("expected_outputs", []):
         target = pathlib.Path(entry["path"])
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text('{"backend":"awsim"}', encoding="utf-8")
+    if entry.get("artifact_key") == "sensor_output_camera_front":
+        target = pathlib.Path(entry["path"])
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text('{"sensor":"camera_front"}', encoding="utf-8")
 PY
 printf "direct_backend\\n"
 printf "%s\\n" "$@"
@@ -810,6 +814,7 @@ printf "%s\\n" "$@"
             self.assertIn("backend_runner_stderr", result.artifacts)
             self.assertIn("backend_output_spec", result.artifacts)
             self.assertIn("awsim_runtime_state_json", result.artifacts)
+            self.assertIn("sensor_output_camera_front", result.artifacts)
             self.assertEqual(result.metrics.get("renderer_execute_via_runner_requested"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_runner_execution_used"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_execution_wrapper_used"), 0.0)
@@ -869,6 +874,12 @@ printf "%s\\n" "$@"
             self.assertTrue(
                 any(
                     entry.get("artifact_key") == "awsim_runtime_state_json" and entry.get("exists")
+                    for entry in runner_execution_manifest["expected_outputs"]
+                )
+            )
+            self.assertTrue(
+                any(
+                    entry.get("artifact_key") == "sensor_output_camera_front" and entry.get("exists")
                     for entry in runner_execution_manifest["expected_outputs"]
                 )
             )
@@ -1434,6 +1445,12 @@ echo "carla_backend_ok"
             self.assertIn("--weather", runner_request["scene_args"])
             self.assertIn("--ingest-frame", runner_request["ingestion_args"])
             self.assertEqual(output_spec["backend"], "carla")
+            expected_output_keys = {
+                entry["artifact_key"] for entry in output_spec["expected_outputs"]
+            }
+            self.assertIn("sensor_output_camera_front", expected_output_keys)
+            self.assertIn("sensor_output_lidar_top", expected_output_keys)
+            self.assertIn("sensor_output_radar_front", expected_output_keys)
             self.assertEqual(
                 runner_request["artifacts"]["backend_output_spec"],
                 str(result.artifacts["backend_output_spec"]),

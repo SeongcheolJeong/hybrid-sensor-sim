@@ -190,10 +190,73 @@ def _load_launcher_args(launcher_template_path: Path | None) -> list[str]:
     return _coerce_arg_list(payload.get("args", []))
 
 
+def _sanitize_artifact_key(text: str) -> str:
+    return "".join(ch if ch.isalnum() else "_" for ch in text).strip("_") or "artifact"
+
+
+def _sensor_export_filename(data_format: str) -> str:
+    mapping = {
+        "camera_projection_json": "camera_projection.json",
+        "camera_depth_json": "camera_depth.json",
+        "camera_semantic_json": "camera_semantic.json",
+        "lidar_points_xyz": "lidar_points.xyz",
+        "lidar_points_json": "lidar_points.json",
+        "lidar_points": "lidar_points.dat",
+        "radar_targets_json": "radar_targets.json",
+    }
+    return mapping.get(data_format, f"{_sanitize_artifact_key(data_format)}.dat")
+
+
+def _build_sensor_expected_output_entries(
+    *,
+    output_root: Path,
+    ingestion_profile_path: Path | None,
+) -> list[dict[str, Any]]:
+    if ingestion_profile_path is None or not ingestion_profile_path.exists():
+        return []
+    try:
+        payload = json.loads(ingestion_profile_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not isinstance(payload, dict):
+        return []
+    raw_entries = payload.get("entries")
+    if not isinstance(raw_entries, list):
+        return []
+
+    expected_outputs: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
+    for entry in raw_entries:
+        if not isinstance(entry, dict):
+            continue
+        sensor_id = str(entry.get("sensor_id", "")).strip()
+        data_format = str(entry.get("data_format", "")).strip()
+        if not sensor_id or not data_format:
+            continue
+        artifact_key = f"sensor_output_{_sanitize_artifact_key(sensor_id)}"
+        if artifact_key in seen_keys:
+            continue
+        seen_keys.add(artifact_key)
+        export_filename = _sensor_export_filename(data_format)
+        expected_outputs.append(
+            {
+                "artifact_key": artifact_key,
+                "sensor_id": sensor_id,
+                "data_format": data_format,
+                "kind": "file",
+                "required": False,
+                "description": f"Expected exported payload for sensor {sensor_id} ({data_format}).",
+                "path": str((output_root / "sensor_exports" / sensor_id / export_filename).resolve()),
+            }
+        )
+    return expected_outputs
+
+
 def _build_backend_output_spec(
     *,
     backend: str,
     runtime_dir: Path,
+    ingestion_profile_path: Path | None,
 ) -> tuple[Path | None, Path | None, list[dict[str, Any]], dict[str, float]]:
     if backend in {"", "none"}:
         return None, None, [], {
@@ -216,6 +279,12 @@ def _build_backend_output_spec(
                 "path": str(artifact_path),
             }
         )
+    expected_outputs.extend(
+        _build_sensor_expected_output_entries(
+            output_root=output_root,
+            ingestion_profile_path=ingestion_profile_path,
+        )
+    )
 
     spec_payload = {
         "backend": backend,
@@ -264,6 +333,7 @@ def build_backend_runner_artifacts(
     output_spec_path, output_root, expected_outputs, output_spec_metrics = _build_backend_output_spec(
         backend=backend,
         runtime_dir=runtime_dir,
+        ingestion_profile_path=ingestion_profile_path,
     )
     extra_args = _collect_extra_args(options=options, backend=backend)
     scene_args = _collect_scene_args(backend_args_preview)

@@ -465,6 +465,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `backend_ingestion_args.sh`: shell-ready `BACKEND_INGEST_ARGS` array generated from launcher template.
     - `backend_runner_request.json`: wrapper-free direct backend launch request assembled from scene args, mount args, and launcher template args.
     - `backend_output_spec.json`: backend-specific expected output schema and canonical output paths.
+      - includes sensor-specific expected export files derived from the ingestion profile (`sensor_exports/<sensor_id>/...`).
     - `backend_direct_run_command.sh`: executable shell command generated from `backend_runner_request.json`.
     - `backend_runner_execution_manifest.json`: standalone runner execution status and artifact pointers.
     - `backend_runner_stdout.log` / `backend_runner_stderr.log`: stdout/stderr captured by standalone runner execution.

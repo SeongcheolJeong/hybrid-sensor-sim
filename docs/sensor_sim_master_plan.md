@@ -231,6 +231,7 @@ Primary code references:
   - ingestion profile generation
   - backend sensor bundle summary generation
   - backend output spec generation and expected-output inspection
+  - sensor-specific expected export paths derived from runtime ingestion data
   - backend run manifest generation
   - backend runner request and direct command generation
   - optional direct backend execution via runner request
