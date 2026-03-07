@@ -1074,21 +1074,153 @@ EOF
                 result.artifacts["radar_targets_preview"].read_text(encoding="utf-8")
             )
             self.assertGreater(preview["multipath_target_count"], 0)
+            self.assertIn("multipath_path_type_counts", preview)
             multipath_targets = [
                 target
                 for target in preview["targets"]
                 if target["measurement_source"] == "MULTIPATH"
             ]
             self.assertTrue(multipath_targets)
-            self.assertEqual(multipath_targets[0]["ground_truth_detection_type"], "MULTIPATH")
-            self.assertGreater(multipath_targets[0]["path_length_offset_m"], 0.0)
-            self.assertGreaterEqual(multipath_targets[0]["ground_truth_hit_index"], 1)
-            self.assertIn(multipath_targets[0]["multipath_surface"], {"GROUND_PLANE", "VERTICAL_PLANE"})
-            self.assertNotEqual(multipath_targets[0]["micro_doppler_velocity_offset_mps"], 0.0)
+            multipath_by_type = {
+                target["multipath_path_type"]: target for target in multipath_targets
+            }
+            self.assertIn("FORWARD", multipath_by_type)
+            self.assertIn("REVERSE", multipath_by_type)
+            self.assertIn("RETROREFLECTION", multipath_by_type)
+            forward_target = multipath_by_type["FORWARD"]
+            reverse_target = multipath_by_type["REVERSE"]
+            retro_target = multipath_by_type["RETROREFLECTION"]
+            self.assertEqual(forward_target["ground_truth_detection_type"], "MULTIPATH")
+            self.assertGreater(forward_target["path_length_offset_m"], 0.0)
+            self.assertEqual(
+                forward_target["ground_truth_last_bounce_index"],
+                forward_target["ground_truth_hit_index"],
+            )
+            self.assertEqual(reverse_target["ground_truth_hit_index"], 0)
+            self.assertEqual(
+                reverse_target["ground_truth_last_bounce_index"],
+                forward_target["ground_truth_hit_index"],
+            )
+            self.assertEqual(
+                retro_target["ground_truth_hit_index"],
+                forward_target["ground_truth_hit_index"],
+            )
+            self.assertEqual(
+                retro_target["ground_truth_last_bounce_index"],
+                2 * retro_target["ground_truth_hit_index"],
+            )
+            self.assertIn(forward_target["multipath_surface"], {"GROUND_PLANE", "VERTICAL_PLANE"})
+            self.assertIn("multipath_reflection_point", forward_target)
+            self.assertIn("multipath_target_scatter_point", forward_target)
+            self.assertIn("multipath_return_direction", forward_target)
+            self.assertNotEqual(forward_target["micro_doppler_velocity_offset_mps"], 0.0)
             self.assertEqual(result.metrics.get("radar_multipath_enabled"), 1.0)
             self.assertGreater(result.metrics.get("radar_multipath_target_count"), 0.0)
+            self.assertGreater(result.metrics.get("radar_multipath_forward_count"), 0.0)
+            self.assertGreater(result.metrics.get("radar_multipath_reverse_count"), 0.0)
+            self.assertGreater(result.metrics.get("radar_multipath_retroreflection_count"), 0.0)
             self.assertEqual(result.metrics.get("radar_micro_doppler_enabled"), 1.0)
             self.assertGreater(result.metrics.get("radar_micro_doppler_target_count"), 0.0)
+
+    def test_radar_preview_reports_cavity_retroreflection_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+35.0 0.0 0.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "lidar_postprocess_enabled": False,
+                    "radar_postprocess_enabled": True,
+                    "radar_clutter": "none",
+                    "radar_false_target_count": 0,
+                    "radar_max_targets": 12,
+                    "radar_point_rcs_dbsm": [18.0],
+                    "radar_detector_params": {
+                        "minimum_snr_db": -40.0,
+                        "noise_variance_dbw": -95.0,
+                        "noise_performance": {
+                            "target_detectability": {
+                                "probability_detection": 0.99,
+                                "target": {
+                                    "range": 200.0,
+                                    "radar_cross_section": 10.0,
+                                },
+                            },
+                        },
+                    },
+                    "radar_fidelity": {
+                        "multipath": True,
+                        "multipath_bounces": 2,
+                        "coherence_factor": 0.1,
+                        "raytracing": {
+                            "enable_cavity_model": True,
+                        },
+                    },
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+            self.assertTrue(result.success)
+
+            preview = json.loads(
+                result.artifacts["radar_targets_preview"].read_text(encoding="utf-8")
+            )
+            cavity_targets = [
+                target
+                for target in preview["targets"]
+                if target.get("multipath_path_type") == "CAVITY_RETROREFLECTION"
+            ]
+            self.assertTrue(cavity_targets)
+            cavity_target = cavity_targets[0]
+            self.assertGreater(cavity_target["multipath_cavity_internal_bounce_count"], 0)
+            self.assertGreaterEqual(
+                cavity_target["ground_truth_last_bounce_index"],
+                cavity_target["ground_truth_hit_index"],
+            )
+            self.assertLessEqual(
+                cavity_target["ground_truth_last_bounce_index"],
+                2 * cavity_target["ground_truth_hit_index"],
+            )
+            self.assertIn("multipath_last_bounce_point", cavity_target)
+            self.assertIn("multipath_return_direction", cavity_target)
+            self.assertEqual(
+                preview["multipath_path_type_counts"].get("CAVITY_RETROREFLECTION", 0),
+                len(cavity_targets),
+            )
+            self.assertGreater(result.metrics.get("radar_multipath_cavity_count"), 0.0)
 
     def test_radar_preview_applies_directivity_and_adaptive_sampling(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

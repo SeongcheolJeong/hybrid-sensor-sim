@@ -344,17 +344,27 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `radar_fidelity.raytracing.adaptive_sampling_params.targets[].{actor_id,min_rays_per_wavelength}`
   - ego-motion velocity source: `radar_use_ego_velocity_from_trajectory`
   - emits `radar_targets_preview.json`.
-  - preview includes `snr_db`, `detection_probability`, `antenna_gain_db`, accuracy-region indices, optional `tracks`, and stage-1 synthetic radar multipath metadata:
+  - preview includes `snr_db`, `detection_probability`, `antenna_gain_db`, accuracy-region indices, optional `tracks`, and path-type-aware radar multipath metadata:
     - `measurement_source=DETECTION|MULTIPATH|FALSE_ALARM`
     - `ground_truth_semantic_class`, `ground_truth_semantic_class_name`, `ground_truth_actor_id`
     - `ground_truth_detection_type`
     - `ground_truth_hit_index`
     - `ground_truth_last_bounce_index`
     - `path_length_offset_m`
+    - `multipath_path_type=FORWARD|REVERSE|RETROREFLECTION|CAVITY_RETROREFLECTION`
+    - `multipath_path_length_m`
+    - `multipath_base_range_m`
     - `multipath_surface`
     - `multipath_bounce_count`
+    - `multipath_reflection_point`
+    - `multipath_target_scatter_point`
+    - `multipath_last_bounce_point`
+    - `multipath_return_direction`
+    - `multipath_cavity_internal_bounce_count`
     - `coherence_factor`
     - `micro_doppler_velocity_offset_mps`
+    - aggregated counts:
+      - `multipath_path_type_counts`
     - directivity/adaptive sampling metadata:
       - `sampling_gain_db`
       - `adaptive_sampling_density`

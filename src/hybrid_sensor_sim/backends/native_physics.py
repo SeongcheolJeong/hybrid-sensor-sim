@@ -5267,6 +5267,7 @@ class NativePhysicsBackend(SensorBackend):
             for target in selected
             if str(target.get("measurement_source", "")).upper() == "MULTIPATH"
         )
+        multipath_path_type_counts = self._radar_multipath_path_type_counts(selected)
         adaptive_sampling_target_count = sum(
             1
             for target in selected
@@ -5298,6 +5299,7 @@ class NativePhysicsBackend(SensorBackend):
             "target_count": len(selected),
             "track_count": len(tracks),
             "multipath_target_count": multipath_target_count,
+            "multipath_path_type_counts": multipath_path_type_counts,
             "adaptive_sampling_target_count": adaptive_sampling_target_count,
             "output_mode": "TRACKS" if radar_config.tracking.output_tracks else "POINTS",
             "ego_velocity_mps": {
@@ -5341,6 +5343,14 @@ class NativePhysicsBackend(SensorBackend):
         metrics["radar_false_alarm_probability"] = float(radar_config.detector.probability_false_alarm)
         metrics["radar_multipath_enabled"] = 1.0 if radar_config.fidelity.multipath_enabled else 0.0
         metrics["radar_multipath_target_count"] = float(multipath_target_count)
+        metrics["radar_multipath_forward_count"] = float(multipath_path_type_counts.get("FORWARD", 0))
+        metrics["radar_multipath_reverse_count"] = float(multipath_path_type_counts.get("REVERSE", 0))
+        metrics["radar_multipath_retroreflection_count"] = float(
+            multipath_path_type_counts.get("RETROREFLECTION", 0)
+        )
+        metrics["radar_multipath_cavity_count"] = float(
+            multipath_path_type_counts.get("CAVITY_RETROREFLECTION", 0)
+        )
         metrics["radar_behavior_applied"] = 1.0 if bool(behavior_runtime.get("applied")) else 0.0
         metrics["radar_micro_doppler_enabled"] = 1.0 if radar_config.fidelity.enable_micro_doppler else 0.0
         metrics["radar_micro_doppler_target_count"] = float(micro_doppler_target_count)
@@ -5412,6 +5422,7 @@ class NativePhysicsBackend(SensorBackend):
         total_targets = 0
         total_tracks = 0
         total_multipath_targets = 0
+        total_multipath_path_type_counts: dict[str, int] = {}
         total_adaptive_sampling_targets = 0
         coverage_target_lists: list[list[dict[str, object]]] = []
         coverage_total_observation_count = 0
@@ -5454,6 +5465,7 @@ class NativePhysicsBackend(SensorBackend):
                 for target in targets
                 if str(target.get("measurement_source", "")).upper() == "MULTIPATH"
             )
+            frame_multipath_path_type_counts = self._radar_multipath_path_type_counts(targets)
             frame_adaptive_sampling_target_count = sum(
                 1
                 for target in targets
@@ -5470,6 +5482,10 @@ class NativePhysicsBackend(SensorBackend):
                 excluded_detection_types={"FALSE_ALARM"},
             )
             total_multipath_targets += frame_multipath_target_count
+            for path_type, count in frame_multipath_path_type_counts.items():
+                total_multipath_path_type_counts[path_type] = (
+                    total_multipath_path_type_counts.get(path_type, 0) + count
+                )
             total_adaptive_sampling_targets += frame_adaptive_sampling_target_count
             coverage_target_lists.append(list(frame_coverage_summary["targets"]))
             coverage_total_observation_count += int(
@@ -5507,6 +5523,7 @@ class NativePhysicsBackend(SensorBackend):
                     "track_count": len(tracks),
                     "radar_behavior": behavior_runtime,
                     "multipath_target_count": frame_multipath_target_count,
+                    "multipath_path_type_counts": frame_multipath_path_type_counts,
                     "adaptive_sampling_target_count": frame_adaptive_sampling_target_count,
                     "false_target_count": false_added,
                     "output_mode": "TRACKS" if radar_config.tracking.output_tracks else "POINTS",
@@ -5533,6 +5550,18 @@ class NativePhysicsBackend(SensorBackend):
         metrics["radar_trajectory_sweep_total_multipath_target_count"] = float(
             total_multipath_targets
         )
+        metrics["radar_trajectory_sweep_total_multipath_forward_count"] = float(
+            total_multipath_path_type_counts.get("FORWARD", 0)
+        )
+        metrics["radar_trajectory_sweep_total_multipath_reverse_count"] = float(
+            total_multipath_path_type_counts.get("REVERSE", 0)
+        )
+        metrics["radar_trajectory_sweep_total_multipath_retroreflection_count"] = float(
+            total_multipath_path_type_counts.get("RETROREFLECTION", 0)
+        )
+        metrics["radar_trajectory_sweep_total_multipath_cavity_count"] = float(
+            total_multipath_path_type_counts.get("CAVITY_RETROREFLECTION", 0)
+        )
         metrics["radar_trajectory_sweep_total_adaptive_sampling_target_count"] = float(
             total_adaptive_sampling_targets
         )
@@ -5547,6 +5576,7 @@ class NativePhysicsBackend(SensorBackend):
             "frame_count": len(frames),
             "output_mode": "TRACKS" if radar_config.tracking.output_tracks else "POINTS",
             "radar_config": radar_config.to_dict(),
+            "multipath_path_type_counts": total_multipath_path_type_counts,
             "ground_truth_fields": self._radar_ground_truth_fields(),
             "coverage_metric_name": "radar_detections_on_target",
             "coverage_total_observation_count": coverage_total_observation_count,
@@ -5562,6 +5592,20 @@ class NativePhysicsBackend(SensorBackend):
         output_path = enhanced_output / "radar_targets_trajectory_sweep.json"
         output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         return output_path
+
+    def _radar_multipath_path_type_counts(
+        self,
+        targets: list[dict[str, object]],
+    ) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for target in targets:
+            if str(target.get("measurement_source", "")).upper() != "MULTIPATH":
+                continue
+            path_type = str(target.get("multipath_path_type", "")).upper().strip()
+            if not path_type:
+                continue
+            counts[path_type] = counts.get(path_type, 0) + 1
+        return counts
 
     def _build_radar_targets_from_points(
         self,
@@ -5857,171 +5901,374 @@ class NativePhysicsBackend(SensorBackend):
         noise_power_dbw = float(base_detection_metrics["noise_power_dbw"])
         base_detection_probability = float(base_detection_metrics["detection_probability"])
         base_antenna_gain_db = float(base_detection_metrics["antenna_gain_db"])
+        cavity_model_enabled = bool(radar_config.fidelity.raytracing.enable_cavity_model)
         angular_step_deg = max(
             float(radar_config.system.angular_resolution.az_deg),
             float(radar_config.fidelity.sub_ray_angular_resolution_deg),
             0.25,
         )
+        base_target_point = self._radar_cartesian_from_spherical(
+            range_m=base_range_m,
+            azimuth_deg=base_azimuth_deg,
+            elevation_deg=base_elevation_deg,
+        )
         for bounce_index in range(1, max_bounces + 1):
             surface = "GROUND_PLANE" if bounce_index % 2 == 1 else "VERTICAL_PLANE"
             surface_sign = 1.0 if surface == "GROUND_PLANE" else -1.0
-            path_length_offset_m = max(
+            base_path_length_offset_m = max(
                 float(radar_config.system.range_resolution_m) * (1.0 + 0.75 * bounce_index),
                 base_range_m * (0.05 + 0.03 * bounce_index),
             )
-            path_range_m = base_range_m + path_length_offset_m
-            if path_range_m < min_range or path_range_m > max_range:
+            reflection_point = self._radar_multipath_reflection_point(
+                surface=surface,
+                surface_sign=surface_sign,
+                bounce_index=bounce_index,
+                target_point=base_target_point,
+            )
+            if reflection_point is None:
                 continue
-
-            path_azimuth_deg = base_azimuth_deg + surface_sign * angular_step_deg * bounce_index
-            path_elevation_deg = base_elevation_deg + (
+            base_path_azimuth_deg = base_azimuth_deg + surface_sign * angular_step_deg * bounce_index
+            base_path_elevation_deg = base_elevation_deg + (
                 -0.35 * angular_step_deg * bounce_index
                 if surface == "GROUND_PLANE"
                 else 0.2 * angular_step_deg * bounce_index
             )
-            antenna_gain_db = self._radar_antenna_gain_db(
-                radar_config=radar_config,
-                azimuth_deg=path_azimuth_deg,
-                elevation_deg=path_elevation_deg,
-            )
-            propagation_decay_db = 6.0 * bounce_index + 8.0 * coherence_factor
-            signal_power_dbw = (
-                base_signal_power_dbw
-                - propagation_decay_db
-                + min(0.0, antenna_gain_db - base_antenna_gain_db)
-            )
-            snr_db = signal_power_dbw - noise_power_dbw
-            if snr_db < float(radar_config.detector.minimum_snr_db):
-                continue
-
-            detection_probability = min(
-                max(
-                    base_detection_probability
-                    * exp(-0.55 * bounce_index)
-                    * max(0.15, 1.0 - 0.6 * coherence_factor),
-                    0.0,
-                ),
-                1.0,
-            )
-            if detection_probability < 0.1:
-                continue
-
-            micro_doppler_offset_mps = self._radar_micro_doppler_offset_mps(
-                radar_config=radar_config,
-                point_index=point_index,
-                range_m=path_range_m,
-                azimuth_deg=path_azimuth_deg,
-                bounce_index=bounce_index,
-            )
-            radial_velocity_mps = (
-                base_radial_velocity_mps
-                + micro_doppler_offset_mps
-                + rng.gauss(0.0, 0.03 * bounce_index)
-            )
-            radial_velocity_mps = min(
-                max(radial_velocity_mps, float(radar_config.system.velocity_min_mps)),
-                float(radar_config.system.velocity_max_mps),
-            )
-
-            range_accuracy_sigma, range_region_index = self._radar_accuracy_sigma(
-                accuracy_config=radar_config.estimator.range_accuracy,
-                regions=radar_config.estimator.range_accuracy_regions,
-                range_m=path_range_m,
-                azimuth_deg=path_azimuth_deg,
-                elevation_deg=path_elevation_deg,
-            )
-            velocity_accuracy_sigma, velocity_region_index = self._radar_accuracy_sigma(
-                accuracy_config=radar_config.estimator.velocity_accuracy,
-                regions=radar_config.estimator.velocity_accuracy_regions,
-                range_m=path_range_m,
-                azimuth_deg=path_azimuth_deg,
-                elevation_deg=path_elevation_deg,
-            )
-            azimuth_accuracy_sigma, azimuth_region_index = self._radar_accuracy_sigma(
-                accuracy_config=radar_config.estimator.azimuth_accuracy,
-                regions=radar_config.estimator.azimuth_accuracy_regions,
-                range_m=path_range_m,
-                azimuth_deg=path_azimuth_deg,
-                elevation_deg=path_elevation_deg,
-            )
-            elevation_accuracy_sigma, elevation_region_index = self._radar_accuracy_sigma(
-                accuracy_config=radar_config.estimator.elevation_accuracy,
-                regions=radar_config.estimator.elevation_accuracy_regions,
-                range_m=path_range_m,
-                azimuth_deg=path_azimuth_deg,
-                elevation_deg=path_elevation_deg,
-            )
-
-            path_range_m = max(
-                min_range,
-                path_range_m + (rng.gauss(0.0, range_accuracy_sigma) if range_accuracy_sigma > 0.0 else 0.0),
-            )
-            path_azimuth_deg += rng.gauss(0.0, azimuth_accuracy_sigma) if azimuth_accuracy_sigma > 0.0 else 0.0
-            path_elevation_deg += rng.gauss(0.0, elevation_accuracy_sigma) if elevation_accuracy_sigma > 0.0 else 0.0
-            radial_velocity_mps += rng.gauss(0.0, velocity_accuracy_sigma) if velocity_accuracy_sigma > 0.0 else 0.0
-
-            path_range_m = self._radar_quantize_value(
-                value=path_range_m,
-                quantization_step=radar_config.system.range_quantization_m,
-            )
-            path_azimuth_deg = self._radar_quantize_value(
-                value=path_azimuth_deg,
-                quantization_step=radar_config.system.angular_quantization.az_deg,
-            )
-            path_elevation_deg = self._radar_quantize_value(
-                value=path_elevation_deg,
-                quantization_step=radar_config.system.angular_quantization.el_deg,
-            )
-            radial_velocity_mps = self._radar_quantize_value(
-                value=radial_velocity_mps,
-                quantization_step=radar_config.system.velocity_quantization_mps,
-            )
-            candidates.append(
-                (
-                    -signal_power_dbw,
-                    path_range_m,
-                    {
-                        "range_m": path_range_m,
-                        "azimuth_deg": path_azimuth_deg,
-                        "elevation_deg": path_elevation_deg,
-                        "radial_velocity_mps": radial_velocity_mps,
-                        "rcs_dbsm": intrinsic_rcs_dbsm - 3.0 * bounce_index - 4.0 * coherence_factor,
-                        "signal_power_dbw": signal_power_dbw,
-                        "noise_power_dbw": noise_power_dbw,
-                        "snr_db": snr_db,
-                        "detection_probability": detection_probability,
-                        "antenna_gain_db": antenna_gain_db,
-                        "sampling_gain_db": float(base_detection_metrics.get("sampling_gain_db", 0.0)),
-                        "range_resolution_m": float(radar_config.system.range_resolution_m),
-                        "velocity_resolution_mps": float(radar_config.system.velocity_resolution_mps),
-                        "angular_resolution_deg": {
-                            "az": float(radar_config.system.angular_resolution.az_deg),
-                            "el": float(radar_config.system.angular_resolution.el_deg),
-                        },
-                        "range_accuracy_region_index": range_region_index,
-                        "velocity_accuracy_region_index": velocity_region_index,
-                        "azimuth_accuracy_region_index": azimuth_region_index,
-                        "elevation_accuracy_region_index": elevation_region_index,
-                        "measurement_source": "MULTIPATH",
-                        "ground_truth_detection_type": "MULTIPATH",
-                        "ground_truth_hit_index": bounce_index,
-                        "ground_truth_last_bounce_index": bounce_index,
-                        "path_length_offset_m": path_length_offset_m,
-                        "multipath_surface": surface,
-                        "multipath_bounce_count": bounce_index,
-                        "coherence_factor": coherence_factor,
-                        "micro_doppler_velocity_offset_mps": micro_doppler_offset_mps,
-                        "adaptive_sampling_density": float(sampling_profile["density"]),
-                        "adaptive_sampling_actor_id": sampling_profile["actor_id"],
-                        "adaptive_sampling_target_override": bool(sampling_profile["target_override"]),
-                        "raytracing_subdivision_level": int(sampling_profile["subdivision_level"]),
-                        "raytracing_mode": str(radar_config.fidelity.raytracing.mode).upper(),
-                        "is_false_alarm": False,
-                        **ground_truth_annotation,
-                    },
+            path_specs: list[dict[str, object]] = [
+                {
+                    "path_type": "FORWARD",
+                    "path_length_scale": 1.0,
+                    "azimuth_scale": 1.0,
+                    "elevation_scale": 1.0,
+                    "azimuth_bias_deg": 0.0,
+                    "elevation_bias_deg": 0.0,
+                    "signal_decay_extra_db": 0.0,
+                    "detection_scale": 1.0,
+                    "micro_doppler_scale": 1.0,
+                    "velocity_noise_scale": 1.0,
+                    "hit_index": bounce_index,
+                    "last_bounce_index": bounce_index,
+                    "last_bounce_point": base_target_point,
+                    "return_direction": self._radar_unit_vector_to_origin(base_target_point),
+                    "cavity_internal_bounces": 0,
+                },
+                {
+                    "path_type": "REVERSE",
+                    "path_length_scale": 1.12,
+                    "azimuth_scale": -0.85,
+                    "elevation_scale": -0.75,
+                    "azimuth_bias_deg": -0.25 * surface_sign * angular_step_deg,
+                    "elevation_bias_deg": 0.15 * angular_step_deg,
+                    "signal_decay_extra_db": 1.5,
+                    "detection_scale": 0.78,
+                    "micro_doppler_scale": -0.35,
+                    "velocity_noise_scale": 0.8,
+                    "hit_index": 0,
+                    "last_bounce_index": bounce_index,
+                    "last_bounce_point": reflection_point,
+                    "return_direction": self._radar_unit_vector_to_origin(reflection_point),
+                    "cavity_internal_bounces": 0,
+                },
+                {
+                    "path_type": "RETROREFLECTION",
+                    "path_length_scale": 1.34,
+                    "azimuth_scale": 0.55,
+                    "elevation_scale": 0.55,
+                    "azimuth_bias_deg": 0.15 * surface_sign * angular_step_deg,
+                    "elevation_bias_deg": -0.12 * angular_step_deg,
+                    "signal_decay_extra_db": 2.6,
+                    "detection_scale": 0.72,
+                    "micro_doppler_scale": 0.65,
+                    "velocity_noise_scale": 1.15,
+                    "hit_index": bounce_index,
+                    "last_bounce_index": 2 * bounce_index,
+                    "last_bounce_point": reflection_point,
+                    "return_direction": self._radar_unit_vector_to_origin(reflection_point),
+                    "cavity_internal_bounces": 0,
+                },
+            ]
+            if cavity_model_enabled:
+                cavity_internal_bounces = min(max(bounce_index, 1), 2)
+                cavity_exit_point = (
+                    0.5 * (reflection_point[0] + base_target_point[0]),
+                    0.5 * (reflection_point[1] + base_target_point[1]),
+                    max(reflection_point[2], base_target_point[2]) + 0.08 * (bounce_index + 1),
                 )
-            )
+                path_specs.append(
+                    {
+                        "path_type": "CAVITY_RETROREFLECTION",
+                        "path_length_scale": 1.22,
+                        "azimuth_scale": 0.35,
+                        "elevation_scale": 0.35,
+                        "azimuth_bias_deg": 0.0,
+                        "elevation_bias_deg": 0.1 * angular_step_deg,
+                        "signal_decay_extra_db": 1.9,
+                        "detection_scale": 0.84,
+                        "micro_doppler_scale": 0.45,
+                        "velocity_noise_scale": 0.95,
+                        "hit_index": bounce_index,
+                        "last_bounce_index": max(
+                            bounce_index,
+                            2 * bounce_index - cavity_internal_bounces + 1,
+                        ),
+                        "last_bounce_point": cavity_exit_point,
+                        "return_direction": self._radar_unit_vector_to_origin(cavity_exit_point),
+                        "cavity_internal_bounces": cavity_internal_bounces,
+                    }
+                )
+
+            for path_spec in path_specs:
+                path_length_offset_m = (
+                    base_path_length_offset_m * float(path_spec["path_length_scale"])
+                )
+                path_range_m = base_range_m + path_length_offset_m
+                if path_range_m < min_range or path_range_m > max_range:
+                    continue
+
+                path_azimuth_deg = (
+                    base_azimuth_deg
+                    + base_path_azimuth_deg * float(path_spec["azimuth_scale"])
+                    - base_azimuth_deg * float(path_spec["azimuth_scale"])
+                    + float(path_spec["azimuth_bias_deg"])
+                )
+                path_elevation_deg = (
+                    base_elevation_deg
+                    + (base_path_elevation_deg - base_elevation_deg) * float(path_spec["elevation_scale"])
+                    + float(path_spec["elevation_bias_deg"])
+                )
+                antenna_gain_db = self._radar_antenna_gain_db(
+                    radar_config=radar_config,
+                    azimuth_deg=path_azimuth_deg,
+                    elevation_deg=path_elevation_deg,
+                )
+                propagation_decay_db = (
+                    6.0 * bounce_index
+                    + 8.0 * coherence_factor
+                    + float(path_spec["signal_decay_extra_db"])
+                )
+                signal_power_dbw = (
+                    base_signal_power_dbw
+                    - propagation_decay_db
+                    + min(0.0, antenna_gain_db - base_antenna_gain_db)
+                )
+                snr_db = signal_power_dbw - noise_power_dbw
+                if snr_db < float(radar_config.detector.minimum_snr_db):
+                    continue
+
+                detection_probability = min(
+                    max(
+                        base_detection_probability
+                        * exp(-0.55 * bounce_index)
+                        * max(0.15, 1.0 - 0.6 * coherence_factor)
+                        * float(path_spec["detection_scale"]),
+                        0.0,
+                    ),
+                    1.0,
+                )
+                if detection_probability < 0.1:
+                    continue
+
+                micro_doppler_offset_mps = (
+                    self._radar_micro_doppler_offset_mps(
+                        radar_config=radar_config,
+                        point_index=point_index,
+                        range_m=path_range_m,
+                        azimuth_deg=path_azimuth_deg,
+                        bounce_index=bounce_index,
+                    )
+                    * float(path_spec["micro_doppler_scale"])
+                )
+                radial_velocity_mps = (
+                    base_radial_velocity_mps
+                    + micro_doppler_offset_mps
+                    + rng.gauss(0.0, 0.03 * bounce_index * float(path_spec["velocity_noise_scale"]))
+                )
+                radial_velocity_mps = min(
+                    max(radial_velocity_mps, float(radar_config.system.velocity_min_mps)),
+                    float(radar_config.system.velocity_max_mps),
+                )
+
+                range_accuracy_sigma, range_region_index = self._radar_accuracy_sigma(
+                    accuracy_config=radar_config.estimator.range_accuracy,
+                    regions=radar_config.estimator.range_accuracy_regions,
+                    range_m=path_range_m,
+                    azimuth_deg=path_azimuth_deg,
+                    elevation_deg=path_elevation_deg,
+                )
+                velocity_accuracy_sigma, velocity_region_index = self._radar_accuracy_sigma(
+                    accuracy_config=radar_config.estimator.velocity_accuracy,
+                    regions=radar_config.estimator.velocity_accuracy_regions,
+                    range_m=path_range_m,
+                    azimuth_deg=path_azimuth_deg,
+                    elevation_deg=path_elevation_deg,
+                )
+                azimuth_accuracy_sigma, azimuth_region_index = self._radar_accuracy_sigma(
+                    accuracy_config=radar_config.estimator.azimuth_accuracy,
+                    regions=radar_config.estimator.azimuth_accuracy_regions,
+                    range_m=path_range_m,
+                    azimuth_deg=path_azimuth_deg,
+                    elevation_deg=path_elevation_deg,
+                )
+                elevation_accuracy_sigma, elevation_region_index = self._radar_accuracy_sigma(
+                    accuracy_config=radar_config.estimator.elevation_accuracy,
+                    regions=radar_config.estimator.elevation_accuracy_regions,
+                    range_m=path_range_m,
+                    azimuth_deg=path_azimuth_deg,
+                    elevation_deg=path_elevation_deg,
+                )
+
+                path_range_m = max(
+                    min_range,
+                    path_range_m
+                    + (rng.gauss(0.0, range_accuracy_sigma) if range_accuracy_sigma > 0.0 else 0.0),
+                )
+                path_azimuth_deg += (
+                    rng.gauss(0.0, azimuth_accuracy_sigma) if azimuth_accuracy_sigma > 0.0 else 0.0
+                )
+                path_elevation_deg += (
+                    rng.gauss(0.0, elevation_accuracy_sigma) if elevation_accuracy_sigma > 0.0 else 0.0
+                )
+                radial_velocity_mps += (
+                    rng.gauss(0.0, velocity_accuracy_sigma) if velocity_accuracy_sigma > 0.0 else 0.0
+                )
+
+                path_range_m = self._radar_quantize_value(
+                    value=path_range_m,
+                    quantization_step=radar_config.system.range_quantization_m,
+                )
+                path_azimuth_deg = self._radar_quantize_value(
+                    value=path_azimuth_deg,
+                    quantization_step=radar_config.system.angular_quantization.az_deg,
+                )
+                path_elevation_deg = self._radar_quantize_value(
+                    value=path_elevation_deg,
+                    quantization_step=radar_config.system.angular_quantization.el_deg,
+                )
+                radial_velocity_mps = self._radar_quantize_value(
+                    value=radial_velocity_mps,
+                    quantization_step=radar_config.system.velocity_quantization_mps,
+                )
+                last_bounce_point = tuple(path_spec["last_bounce_point"])
+                return_direction = tuple(path_spec["return_direction"])
+                candidates.append(
+                    (
+                        -signal_power_dbw,
+                        path_range_m,
+                        {
+                            "range_m": path_range_m,
+                            "azimuth_deg": path_azimuth_deg,
+                            "elevation_deg": path_elevation_deg,
+                            "radial_velocity_mps": radial_velocity_mps,
+                            "rcs_dbsm": intrinsic_rcs_dbsm - 3.0 * bounce_index - 4.0 * coherence_factor,
+                            "signal_power_dbw": signal_power_dbw,
+                            "noise_power_dbw": noise_power_dbw,
+                            "snr_db": snr_db,
+                            "detection_probability": detection_probability,
+                            "antenna_gain_db": antenna_gain_db,
+                            "sampling_gain_db": float(base_detection_metrics.get("sampling_gain_db", 0.0)),
+                            "range_resolution_m": float(radar_config.system.range_resolution_m),
+                            "velocity_resolution_mps": float(radar_config.system.velocity_resolution_mps),
+                            "angular_resolution_deg": {
+                                "az": float(radar_config.system.angular_resolution.az_deg),
+                                "el": float(radar_config.system.angular_resolution.el_deg),
+                            },
+                            "range_accuracy_region_index": range_region_index,
+                            "velocity_accuracy_region_index": velocity_region_index,
+                            "azimuth_accuracy_region_index": azimuth_region_index,
+                            "elevation_accuracy_region_index": elevation_region_index,
+                            "measurement_source": "MULTIPATH",
+                            "ground_truth_detection_type": "MULTIPATH",
+                            "ground_truth_hit_index": int(path_spec["hit_index"]),
+                            "ground_truth_last_bounce_index": int(path_spec["last_bounce_index"]),
+                            "path_length_offset_m": path_length_offset_m,
+                            "multipath_path_length_m": base_range_m + path_length_offset_m,
+                            "multipath_base_range_m": base_range_m,
+                            "multipath_surface": surface,
+                            "multipath_path_type": str(path_spec["path_type"]),
+                            "multipath_bounce_count": bounce_index,
+                            "multipath_reflection_point": {
+                                "x": reflection_point[0],
+                                "y": reflection_point[1],
+                                "z": reflection_point[2],
+                            },
+                            "multipath_target_scatter_point": {
+                                "x": base_target_point[0],
+                                "y": base_target_point[1],
+                                "z": base_target_point[2],
+                            },
+                            "multipath_last_bounce_point": {
+                                "x": last_bounce_point[0],
+                                "y": last_bounce_point[1],
+                                "z": last_bounce_point[2],
+                            },
+                            "multipath_return_direction": {
+                                "x": return_direction[0],
+                                "y": return_direction[1],
+                                "z": return_direction[2],
+                            },
+                            "multipath_cavity_internal_bounce_count": int(
+                                path_spec["cavity_internal_bounces"]
+                            ),
+                            "coherence_factor": coherence_factor,
+                            "micro_doppler_velocity_offset_mps": micro_doppler_offset_mps,
+                            "adaptive_sampling_density": float(sampling_profile["density"]),
+                            "adaptive_sampling_actor_id": sampling_profile["actor_id"],
+                            "adaptive_sampling_target_override": bool(sampling_profile["target_override"]),
+                            "raytracing_subdivision_level": int(sampling_profile["subdivision_level"]),
+                            "raytracing_mode": str(radar_config.fidelity.raytracing.mode).upper(),
+                            "is_false_alarm": False,
+                            **ground_truth_annotation,
+                        },
+                    )
+                )
         return candidates
+
+    def _radar_cartesian_from_spherical(
+        self,
+        *,
+        range_m: float,
+        azimuth_deg: float,
+        elevation_deg: float,
+    ) -> tuple[float, float, float]:
+        azimuth_rad = azimuth_deg * pi / 180.0
+        elevation_rad = elevation_deg * pi / 180.0
+        horizontal = range_m * cos(elevation_rad)
+        return (
+            horizontal * cos(azimuth_rad),
+            horizontal * sin(azimuth_rad),
+            range_m * sin(elevation_rad),
+        )
+
+    def _radar_unit_vector_to_origin(
+        self,
+        point: tuple[float, float, float],
+    ) -> tuple[float, float, float]:
+        norm = sqrt(point[0] * point[0] + point[1] * point[1] + point[2] * point[2])
+        if norm <= 1e-9:
+            return (0.0, 0.0, 0.0)
+        return (-point[0] / norm, -point[1] / norm, -point[2] / norm)
+
+    def _radar_multipath_reflection_point(
+        self,
+        *,
+        surface: str,
+        surface_sign: float,
+        bounce_index: int,
+        target_point: tuple[float, float, float],
+    ) -> tuple[float, float, float] | None:
+        x, y, z = target_point
+        if surface == "GROUND_PLANE":
+            return (
+                max(0.25, x * (0.38 + 0.06 * bounce_index)),
+                y * (0.18 + 0.04 * bounce_index),
+                0.0,
+            )
+        if surface == "VERTICAL_PLANE":
+            return (
+                max(0.25, x * (0.52 + 0.04 * bounce_index)),
+                y + surface_sign * max(0.35, 0.12 * abs(y) + 0.15 * bounce_index),
+                z * (0.35 + 0.06 * bounce_index),
+            )
+        return None
 
     def _radar_micro_doppler_offset_mps(
         self,

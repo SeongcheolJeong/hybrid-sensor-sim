@@ -258,11 +258,13 @@ Primary code references:
     - `probability_false_alarm`
   - global/per-region accuracy surface
   - optional track output mode
-  - stage-1 synthetic multipath:
+  - path-type-aware multipath approximation:
     - `fidelity.multipath`
     - `fidelity.multipath_bounces`
     - `coherence_factor`
-    - multipath ghost detections with bounce metadata
+    - `forward / reverse / retroreflection / cavity retroreflection`
+    - `GROUND_TRUTH_HIT_INDEX / GROUND_TRUTH_LAST_BOUNCE_INDEX` semantics aligned to Applied docs
+    - multipath ghost detections with bounce/path metadata
   - micro-doppler velocity hook:
     - `enable_micro_doppler`
   - directivity/adaptive sampling surface:
