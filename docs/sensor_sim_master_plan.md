@@ -327,12 +327,12 @@ Primary code references:
 | Camera temporal model | rolling shutter timing + trajectory pose-distortion implemented; behavior-driven motion still missing | rolling shutter + exposure sampling | P1 |
 | Camera image chain | depth + semantic + visible image-chain preview implemented; vignetting/lens flare/spot blur added, richer optical artifacts still missing | noise, gain, white balance, depth/semantic variants | P2 |
 | Lidar scan generation | source angles + scan field + scan path + multi-scan path metadata/filtering implemented in local preview path | source angles + scan path + scan type engine | P1 |
-| Lidar signal/intensity | very weak | reflectivity, SNR/intensity units, returns, weather | P1 |
-| Lidar multipath/material model | missing | HELIOS-backed or local hybrid path | P2 |
+| Lidar signal/intensity | reflectivity/SNR/intensity units/returns/weather/emitter/channel profile implemented in local preview path | reflectivity, SNR/intensity units, returns, weather | P1 |
+| Lidar multipath/material model | geometry-aware multipath and shared-channel profile are implemented locally; material UUID remains synthetic/fallback | HELIOS-backed or local hybrid path | P2 |
 | Radar beam/detectability | typed HPBW + az/el directivity cuts + detectability + false alarm calibration implemented | richer full directivity tables + calibration | P1 |
-| Radar multipath/tracking | track output + region accuracies + synthetic multipath implemented | geometry-aware multipath + stronger tracker | P2 |
-| Ground truth | partial metadata only | semantic/material/component labels in outputs | P1 |
-| Coverage metrics | missing | camera/lidar/radar target coverage stats | P1 |
+| Radar multipath/tracking | track output + region accuracies + synthetic multipath implemented; adaptive sampling/directivity exposed | geometry-aware multipath + stronger tracker | P2 |
+| Ground truth | camera/lidar/radar ground-truth surface exposed; lidar/radar actor/semantic labels now emitted in local preview path | semantic/material/component labels in outputs | P1 |
+| Coverage metrics | camera/lidar/radar per-target coverage summary plus combined blindspot/overlap artifact implemented | camera/lidar/radar target coverage stats | P1 |
 | Runtime integration | strong | keep extending, do not make this the primary bottleneck | P2 |
 
 ## External Reference Strategy
@@ -664,6 +664,12 @@ Deliverables:
 - lidar points on target
 - radar detections on target
 - overlap/blindspot/occlusion report artifacts
+
+Current status:
+
+- local physics path now emits per-sensor `coverage_targets` plus `sensor_coverage_summary.json`
+- combined summary already reports blindspot and overlap counts
+- remaining gap is deeper occlusion reasoning and richer actor/component source ingestion
 
 Primary references:
 

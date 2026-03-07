@@ -2575,6 +2575,106 @@ EOF
             self.assertTrue(mounts[2]["enabled"])
             self.assertEqual(mounts[2]["extrinsics_source"], "radar_sweep_frame0")
 
+    def test_hybrid_generates_sensor_coverage_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+20.0 0.0 10.0
+18.0 1.0 10.0
+16.0 -1.0 10.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": True,
+                    "camera_sensor_type": "VISIBLE",
+                    "camera_intrinsics": {
+                        "fx": 100.0,
+                        "fy": 100.0,
+                        "cx": 640.0,
+                        "cy": 360.0,
+                        "width": 1280,
+                        "height": 720,
+                    },
+                    "camera_projection_preview_count": 8,
+                    "lidar_postprocess_enabled": True,
+                    "lidar_noise": "none",
+                    "lidar_dropout_probability": 0.0,
+                    "lidar_point_actor_ids": [1, 2, 3],
+                    "radar_postprocess_enabled": True,
+                    "radar_clutter": "none",
+                    "radar_false_target_count": 0,
+                    "radar_vertical_fov_deg": 90.0,
+                    "radar_point_actor_ids": [1, 2, 3],
+                    "coverage_metrics": {
+                        "enabled": True,
+                        "thresholds": {
+                            "camera": {"min_pixels_on_target": 1},
+                            "lidar": {"min_points_on_target": 1},
+                            "radar": {"min_detections_on_target": 1},
+                        },
+                    },
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            self.assertIn("sensor_coverage_summary", result.artifacts)
+            self.assertEqual(result.metrics.get("coverage_summary_generated"), 1.0)
+            self.assertEqual(result.metrics.get("coverage_combined_ratio"), 1.0)
+
+            coverage = json.loads(
+                result.artifacts["sensor_coverage_summary"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(coverage["sensors"]["camera"]["target_count"], 3)
+            self.assertEqual(coverage["sensors"]["lidar"]["target_count"], 3)
+            self.assertEqual(coverage["sensors"]["radar"]["target_count"], 3)
+            self.assertEqual(coverage["combined"]["target_count"], 3)
+            self.assertEqual(coverage["combined"]["covered_target_count"], 3)
+            self.assertEqual(coverage["combined"]["overlap_target_count"], 3)
+            self.assertEqual(
+                {target["actor_id"] for target in coverage["combined"]["targets"]},
+                {"1", "2", "3"},
+            )
+
+            camera_preview = json.loads(
+                result.artifacts["camera_projection_preview"].read_text(encoding="utf-8")
+            )
+            self.assertGreater(len(camera_preview["preview_ground_truth_samples"]), 0)
+            self.assertIn("ground_truth_actor_id", camera_preview["preview_ground_truth_samples"][0])
+            self.assertIn("coverage_targets", camera_preview)
+
 
 if __name__ == "__main__":
     unittest.main()

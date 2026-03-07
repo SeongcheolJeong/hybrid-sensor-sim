@@ -19,6 +19,11 @@ class SensorConfigTests(unittest.TestCase):
         self.assertEqual(config.sensor_profile, "default")
         self.assertEqual(config.renderer.backend, "none")
         self.assertEqual(config.renderer.ego_actor_id, "ego")
+        self.assertTrue(config.coverage.enabled)
+        self.assertTrue(config.coverage.combine_sensors)
+        self.assertEqual(config.coverage.camera_min_pixels_on_target, 1)
+        self.assertEqual(config.coverage.lidar_min_points_on_target, 1)
+        self.assertEqual(config.coverage.radar_min_detections_on_target, 1)
         self.assertEqual(config.camera.geometry_model, "pinhole")
         self.assertEqual(config.camera.intrinsics.fx, 1200.0)
         self.assertEqual(config.camera.image_chain.iso, 100)
@@ -59,6 +64,15 @@ class SensorConfigTests(unittest.TestCase):
                 "renderer_weather": "clearnoon",
                 "renderer_scene_seed": "42",
                 "renderer_ego_actor_id": "ego_vehicle",
+                "coverage_metrics": {
+                    "enabled": True,
+                    "combine_sensors": False,
+                    "thresholds": {
+                        "camera": {"min_pixels_on_target": 4},
+                        "lidar": {"min_points_on_target": 3},
+                        "radar": {"min_detections_on_target": 2},
+                    },
+                },
                 "renderer_camera_sensor_id": "cam_front",
                 "renderer_lidar_sensor_id": "lidar_roof",
                 "renderer_radar_sensor_id": "radar_bumper",
@@ -346,6 +360,11 @@ class SensorConfigTests(unittest.TestCase):
         self.assertTrue(config.renderer.execute)
         self.assertEqual(config.renderer.map_name, "city_loop")
         self.assertEqual(config.renderer.scene_seed, 42)
+        self.assertTrue(config.coverage.enabled)
+        self.assertFalse(config.coverage.combine_sensors)
+        self.assertEqual(config.coverage.camera_min_pixels_on_target, 4)
+        self.assertEqual(config.coverage.lidar_min_points_on_target, 3)
+        self.assertEqual(config.coverage.radar_min_detections_on_target, 2)
         self.assertEqual(config.camera.sensor_id, "cam_front")
         self.assertEqual(config.camera.attach_to_actor_id, "ego_vehicle")
         self.assertEqual(config.camera.sensor_type, "DEPTH")
@@ -633,6 +652,9 @@ class SensorConfigTests(unittest.TestCase):
         assert contract is not None
         self.assertEqual(contract["sensor_config_schema_version"], CONFIG_SCHEMA_VERSION)
         self.assertEqual(contract["renderer_backend"], "carla")
+        self.assertIn("coverage_metrics", contract)
+        self.assertTrue(contract["coverage_metrics"]["enabled"])
+        self.assertEqual(contract["coverage_metrics"]["camera_min_pixels_on_target"], 1)
         self.assertEqual(contract["renderer_scene"]["ego_actor_id"], "ego_vehicle")
         self.assertEqual(contract["sensor_setup"]["camera"]["sensor_type"], "SEMANTIC_SEGMENTATION")
         self.assertEqual(contract["sensor_setup"]["camera"]["geometry_model"], "equidistant")

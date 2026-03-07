@@ -219,6 +219,14 @@ class NativePhysicsBackend(SensorBackend):
         )
         if radar_targets_sweep_artifact is not None:
             artifacts["radar_targets_trajectory_sweep"] = radar_targets_sweep_artifact
+        coverage_summary_artifact = self._generate_sensor_coverage_summary_if_available(
+            request=request,
+            artifacts=artifacts,
+            enhanced_output=enhanced_output,
+            metrics=metrics,
+        )
+        if coverage_summary_artifact is not None:
+            artifacts["sensor_coverage_summary"] = coverage_summary_artifact
         renderer_contract_artifact = self._generate_renderer_playback_contract_if_available(
             request=request,
             artifacts=artifacts,
@@ -521,6 +529,14 @@ class NativePhysicsBackend(SensorBackend):
         frames: list[dict[str, object]] = []
         total_output_count = 0
         rolling_applied = False
+        camera_coverage_threshold = max(
+            self._sensor_config_from_request(request).coverage.camera_min_pixels_on_target,
+            1,
+        )
+        coverage_target_lists: list[list[dict[str, object]]] = []
+        coverage_total_observation_count = 0
+        coverage_anonymous_observation_count = 0
+        coverage_excluded_observation_count = 0
         for pose_index, pose in selected_poses:
             effective = self._build_extrinsics_from_pose(
                 request=request,
@@ -547,6 +563,16 @@ class NativePhysicsBackend(SensorBackend):
                 camera_config=camera_config,
                 intrinsics=intrinsics,
                 preview_count=preview_count,
+            )
+            coverage_target_lists.append(list(frame_preview_payload.get("coverage_targets", [])))
+            coverage_total_observation_count += int(
+                frame_preview_payload.get("coverage_total_observation_count", 0)
+            )
+            coverage_anonymous_observation_count += int(
+                frame_preview_payload.get("coverage_anonymous_observation_count", 0)
+            )
+            coverage_excluded_observation_count += int(
+                frame_preview_payload.get("coverage_excluded_observation_count", 0)
             )
             frames.append(
                 {
@@ -613,6 +639,18 @@ class NativePhysicsBackend(SensorBackend):
             "semantic_params": camera_config.semantic_params.to_dict(),
             "image_chain": camera_config.image_chain.to_dict(),
             "lens_params": camera_config.lens_params.to_dict(),
+            "ground_truth_fields": self._camera_ground_truth_fields(
+                camera_config=camera_config
+            ),
+            "coverage_metric_name": "pixels_on_target",
+            "coverage_total_observation_count": coverage_total_observation_count,
+            "coverage_anonymous_observation_count": coverage_anonymous_observation_count,
+            "coverage_excluded_observation_count": coverage_excluded_observation_count,
+            "coverage_targets": self._merge_sensor_coverage_targets(
+                target_lists=coverage_target_lists,
+                count_field="pixels_on_target",
+                count_threshold=camera_coverage_threshold,
+            ),
             "input_count": len(points_xyz),
             "frame_count": len(frames),
             "reference_point_xyz": {
@@ -638,15 +676,52 @@ class NativePhysicsBackend(SensorBackend):
         preview_count: int,
     ) -> dict[str, object]:
         preview_points = projected[:preview_count]
+        all_ground_truth_samples = [
+            self._camera_semantic_sample(
+                request=request,
+                camera_config=camera_config,
+                projected_sample=point,
+            )
+            for point in projected
+        ]
+        preview_ground_truth_samples = all_ground_truth_samples[:preview_count]
+        coverage_summary = self._build_coverage_summary_from_samples(
+            samples=all_ground_truth_samples,
+            count_field="pixels_on_target",
+            actor_field="ground_truth_actor_id",
+            semantic_class_field="ground_truth_semantic_class",
+            semantic_name_field="semantic_class_name",
+            component_field="ground_truth_component_id",
+            material_class_field="ground_truth_material_class",
+            base_map_field="ground_truth_base_map_element",
+            procedural_map_field="ground_truth_procedural_map_element",
+            lane_marking_field="ground_truth_lane_marking_id",
+            count_threshold=max(
+                self._sensor_config_from_request(request).coverage.camera_min_pixels_on_target,
+                1,
+            ),
+            excluded_detection_types=set(),
+        )
         payload: dict[str, object] = {
             "output_mode": camera_config.sensor_type,
             "preview_points_uvz": [
                 {"u": float(point["u"]), "v": float(point["v"]), "z": float(point["z"])}
                 for point in preview_points
             ],
+            "preview_ground_truth_samples": preview_ground_truth_samples,
             "preview_depth_samples": [],
             "preview_semantic_samples": [],
             "preview_image_signal_samples": [],
+            "ground_truth_fields": self._camera_ground_truth_fields(camera_config=camera_config),
+            "coverage_metric_name": "pixels_on_target",
+            "coverage_total_observation_count": coverage_summary["total_observation_count"],
+            "coverage_anonymous_observation_count": coverage_summary[
+                "anonymous_observation_count"
+            ],
+            "coverage_excluded_observation_count": coverage_summary[
+                "excluded_observation_count"
+            ],
+            "coverage_targets": coverage_summary["targets"],
         }
         if camera_config.sensor_type.upper() == "DEPTH":
             payload["preview_depth_samples"] = [
@@ -663,14 +738,7 @@ class NativePhysicsBackend(SensorBackend):
                 for point in preview_points
             ]
         if camera_config.sensor_type.upper() == "SEMANTIC_SEGMENTATION":
-            semantic_samples = [
-                self._camera_semantic_sample(
-                    request=request,
-                    camera_config=camera_config,
-                    projected_sample=point,
-                )
-                for point in preview_points
-            ]
+            semantic_samples = preview_ground_truth_samples
             payload["preview_semantic_samples"] = semantic_samples
             payload["preview_semantic_legend"] = self._camera_semantic_legend(semantic_samples)
         else:
@@ -698,6 +766,464 @@ class NativePhysicsBackend(SensorBackend):
         else:
             payload["preview_readout_samples"] = []
         return payload
+
+    def _camera_ground_truth_fields(
+        self,
+        *,
+        camera_config: CameraSensorConfig,
+    ) -> list[str]:
+        fields = ["GROUND_TRUTH_SEMANTIC_CLASS"]
+        semantic_params = camera_config.semantic_params
+        if semantic_params.include_actor_id:
+            fields.append("GROUND_TRUTH_ACTOR_ID")
+        if semantic_params.include_component_id:
+            fields.append("GROUND_TRUTH_COMPONENT_ID")
+        if semantic_params.include_material_class:
+            fields.append("GROUND_TRUTH_MATERIAL_CLASS")
+        if semantic_params.include_material_uuid:
+            fields.append("GROUND_TRUTH_MATERIAL_UUID")
+        if semantic_params.include_base_map_element:
+            fields.append("GROUND_TRUTH_BASE_MAP_ELEMENT")
+        if semantic_params.include_procedural_map_element:
+            fields.append("GROUND_TRUTH_PROCEDURAL_MAP_ELEMENT")
+        if semantic_params.include_lane_marking_id:
+            fields.append("GROUND_TRUTH_LANE_MARKING_ID")
+        return fields
+
+    def _lidar_ground_truth_fields(self) -> list[str]:
+        return [
+            "GROUND_TRUTH_SEMANTIC_CLASS",
+            "GROUND_TRUTH_ACTOR_ID",
+            "GROUND_TRUTH_COMPONENT_ID",
+            "GROUND_TRUTH_MATERIAL_CLASS",
+            "GROUND_TRUTH_MATERIAL_UUID",
+            "GROUND_TRUTH_BASE_MAP_ELEMENT",
+            "GROUND_TRUTH_PROCEDURAL_MAP_ELEMENT",
+            "GROUND_TRUTH_LANE_MARKING_ID",
+        ]
+
+    def _radar_ground_truth_fields(self) -> list[str]:
+        return [
+            "GROUND_TRUTH_SEMANTIC_CLASS",
+            "GROUND_TRUTH_ACTOR_ID",
+        ]
+
+    def _coverage_identity_list(self, raw: object) -> list[object]:
+        if isinstance(raw, list):
+            filtered = [item for item in raw if item not in (None, "", 0, "0")]
+            return sorted(filtered, key=lambda item: str(item))
+        if raw in (None, "", 0, "0"):
+            return []
+        return [raw]
+
+    def _build_coverage_summary_from_samples(
+        self,
+        *,
+        samples: list[dict[str, object]],
+        count_field: str,
+        actor_field: str,
+        semantic_class_field: str,
+        semantic_name_field: str,
+        count_threshold: int,
+        component_field: str | None = None,
+        material_class_field: str | None = None,
+        base_map_field: str | None = None,
+        procedural_map_field: str | None = None,
+        lane_marking_field: str | None = None,
+        detection_type_field: str | None = None,
+        excluded_detection_types: set[str] | None = None,
+    ) -> dict[str, object]:
+        excluded_types = {item.upper() for item in (excluded_detection_types or set())}
+        targets: dict[str, dict[str, object]] = {}
+        anonymous_count = 0
+        excluded_count = 0
+        for sample in samples:
+            if not isinstance(sample, dict):
+                continue
+            detection_type = (
+                str(sample.get(detection_type_field, "")).upper()
+                if detection_type_field is not None
+                else ""
+            )
+            if detection_type and detection_type in excluded_types:
+                excluded_count += 1
+                continue
+            actor_id = self._coerce_actor_id(sample.get(actor_field))
+            if actor_id is None:
+                anonymous_count += 1
+                continue
+            target = targets.setdefault(
+                actor_id,
+                {
+                    "target_key": f"actor:{actor_id}",
+                    "actor_id": actor_id,
+                    count_field: 0,
+                    "semantic_class_ids": [],
+                    "semantic_class_names": [],
+                    "component_ids": [],
+                    "material_class_ids": [],
+                    "base_map_element_ids": [],
+                    "procedural_map_element_ids": [],
+                    "lane_marking_ids": [],
+                    "detection_type_counts": {},
+                    "frame_presence_count": 1,
+                },
+            )
+            target[count_field] = int(target[count_field]) + 1
+            target["semantic_class_ids"] = self._coverage_identity_list(
+                list(target["semantic_class_ids"])
+                + [self._coerce_int(sample.get(semantic_class_field), 0)]
+            )
+            semantic_name = str(sample.get(semantic_name_field, "")).strip()
+            if semantic_name:
+                target["semantic_class_names"] = self._coverage_identity_list(
+                    list(target["semantic_class_names"]) + [semantic_name]
+                )
+            if component_field is not None:
+                target["component_ids"] = self._coverage_identity_list(
+                    list(target["component_ids"]) + [self._coerce_int(sample.get(component_field), 0)]
+                )
+            if material_class_field is not None:
+                target["material_class_ids"] = self._coverage_identity_list(
+                    list(target["material_class_ids"])
+                    + [self._coerce_int(sample.get(material_class_field), 0)]
+                )
+            if base_map_field is not None:
+                target["base_map_element_ids"] = self._coverage_identity_list(
+                    list(target["base_map_element_ids"])
+                    + [self._coerce_int(sample.get(base_map_field), 0)]
+                )
+            if procedural_map_field is not None:
+                target["procedural_map_element_ids"] = self._coverage_identity_list(
+                    list(target["procedural_map_element_ids"])
+                    + [self._coerce_int(sample.get(procedural_map_field), 0)]
+                )
+            if lane_marking_field is not None:
+                target["lane_marking_ids"] = self._coverage_identity_list(
+                    list(target["lane_marking_ids"])
+                    + [self._coerce_int(sample.get(lane_marking_field), 0)]
+                )
+            if detection_type:
+                counts = dict(target["detection_type_counts"])
+                counts[detection_type] = int(counts.get(detection_type, 0)) + 1
+                target["detection_type_counts"] = counts
+        ordered_targets = sorted(
+            targets.values(),
+            key=lambda item: (-int(item.get(count_field, 0)), str(item.get("actor_id", ""))),
+        )
+        for target in ordered_targets:
+            target["covered"] = int(target.get(count_field, 0)) >= max(count_threshold, 1)
+        return {
+            "total_observation_count": len(samples),
+            "anonymous_observation_count": anonymous_count,
+            "excluded_observation_count": excluded_count,
+            "targets": ordered_targets,
+        }
+
+    def _merge_sensor_coverage_targets(
+        self,
+        *,
+        target_lists: list[list[dict[str, object]]],
+        count_field: str,
+        count_threshold: int,
+    ) -> list[dict[str, object]]:
+        merged: dict[str, dict[str, object]] = {}
+        for targets in target_lists:
+            for target in targets:
+                if not isinstance(target, dict):
+                    continue
+                actor_id = self._coerce_actor_id(target.get("actor_id"))
+                if actor_id is None:
+                    continue
+                aggregate = merged.setdefault(
+                    actor_id,
+                    {
+                        "target_key": f"actor:{actor_id}",
+                        "actor_id": actor_id,
+                        count_field: 0,
+                        "semantic_class_ids": [],
+                        "semantic_class_names": [],
+                        "component_ids": [],
+                        "material_class_ids": [],
+                        "base_map_element_ids": [],
+                        "procedural_map_element_ids": [],
+                        "lane_marking_ids": [],
+                        "detection_type_counts": {},
+                        "frame_presence_count": 0,
+                    },
+                )
+                aggregate[count_field] = int(aggregate[count_field]) + int(target.get(count_field, 0))
+                aggregate["frame_presence_count"] = int(aggregate["frame_presence_count"]) + int(
+                    target.get("frame_presence_count", 1)
+                )
+                for key in (
+                    "semantic_class_ids",
+                    "semantic_class_names",
+                    "component_ids",
+                    "material_class_ids",
+                    "base_map_element_ids",
+                    "procedural_map_element_ids",
+                    "lane_marking_ids",
+                ):
+                    aggregate[key] = self._coverage_identity_list(
+                        list(aggregate[key]) + list(target.get(key, []))
+                    )
+                counts = dict(aggregate["detection_type_counts"])
+                for label, value in dict(target.get("detection_type_counts", {})).items():
+                    counts[str(label)] = int(counts.get(str(label), 0)) + int(value)
+                aggregate["detection_type_counts"] = counts
+        ordered_targets = sorted(
+            merged.values(),
+            key=lambda item: (-int(item.get(count_field, 0)), str(item.get("actor_id", ""))),
+        )
+        for target in ordered_targets:
+            target["covered"] = int(target.get(count_field, 0)) >= max(count_threshold, 1)
+        return ordered_targets
+
+    def _read_json_artifact(self, path: Path | None) -> dict[str, object] | None:
+        if path is None or not path.exists():
+            return None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    def _sensor_coverage_payload_from_artifacts(
+        self,
+        *,
+        artifacts: dict[str, Path],
+        sweep_key: str,
+        preview_key: str,
+    ) -> tuple[dict[str, object] | None, Path | None]:
+        sweep_artifact = artifacts.get(sweep_key)
+        sweep_payload = self._read_json_artifact(sweep_artifact)
+        if sweep_payload is not None:
+            return sweep_payload, sweep_artifact
+        preview_artifact = artifacts.get(preview_key)
+        preview_payload = self._read_json_artifact(preview_artifact)
+        if preview_payload is not None:
+            return preview_payload, preview_artifact
+        return None, None
+
+    def _sensor_coverage_summary_from_payload(
+        self,
+        *,
+        payload: dict[str, object] | None,
+        source_artifact: Path | None,
+    ) -> dict[str, object]:
+        targets = payload.get("coverage_targets") if isinstance(payload, dict) else None
+        normalized_targets = targets if isinstance(targets, list) else []
+        target_count = len(normalized_targets)
+        covered_target_count = sum(
+            1
+            for target in normalized_targets
+            if isinstance(target, dict) and bool(target.get("covered"))
+        )
+        return {
+            "available": payload is not None,
+            "source_artifact": str(source_artifact) if source_artifact is not None else None,
+            "metric_name": payload.get("coverage_metric_name") if isinstance(payload, dict) else None,
+            "ground_truth_fields": payload.get("ground_truth_fields", []) if isinstance(payload, dict) else [],
+            "total_observation_count": int(payload.get("coverage_total_observation_count", 0))
+            if isinstance(payload, dict)
+            else 0,
+            "anonymous_observation_count": int(
+                payload.get("coverage_anonymous_observation_count", 0)
+            )
+            if isinstance(payload, dict)
+            else 0,
+            "excluded_observation_count": int(
+                payload.get("coverage_excluded_observation_count", 0)
+            )
+            if isinstance(payload, dict)
+            else 0,
+            "target_count": target_count,
+            "covered_target_count": covered_target_count,
+            "coverage_ratio": (float(covered_target_count) / float(target_count)) if target_count > 0 else 0.0,
+            "targets": normalized_targets,
+        }
+
+    def _combined_sensor_coverage_summary(
+        self,
+        *,
+        config: SensorSimConfig,
+        camera_summary: dict[str, object],
+        lidar_summary: dict[str, object],
+        radar_summary: dict[str, object],
+    ) -> dict[str, object]:
+        combined_targets: dict[str, dict[str, object]] = {}
+        sensor_specs = (
+            ("camera", "pixels_on_target", "camera_pixels_on_target", camera_summary),
+            ("lidar", "lidar_points_on_target", "lidar_points_on_target", lidar_summary),
+            ("radar", "radar_detections_on_target", "radar_detections_on_target", radar_summary),
+        )
+        available_sensor_names = {
+            sensor_name
+            for sensor_name, _count_field, _output_count_field, summary in sensor_specs
+            if bool(summary.get("available"))
+        }
+        for sensor_name, count_field, output_count_field, summary in sensor_specs:
+            for target in list(summary.get("targets", [])):
+                if not isinstance(target, dict):
+                    continue
+                actor_id = self._coerce_actor_id(target.get("actor_id"))
+                if actor_id is None:
+                    continue
+                combined = combined_targets.setdefault(
+                    actor_id,
+                    {
+                        "target_key": f"actor:{actor_id}",
+                        "actor_id": actor_id,
+                        "semantic_class_ids": [],
+                        "semantic_class_names": [],
+                        "camera_pixels_on_target": 0,
+                        "lidar_points_on_target": 0,
+                        "radar_detections_on_target": 0,
+                        "camera_covered": False,
+                        "lidar_covered": False,
+                        "radar_covered": False,
+                    },
+                )
+                combined["semantic_class_ids"] = self._coverage_identity_list(
+                    list(combined["semantic_class_ids"]) + list(target.get("semantic_class_ids", []))
+                )
+                combined["semantic_class_names"] = self._coverage_identity_list(
+                    list(combined["semantic_class_names"])
+                    + list(target.get("semantic_class_names", []))
+                )
+                combined[output_count_field] = int(combined[output_count_field]) + int(
+                    target.get(count_field, 0)
+                )
+                combined[f"{sensor_name}_covered"] = bool(target.get("covered"))
+
+        ordered_targets = sorted(
+            combined_targets.values(),
+            key=lambda item: (
+                -(
+                    int(item.get("camera_pixels_on_target", 0))
+                    + int(item.get("lidar_points_on_target", 0))
+                    + int(item.get("radar_detections_on_target", 0))
+                ),
+                str(item.get("actor_id", "")),
+            ),
+        )
+        covered_target_count = 0
+        blindspot_target_count = 0
+        overlap_target_count = 0
+        for target in ordered_targets:
+            covering_sensor_count = sum(
+                1
+                for sensor_name in ("camera", "lidar", "radar")
+                if bool(target.get(f"{sensor_name}_covered"))
+            )
+            target["covering_sensor_count"] = covering_sensor_count
+            target["covered_by_any_sensor"] = covering_sensor_count > 0
+            target["covered_by_all_available_sensors"] = (
+                covering_sensor_count == len(available_sensor_names)
+                if available_sensor_names
+                else False
+            )
+            if target["covered_by_any_sensor"]:
+                covered_target_count += 1
+            else:
+                blindspot_target_count += 1
+            if covering_sensor_count >= 2:
+                overlap_target_count += 1
+        target_count = len(ordered_targets)
+        return {
+            "target_count": target_count,
+            "covered_target_count": covered_target_count,
+            "blindspot_target_count": blindspot_target_count,
+            "overlap_target_count": overlap_target_count,
+            "coverage_ratio": (float(covered_target_count) / float(target_count)) if target_count > 0 else 0.0,
+            "available_sensor_count": len(available_sensor_names),
+            "available_sensors": sorted(available_sensor_names),
+            "thresholds": config.coverage.to_dict(),
+            "targets": ordered_targets,
+        }
+
+    def _generate_sensor_coverage_summary_if_available(
+        self,
+        *,
+        request: SensorSimRequest,
+        artifacts: dict[str, Path],
+        enhanced_output: Path,
+        metrics: dict[str, float],
+    ) -> Path | None:
+        config = self._sensor_config_from_request(request)
+        if not config.coverage.enabled:
+            metrics["coverage_summary_generated"] = 0.0
+            return None
+        camera_payload, camera_source = self._sensor_coverage_payload_from_artifacts(
+            artifacts=artifacts,
+            sweep_key="camera_projection_trajectory_sweep",
+            preview_key="camera_projection_preview",
+        )
+        lidar_payload, lidar_source = self._sensor_coverage_payload_from_artifacts(
+            artifacts=artifacts,
+            sweep_key="lidar_trajectory_sweep",
+            preview_key="lidar_noisy_preview_json",
+        )
+        radar_payload, radar_source = self._sensor_coverage_payload_from_artifacts(
+            artifacts=artifacts,
+            sweep_key="radar_targets_trajectory_sweep",
+            preview_key="radar_targets_preview",
+        )
+        camera_summary = self._sensor_coverage_summary_from_payload(
+            payload=camera_payload,
+            source_artifact=camera_source,
+        )
+        lidar_summary = self._sensor_coverage_summary_from_payload(
+            payload=lidar_payload,
+            source_artifact=lidar_source,
+        )
+        radar_summary = self._sensor_coverage_summary_from_payload(
+            payload=radar_payload,
+            source_artifact=radar_source,
+        )
+        combined_summary = self._combined_sensor_coverage_summary(
+            config=config,
+            camera_summary=camera_summary,
+            lidar_summary=lidar_summary,
+            radar_summary=radar_summary,
+        )
+        summary = {
+            "schema_version": "1.0",
+            "coverage_metrics": config.coverage.to_dict(),
+            "ground_truth_fields": {
+                "camera": camera_summary.get("ground_truth_fields", []),
+                "lidar": lidar_summary.get("ground_truth_fields", []),
+                "radar": radar_summary.get("ground_truth_fields", []),
+            },
+            "sensors": {
+                "camera": camera_summary,
+                "lidar": lidar_summary,
+                "radar": radar_summary,
+            },
+            "combined": combined_summary,
+        }
+        output_path = enhanced_output / "sensor_coverage_summary.json"
+        output_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        metrics["coverage_summary_generated"] = 1.0
+        metrics["coverage_camera_target_count"] = float(camera_summary["target_count"])
+        metrics["coverage_lidar_target_count"] = float(lidar_summary["target_count"])
+        metrics["coverage_radar_target_count"] = float(radar_summary["target_count"])
+        metrics["coverage_camera_ratio"] = float(camera_summary["coverage_ratio"])
+        metrics["coverage_lidar_ratio"] = float(lidar_summary["coverage_ratio"])
+        metrics["coverage_radar_ratio"] = float(radar_summary["coverage_ratio"])
+        metrics["coverage_combined_target_count"] = float(combined_summary["target_count"])
+        metrics["coverage_combined_covered_target_count"] = float(
+            combined_summary["covered_target_count"]
+        )
+        metrics["coverage_combined_blindspot_target_count"] = float(
+            combined_summary["blindspot_target_count"]
+        )
+        metrics["coverage_combined_overlap_target_count"] = float(
+            combined_summary["overlap_target_count"]
+        )
+        metrics["coverage_combined_ratio"] = float(combined_summary["coverage_ratio"])
+        return output_path
 
     def _project_camera_points_with_optional_rolling_shutter(
         self,
@@ -882,25 +1408,260 @@ class NativePhysicsBackend(SensorBackend):
             "semantic_parent_class": str(semantic["semantic_parent_class"]),
             "color_rgb": list(semantic["color_rgb"]),
             "source": source,
+            "ground_truth_semantic_class": int(semantic["semantic_class_id"]),
         }
         semantic_params = camera_config.semantic_params
         if semantic_params.include_actor_id:
             semantic_payload["actor_id"] = int(semantic["actor_id"])
+            semantic_payload["ground_truth_actor_id"] = int(semantic["actor_id"])
         if semantic_params.include_component_id:
             semantic_payload["component_id"] = int(semantic["component_id"])
+            semantic_payload["ground_truth_component_id"] = int(semantic["component_id"])
         if semantic_params.include_material_class:
             semantic_payload["material_class_id"] = int(semantic["material_class_id"])
+            semantic_payload["ground_truth_material_class"] = int(semantic["material_class_id"])
         if semantic_params.include_material_uuid:
             semantic_payload["material_uuid"] = int(semantic["material_uuid"])
+            semantic_payload["ground_truth_material_uuid"] = int(semantic["material_uuid"])
         if semantic_params.include_base_map_element:
             semantic_payload["base_map_element_id"] = int(semantic["base_map_element_id"])
+            semantic_payload["ground_truth_base_map_element"] = int(
+                semantic["base_map_element_id"]
+            )
         if semantic_params.include_procedural_map_element:
             semantic_payload["procedural_map_element_id"] = int(
                 semantic["procedural_map_element_id"]
             )
+            semantic_payload["ground_truth_procedural_map_element"] = int(
+                semantic["procedural_map_element_id"]
+            )
         if semantic_params.include_lane_marking_id:
             semantic_payload["lane_marking_id"] = int(semantic["lane_marking_id"])
+            semantic_payload["ground_truth_lane_marking_id"] = int(semantic["lane_marking_id"])
         return semantic_payload
+
+    def _ground_truth_class_version(
+        self,
+        *,
+        request: SensorSimRequest,
+        sensor_prefix: str | None = None,
+        default: str = "LEGACY",
+    ) -> str:
+        if sensor_prefix:
+            prefixed = request.options.get(f"{sensor_prefix}_ground_truth_class_version")
+            if isinstance(prefixed, str) and prefixed.strip():
+                return prefixed.strip().upper()
+        explicit = request.options.get("ground_truth_class_version")
+        if isinstance(explicit, str) and explicit.strip():
+            return explicit.strip().upper()
+        camera_version = request.options.get("camera_semantic_class_version")
+        if isinstance(camera_version, str) and camera_version.strip():
+            return camera_version.strip().upper()
+        semantic_params = request.options.get("camera_semantic_params")
+        if isinstance(semantic_params, dict):
+            raw = semantic_params.get("class_version")
+            if isinstance(raw, str) and raw.strip():
+                return raw.strip().upper()
+        return default.upper()
+
+    def _ground_truth_fallback_label(
+        self,
+        *,
+        world_point: tuple[float, float, float],
+        class_version: str,
+        point_index: int,
+    ) -> dict[str, object]:
+        x, y, _z = world_point
+        normalized_class_version = class_version.upper()
+        if normalized_class_version == "GRANULAR_SEGMENTATION":
+            if abs(y) <= 0.15 and abs(x) <= 0.8:
+                class_id = 2501
+                lane_marking_id = 9000 + point_index
+            elif abs(y) <= 0.4:
+                class_id = 5000
+                lane_marking_id = 0
+            elif abs(y) <= 0.8:
+                class_id = 1002
+                lane_marking_id = 0
+            elif abs(x) <= 1.8 and y > 0.8:
+                class_id = 7501
+                lane_marking_id = 0
+            elif abs(x) <= 3.5 and y > 0.8:
+                class_id = 4000
+                lane_marking_id = 0
+            elif y < -1.0:
+                class_id = 205
+                lane_marking_id = 0
+            elif abs(x) > 6.0:
+                class_id = 3501
+                lane_marking_id = 0
+            else:
+                class_id = 6003
+                lane_marking_id = 0
+        else:
+            if abs(y) <= 0.15 and abs(x) <= 0.8:
+                class_id = 6
+                lane_marking_id = 9000 + point_index
+            elif abs(y) <= 0.4:
+                class_id = 7
+                lane_marking_id = 0
+            elif abs(y) <= 0.8:
+                class_id = 8
+                lane_marking_id = 0
+            elif abs(x) <= 1.8 and y > 0.8:
+                class_id = 10
+                lane_marking_id = 0
+            elif abs(x) <= 3.5 and y > 0.8:
+                class_id = 4
+                lane_marking_id = 0
+            elif y < -1.0:
+                class_id = 1
+                lane_marking_id = 0
+            elif abs(x) > 6.0:
+                class_id = 12
+                lane_marking_id = 0
+            else:
+                class_id = 9
+                lane_marking_id = 0
+        entry = self._camera_semantic_entry_for_class(
+            class_version=normalized_class_version,
+            class_id=class_id,
+        )
+        return {
+            "semantic_class_id": class_id,
+            "semantic_class_name": entry["name"],
+            "semantic_parent_class": entry["parent_class"],
+            "color_rgb": entry["color_rgb"],
+            "actor_id": point_index + 1,
+            "component_id": 1000 + point_index,
+            "material_class_id": int(entry["material_class_id"]),
+            "material_uuid": 0,
+            "base_map_element_id": 500 + point_index if class_id in {7, 5000, 8, 5500} else 0,
+            "procedural_map_element_id": 700 + point_index if class_id in {9, 6003} else 0,
+            "lane_marking_id": lane_marking_id,
+        }
+
+    def _point_annotation_value(
+        self,
+        *,
+        request: SensorSimRequest,
+        option_names: list[str],
+        point_index: int,
+    ) -> object | None:
+        for option_name in option_names:
+            values = request.options.get(option_name)
+            if isinstance(values, list) and 0 <= point_index < len(values):
+                return values[point_index]
+        return None
+
+    def _coerce_actor_id(self, raw: object) -> str | None:
+        if raw is None:
+            return None
+        if isinstance(raw, str):
+            value = raw.strip()
+            return value or None
+        if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+            return str(int(raw)) if float(raw).is_integer() else str(raw)
+        return None
+
+    def _sensor_ground_truth_annotation(
+        self,
+        *,
+        request: SensorSimRequest,
+        sensor_prefix: str,
+        point_index: int,
+        world_point: tuple[float, float, float],
+    ) -> dict[str, object]:
+        class_version = self._ground_truth_class_version(
+            request=request,
+            sensor_prefix=sensor_prefix,
+        )
+        fallback = self._ground_truth_fallback_label(
+            world_point=world_point,
+            class_version=class_version,
+            point_index=point_index,
+        )
+        raw_semantic_class = self._point_annotation_value(
+            request=request,
+            option_names=[
+                f"{sensor_prefix}_point_semantic_classes",
+                f"{sensor_prefix}_point_semantic_class_ids",
+            ],
+            point_index=point_index,
+        )
+        semantic_class_id = self._coerce_int(raw_semantic_class, int(fallback["semantic_class_id"]))
+        semantic_entry = self._camera_semantic_entry_for_class(
+            class_version=class_version,
+            class_id=semantic_class_id,
+            fallback_name=self._point_annotation_value(
+                request=request,
+                option_names=[f"{sensor_prefix}_point_semantic_class_names"],
+                point_index=point_index,
+            ),
+        )
+        actor_id = self._coerce_actor_id(
+            self._point_annotation_value(
+                request=request,
+                option_names=[f"{sensor_prefix}_point_actor_ids"],
+                point_index=point_index,
+            )
+        )
+        if actor_id is None:
+            actor_id = self._coerce_actor_id(fallback["actor_id"])
+        return {
+            "ground_truth_semantic_class": semantic_class_id,
+            "ground_truth_semantic_class_name": str(semantic_entry["name"]),
+            "ground_truth_semantic_parent_class": str(semantic_entry["parent_class"]),
+            "ground_truth_actor_id": actor_id,
+            "ground_truth_component_id": self._coerce_int(
+                self._point_annotation_value(
+                    request=request,
+                    option_names=[f"{sensor_prefix}_point_component_ids"],
+                    point_index=point_index,
+                ),
+                int(fallback["component_id"]),
+            ),
+            "ground_truth_material_class": self._coerce_int(
+                self._point_annotation_value(
+                    request=request,
+                    option_names=[f"{sensor_prefix}_point_material_classes"],
+                    point_index=point_index,
+                ),
+                int(fallback["material_class_id"]),
+            ),
+            "ground_truth_material_uuid": self._coerce_int(
+                self._point_annotation_value(
+                    request=request,
+                    option_names=[f"{sensor_prefix}_point_material_uuids"],
+                    point_index=point_index,
+                ),
+                int(fallback["material_uuid"]),
+            ),
+            "ground_truth_base_map_element": self._coerce_int(
+                self._point_annotation_value(
+                    request=request,
+                    option_names=[f"{sensor_prefix}_point_base_map_elements"],
+                    point_index=point_index,
+                ),
+                int(fallback["base_map_element_id"]),
+            ),
+            "ground_truth_procedural_map_element": self._coerce_int(
+                self._point_annotation_value(
+                    request=request,
+                    option_names=[f"{sensor_prefix}_point_procedural_map_elements"],
+                    point_index=point_index,
+                ),
+                int(fallback["procedural_map_element_id"]),
+            ),
+            "ground_truth_lane_marking_id": self._coerce_int(
+                self._point_annotation_value(
+                    request=request,
+                    option_names=[f"{sensor_prefix}_point_lane_marking_ids"],
+                    point_index=point_index,
+                ),
+                int(fallback["lane_marking_id"]),
+            ),
+        }
 
     def _camera_semantic_legend(
         self,
@@ -986,75 +1747,11 @@ class NativePhysicsBackend(SensorBackend):
         camera_config: CameraSensorConfig,
         point_index: int,
     ) -> dict[str, object]:
-        x, y, z = world_point
-        class_version = camera_config.semantic_params.class_version.upper()
-        if class_version == "GRANULAR_SEGMENTATION":
-            if abs(y) <= 0.15 and abs(x) <= 0.8:
-                class_id = 2501
-                lane_marking_id = 9000 + point_index
-            elif abs(y) <= 0.4:
-                class_id = 5000
-                lane_marking_id = 0
-            elif abs(y) <= 0.8:
-                class_id = 1002
-                lane_marking_id = 0
-            elif abs(x) <= 1.8 and y > 0.8:
-                class_id = 7501
-                lane_marking_id = 0
-            elif abs(x) <= 3.5 and y > 0.8:
-                class_id = 4000
-                lane_marking_id = 0
-            elif y < -1.0:
-                class_id = 205
-                lane_marking_id = 0
-            elif abs(x) > 6.0:
-                class_id = 3501
-                lane_marking_id = 0
-            else:
-                class_id = 6003
-                lane_marking_id = 0
-        else:
-            if abs(y) <= 0.15 and abs(x) <= 0.8:
-                class_id = 6
-                lane_marking_id = 9000 + point_index
-            elif abs(y) <= 0.4:
-                class_id = 7
-                lane_marking_id = 0
-            elif abs(y) <= 0.8:
-                class_id = 8
-                lane_marking_id = 0
-            elif abs(x) <= 1.8 and y > 0.8:
-                class_id = 10
-                lane_marking_id = 0
-            elif abs(x) <= 3.5 and y > 0.8:
-                class_id = 4
-                lane_marking_id = 0
-            elif y < -1.0:
-                class_id = 1
-                lane_marking_id = 0
-            elif abs(x) > 6.0:
-                class_id = 12
-                lane_marking_id = 0
-            else:
-                class_id = 9
-                lane_marking_id = 0
-        entry = self._camera_semantic_entry_for_class(
-            class_version=class_version,
-            class_id=class_id,
+        return self._ground_truth_fallback_label(
+            world_point=world_point,
+            class_version=camera_config.semantic_params.class_version,
+            point_index=point_index,
         )
-        return {
-            "semantic_class_id": class_id,
-            "semantic_class_name": entry["name"],
-            "semantic_parent_class": entry["parent_class"],
-            "color_rgb": entry["color_rgb"],
-            "actor_id": point_index + 1,
-            "component_id": 1000 + point_index,
-            "material_class_id": int(entry["material_class_id"]),
-            "material_uuid": 0,
-            "base_map_element_id": 500 + point_index if class_id in {7, 5000, 8, 5500} else 0,
-            "procedural_map_element_id": 700 + point_index if class_id in {9, 6003} else 0,
-            "lane_marking_id": lane_marking_id,
-        }
 
     def _camera_semantic_entry_for_class(
         self,
@@ -1548,6 +2245,24 @@ class NativePhysicsBackend(SensorBackend):
             noisy_points=noisy_points,
             metadata_points=preview_scan_points,
         )
+        coverage_summary = self._build_coverage_summary_from_samples(
+            samples=preview_points,
+            count_field="lidar_points_on_target",
+            actor_field="ground_truth_actor_id",
+            semantic_class_field="ground_truth_semantic_class",
+            semantic_name_field="ground_truth_semantic_class_name",
+            component_field="ground_truth_component_id",
+            material_class_field="ground_truth_material_class",
+            base_map_field="ground_truth_base_map_element",
+            procedural_map_field="ground_truth_procedural_map_element",
+            lane_marking_field="ground_truth_lane_marking_id",
+            detection_type_field="ground_truth_detection_type",
+            count_threshold=max(
+                self._sensor_config_from_request(request).coverage.lidar_min_points_on_target,
+                1,
+            ),
+            excluded_detection_types={"NOISE"},
+        )
         metadata_path.write_text(
             json.dumps(
                 {
@@ -1572,6 +2287,18 @@ class NativePhysicsBackend(SensorBackend):
                     "emitter_params": lidar_config.emitter_params.to_dict(),
                     "channel_profile": lidar_config.channel_profile.to_dict(),
                     "multipath_model": lidar_config.multipath_model.to_dict(),
+                    "ground_truth_fields": self._lidar_ground_truth_fields(),
+                    "coverage_metric_name": "lidar_points_on_target",
+                    "coverage_total_observation_count": coverage_summary[
+                        "total_observation_count"
+                    ],
+                    "coverage_anonymous_observation_count": coverage_summary[
+                        "anonymous_observation_count"
+                    ],
+                    "coverage_excluded_observation_count": coverage_summary[
+                        "excluded_observation_count"
+                    ],
+                    "coverage_targets": coverage_summary["targets"],
                     "preview_points": preview_points,
                 },
                 indent=2,
@@ -1641,10 +2368,18 @@ class NativePhysicsBackend(SensorBackend):
         scan_duration_s = float(request.options.get("lidar_scan_duration_s", 0.1))
         base_extrinsics = self._lidar_extrinsics_from_options(request)
         lidar_config = self._sensor_config_from_request(request).lidar
+        lidar_coverage_threshold = max(
+            self._sensor_config_from_request(request).coverage.lidar_min_points_on_target,
+            1,
+        )
 
         frames: list[dict[str, object]] = []
         total_output_count = 0
         scan_applied = False
+        coverage_target_lists: list[list[dict[str, object]]] = []
+        coverage_total_observation_count = 0
+        coverage_anonymous_observation_count = 0
+        coverage_excluded_observation_count = 0
         for frame_id, (pose_index, pose) in enumerate(selected_poses):
             effective_extrinsics = self._build_lidar_extrinsics_from_pose(
                 request=request,
@@ -1687,6 +2422,31 @@ class NativePhysicsBackend(SensorBackend):
                 noisy_points=noisy_points,
                 metadata_points=frame_scan_points,
             )
+            frame_coverage_summary = self._build_coverage_summary_from_samples(
+                samples=preview_points,
+                count_field="lidar_points_on_target",
+                actor_field="ground_truth_actor_id",
+                semantic_class_field="ground_truth_semantic_class",
+                semantic_name_field="ground_truth_semantic_class_name",
+                component_field="ground_truth_component_id",
+                material_class_field="ground_truth_material_class",
+                base_map_field="ground_truth_base_map_element",
+                procedural_map_field="ground_truth_procedural_map_element",
+                lane_marking_field="ground_truth_lane_marking_id",
+                detection_type_field="ground_truth_detection_type",
+                count_threshold=lidar_coverage_threshold,
+                excluded_detection_types={"NOISE"},
+            )
+            coverage_target_lists.append(list(frame_coverage_summary["targets"]))
+            coverage_total_observation_count += int(
+                frame_coverage_summary["total_observation_count"]
+            )
+            coverage_anonymous_observation_count += int(
+                frame_coverage_summary["anonymous_observation_count"]
+            )
+            coverage_excluded_observation_count += int(
+                frame_coverage_summary["excluded_observation_count"]
+            )
             frames.append(
                 {
                     "frame_id": frame_id,
@@ -1716,6 +2476,18 @@ class NativePhysicsBackend(SensorBackend):
                         for x, y, z in noisy_points[:preview_points_per_frame]
                     ],
                     "preview_points": preview_points[:preview_points_per_frame],
+                    "ground_truth_fields": self._lidar_ground_truth_fields(),
+                    "coverage_metric_name": "lidar_points_on_target",
+                    "coverage_total_observation_count": frame_coverage_summary[
+                        "total_observation_count"
+                    ],
+                    "coverage_anonymous_observation_count": frame_coverage_summary[
+                        "anonymous_observation_count"
+                    ],
+                    "coverage_excluded_observation_count": frame_coverage_summary[
+                        "excluded_observation_count"
+                    ],
+                    "coverage_targets": frame_coverage_summary["targets"],
                     "scan_model_applied": scan_meta["applied"],
                     "scan_path_deg": list(scan_meta["scan_path_deg"]),
                 }
@@ -1760,6 +2532,16 @@ class NativePhysicsBackend(SensorBackend):
             "emitter_params": lidar_config.emitter_params.to_dict(),
             "channel_profile": lidar_config.channel_profile.to_dict(),
             "multipath_model": lidar_config.multipath_model.to_dict(),
+            "ground_truth_fields": self._lidar_ground_truth_fields(),
+            "coverage_metric_name": "lidar_points_on_target",
+            "coverage_total_observation_count": coverage_total_observation_count,
+            "coverage_anonymous_observation_count": coverage_anonymous_observation_count,
+            "coverage_excluded_observation_count": coverage_excluded_observation_count,
+            "coverage_targets": self._merge_sensor_coverage_targets(
+                target_lists=coverage_target_lists,
+                count_field="lidar_points_on_target",
+                count_threshold=lidar_coverage_threshold,
+            ),
             "frames": frames,
         }
         output_path = enhanced_output / "lidar_trajectory_sweep.json"
@@ -2105,6 +2887,7 @@ class NativePhysicsBackend(SensorBackend):
                     "x": x,
                     "y": y,
                     "z": z,
+                    "point_index": base.get("point_index"),
                     "range_m": sqrt(x * x + y * y + z * z),
                     "azimuth_deg": base.get("azimuth_deg", atan2(y, x) * 180.0 / pi),
                     "elevation_deg": base.get(
@@ -2163,6 +2946,22 @@ class NativePhysicsBackend(SensorBackend):
                     "merged_return_count": base.get("merged_return_count"),
                     "range_discrimination_m": base.get("range_discrimination_m"),
                     "ground_truth_detection_type": base.get("ground_truth_detection_type"),
+                    "ground_truth_semantic_class": base.get("ground_truth_semantic_class"),
+                    "ground_truth_semantic_class_name": base.get(
+                        "ground_truth_semantic_class_name"
+                    ),
+                    "ground_truth_semantic_parent_class": base.get(
+                        "ground_truth_semantic_parent_class"
+                    ),
+                    "ground_truth_actor_id": base.get("ground_truth_actor_id"),
+                    "ground_truth_component_id": base.get("ground_truth_component_id"),
+                    "ground_truth_material_class": base.get("ground_truth_material_class"),
+                    "ground_truth_material_uuid": base.get("ground_truth_material_uuid"),
+                    "ground_truth_base_map_element": base.get("ground_truth_base_map_element"),
+                    "ground_truth_procedural_map_element": base.get(
+                        "ground_truth_procedural_map_element"
+                    ),
+                    "ground_truth_lane_marking_id": base.get("ground_truth_lane_marking_id"),
                 }
             )
         return payload
@@ -2673,7 +3472,7 @@ class NativePhysicsBackend(SensorBackend):
             laser_cross_section=laser_cross_section,
             snr=snr,
         )
-        metadata = dict(base_metadata)
+        metadata = dict(primary_metadata)
         metadata.update(
             {
                 "detected": bool(lidar_config.physics_model.return_all_hits) or snr_db >= minimum_snr_db,
@@ -3100,7 +3899,7 @@ class NativePhysicsBackend(SensorBackend):
             point_xyz[2],
             max(sqrt(point_xyz[0] * point_xyz[0] + point_xyz[1] * point_xyz[1]), 1e-9),
         ) * 180.0 / pi
-        metadata = dict(base_metadata)
+        metadata = dict(primary_metadata)
         metadata.update(
             {
                 "detected": bool(lidar_config.physics_model.return_all_hits) or snr_db >= minimum_path_snr_db,
@@ -3201,6 +4000,16 @@ class NativePhysicsBackend(SensorBackend):
         snr = signal_photons / max(ambient_photons, 1e-9)
         snr_db = 10.0 * log10(max(snr, 1e-9))
         laser_cross_section = reflectivity
+        ground_truth_annotation = self._sensor_ground_truth_annotation(
+            request=request,
+            sensor_prefix="lidar",
+            point_index=int(base_metadata.get("point_index", 0)),
+            world_point=(
+                float(base_metadata.get("x", point_xyz[0])),
+                float(base_metadata.get("y", point_xyz[1])),
+                float(base_metadata.get("z", point_xyz[2])),
+            ),
+        )
         intensity_value = self._lidar_intensity_value(
             intensity_config=lidar_config.intensity,
             signal_power_linear=signal_power_linear,
@@ -3247,6 +4056,7 @@ class NativePhysicsBackend(SensorBackend):
             "beam_divergence_el_rad": float(lidar_config.emitter_params.source_divergence.el),
             "beam_footprint_area_m2": beam_footprint_area_m2,
             "ground_truth_detection_type": "TARGET",
+            **ground_truth_annotation,
         }
 
     def _lidar_ground_truth_reflectivity(
@@ -4076,6 +4886,20 @@ class NativePhysicsBackend(SensorBackend):
             for target in selected
             if abs(float(target.get("micro_doppler_velocity_offset_mps", 0.0))) > 1e-12
         )
+        radar_coverage_threshold = max(
+            self._sensor_config_from_request(request).coverage.radar_min_detections_on_target,
+            1,
+        )
+        coverage_summary = self._build_coverage_summary_from_samples(
+            samples=selected,
+            count_field="radar_detections_on_target",
+            actor_field="ground_truth_actor_id",
+            semantic_class_field="ground_truth_semantic_class",
+            semantic_name_field="ground_truth_semantic_class_name",
+            detection_type_field="ground_truth_detection_type",
+            count_threshold=radar_coverage_threshold,
+            excluded_detection_types={"FALSE_ALARM"},
+        )
 
         preview = {
             "input_point_cloud": str(point_cloud),
@@ -4091,6 +4915,18 @@ class NativePhysicsBackend(SensorBackend):
                 "vz": ego_vz,
             },
             "radar_config": radar_config.to_dict(),
+            "ground_truth_fields": self._radar_ground_truth_fields(),
+            "coverage_metric_name": "radar_detections_on_target",
+            "coverage_total_observation_count": coverage_summary[
+                "total_observation_count"
+            ],
+            "coverage_anonymous_observation_count": coverage_summary[
+                "anonymous_observation_count"
+            ],
+            "coverage_excluded_observation_count": coverage_summary[
+                "excluded_observation_count"
+            ],
+            "coverage_targets": coverage_summary["targets"],
             "radar_extrinsics": {
                 "enabled": extrinsics.enabled,
                 "tx": extrinsics.tx,
@@ -4170,11 +5006,19 @@ class NativePhysicsBackend(SensorBackend):
         false_target_count = int(radar_config.false_target_count)
         preview_targets_per_frame = int(request.options.get("radar_preview_targets_per_frame", 16))
         base_extrinsics = self._radar_extrinsics_from_options(request)
+        radar_coverage_threshold = max(
+            self._sensor_config_from_request(request).coverage.radar_min_detections_on_target,
+            1,
+        )
         frames: list[dict[str, object]] = []
         total_targets = 0
         total_tracks = 0
         total_multipath_targets = 0
         total_adaptive_sampling_targets = 0
+        coverage_target_lists: list[list[dict[str, object]]] = []
+        coverage_total_observation_count = 0
+        coverage_anonymous_observation_count = 0
+        coverage_excluded_observation_count = 0
         for frame_id, (pose_index, pose) in enumerate(selected_poses):
             effective_extrinsics = self._build_radar_extrinsics_from_pose(
                 request=request,
@@ -4208,8 +5052,28 @@ class NativePhysicsBackend(SensorBackend):
                 for target in targets
                 if float(target.get("adaptive_sampling_density", 0.0)) > 0.0
             )
+            frame_coverage_summary = self._build_coverage_summary_from_samples(
+                samples=targets,
+                count_field="radar_detections_on_target",
+                actor_field="ground_truth_actor_id",
+                semantic_class_field="ground_truth_semantic_class",
+                semantic_name_field="ground_truth_semantic_class_name",
+                detection_type_field="ground_truth_detection_type",
+                count_threshold=radar_coverage_threshold,
+                excluded_detection_types={"FALSE_ALARM"},
+            )
             total_multipath_targets += frame_multipath_target_count
             total_adaptive_sampling_targets += frame_adaptive_sampling_target_count
+            coverage_target_lists.append(list(frame_coverage_summary["targets"]))
+            coverage_total_observation_count += int(
+                frame_coverage_summary["total_observation_count"]
+            )
+            coverage_anonymous_observation_count += int(
+                frame_coverage_summary["anonymous_observation_count"]
+            )
+            coverage_excluded_observation_count += int(
+                frame_coverage_summary["excluded_observation_count"]
+            )
             frames.append(
                 {
                     "frame_id": frame_id,
@@ -4238,6 +5102,18 @@ class NativePhysicsBackend(SensorBackend):
                     "adaptive_sampling_target_count": frame_adaptive_sampling_target_count,
                     "false_target_count": false_added,
                     "output_mode": "TRACKS" if radar_config.tracking.output_tracks else "POINTS",
+                    "ground_truth_fields": self._radar_ground_truth_fields(),
+                    "coverage_metric_name": "radar_detections_on_target",
+                    "coverage_total_observation_count": frame_coverage_summary[
+                        "total_observation_count"
+                    ],
+                    "coverage_anonymous_observation_count": frame_coverage_summary[
+                        "anonymous_observation_count"
+                    ],
+                    "coverage_excluded_observation_count": frame_coverage_summary[
+                        "excluded_observation_count"
+                    ],
+                    "coverage_targets": frame_coverage_summary["targets"],
                     "targets_preview": targets[:preview_targets_per_frame],
                     "tracks_preview": tracks[:preview_targets_per_frame],
                 }
@@ -4259,6 +5135,16 @@ class NativePhysicsBackend(SensorBackend):
             "frame_count": len(frames),
             "output_mode": "TRACKS" if radar_config.tracking.output_tracks else "POINTS",
             "radar_config": radar_config.to_dict(),
+            "ground_truth_fields": self._radar_ground_truth_fields(),
+            "coverage_metric_name": "radar_detections_on_target",
+            "coverage_total_observation_count": coverage_total_observation_count,
+            "coverage_anonymous_observation_count": coverage_anonymous_observation_count,
+            "coverage_excluded_observation_count": coverage_excluded_observation_count,
+            "coverage_targets": self._merge_sensor_coverage_targets(
+                target_lists=coverage_target_lists,
+                count_field="radar_detections_on_target",
+                count_threshold=radar_coverage_threshold,
+            ),
             "frames": frames,
         }
         output_path = enhanced_output / "radar_targets_trajectory_sweep.json"
@@ -4332,6 +5218,12 @@ class NativePhysicsBackend(SensorBackend):
                 range_m=range_m,
                 azimuth_deg=azimuth_deg,
                 bounce_index=0,
+            )
+            ground_truth_annotation = self._sensor_ground_truth_annotation(
+                request=request,
+                sensor_prefix="radar",
+                point_index=point_index,
+                world_point=(x, y, z),
             )
             range_sigma_m, range_region_index = self._radar_accuracy_sigma(
                 accuracy_config=radar_config.estimator.range_accuracy,
@@ -4434,11 +5326,13 @@ class NativePhysicsBackend(SensorBackend):
                         "raytracing_subdivision_level": int(sampling_profile["subdivision_level"]),
                         "raytracing_mode": str(radar_config.fidelity.raytracing.mode).upper(),
                         "is_false_alarm": False,
+                        **ground_truth_annotation,
                     },
                 )
             )
             candidates.extend(
                 self._radar_multipath_candidates(
+                    request=request,
                     radar_config=radar_config,
                     point_index=point_index,
                     base_range_m=range_m,
@@ -4448,6 +5342,7 @@ class NativePhysicsBackend(SensorBackend):
                     intrinsic_rcs_dbsm=intrinsic_rcs_dbsm,
                     base_detection_metrics=detection_metrics,
                     sampling_profile=sampling_profile,
+                    ground_truth_annotation=ground_truth_annotation,
                     rng=rng,
                     min_range=min_range,
                     max_range=max_range,
@@ -4509,6 +5404,10 @@ class NativePhysicsBackend(SensorBackend):
                     "raytracing_subdivision_level": 0,
                     "raytracing_mode": str(radar_config.fidelity.raytracing.mode).upper(),
                     "is_false_alarm": True,
+                    "ground_truth_semantic_class": 0,
+                    "ground_truth_semantic_class_name": "NONE",
+                    "ground_truth_semantic_parent_class": "NONE",
+                    "ground_truth_actor_id": None,
                 }
             )
             false_added += 1
@@ -4521,6 +5420,7 @@ class NativePhysicsBackend(SensorBackend):
     def _radar_multipath_candidates(
         self,
         *,
+        request: SensorSimRequest,
         radar_config: Any,
         point_index: int,
         base_range_m: float,
@@ -4530,6 +5430,7 @@ class NativePhysicsBackend(SensorBackend):
         intrinsic_rcs_dbsm: float,
         base_detection_metrics: dict[str, float | bool],
         sampling_profile: dict[str, object],
+        ground_truth_annotation: dict[str, object],
         rng: random.Random,
         min_range: float,
         max_range: float,
@@ -4704,6 +5605,7 @@ class NativePhysicsBackend(SensorBackend):
                         "raytracing_subdivision_level": int(sampling_profile["subdivision_level"]),
                         "raytracing_mode": str(radar_config.fidelity.raytracing.mode).upper(),
                         "is_false_alarm": False,
+                        **ground_truth_annotation,
                     },
                 )
             )

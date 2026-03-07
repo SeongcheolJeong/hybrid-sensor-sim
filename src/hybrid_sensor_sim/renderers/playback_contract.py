@@ -278,6 +278,7 @@ def build_renderer_playback_contract(
         "schema_version": "1.0",
         "sensor_config_schema_version": config.schema_version,
         "renderer_backend": config.renderer.backend,
+        "coverage_metrics": config.coverage.to_dict(),
         "renderer_scene": {
             "map": config.renderer.map_name,
             "weather": config.renderer.weather,

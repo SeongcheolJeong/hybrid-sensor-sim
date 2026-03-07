@@ -619,6 +619,24 @@ class RendererConfig:
 
 
 @dataclass(frozen=True)
+class CoverageMetricsConfig:
+    enabled: bool = True
+    combine_sensors: bool = True
+    camera_min_pixels_on_target: int = 1
+    lidar_min_points_on_target: int = 1
+    radar_min_detections_on_target: int = 1
+
+    def to_dict(self) -> dict[str, bool | int]:
+        return {
+            "enabled": self.enabled,
+            "combine_sensors": self.combine_sensors,
+            "camera_min_pixels_on_target": self.camera_min_pixels_on_target,
+            "lidar_min_points_on_target": self.lidar_min_points_on_target,
+            "radar_min_detections_on_target": self.radar_min_detections_on_target,
+        }
+
+
+@dataclass(frozen=True)
 class CameraSensorConfig:
     sensor_id: str = "camera_front"
     attach_to_actor_id: str = "ego"
@@ -1049,6 +1067,7 @@ class SensorSimConfig:
     schema_version: str = CONFIG_SCHEMA_VERSION
     sensor_profile: str = "default"
     renderer: RendererConfig = field(default_factory=RendererConfig)
+    coverage: CoverageMetricsConfig = field(default_factory=CoverageMetricsConfig)
     camera: CameraSensorConfig = field(default_factory=CameraSensorConfig)
     lidar: LidarSensorConfig = field(default_factory=LidarSensorConfig)
     radar: RadarSensorConfig = field(default_factory=RadarSensorConfig)
@@ -1058,6 +1077,7 @@ class SensorSimConfig:
             "schema_version": self.schema_version,
             "sensor_profile": self.sensor_profile,
             "renderer": self.renderer.to_dict(),
+            "coverage_metrics": self.coverage.to_dict(),
             "sensors": {
                 "camera": self.camera.to_dict(),
                 "lidar": self.lidar.to_dict(),
@@ -2131,6 +2151,69 @@ def _parse_radar_fidelity(options: Mapping[str, Any]) -> RadarFidelityConfig:
     )
 
 
+def _parse_coverage_metrics(options: Mapping[str, Any]) -> CoverageMetricsConfig:
+    raw = _as_dict(options.get("coverage_metrics"))
+    thresholds = _as_dict(raw.get("thresholds"))
+    camera = _as_dict(thresholds.get("camera"))
+    lidar = _as_dict(thresholds.get("lidar"))
+    radar = _as_dict(thresholds.get("radar"))
+    return CoverageMetricsConfig(
+        enabled=_as_bool(raw.get("enabled", options.get("coverage_metrics_enabled")), True),
+        combine_sensors=_as_bool(
+            raw.get("combine_sensors", options.get("coverage_metrics_combine_sensors")),
+            True,
+        ),
+        camera_min_pixels_on_target=max(
+            1,
+            _as_int(
+                camera.get(
+                    "min_pixels_on_target",
+                    thresholds.get(
+                        "camera_min_pixels_on_target",
+                        raw.get(
+                            "camera_min_pixels_on_target",
+                            options.get("coverage_metrics_camera_min_pixels_on_target"),
+                        ),
+                    ),
+                ),
+                1,
+            ),
+        ),
+        lidar_min_points_on_target=max(
+            1,
+            _as_int(
+                lidar.get(
+                    "min_points_on_target",
+                    thresholds.get(
+                        "lidar_min_points_on_target",
+                        raw.get(
+                            "lidar_min_points_on_target",
+                            options.get("coverage_metrics_lidar_min_points_on_target"),
+                        ),
+                    ),
+                ),
+                1,
+            ),
+        ),
+        radar_min_detections_on_target=max(
+            1,
+            _as_int(
+                radar.get(
+                    "min_detections_on_target",
+                    thresholds.get(
+                        "radar_min_detections_on_target",
+                        raw.get(
+                            "radar_min_detections_on_target",
+                            options.get("coverage_metrics_radar_min_detections_on_target"),
+                        ),
+                    ),
+                ),
+                1,
+            ),
+        ),
+    )
+
+
 def build_sensor_sim_config(
     *,
     sensor_profile: str = "default",
@@ -2157,6 +2240,7 @@ def build_sensor_sim_config(
             scene_seed=_as_int(data.get("renderer_scene_seed"), 0),
             ego_actor_id=ego_actor_id,
         ),
+        coverage=_parse_coverage_metrics(data),
         camera=CameraSensorConfig(
             sensor_id=_as_str(data.get("renderer_camera_sensor_id"), "camera_front"),
             attach_to_actor_id=ego_actor_id,

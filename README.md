@@ -137,6 +137,12 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `camera_lens_params.vignetting.intensity`
   - `camera_lens_params.vignetting.alpha`
   - `camera_lens_params.vignetting.radius`
+- Coverage controls:
+  - `coverage_metrics.enabled`
+  - `coverage_metrics.combine_sensors`
+  - `coverage_metrics.thresholds.camera.min_pixels_on_target`
+  - `coverage_metrics.thresholds.lidar.min_points_on_target`
+  - `coverage_metrics.thresholds.radar.min_detections_on_target`
 - Rolling shutter timing controls:
   - `camera_rolling_shutter.enabled`
   - `camera_rolling_shutter.row_delay_ns`
@@ -164,6 +170,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - set `camera_projection_trajectory_sweep_frames` (default `3`)
   - emits `camera_projection_trajectory_sweep.json` with multi-pose frame previews.
   - preview artifacts record `geometry_model` per preview/frame.
+  - all camera preview modes now emit `preview_ground_truth_samples` plus `ground_truth_fields` and aggregated `coverage_targets`.
   - depth mode emits `preview_depth_samples`.
   - semantic mode emits `preview_semantic_samples` and `preview_semantic_legend`.
   - visible mode emits `preview_image_signal_samples` with exposure, white-balance, vignetting, flare, spot blur radius, photon, and digital RGB preview values.
@@ -256,6 +263,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `lidar_noisy_preview.json` preview points include:
     - geometry metadata: `range_m`, `azimuth_deg`, `elevation_deg`, `channel_id`, `scan_path_index`
     - signal metadata: `intensity`, `intensity_units`, `reflectivity`, `ground_truth_reflectivity`, `laser_cross_section`, `signal_power_dbw`, `ambient_power_dbw`, `signal_photons`, `ambient_photons`, `snr`, `snr_db`, `return_id`
+    - ground-truth metadata: `ground_truth_semantic_class`, `ground_truth_semantic_class_name`, `ground_truth_actor_id`, `ground_truth_component_id`, `ground_truth_material_class`, `ground_truth_material_uuid`, `ground_truth_base_map_element`, `ground_truth_procedural_map_element`, `ground_truth_lane_marking_id`
     - multi-return/weather metadata: `path_length_offset_m`, `ground_truth_hit_index`, `ground_truth_last_bounce_index`, `weather_extinction_factor`, `ground_truth_detection_type`
     - precipitation particle metadata: `precipitation_type`, `particle_field_density`, `particle_diameter_mm`, `particle_terminal_velocity_mps`, `particle_reflectivity`, `particle_backscatter_strength`, `precipitation_extinction_alpha`
     - multipath metadata: `multipath_surface`, `multipath_path_length_m`, `multipath_base_range_m`, `multipath_surface_reflectivity`, `multipath_model_mode`, `multipath_reflection_point`
@@ -263,6 +271,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - channel profile loading metadata: `channel_profile_source`, `channel_profile_resolved_path`
     - selection metadata: `merged_return_count`, `range_discrimination_m`
     - emitter metadata: `channel_loss_db`, `optical_loss_db`, `peak_power_w`, `beam_divergence_az_rad`, `beam_divergence_el_rad`, `beam_footprint_area_m2`, `beam_azimuth_offset_deg`, `beam_elevation_offset_deg`
+  - LiDAR preview and sweep payloads also expose `ground_truth_fields`, `coverage_metric_name`, and aggregated `coverage_targets`.
 - LiDAR trajectory sweep preview:
   - enable `lidar_trajectory_sweep_enabled=true`
   - set `lidar_trajectory_sweep_frames` and `lidar_preview_points_per_frame`
@@ -323,6 +332,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - emits `radar_targets_preview.json`.
   - preview includes `snr_db`, `detection_probability`, `antenna_gain_db`, accuracy-region indices, optional `tracks`, and stage-1 synthetic radar multipath metadata:
     - `measurement_source=DETECTION|MULTIPATH|FALSE_ALARM`
+    - `ground_truth_semantic_class`, `ground_truth_semantic_class_name`, `ground_truth_actor_id`
     - `ground_truth_detection_type`
     - `ground_truth_hit_index`
     - `ground_truth_last_bounce_index`
@@ -338,6 +348,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
       - `adaptive_sampling_target_override`
       - `raytracing_subdivision_level`
       - `raytracing_mode`
+  - Radar preview and sweep payloads also expose `ground_truth_fields`, `coverage_metric_name`, and aggregated `coverage_targets`.
 - Radar trajectory sweep preview:
   - enable `radar_trajectory_sweep_enabled=true`
   - set `radar_trajectory_sweep_frames` and `radar_preview_targets_per_frame`
@@ -346,6 +357,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `radar_extrinsics_auto_use_orientation=true|false`
     - `radar_extrinsics_auto_offsets`
   - emits `radar_targets_trajectory_sweep.json` with per-frame `targets_preview`, optional `tracks_preview`, and `multipath_target_count`.
+  - hybrid outputs now also emit `sensor_coverage_summary.json` with per-sensor target counts plus combined overlap/blindspot coverage summary.
 
 ## Renderer bridge notes
 
@@ -361,6 +373,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - when survey mapping is enabled, contract also carries `survey_mapping` metadata and related artifact paths.
   - includes `sensor_setup` block with camera/lidar/radar calibration context (`intrinsics`, `distortion`, `extrinsics`, and source).
   - camera setup now also carries `sensor_type`, `depth_params`, `semantic_params`, `image_chain`, `lens_params`, and `rolling_shutter`.
+  - contract now also carries the typed `coverage_metrics` block.
   - includes `renderer_sensor_mounts` block for renderer-side sensor attach specs (`sensor_id`, `sensor_type`, `attach_to_actor_id`, `extrinsics`).
 - Runtime executor:
   - set `renderer_execute=true` to run renderer command.
