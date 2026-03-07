@@ -335,33 +335,60 @@ class RendererRuntimeTests(unittest.TestCase):
             output_spec = json.loads(
                 result.artifacts["backend_output_spec"].read_text(encoding="utf-8")
             )
+            pipeline_summary = json.loads(
+                result.artifacts["renderer_pipeline_summary"].read_text(encoding="utf-8")
+            )
             self.assertTrue(contract["sensor_setup"]["radar"]["tracking_params"]["tracks"])
             self.assertEqual(manifest["frames"][0]["radar"]["data_format"], "radar_tracks_json")
             outputs_by_sensor = {
                 entry["sensor_id"]: entry for entry in output_spec["expected_outputs_by_sensor"]
             }
+            self.assertEqual(outputs_by_sensor["radar_front"]["output_count"], 2)
+            radar_roles = {
+                item["output_role"]: item for item in outputs_by_sensor["radar_front"]["outputs"]
+            }
+            self.assertIn("radar_tracks", radar_roles)
+            self.assertIn("radar_detections", radar_roles)
             self.assertEqual(
-                outputs_by_sensor["radar_front"]["outputs"][0]["output_role"],
-                "radar_tracks",
-            )
-            self.assertEqual(
-                outputs_by_sensor["radar_front"]["outputs"][0]["artifact_type"],
+                radar_roles["radar_tracks"]["artifact_type"],
                 "carla_radar_tracks_json",
             )
             self.assertEqual(
-                outputs_by_sensor["radar_front"]["outputs"][0]["backend_filename"],
+                radar_roles["radar_tracks"]["backend_filename"],
                 "tracks.json",
+            )
+            self.assertEqual(
+                radar_roles["radar_detections"]["artifact_type"],
+                "carla_radar_detections_json",
+            )
+            self.assertTrue(radar_roles["radar_detections"]["embedded_output"])
+            self.assertEqual(
+                radar_roles["radar_detections"]["carrier_data_format"],
+                "radar_tracks_json",
+            )
+            self.assertEqual(
+                radar_roles["radar_detections"]["shared_output_artifact_key"],
+                "sensor_output_radar_front",
             )
             role_groups = {
                 entry["output_role"]: entry for entry in output_spec["expected_outputs_by_role"]
             }
             self.assertIn("radar_tracks", role_groups)
+            self.assertIn("radar_detections", role_groups)
             self.assertEqual(role_groups["radar_tracks"]["expected_count"], 1)
+            self.assertEqual(role_groups["radar_detections"]["expected_count"], 1)
             artifact_groups = {
                 entry["artifact_type"]: entry
                 for entry in output_spec["expected_outputs_by_artifact_type"]
             }
             self.assertIn("carla_radar_tracks_json", artifact_groups)
+            self.assertIn("carla_radar_detections_json", artifact_groups)
+            pipeline_role_groups = {
+                entry["output_role"]: entry for entry in pipeline_summary["expected_outputs"]["by_output_role"]
+            }
+            self.assertIn("radar_tracks", pipeline_role_groups)
+            self.assertIn("radar_detections", pipeline_role_groups)
+            self.assertFalse(pipeline_summary["expected_outputs"]["inspection_available"])
 
     def test_renderer_runtime_can_disable_frame_manifest_arg_injection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

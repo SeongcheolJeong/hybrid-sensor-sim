@@ -326,10 +326,11 @@ def _group_expected_outputs(
             summary["artifact_keys"].append(artifact_key)
         if sensor_id and sensor_id not in summary["sensor_ids"]:
             summary["sensor_ids"].append(sensor_id)
-        if bool(entry.get("exists", False)):
-            summary["found_count"] += 1
-        else:
-            summary["missing_count"] += 1
+        if "exists" in entry:
+            if bool(entry.get("exists", False)):
+                summary["found_count"] += 1
+            else:
+                summary["missing_count"] += 1
     return [groups[key] for key in sorted(groups)]
 
 
@@ -442,27 +443,62 @@ def _build_sensor_expected_output_entries(
             sensor_name=sensor_name,
             data_format=data_format,
         )
-        expected_outputs.append(
-            {
-                "artifact_key": artifact_key,
-                "backend": backend,
-                "modality": modality,
-                "backend_filename": export_filename,
-                "output_role": output_role,
-                "artifact_type": artifact_type,
-                "sensor_name": sensor_name,
-                "sensor_id": sensor_id,
-                "data_format": data_format,
-                "kind": "file",
-                "required": False,
-                "description": f"Expected exported payload for sensor {sensor_id} ({data_format}).",
-                "relative_path": relative_path,
-                "path": str((output_root / relative_path).resolve()),
-                "path_candidates": [
-                    str((output_root / candidate).resolve()) for candidate in candidate_relative_paths
-                ],
-            }
-        )
+        base_entry = {
+            "artifact_key": artifact_key,
+            "backend": backend,
+            "modality": modality,
+            "backend_filename": export_filename,
+            "output_role": output_role,
+            "artifact_type": artifact_type,
+            "sensor_name": sensor_name,
+            "sensor_id": sensor_id,
+            "data_format": data_format,
+            "kind": "file",
+            "required": False,
+            "description": f"Expected exported payload for sensor {sensor_id} ({data_format}).",
+            "relative_path": relative_path,
+            "path": str((output_root / relative_path).resolve()),
+            "path_candidates": [
+                str((output_root / candidate).resolve()) for candidate in candidate_relative_paths
+            ],
+            "embedded_output": False,
+        }
+        expected_outputs.append(base_entry)
+
+        # Radar track exports in the current native/runtime contract carry detections
+        # and tracks in the same JSON artifact. Expose the embedded detections as a
+        # separate logical output role so backend summaries can reason about both.
+        if data_format == "radar_tracks_json":
+            (
+                embedded_modality,
+                _embedded_filename,
+                embedded_output_role,
+                embedded_artifact_type,
+                _embedded_fallback,
+            ) = _sensor_export_layout(
+                backend=backend,
+                data_format="radar_targets_json",
+            )
+            embedded_artifact_key = f"{artifact_key}_radar_detections"
+            if embedded_artifact_key not in seen_keys:
+                seen_keys.add(embedded_artifact_key)
+                expected_outputs.append(
+                    {
+                        **base_entry,
+                        "artifact_key": embedded_artifact_key,
+                        "modality": embedded_modality,
+                        "output_role": embedded_output_role,
+                        "artifact_type": embedded_artifact_type,
+                        "data_format": "radar_targets_json",
+                        "description": (
+                            f"Embedded radar detections available inside {artifact_key} for sensor {sensor_id}."
+                        ),
+                        "carrier_data_format": data_format,
+                        "embedded_output": True,
+                        "embedded_field": "targets",
+                        "shared_output_artifact_key": artifact_key,
+                    }
+                )
     return expected_outputs
 
 
@@ -515,7 +551,13 @@ def _build_backend_output_spec(
                 "artifact_type": str(entry.get("artifact_type", "")).strip(),
                 "sensor_name": str(entry.get("sensor_name", "")).strip() or sensor_id,
                 "data_format": str(entry.get("data_format", "")).strip(),
+                "carrier_data_format": str(entry.get("carrier_data_format", "")).strip(),
                 "relative_path": str(entry.get("relative_path", "")).strip(),
+                "embedded_output": bool(entry.get("embedded_output", False)),
+                "embedded_field": str(entry.get("embedded_field", "")).strip(),
+                "shared_output_artifact_key": str(
+                    entry.get("shared_output_artifact_key", "")
+                ).strip(),
                 "path_candidates": list(entry.get("path_candidates", []))
                 if isinstance(entry.get("path_candidates"), list)
                 else [],
@@ -748,7 +790,13 @@ def _normalize_expected_outputs(raw: Any) -> list[dict[str, Any]]:
                 "sensor_name": str(entry.get("sensor_name", "")).strip(),
                 "sensor_id": str(entry.get("sensor_id", "")).strip(),
                 "data_format": str(entry.get("data_format", "")).strip(),
+                "carrier_data_format": str(entry.get("carrier_data_format", "")).strip(),
                 "relative_path": str(entry.get("relative_path", "")).strip(),
+                "embedded_output": bool(entry.get("embedded_output", False)),
+                "embedded_field": str(entry.get("embedded_field", "")).strip(),
+                "shared_output_artifact_key": str(
+                    entry.get("shared_output_artifact_key", "")
+                ).strip(),
                 "path_candidates": [
                     str(item).strip()
                     for item in entry.get("path_candidates", [])
@@ -870,9 +918,15 @@ def _build_sensor_output_summary(
                 "output_role": output_role,
                 "artifact_type": artifact_type,
                 "data_format": str(entry.get("data_format", "")).strip(),
+                "carrier_data_format": str(entry.get("carrier_data_format", "")).strip(),
                 "relative_path": str(entry.get("relative_path", "")).strip(),
                 "resolved_path": str(entry.get("resolved_path", "")).strip() or None,
                 "exists": exists,
+                "embedded_output": bool(entry.get("embedded_output", False)),
+                "embedded_field": str(entry.get("embedded_field", "")).strip(),
+                "shared_output_artifact_key": str(
+                    entry.get("shared_output_artifact_key", "")
+                ).strip(),
             }
         )
 

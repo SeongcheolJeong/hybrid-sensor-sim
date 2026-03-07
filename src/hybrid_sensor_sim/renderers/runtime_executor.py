@@ -572,6 +572,8 @@ def _write_renderer_pipeline_summary(
 
     expected_output_count = 0
     expected_output_keys: list[str] = []
+    expected_output_groups_by_role: list[dict[str, Any]] = []
+    expected_output_groups_by_artifact_type: list[dict[str, Any]] = []
     output_spec_payload = _read_contract_payload(output_spec_path) if output_spec_path else None
     if isinstance(output_spec_payload, dict):
         expected_output_count = _coerce_int(
@@ -587,14 +589,26 @@ def _write_renderer_pipeline_summary(
             ]
             if expected_output_count <= 0:
                 expected_output_count = len(expected_output_keys)
+        raw_expected_outputs_by_role = output_spec_payload.get("expected_outputs_by_role")
+        if isinstance(raw_expected_outputs_by_role, list):
+            expected_output_groups_by_role = [
+                item for item in raw_expected_outputs_by_role if isinstance(item, dict)
+            ]
+        raw_expected_outputs_by_artifact_type = output_spec_payload.get(
+            "expected_outputs_by_artifact_type"
+        )
+        if isinstance(raw_expected_outputs_by_artifact_type, list):
+            expected_output_groups_by_artifact_type = [
+                item
+                for item in raw_expected_outputs_by_artifact_type
+                if isinstance(item, dict)
+            ]
 
     inspection_available = False
     found_output_count = 0
     missing_output_count = 0
     found_output_keys: list[str] = []
     missing_output_keys: list[str] = []
-    expected_output_groups_by_role: list[dict[str, Any]] = []
-    expected_output_groups_by_artifact_type: list[dict[str, Any]] = []
     runner_execution_payload = (
         _read_contract_payload(runner_execution_manifest_path)
         if runner_execution_manifest_path
