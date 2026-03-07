@@ -76,6 +76,27 @@ _BACKEND_EXPECTED_OUTPUT_PRESETS: dict[str, list[dict[str, Any]]] = {
     ],
 }
 
+_BACKEND_SENSOR_EXPORT_LAYOUTS: dict[str, dict[str, dict[str, str]]] = {
+    "awsim": {
+        "camera_projection_json": {"modality": "camera", "filename": "rgb_frame.json"},
+        "camera_depth_json": {"modality": "camera", "filename": "depth_frame.json"},
+        "camera_semantic_json": {"modality": "camera", "filename": "semantic_frame.json"},
+        "lidar_points_xyz": {"modality": "lidar", "filename": "point_cloud.xyz"},
+        "lidar_points_json": {"modality": "lidar", "filename": "point_cloud.json"},
+        "lidar_points": {"modality": "lidar", "filename": "point_cloud.bin"},
+        "radar_targets_json": {"modality": "radar", "filename": "targets.json"},
+    },
+    "carla": {
+        "camera_projection_json": {"modality": "camera", "filename": "image.json"},
+        "camera_depth_json": {"modality": "camera", "filename": "image_depth.json"},
+        "camera_semantic_json": {"modality": "camera", "filename": "image_semantic.json"},
+        "lidar_points_xyz": {"modality": "lidar", "filename": "point_cloud.xyz"},
+        "lidar_points_json": {"modality": "lidar", "filename": "point_cloud.json"},
+        "lidar_points": {"modality": "lidar", "filename": "point_cloud.bin"},
+        "radar_targets_json": {"modality": "radar", "filename": "detections.json"},
+    },
+}
+
 
 @dataclass
 class BackendRunnerExecutionResult:
@@ -207,21 +228,51 @@ def _sensor_export_filename(data_format: str) -> str:
     return mapping.get(data_format, f"{_sanitize_artifact_key(data_format)}.dat")
 
 
+def _sensor_export_layout(
+    *,
+    backend: str,
+    data_format: str,
+) -> tuple[str, str, str]:
+    backend_layout = _BACKEND_SENSOR_EXPORT_LAYOUTS.get(backend, {})
+    layout = backend_layout.get(data_format, {})
+    modality = str(layout.get("modality", "")).strip() or data_format.split("_", 1)[0]
+    backend_filename = str(layout.get("filename", "")).strip() or _sensor_export_filename(data_format)
+    fallback_filename = _sensor_export_filename(data_format)
+    return modality, backend_filename, fallback_filename
+
+
 def _sensor_export_relative_paths(
     *,
     backend: str,
     sensor_id: str,
+    sensor_name: str,
     data_format: str,
 ) -> tuple[str, list[str]]:
-    export_filename = _sensor_export_filename(data_format)
+    modality, export_filename, fallback_filename = _sensor_export_layout(
+        backend=backend,
+        data_format=data_format,
+    )
     canonical = f"sensor_exports/{sensor_id}/{export_filename}"
     candidates = [canonical]
+    backend_namespaced_with_modality = f"sensor_exports/{backend}/{sensor_id}/{modality}/{export_filename}"
+    if backend_namespaced_with_modality not in candidates:
+        candidates.append(backend_namespaced_with_modality)
     backend_namespaced = f"sensor_exports/{backend}/{sensor_id}/{export_filename}"
     if backend_namespaced not in candidates:
         candidates.append(backend_namespaced)
-    sensor_prefixed = f"sensor_exports/{sensor_id}/{sensor_id}_{export_filename}"
+    modality_path = f"sensor_exports/{sensor_id}/{modality}/{export_filename}"
+    if modality_path not in candidates:
+        candidates.append(modality_path)
+    sensor_prefixed = f"sensor_exports/{sensor_id}/{sensor_name}_{export_filename}"
     if sensor_prefixed not in candidates:
         candidates.append(sensor_prefixed)
+    if fallback_filename != export_filename:
+        fallback_canonical = f"sensor_exports/{sensor_id}/{fallback_filename}"
+        if fallback_canonical not in candidates:
+            candidates.append(fallback_canonical)
+        fallback_backend_namespaced = f"sensor_exports/{backend}/{sensor_id}/{fallback_filename}"
+        if fallback_backend_namespaced not in candidates:
+            candidates.append(fallback_backend_namespaced)
     return canonical, candidates
 
 
@@ -257,15 +308,22 @@ def _build_sensor_expected_output_entries(
             continue
         seen_keys.add(artifact_key)
         sensor_name = str(entry.get("sensor_name", "")).strip() or sensor_id
+        modality, export_filename, _fallback_filename = _sensor_export_layout(
+            backend=backend,
+            data_format=data_format,
+        )
         relative_path, candidate_relative_paths = _sensor_export_relative_paths(
             backend=backend,
             sensor_id=sensor_id,
+            sensor_name=sensor_name,
             data_format=data_format,
         )
         expected_outputs.append(
             {
                 "artifact_key": artifact_key,
                 "backend": backend,
+                "modality": modality,
+                "backend_filename": export_filename,
                 "sensor_name": sensor_name,
                 "sensor_id": sensor_id,
                 "data_format": data_format,
@@ -324,6 +382,9 @@ def _build_backend_output_spec(
         expected_outputs_by_sensor.setdefault(sensor_id, []).append(
             {
                 "artifact_key": str(entry.get("artifact_key", "")).strip(),
+                "backend": str(entry.get("backend", "")).strip(),
+                "modality": str(entry.get("modality", "")).strip(),
+                "backend_filename": str(entry.get("backend_filename", "")).strip(),
                 "sensor_name": str(entry.get("sensor_name", "")).strip() or sensor_id,
                 "data_format": str(entry.get("data_format", "")).strip(),
                 "relative_path": str(entry.get("relative_path", "")).strip(),
@@ -527,6 +588,8 @@ def _normalize_expected_outputs(raw: Any) -> list[dict[str, Any]]:
                 "required": bool(entry.get("required", False)),
                 "description": str(entry.get("description", "")).strip(),
                 "backend": str(entry.get("backend", "")).strip(),
+                "modality": str(entry.get("modality", "")).strip(),
+                "backend_filename": str(entry.get("backend_filename", "")).strip(),
                 "sensor_name": str(entry.get("sensor_name", "")).strip(),
                 "sensor_id": str(entry.get("sensor_id", "")).strip(),
                 "data_format": str(entry.get("data_format", "")).strip(),
@@ -610,6 +673,7 @@ def _build_sensor_output_summary(
                 "sensor_id": sensor_id,
                 "sensor_name": str(entry.get("sensor_name", "")).strip() or sensor_id,
                 "backend": str(entry.get("backend", "")).strip(),
+                "modality": str(entry.get("modality", "")).strip(),
                 "available": False,
                 "output_count": 0,
                 "found_output_count": 0,
@@ -627,6 +691,8 @@ def _build_sensor_output_summary(
         sensor_summary["outputs"].append(
             {
                 "artifact_key": str(entry.get("artifact_key", "")).strip(),
+                "backend_filename": str(entry.get("backend_filename", "")).strip(),
+                "modality": str(entry.get("modality", "")).strip(),
                 "data_format": str(entry.get("data_format", "")).strip(),
                 "relative_path": str(entry.get("relative_path", "")).strip(),
                 "resolved_path": str(entry.get("resolved_path", "")).strip() or None,

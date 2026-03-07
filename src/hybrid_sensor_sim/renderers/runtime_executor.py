@@ -621,6 +621,29 @@ def _write_renderer_pipeline_summary(
             if missing_output_count <= 0:
                 missing_output_count = len(missing_output_keys)
 
+    sensor_output_summary_available = False
+    found_sensor_output_count = 0
+    missing_sensor_output_count = 0
+    sensor_output_records: list[dict[str, Any]] = []
+    sensor_output_payload = (
+        _read_contract_payload(sensor_output_summary_path)
+        if sensor_output_summary_path
+        else None
+    )
+    if isinstance(sensor_output_payload, dict):
+        sensor_output_summary_available = True
+        found_sensor_output_count = _coerce_int(
+            sensor_output_payload.get("found_sensor_count"),
+            default=0,
+        )
+        missing_sensor_output_count = _coerce_int(
+            sensor_output_payload.get("missing_sensor_count"),
+            default=0,
+        )
+        raw_sensor_output_records = sensor_output_payload.get("sensors")
+        if isinstance(raw_sensor_output_records, list):
+            sensor_output_records = [item for item in raw_sensor_output_records if isinstance(item, dict)]
+
     payload = {
         "backend": backend,
         "execute_requested": execute,
@@ -665,6 +688,16 @@ def _write_renderer_pipeline_summary(
             "found_artifact_keys": sorted(set(found_output_keys)),
             "missing_artifact_keys": sorted(set(missing_output_keys)),
         },
+        "sensor_outputs": {
+            "summary_available": sensor_output_summary_available,
+            "found_sensor_count": (
+                found_sensor_output_count if sensor_output_summary_available else None
+            ),
+            "missing_sensor_count": (
+                missing_sensor_output_count if sensor_output_summary_available else None
+            ),
+            "sensors": sensor_output_records,
+        },
         "artifacts": {
             "renderer_execution_plan": str(plan_path),
             "backend_invocation": str(backend_invocation_path),
@@ -695,10 +728,15 @@ def _write_renderer_pipeline_summary(
         "renderer_pipeline_expected_output_inspection_available": (
             1.0 if inspection_available else 0.0
         ),
+        "renderer_pipeline_sensor_output_summary_available": (
+            1.0 if sensor_output_summary_available else 0.0
+        ),
         "renderer_pipeline_expected_output_count": float(expected_output_count),
         "renderer_pipeline_expected_output_found_count": float(found_output_count),
         "renderer_pipeline_expected_output_missing_count": float(missing_output_count),
         "renderer_pipeline_ingestion_sensor_count": float(len(ingestion_sensor_ids)),
+        "renderer_pipeline_found_sensor_output_count": float(found_sensor_output_count),
+        "renderer_pipeline_missing_sensor_output_count": float(missing_sensor_output_count),
     }
 
 

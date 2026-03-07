@@ -38,7 +38,8 @@ echo "runner_warn" >&2
                 / "sensor_exports"
                 / "awsim"
                 / "camera_front"
-                / "camera_projection.json"
+                / "camera"
+                / "rgb_frame.json"
             )
             request_path = root / "backend_runner_request.json"
             request_path.write_text(
@@ -63,17 +64,19 @@ echo "runner_warn" >&2
                             {
                                 "artifact_key": "sensor_output_camera_front",
                                 "backend": "awsim",
+                                "modality": "camera",
+                                "backend_filename": "rgb_frame.json",
                                 "sensor_name": "camera",
                                 "sensor_id": "camera_front",
                                 "data_format": "camera_projection_json",
-                                "relative_path": "sensor_exports/camera_front/camera_projection.json",
+                                "relative_path": "sensor_exports/camera_front/rgb_frame.json",
                                 "path": str(
                                     root
                                     / "backend_outputs"
                                     / "awsim"
                                     / "sensor_exports"
                                     / "camera_front"
-                                    / "camera_projection.json"
+                                    / "rgb_frame.json"
                                 ),
                                 "path_candidates": [
                                     str(
@@ -81,8 +84,27 @@ echo "runner_warn" >&2
                                         / "backend_outputs"
                                         / "awsim"
                                         / "sensor_exports"
+                                        / "awsim"
                                         / "camera_front"
-                                        / "camera_projection.json"
+                                        / "camera"
+                                        / "rgb_frame.json"
+                                    ),
+                                    str(
+                                        root
+                                        / "backend_outputs"
+                                        / "awsim"
+                                        / "sensor_exports"
+                                        / "camera_front"
+                                        / "rgb_frame.json"
+                                    ),
+                                    str(
+                                        root
+                                        / "backend_outputs"
+                                        / "awsim"
+                                        / "sensor_exports"
+                                        / "camera_front"
+                                        / "camera"
+                                        / "rgb_frame.json"
                                     ),
                                     str(sensor_output_file),
                                 ],
@@ -128,9 +150,14 @@ echo "runner_warn" >&2
             )
             self.assertEqual(sensor_output_summary["sensor_count"], 1)
             self.assertEqual(sensor_output_summary["found_sensor_count"], 1)
+            self.assertEqual(sensor_output_summary["sensors"][0]["modality"], "camera")
             self.assertEqual(
                 sensor_output_summary["sensors"][0]["outputs"][0]["resolved_path"],
                 str(sensor_output_file),
+            )
+            self.assertEqual(
+                sensor_output_summary["sensors"][0]["outputs"][0]["backend_filename"],
+                "rgb_frame.json",
             )
             self.assertIn("runner_ok", stdout)
             self.assertIn("runner_warn", stderr)

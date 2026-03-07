@@ -233,6 +233,7 @@ Primary code references:
   - backend output spec generation and expected-output inspection
   - sensor-specific expected export paths derived from runtime ingestion data
   - backend-namespaced sensor export candidate paths and sensor output summary generation
+  - backend-specific sensor export filename conventions (for example AWSIM vs CARLA camera outputs)
   - backend run manifest generation
   - renderer pipeline summary generation from plan/run/runner artifacts
   - backend runner request and direct command generation
