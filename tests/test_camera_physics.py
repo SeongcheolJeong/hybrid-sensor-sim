@@ -1147,6 +1147,113 @@ EOF
             self.assertGreater(channel_points[1]["beam_footprint_area_m2"], 0.0)
             self.assertNotEqual(channel_points[0]["beam_azimuth_offset_deg"], 0.0)
 
+    def test_lidar_channel_profile_generates_sidelobe_returns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+10.0 0.0 0.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "radar_postprocess_enabled": False,
+                    "lidar_postprocess_enabled": True,
+                    "lidar_noise": "none",
+                    "lidar_dropout_probability": 0.0,
+                    "lidar_ground_truth_reflectivity": 1.0,
+                    "lidar_physics_model": {
+                        "reflectivity_coefficient": 1.0,
+                        "ambient_power_dbw": -30.0,
+                        "signal_photon_scale": 10000.0,
+                        "ambient_photon_scale": 1000.0,
+                        "minimum_detection_snr_db": 0.0,
+                        "return_all_hits": True,
+                    },
+                    "lidar_return_model": {
+                        "mode": "MULTI",
+                        "max_returns": 5,
+                        "selection_mode": "FIRST",
+                        "signal_decay": 0.0,
+                    },
+                    "lidar_shared_channel_profile": {
+                        "profile_data": {
+                            "file_uri": "scenario://workspace/model_data/cross_detector_profile_1024.exr",
+                            "half_angle": 0.05,
+                            "scale": 4.0,
+                            "sample_count": 4,
+                            "sidelobe_gain": 0.08,
+                        }
+                    },
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            self.assertEqual(result.metrics.get("lidar_channel_profile_applied"), 1.0)
+            self.assertEqual(result.metrics.get("lidar_sidelobe_return_count"), 4.0)
+            preview = json.loads(
+                result.artifacts["lidar_noisy_preview_json"].read_text(encoding="utf-8")
+            )
+            self.assertTrue(preview["channel_profile"]["enabled"])
+            self.assertEqual(preview["channel_profile"]["profile_data"]["pattern"], "CROSS")
+            self.assertEqual(preview["output_count"], 5)
+            sidelobe_points = [
+                point
+                for point in preview["preview_points"]
+                if point["ground_truth_detection_type"] == "SIDELOBE"
+            ]
+            self.assertEqual(len(sidelobe_points), 4)
+            self.assertTrue(
+                all(point["channel_profile_pattern"] == "CROSS" for point in sidelobe_points)
+            )
+            self.assertTrue(
+                all(point["channel_profile_file_uri"].endswith("cross_detector_profile_1024.exr") for point in sidelobe_points)
+            )
+            self.assertTrue(
+                all(point["channel_profile_scale"] == 4.0 for point in sidelobe_points)
+            )
+            self.assertTrue(
+                any(abs(point["channel_profile_offset_az_deg"]) > 0.0 for point in sidelobe_points)
+            )
+            self.assertTrue(
+                any(abs(point["channel_profile_offset_el_deg"]) > 0.0 for point in sidelobe_points)
+            )
+            self.assertTrue(
+                all(point["snr_db"] < preview["preview_points"][0]["snr_db"] for point in sidelobe_points)
+            )
+
     def test_lidar_trajectory_sweep_uses_multi_scan_path_per_frame(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

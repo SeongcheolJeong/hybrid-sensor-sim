@@ -1538,6 +1538,7 @@ class NativePhysicsBackend(SensorBackend):
                     "environment_model": lidar_config.environment_model.to_dict(),
                     "noise_performance": lidar_config.noise_performance.to_dict(),
                     "emitter_params": lidar_config.emitter_params.to_dict(),
+                    "channel_profile": lidar_config.channel_profile.to_dict(),
                     "multipath_model": lidar_config.multipath_model.to_dict(),
                     "preview_points": preview_points,
                 },
@@ -1725,6 +1726,7 @@ class NativePhysicsBackend(SensorBackend):
             "environment_model": lidar_config.environment_model.to_dict(),
             "noise_performance": lidar_config.noise_performance.to_dict(),
             "emitter_params": lidar_config.emitter_params.to_dict(),
+            "channel_profile": lidar_config.channel_profile.to_dict(),
             "multipath_model": lidar_config.multipath_model.to_dict(),
             "frames": frames,
         }
@@ -2110,6 +2112,13 @@ class NativePhysicsBackend(SensorBackend):
                     "multipath_surface_reflectivity": base.get("multipath_surface_reflectivity"),
                     "multipath_model_mode": base.get("multipath_model_mode"),
                     "multipath_reflection_point": base.get("multipath_reflection_point"),
+                    "channel_profile_pattern": base.get("channel_profile_pattern"),
+                    "channel_profile_file_uri": base.get("channel_profile_file_uri"),
+                    "channel_profile_weight": base.get("channel_profile_weight"),
+                    "channel_profile_scale": base.get("channel_profile_scale"),
+                    "channel_profile_offset_az_deg": base.get("channel_profile_offset_az_deg"),
+                    "channel_profile_offset_el_deg": base.get("channel_profile_offset_el_deg"),
+                    "channel_profile_half_angle_deg": base.get("channel_profile_half_angle_deg"),
                     "merged_return_count": base.get("merged_return_count"),
                     "range_discrimination_m": base.get("range_discrimination_m"),
                     "ground_truth_detection_type": base.get("ground_truth_detection_type"),
@@ -2134,6 +2143,15 @@ class NativePhysicsBackend(SensorBackend):
         supplemental_returns: list[tuple[tuple[float, float, float], dict[str, object]]] = []
         supplemental_returns.extend(
             self._lidar_environment_backscatter_returns(
+                request=request,
+                lidar_config=lidar_config,
+                point_xyz=point_xyz,
+                primary_metadata=primary_metadata,
+                base_metadata=base_metadata,
+            )
+        )
+        supplemental_returns.extend(
+            self._lidar_channel_profile_returns(
                 request=request,
                 lidar_config=lidar_config,
                 point_xyz=point_xyz,
@@ -2260,6 +2278,185 @@ class NativePhysicsBackend(SensorBackend):
             payload["return_id"] = return_id
             return_series.append((return_point, payload))
         return return_series
+
+    def _lidar_channel_profile_returns(
+        self,
+        *,
+        request: SensorSimRequest,
+        lidar_config: Any,
+        point_xyz: tuple[float, float, float],
+        primary_metadata: dict[str, object],
+        base_metadata: dict[str, object],
+    ) -> list[tuple[tuple[float, float, float], dict[str, object]]]:
+        channel_profile = lidar_config.channel_profile
+        if not bool(channel_profile.enabled):
+            return []
+        profile_data = channel_profile.profile_data
+        pattern = str(profile_data.pattern).upper().strip()
+        if pattern == "NONE":
+            return []
+        scale = max(float(profile_data.scale), 0.0)
+        if scale <= 1e-12:
+            return []
+        taps = self._lidar_channel_profile_taps(profile_data=profile_data)
+        if not taps:
+            return []
+        returns: list[tuple[tuple[float, float, float], dict[str, object]]] = []
+        for tap in taps:
+            az_offset_rad = float(tap["az"]) * self._lidar_channel_profile_half_angle_rad(
+                lidar_config=lidar_config,
+                profile_data=profile_data,
+            )
+            el_offset_rad = float(tap["el"]) * self._lidar_channel_profile_half_angle_rad(
+                lidar_config=lidar_config,
+                profile_data=profile_data,
+            )
+            profile_point = self._lidar_apply_emitter_adjustment_to_point(
+                point_xyz=point_xyz,
+                az_offset_rad=az_offset_rad,
+                el_offset_rad=el_offset_rad,
+            )
+            metadata = self._lidar_channel_profile_metadata(
+                request=request,
+                lidar_config=lidar_config,
+                primary_metadata=primary_metadata,
+                base_metadata=base_metadata,
+                point_xyz=profile_point,
+                pattern=pattern,
+                profile_weight=float(tap["weight"]),
+                az_offset_rad=az_offset_rad,
+                el_offset_rad=el_offset_rad,
+            )
+            returns.append((profile_point, metadata))
+        return returns
+
+    def _lidar_channel_profile_half_angle_rad(
+        self,
+        *,
+        lidar_config: Any,
+        profile_data: Any,
+    ) -> float:
+        configured = max(float(profile_data.half_angle_rad), 0.0)
+        if configured > 0.0:
+            return configured
+        divergence_az = abs(float(lidar_config.emitter_params.source_divergence.az))
+        divergence_el = abs(float(lidar_config.emitter_params.source_divergence.el))
+        return max(divergence_az, divergence_el, 1e-3) * 4.0
+
+    def _lidar_channel_profile_taps(self, *, profile_data: Any) -> list[dict[str, float]]:
+        pattern = str(profile_data.pattern).upper().strip()
+        if pattern == "CROSS":
+            base_taps = [
+                {"az": 1.0, "el": 0.0, "weight": 1.0},
+                {"az": -1.0, "el": 0.0, "weight": 1.0},
+                {"az": 0.0, "el": 1.0, "weight": 1.0},
+                {"az": 0.0, "el": -1.0, "weight": 1.0},
+            ]
+        elif pattern == "GRID":
+            base_taps = [
+                {"az": -1.0, "el": -1.0, "weight": 0.5},
+                {"az": -1.0, "el": 0.0, "weight": 0.75},
+                {"az": -1.0, "el": 1.0, "weight": 0.5},
+                {"az": 0.0, "el": -1.0, "weight": 0.75},
+                {"az": 0.0, "el": 1.0, "weight": 0.75},
+                {"az": 1.0, "el": -1.0, "weight": 0.5},
+                {"az": 1.0, "el": 0.0, "weight": 0.75},
+                {"az": 1.0, "el": 1.0, "weight": 0.5},
+            ]
+        elif pattern == "RING":
+            base_taps = [
+                {"az": cos(index * pi / 4.0), "el": sin(index * pi / 4.0), "weight": 0.65}
+                for index in range(8)
+            ]
+        else:
+            return []
+        sample_count = int(getattr(profile_data, "sample_count", 0))
+        if sample_count > 0:
+            return base_taps[:sample_count]
+        return base_taps
+
+    def _lidar_channel_profile_metadata(
+        self,
+        *,
+        request: SensorSimRequest,
+        lidar_config: Any,
+        primary_metadata: dict[str, object],
+        base_metadata: dict[str, object],
+        point_xyz: tuple[float, float, float],
+        pattern: str,
+        profile_weight: float,
+        az_offset_rad: float,
+        el_offset_rad: float,
+    ) -> dict[str, object]:
+        profile_data = lidar_config.channel_profile.profile_data
+        effective_gain = max(float(profile_data.scale), 0.0) * max(float(profile_data.sidelobe_gain), 0.0) * max(profile_weight, 0.0)
+        primary_signal_power_linear = pow(
+            10.0,
+            float(primary_metadata.get("signal_power_dbw", -120.0)) / 10.0,
+        )
+        signal_power_linear = primary_signal_power_linear * effective_gain
+        ambient_photons = float(primary_metadata.get("ambient_photons", 0.0))
+        signal_photons = signal_power_linear * max(float(lidar_config.physics_model.signal_photon_scale), 0.0)
+        snr = signal_photons / max(ambient_photons, 1e-9)
+        snr_db = 10.0 * log10(max(snr, 1e-9))
+        minimum_snr_db = max(
+            float(lidar_config.return_model.minimum_secondary_snr_db),
+            float(lidar_config.physics_model.minimum_detection_snr_db),
+        )
+        reflectivity = float(primary_metadata.get("reflectivity", 0.0))
+        ground_truth_reflectivity = float(primary_metadata.get("ground_truth_reflectivity", 0.0))
+        laser_cross_section = float(primary_metadata.get("laser_cross_section", reflectivity))
+        intensity_value = self._lidar_intensity_value(
+            intensity_config=lidar_config.intensity,
+            signal_power_linear=signal_power_linear,
+            reflectivity=reflectivity,
+            ground_truth_reflectivity=ground_truth_reflectivity,
+            laser_cross_section=laser_cross_section,
+            snr=snr,
+        )
+        metadata = dict(base_metadata)
+        metadata.update(
+            {
+                "detected": bool(lidar_config.physics_model.return_all_hits) or snr_db >= minimum_snr_db,
+                "range_m": float(primary_metadata.get("range_m", 0.0)),
+                "azimuth_deg": atan2(point_xyz[1], point_xyz[0]) * 180.0 / pi,
+                "elevation_deg": atan2(
+                    point_xyz[2],
+                    max(sqrt(point_xyz[0] * point_xyz[0] + point_xyz[1] * point_xyz[1]), 1e-9),
+                )
+                * 180.0
+                / pi,
+                "intensity": intensity_value,
+                "intensity_units": lidar_config.intensity.units,
+                "reflectivity": reflectivity,
+                "ground_truth_reflectivity": ground_truth_reflectivity,
+                "laser_cross_section": laser_cross_section,
+                "signal_power_dbw": 10.0 * log10(max(signal_power_linear, 1e-9)),
+                "ambient_power_dbw": float(primary_metadata.get("ambient_power_dbw", -30.0)),
+                "signal_photons": signal_photons,
+                "ambient_photons": ambient_photons,
+                "snr": snr,
+                "snr_db": snr_db,
+                "path_length_offset_m": 0.0,
+                "ground_truth_hit_index": 0,
+                "ground_truth_last_bounce_index": 0,
+                "weather_extinction_factor": float(primary_metadata.get("weather_extinction_factor", 1.0)),
+                "channel_profile_pattern": pattern,
+                "channel_profile_file_uri": str(profile_data.file_uri),
+                "channel_profile_weight": profile_weight,
+                "channel_profile_scale": float(profile_data.scale),
+                "channel_profile_offset_az_deg": az_offset_rad * 180.0 / pi,
+                "channel_profile_offset_el_deg": el_offset_rad * 180.0 / pi,
+                "channel_profile_half_angle_deg": self._lidar_channel_profile_half_angle_rad(
+                    lidar_config=lidar_config,
+                    profile_data=profile_data,
+                )
+                * 180.0
+                / pi,
+                "ground_truth_detection_type": "SIDELOBE",
+            }
+        )
+        return metadata
 
     def _lidar_requested_return_count(self, lidar_config: Any) -> int:
         max_returns = max(1, int(getattr(lidar_config.return_model, "max_returns", 1)))
@@ -3173,6 +3370,11 @@ class NativePhysicsBackend(SensorBackend):
             for point in preview_points
             if isinstance(point, dict) and str(point.get("ground_truth_detection_type", "")).upper() == "MULTIPATH"
         ]
+        sidelobe_points = [
+            point
+            for point in preview_points
+            if isinstance(point, dict) and str(point.get("ground_truth_detection_type", "")).upper() == "SIDELOBE"
+        ]
         beam_offset_values = [
             abs(float(point["beam_azimuth_offset_deg"]))
             for point in preview_points
@@ -3196,6 +3398,13 @@ class NativePhysicsBackend(SensorBackend):
         metrics["lidar_backscatter_or_noise_count"] = float(len(noise_points))
         metrics["lidar_multipath_return_count"] = float(len(multipath_points))
         metrics["lidar_geometry_multipath_applied"] = 1.0 if multipath_points else 0.0
+        metrics["lidar_sidelobe_return_count"] = float(len(sidelobe_points))
+        metrics["lidar_channel_profile_applied"] = 1.0 if (
+            bool(lidar_config.channel_profile.enabled)
+            and str(lidar_config.channel_profile.profile_data.pattern).upper().strip() != "NONE"
+            and float(lidar_config.channel_profile.profile_data.scale) > 0.0
+        ) else 0.0
+        metrics["lidar_channel_profile_scale"] = float(lidar_config.channel_profile.profile_data.scale)
         metrics["lidar_weather_model_applied"] = 1.0 if (
             float(lidar_config.environment_model.fog_density) > 0.0
             or float(lidar_config.environment_model.precipitation_rate) > 0.0

@@ -234,12 +234,21 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `lidar_emitter_params.source_variance.{az,el}`
     - `lidar_emitter_params.peak_power`
     - `lidar_emitter_params.optical_loss`
+  - channel profile / sidelobe controls:
+    - `lidar_shared_channel_profile.profile_data.file_uri`
+    - `lidar_shared_channel_profile.profile_data.half_angle`
+    - `lidar_shared_channel_profile.profile_data.scale`
+    - synthetic helper fields:
+      - `pattern=CROSS|GRID|RING`
+      - `sample_count`
+      - `sidelobe_gain`
   - emits `lidar_noisy_preview.xyz` and `lidar_noisy_preview.json`.
   - `lidar_noisy_preview.json` preview points include:
     - geometry metadata: `range_m`, `azimuth_deg`, `elevation_deg`, `channel_id`, `scan_path_index`
     - signal metadata: `intensity`, `intensity_units`, `reflectivity`, `ground_truth_reflectivity`, `laser_cross_section`, `signal_power_dbw`, `ambient_power_dbw`, `signal_photons`, `ambient_photons`, `snr`, `snr_db`, `return_id`
     - multi-return/weather metadata: `path_length_offset_m`, `ground_truth_hit_index`, `ground_truth_last_bounce_index`, `weather_extinction_factor`, `ground_truth_detection_type`
     - multipath metadata: `multipath_surface`, `multipath_path_length_m`, `multipath_base_range_m`, `multipath_surface_reflectivity`, `multipath_model_mode`, `multipath_reflection_point`
+    - channel profile metadata: `channel_profile_pattern`, `channel_profile_file_uri`, `channel_profile_weight`, `channel_profile_scale`, `channel_profile_offset_az_deg`, `channel_profile_offset_el_deg`, `channel_profile_half_angle_deg`
     - selection metadata: `merged_return_count`, `range_discrimination_m`
     - emitter metadata: `channel_loss_db`, `optical_loss_db`, `peak_power_w`, `beam_divergence_az_rad`, `beam_divergence_el_rad`, `beam_footprint_area_m2`, `beam_azimuth_offset_deg`, `beam_elevation_offset_deg`
 - LiDAR trajectory sweep preview:

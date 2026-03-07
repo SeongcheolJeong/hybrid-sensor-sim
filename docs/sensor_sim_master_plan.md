@@ -591,10 +591,14 @@ Current status:
     - `source_divergence` and `source_variance`
     - `peak_power` and range-dependent `optical_loss`
     - per-point channel radiometric metadata in preview artifacts
+  - channel profile / detector profile surface:
+    - `shared_channel_profile.profile_data.{file_uri,half_angle,scale}`
+    - built-in `CROSS`, `GRID`, `RING` synthetic profile fallback
+    - off-axis `SIDELOBE` preview returns with profile offsets and weights
 - next missing items:
   - stronger raytracing fidelity beyond current selection/merge approximation
   - richer rain/snow particle field calibration beyond current preview heuristic
-  - channel profile / sidelobe modeling beyond current scalar divergence-loss approximation
+  - EXR-driven profile ingestion beyond current synthetic profile fallback
 
 ### Phase 3: Radar Core Feature Expansion
 

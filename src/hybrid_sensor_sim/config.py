@@ -500,6 +500,38 @@ class LidarEmitterConfig:
 
 
 @dataclass(frozen=True)
+class LidarProfileDataConfig:
+    file_uri: str = ""
+    half_angle_rad: float = 0.0
+    scale: float = 0.0
+    pattern: str = "NONE"
+    sample_count: int = 0
+    sidelobe_gain: float = 0.05
+
+    def to_dict(self) -> dict[str, float | int | str]:
+        return {
+            "file_uri": self.file_uri,
+            "half_angle": self.half_angle_rad,
+            "scale": self.scale,
+            "pattern": self.pattern,
+            "sample_count": self.sample_count,
+            "sidelobe_gain": self.sidelobe_gain,
+        }
+
+
+@dataclass(frozen=True)
+class LidarChannelProfileConfig:
+    enabled: bool = False
+    profile_data: LidarProfileDataConfig = field(default_factory=LidarProfileDataConfig)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "profile_data": self.profile_data.to_dict(),
+        }
+
+
+@dataclass(frozen=True)
 class LidarMultipathConfig:
     enabled: bool = False
     mode: str = "HYBRID"
@@ -646,6 +678,7 @@ class LidarSensorConfig:
     environment_model: LidarEnvironmentConfig = field(default_factory=LidarEnvironmentConfig)
     noise_performance: LidarNoisePerformanceConfig = field(default_factory=LidarNoisePerformanceConfig)
     emitter_params: LidarEmitterConfig = field(default_factory=LidarEmitterConfig)
+    channel_profile: LidarChannelProfileConfig = field(default_factory=LidarChannelProfileConfig)
     multipath_model: LidarMultipathConfig = field(default_factory=LidarMultipathConfig)
     extrinsics: SensorExtrinsicsConfig = field(default_factory=SensorExtrinsicsConfig)
     behaviors: list[SensorBehaviorConfig] = field(default_factory=list)
@@ -689,6 +722,7 @@ class LidarSensorConfig:
             "environment_model": self.environment_model.to_dict(),
             "noise_performance": self.noise_performance.to_dict(),
             "emitter_params": self.emitter_params.to_dict(),
+            "channel_profile": self.channel_profile.to_dict(),
             "multipath_model": self.multipath_model.to_dict(),
             "extrinsics": self.extrinsics.to_dict(),
             "behaviors": [behavior.to_dict() for behavior in self.behaviors],
@@ -1167,6 +1201,63 @@ def _parse_lidar_emitter_params(options: Mapping[str, Any]) -> LidarEmitterConfi
     )
 
 
+def _infer_lidar_channel_profile_pattern(file_uri: str) -> str:
+    lowered = file_uri.strip().lower()
+    if "cross" in lowered:
+        return "CROSS"
+    if "sparse" in lowered or "grid" in lowered:
+        return "GRID"
+    if "ring" in lowered:
+        return "RING"
+    return "NONE"
+
+
+def _parse_lidar_channel_profile(options: Mapping[str, Any]) -> LidarChannelProfileConfig:
+    raw = _as_dict(options.get("lidar_shared_channel_profile", options.get("shared_channel_profile")))
+    raw_profile = _as_dict(raw.get("profile_data"))
+    file_uri = _as_str(
+        raw_profile.get("file_uri", options.get("lidar_channel_profile_file_uri")),
+        "",
+    )
+    pattern = _as_str(
+        raw_profile.get("pattern", options.get("lidar_channel_profile_pattern")),
+        "",
+    ).upper()
+    if not pattern:
+        pattern = _infer_lidar_channel_profile_pattern(file_uri)
+    scale = _as_float(
+        raw_profile.get("scale", options.get("lidar_channel_profile_scale")),
+        0.0,
+    )
+    enabled = _as_bool(
+        raw.get("enabled", options.get("lidar_channel_profile_enabled")),
+        bool(file_uri or pattern != "NONE" or scale > 0.0),
+    )
+    return LidarChannelProfileConfig(
+        enabled=enabled,
+        profile_data=LidarProfileDataConfig(
+            file_uri=file_uri,
+            half_angle_rad=_as_float(
+                raw_profile.get("half_angle", options.get("lidar_channel_profile_half_angle")),
+                0.0,
+            ),
+            scale=scale,
+            pattern=pattern,
+            sample_count=max(
+                0,
+                _as_int(
+                    raw_profile.get("sample_count", options.get("lidar_channel_profile_sample_count")),
+                    0,
+                ),
+            ),
+            sidelobe_gain=_as_float(
+                raw_profile.get("sidelobe_gain", options.get("lidar_channel_profile_sidelobe_gain")),
+                0.05,
+            ),
+        ),
+    )
+
+
 def _parse_lidar_multipath_model(options: Mapping[str, Any]) -> LidarMultipathConfig:
     raw = _as_dict(options.get("lidar_multipath_model"))
     return LidarMultipathConfig(
@@ -1384,6 +1475,7 @@ def build_sensor_sim_config(
             environment_model=_parse_lidar_environment_model(data),
             noise_performance=_parse_lidar_noise_performance(data),
             emitter_params=_parse_lidar_emitter_params(data),
+            channel_profile=_parse_lidar_channel_profile(data),
             multipath_model=_parse_lidar_multipath_model(data),
             extrinsics=_parse_extrinsics(_as_dict(data.get("lidar_extrinsics"))),
             behaviors=_parse_behaviors(data, "lidar"),

@@ -36,6 +36,8 @@ class SensorConfigTests(unittest.TestCase):
         self.assertTrue(config.lidar.environment_model.enable_ambient)
         self.assertAlmostEqual(config.lidar.environment_model.extinction_coefficient_scale, 0.05)
         self.assertAlmostEqual(config.lidar.noise_performance.probability_false_alarm, 0.0)
+        self.assertFalse(config.lidar.channel_profile.enabled)
+        self.assertEqual(config.lidar.channel_profile.profile_data.pattern, "NONE")
         self.assertFalse(config.lidar.multipath_model.enabled)
         self.assertEqual(config.lidar.multipath_model.mode, "HYBRID")
         self.assertEqual(config.radar.clutter_model, "basic")
@@ -205,6 +207,15 @@ class SensorConfigTests(unittest.TestCase):
                         {"range": 50.0, "loss": -1.5},
                     ],
                 },
+                "lidar_shared_channel_profile": {
+                    "profile_data": {
+                        "file_uri": "scenario://workspace/model_data/cross_detector_profile_128.exr",
+                        "half_angle": 0.06,
+                        "scale": 2.5,
+                        "sample_count": 4,
+                        "sidelobe_gain": 0.08,
+                    }
+                },
                 "lidar_multipath_model": {
                     "enabled": True,
                     "mode": "hybrid",
@@ -328,6 +339,16 @@ class SensorConfigTests(unittest.TestCase):
         self.assertAlmostEqual(config.lidar.emitter_params.peak_power_w, 2.5)
         self.assertEqual(len(config.lidar.emitter_params.optical_loss), 2)
         self.assertAlmostEqual(config.lidar.emitter_params.optical_loss[1].loss_db, -1.5)
+        self.assertTrue(config.lidar.channel_profile.enabled)
+        self.assertEqual(config.lidar.channel_profile.profile_data.pattern, "CROSS")
+        self.assertEqual(
+            config.lidar.channel_profile.profile_data.file_uri,
+            "scenario://workspace/model_data/cross_detector_profile_128.exr",
+        )
+        self.assertAlmostEqual(config.lidar.channel_profile.profile_data.half_angle_rad, 0.06)
+        self.assertAlmostEqual(config.lidar.channel_profile.profile_data.scale, 2.5)
+        self.assertEqual(config.lidar.channel_profile.profile_data.sample_count, 4)
+        self.assertAlmostEqual(config.lidar.channel_profile.profile_data.sidelobe_gain, 0.08)
         self.assertTrue(config.lidar.multipath_model.enabled)
         self.assertEqual(config.lidar.multipath_model.mode, "HYBRID")
         self.assertEqual(config.lidar.multipath_model.max_paths, 2)
@@ -406,6 +427,13 @@ class SensorConfigTests(unittest.TestCase):
                     "peak_power": 1.8,
                     "optical_loss": [{"range": 25.0, "loss": -0.8}],
                 },
+                "lidar_shared_channel_profile": {
+                    "profile_data": {
+                        "file_uri": "scenario://workspace/model_data/sparse_profile.exr",
+                        "half_angle": 0.08,
+                        "scale": 1.75,
+                    }
+                },
                 "lidar_multipath_model": {
                     "enabled": True,
                     "mode": "ground_plane",
@@ -483,6 +511,19 @@ class SensorConfigTests(unittest.TestCase):
         self.assertEqual(
             contract["sensor_setup"]["lidar"]["emitter_params"]["source_losses"],
             [-0.2, -0.4, -0.6],
+        )
+        self.assertTrue(contract["sensor_setup"]["lidar"]["channel_profile"]["enabled"])
+        self.assertEqual(
+            contract["sensor_setup"]["lidar"]["channel_profile"]["profile_data"]["pattern"],
+            "GRID",
+        )
+        self.assertAlmostEqual(
+            contract["sensor_setup"]["lidar"]["channel_profile"]["profile_data"]["half_angle"],
+            0.08,
+        )
+        self.assertAlmostEqual(
+            contract["sensor_setup"]["lidar"]["channel_profile"]["profile_data"]["scale"],
+            1.75,
         )
         self.assertAlmostEqual(
             contract["sensor_setup"]["lidar"]["emitter_params"]["source_divergence"]["az"],
