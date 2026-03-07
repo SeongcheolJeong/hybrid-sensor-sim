@@ -463,6 +463,8 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `backend_sensor_bundle_summary.json`: per-frame sensor availability/completeness summary with backend ingestion bindings and payload pointers.
     - `backend_launcher_template.json`: deduplicated backend launch args (`meta_args` + `frame_args`) for direct runner integration.
     - `backend_ingestion_args.sh`: shell-ready `BACKEND_INGEST_ARGS` array generated from launcher template.
+    - `backend_runner_request.json`: wrapper-free direct backend launch request assembled from scene args, mount args, and launcher template args.
+    - `backend_direct_run_command.sh`: executable shell command generated from `backend_runner_request.json`.
     - `backend_wrapper_invocation.json`: wrapper input/output args snapshot (when wrapper path is used and execution is enabled).
   - contract argument controls:
     - `renderer_contract_flag` (default `--contract`)

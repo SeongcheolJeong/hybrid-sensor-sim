@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from hybrid_sensor_sim.renderers.backend_runner import build_backend_runner_artifacts
+
 _BACKEND_PRESETS: dict[str, dict[str, str]] = {
     "awsim": {
         "default_bin": "awsim",
@@ -322,11 +324,14 @@ def _build_backend_invocation_payload(
     backend_ingestion_profile: str | None,
     backend_sensor_bundle_summary: str | None,
     backend_launcher_template: str | None,
+    backend_runner_request: str | None,
+    backend_direct_run_command: str | None,
     backend_frame_count: int,
     backend_sensor_bindings: int,
     backend_complete_frame_count: int,
     backend_ingestion_entry_count: int,
     backend_launcher_arg_count: int,
+    backend_runner_arg_count: int,
     build_error: str | None,
 ) -> dict[str, Any]:
     return {
@@ -341,11 +346,14 @@ def _build_backend_invocation_payload(
         "backend_ingestion_profile": backend_ingestion_profile,
         "backend_sensor_bundle_summary": backend_sensor_bundle_summary,
         "backend_launcher_template": backend_launcher_template,
+        "backend_runner_request": backend_runner_request,
+        "backend_direct_run_command": backend_direct_run_command,
         "backend_frame_count": backend_frame_count,
         "backend_sensor_bindings": backend_sensor_bindings,
         "backend_complete_frame_count": backend_complete_frame_count,
         "backend_ingestion_entry_count": backend_ingestion_entry_count,
         "backend_launcher_arg_count": backend_launcher_arg_count,
+        "backend_runner_arg_count": backend_runner_arg_count,
         "error": build_error,
     }
 
@@ -369,6 +377,8 @@ def _write_backend_run_manifest(
     ingestion_profile_path: Path | None,
     bundle_summary_path: Path | None,
     launcher_template_path: Path | None,
+    runner_request_path: Path | None,
+    direct_run_command_path: Path | None,
     wrapper_dump_path: Path | None,
     stdout_path: Path | None,
     stderr_path: Path | None,
@@ -403,6 +413,8 @@ def _write_backend_run_manifest(
             "backend_ingestion_profile": str(ingestion_profile_path) if ingestion_profile_path else None,
             "backend_sensor_bundle_summary": str(bundle_summary_path) if bundle_summary_path else None,
             "backend_launcher_template": str(launcher_template_path) if launcher_template_path else None,
+            "backend_runner_request": str(runner_request_path) if runner_request_path else None,
+            "backend_direct_run_command": str(direct_run_command_path) if direct_run_command_path else None,
             "backend_wrapper_invocation": str(wrapper_dump_path) if wrapper_dump_path else None,
             "renderer_stdout": str(stdout_path) if stdout_path else None,
             "renderer_stderr": str(stderr_path) if stderr_path else None,
@@ -1241,6 +1253,24 @@ def execute_renderer_runtime(
         ingestion_profile_path=ingestion_profile_path,
         runtime_dir=runtime_dir,
     )
+    backend_args_preview = _build_backend_args_preview(
+        options=options,
+        backend=backend,
+        contract_payload=contract_payload,
+    )
+    runner_artifacts, runner_metrics = build_backend_runner_artifacts(
+        options=options,
+        backend=backend,
+        cwd=cwd,
+        runtime_dir=runtime_dir,
+        command_source=command_source,
+        backend_wrapper_used=command_source == "backend_wrapper",
+        backend_args_preview=backend_args_preview,
+        frame_manifest_path=frame_manifest_path,
+        ingestion_profile_path=ingestion_profile_path,
+        bundle_summary_path=bundle_summary_path,
+        launcher_template_path=launcher_template_artifacts.get("backend_launcher_template"),
+    )
     backend_wrapper_used = command_source == "backend_wrapper"
     frame_manifest_args_count = _inject_frame_manifest_arg(
         command=command,
@@ -1258,11 +1288,6 @@ def execute_renderer_runtime(
         options=options,
         bundle_summary_path=bundle_summary_path,
         backend_wrapper_used=backend_wrapper_used,
-    )
-    backend_args_preview = _build_backend_args_preview(
-        options=options,
-        backend=backend,
-        contract_payload=contract_payload,
     )
     wrapper_dump_path = runtime_dir / "backend_wrapper_invocation.json"
     plan_payload = {
@@ -1286,6 +1311,12 @@ def execute_renderer_runtime(
         "backend_launcher_template": str(launcher_template_artifacts["backend_launcher_template"])
         if "backend_launcher_template" in launcher_template_artifacts
         else None,
+        "backend_runner_request": str(runner_artifacts["backend_runner_request"])
+        if "backend_runner_request" in runner_artifacts
+        else None,
+        "backend_direct_run_command": str(runner_artifacts["backend_direct_run_command"])
+        if "backend_direct_run_command" in runner_artifacts
+        else None,
         "backend_frame_count": int(frame_manifest_metrics.get("renderer_backend_frame_count", 0.0)),
         "backend_sensor_bindings": int(
             frame_manifest_metrics.get("renderer_backend_sensor_bindings", 0.0)
@@ -1299,12 +1330,15 @@ def execute_renderer_runtime(
         "backend_launcher_arg_count": int(
             launcher_template_metrics.get("renderer_backend_launcher_arg_count", 0.0)
         ),
+        "backend_runner_arg_count": int(runner_metrics.get("renderer_backend_runner_arg_count", 0.0)),
         "backend_wrapper_dump_path": str(wrapper_dump_path) if backend_wrapper_used else None,
         "error": build_error,
     }
     plan_path.write_text(json.dumps(plan_payload, indent=2), encoding="utf-8")
     backend_invocation_path = runtime_dir / "backend_invocation.json"
     launcher_template_path = launcher_template_artifacts.get("backend_launcher_template")
+    runner_request_path = runner_artifacts.get("backend_runner_request")
+    direct_run_command_path = runner_artifacts.get("backend_direct_run_command")
     frame_count = int(frame_manifest_metrics.get("renderer_backend_frame_count", 0.0))
     sensor_bindings = int(frame_manifest_metrics.get("renderer_backend_sensor_bindings", 0.0))
     complete_frame_count = int(
@@ -1316,6 +1350,7 @@ def execute_renderer_runtime(
     launcher_arg_count = int(
         launcher_template_metrics.get("renderer_backend_launcher_arg_count", 0.0)
     )
+    runner_arg_count = int(runner_metrics.get("renderer_backend_runner_arg_count", 0.0))
     backend_invocation_payload = _build_backend_invocation_payload(
         backend=backend,
         execute=execute,
@@ -1330,11 +1365,16 @@ def execute_renderer_runtime(
         backend_launcher_template=(
             str(launcher_template_path) if launcher_template_path is not None else None
         ),
+        backend_runner_request=str(runner_request_path) if runner_request_path is not None else None,
+        backend_direct_run_command=(
+            str(direct_run_command_path) if direct_run_command_path is not None else None
+        ),
         backend_frame_count=frame_count,
         backend_sensor_bindings=sensor_bindings,
         backend_complete_frame_count=complete_frame_count,
         backend_ingestion_entry_count=ingestion_entry_count,
         backend_launcher_arg_count=launcher_arg_count,
+        backend_runner_arg_count=runner_arg_count,
         build_error=build_error,
     )
     backend_invocation_path.write_text(
@@ -1354,6 +1394,7 @@ def execute_renderer_runtime(
     if bundle_summary_path is not None:
         artifacts["backend_sensor_bundle_summary"] = bundle_summary_path
     artifacts.update(launcher_template_artifacts)
+    artifacts.update(runner_artifacts)
     metrics: dict[str, float] = {
         "renderer_runtime_planned": 1.0,
         "renderer_execute_requested": 1.0 if execute else 0.0,
@@ -1369,6 +1410,7 @@ def execute_renderer_runtime(
     metrics.update(ingestion_profile_metrics)
     metrics.update(bundle_summary_metrics)
     metrics.update(launcher_template_metrics)
+    metrics.update(runner_metrics)
 
     if backend in {"", "none"}:
         _write_backend_run_manifest(
@@ -1389,6 +1431,8 @@ def execute_renderer_runtime(
             ingestion_profile_path=ingestion_profile_path,
             bundle_summary_path=bundle_summary_path,
             launcher_template_path=launcher_template_path,
+            runner_request_path=runner_request_path,
+            direct_run_command_path=direct_run_command_path,
             wrapper_dump_path=wrapper_dump_path if backend_wrapper_used else None,
             stdout_path=None,
             stderr_path=None,
@@ -1424,6 +1468,8 @@ def execute_renderer_runtime(
             ingestion_profile_path=ingestion_profile_path,
             bundle_summary_path=bundle_summary_path,
             launcher_template_path=launcher_template_path,
+            runner_request_path=runner_request_path,
+            direct_run_command_path=direct_run_command_path,
             wrapper_dump_path=wrapper_dump_path if backend_wrapper_used else None,
             stdout_path=None,
             stderr_path=None,
@@ -1459,6 +1505,8 @@ def execute_renderer_runtime(
             ingestion_profile_path=ingestion_profile_path,
             bundle_summary_path=bundle_summary_path,
             launcher_template_path=launcher_template_path,
+            runner_request_path=runner_request_path,
+            direct_run_command_path=direct_run_command_path,
             wrapper_dump_path=wrapper_dump_path if backend_wrapper_used else None,
             stdout_path=None,
             stderr_path=None,
@@ -1517,6 +1565,8 @@ def execute_renderer_runtime(
                 ingestion_profile_path=ingestion_profile_path,
                 bundle_summary_path=bundle_summary_path,
                 launcher_template_path=launcher_template_path,
+                runner_request_path=runner_request_path,
+                direct_run_command_path=direct_run_command_path,
                 wrapper_dump_path=wrapper_dump_path if backend_wrapper_used and wrapper_dump_path.exists() else None,
                 stdout_path=stdout_path,
                 stderr_path=stderr_path,
@@ -1557,6 +1607,8 @@ def execute_renderer_runtime(
             ingestion_profile_path=ingestion_profile_path,
             bundle_summary_path=bundle_summary_path,
             launcher_template_path=launcher_template_path,
+            runner_request_path=runner_request_path,
+            direct_run_command_path=direct_run_command_path,
             wrapper_dump_path=wrapper_dump_path if backend_wrapper_used and wrapper_dump_path.exists() else None,
             stdout_path=None,
             stderr_path=stderr_path,
@@ -1592,6 +1644,8 @@ def execute_renderer_runtime(
         ingestion_profile_path=ingestion_profile_path,
         bundle_summary_path=bundle_summary_path,
         launcher_template_path=launcher_template_path,
+        runner_request_path=runner_request_path,
+        direct_run_command_path=direct_run_command_path,
         wrapper_dump_path=wrapper_dump_path if backend_wrapper_used and wrapper_dump_path.exists() else None,
         stdout_path=stdout_path,
         stderr_path=stderr_path,

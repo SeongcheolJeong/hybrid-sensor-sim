@@ -80,11 +80,15 @@ class RendererRuntimeTests(unittest.TestCase):
             self.assertIn("renderer_playback_contract", result.artifacts)
             self.assertIn("renderer_execution_plan", result.artifacts)
             self.assertIn("backend_run_manifest", result.artifacts)
+            self.assertIn("backend_runner_request", result.artifacts)
+            self.assertIn("backend_direct_run_command", result.artifacts)
             self.assertEqual(result.metrics.get("renderer_runtime_planned"), 1.0)
             self.assertEqual(result.metrics.get("renderer_execute_requested"), 0.0)
             self.assertEqual(result.metrics.get("renderer_runtime_success"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_run_manifest_written"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_run_planned_only"), 1.0)
+            self.assertEqual(result.metrics.get("renderer_backend_runner_request_written"), 1.0)
+            self.assertEqual(result.metrics.get("renderer_backend_runner_command_written"), 1.0)
 
             contract_path = result.artifacts["renderer_playback_contract"]
             plan = json.loads(
@@ -93,6 +97,9 @@ class RendererRuntimeTests(unittest.TestCase):
             run_manifest = json.loads(
                 result.artifacts["backend_run_manifest"].read_text(encoding="utf-8")
             )
+            runner_request = json.loads(
+                result.artifacts["backend_runner_request"].read_text(encoding="utf-8")
+            )
             self.assertFalse(plan["execute"])
             self.assertIn(str(contract_path), plan["command"])
             self.assertEqual(run_manifest["status"], "PLANNED_ONLY")
@@ -100,6 +107,15 @@ class RendererRuntimeTests(unittest.TestCase):
             self.assertEqual(
                 run_manifest["artifacts"]["backend_sensor_bundle_summary"],
                 str(result.artifacts["backend_sensor_bundle_summary"]),
+            )
+            self.assertEqual(runner_request["runner_mode"], "direct_backend")
+            self.assertEqual(
+                run_manifest["artifacts"]["backend_runner_request"],
+                str(result.artifacts["backend_runner_request"]),
+            )
+            self.assertEqual(
+                run_manifest["artifacts"]["backend_direct_run_command"],
+                str(result.artifacts["backend_direct_run_command"]),
             )
 
     def test_renderer_runtime_injects_frame_manifest_arg_by_default(self) -> None:
@@ -569,6 +585,8 @@ exit 7
             self.assertEqual(plan["backend_args_preview"]["scene"]["map"], "wrapper_map")
             self.assertIn("backend_sensor_bundle_summary", plan)
             self.assertTrue(Path(plan["backend_sensor_bundle_summary"]).exists())
+            self.assertIn("backend_runner_request", plan)
+            self.assertIn("backend_direct_run_command", plan)
             self.assertEqual(
                 result.metrics.get("renderer_contract_ingestion_profile_args_count"),
                 2.0,
@@ -661,8 +679,16 @@ echo "awsim_backend_ok"
             backend_invocation = json.loads(
                 result.artifacts["backend_invocation"].read_text(encoding="utf-8")
             )
+            runner_request = json.loads(
+                result.artifacts["backend_runner_request"].read_text(encoding="utf-8")
+            )
             self.assertEqual(backend_invocation["command_source"], "backend_wrapper")
             self.assertTrue(backend_invocation["backend_wrapper_used"])
+            self.assertEqual(backend_invocation["backend_runner_request"], str(result.artifacts["backend_runner_request"]))
+            self.assertEqual(
+                backend_invocation["backend_direct_run_command"],
+                str(result.artifacts["backend_direct_run_command"]),
+            )
 
             wrapper_invocation = json.loads(
                 result.artifacts["backend_wrapper_invocation"].read_text(encoding="utf-8")
@@ -691,6 +717,16 @@ echo "awsim_backend_ok"
                 run_manifest["artifacts"]["backend_wrapper_invocation"],
                 str(result.artifacts["backend_wrapper_invocation"]),
             )
+            self.assertEqual(runner_request["resolved_backend_bin"], str(fake_awsim))
+            self.assertEqual(runner_request["backend_bin_source"], "env")
+            self.assertIn("--mount-sensor", runner_request["mount_args"])
+            self.assertIn("--mount-pose", runner_request["mount_args"])
+            self.assertEqual(runner_request["ingestion_args"], [])
+            self.assertNotIn("--ingestion-profile", runner_request["command"])
+            self.assertNotIn("--sensor-bundle-summary", runner_request["command"])
+            direct_command = result.artifacts["backend_direct_run_command"].read_text(encoding="utf-8")
+            self.assertIn(str(fake_awsim), direct_command)
+            self.assertIn("--mount-sensor", direct_command)
 
     def test_renderer_runtime_carla_wrapper_execution_transforms_sensor_mount_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -751,8 +787,12 @@ echo "carla_backend_ok"
             self.assertTrue(result.success)
             self.assertEqual(result.metrics.get("renderer_backend_wrapper_used"), 1.0)
             self.assertIn("backend_wrapper_invocation", result.artifacts)
+            self.assertIn("backend_runner_request", result.artifacts)
             wrapper_invocation = json.loads(
                 result.artifacts["backend_wrapper_invocation"].read_text(encoding="utf-8")
+            )
+            runner_request = json.loads(
+                result.artifacts["backend_runner_request"].read_text(encoding="utf-8")
             )
             self.assertEqual(wrapper_invocation["wrapper"], "carla")
             self.assertIn("--ingestion-profile", wrapper_invocation["input_args"])
@@ -765,6 +805,11 @@ echo "carla_backend_ok"
             )
             self.assertIn("--town", wrapper_invocation["output_args"])
             self.assertIn("Town03", wrapper_invocation["output_args"])
+            self.assertEqual(runner_request["resolved_backend_bin"], str(fake_carla))
+            self.assertEqual(runner_request["backend_bin_source"], "env")
+            self.assertIn("--attach-sensor", runner_request["mount_args"])
+            self.assertIn("--sensor-pose", runner_request["mount_args"])
+            self.assertEqual(runner_request["ingestion_args"], [])
 
     def test_renderer_runtime_awsim_wrapper_consumes_frame_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1163,6 +1208,8 @@ echo "carla_backend_ok"
             self.assertIn("backend_frame_inputs_manifest", result.artifacts)
             self.assertIn("backend_ingestion_profile", result.artifacts)
             self.assertIn("backend_sensor_bundle_summary", result.artifacts)
+            self.assertIn("backend_runner_request", result.artifacts)
+            self.assertIn("backend_direct_run_command", result.artifacts)
             self.assertIn("backend_launcher_template", result.artifacts)
             self.assertIn("backend_ingestion_args_sh", result.artifacts)
             manifest = json.loads(
@@ -1173,6 +1220,9 @@ echo "carla_backend_ok"
             )
             bundle_summary = json.loads(
                 result.artifacts["backend_sensor_bundle_summary"].read_text(encoding="utf-8")
+            )
+            runner_request = json.loads(
+                result.artifacts["backend_runner_request"].read_text(encoding="utf-8")
             )
             launcher_template = json.loads(
                 result.artifacts["backend_launcher_template"].read_text(encoding="utf-8")
@@ -1228,6 +1278,11 @@ echo "carla_backend_ok"
                     "--ingest-frame",
                 )
                 self.assertTrue(frame["sensors"]["camera"]["payload_artifact"])
+            self.assertEqual(runner_request["backend"], "carla")
+            self.assertEqual(runner_request["runner_mode"], "direct_backend")
+            self.assertEqual(runner_request["resolved_backend_bin"], "carla")
+            self.assertIn("--weather", runner_request["scene_args"])
+            self.assertIn("--ingest-frame", runner_request["ingestion_args"])
             self.assertEqual(launcher_template["backend"], "carla")
             self.assertEqual(launcher_template["arg_count"], 18)
             self.assertEqual(launcher_template["frame_arg_count"], 12)
@@ -1238,12 +1293,21 @@ echo "carla_backend_ok"
                 backend_invocation["backend_sensor_bundle_summary"],
                 str(result.artifacts["backend_sensor_bundle_summary"]),
             )
+            self.assertEqual(
+                backend_invocation["backend_runner_request"],
+                str(result.artifacts["backend_runner_request"]),
+            )
+            self.assertEqual(
+                backend_invocation["backend_direct_run_command"],
+                str(result.artifacts["backend_direct_run_command"]),
+            )
             self.assertEqual(backend_invocation["backend_complete_frame_count"], 2)
             self.assertEqual(
                 backend_invocation["backend_launcher_template"],
                 str(result.artifacts["backend_launcher_template"]),
             )
             self.assertEqual(backend_invocation["backend_launcher_arg_count"], 18)
+            self.assertGreater(backend_invocation["backend_runner_arg_count"], 0)
             shell_artifact = result.artifacts["backend_ingestion_args_sh"]
             self.assertTrue(shell_artifact.exists())
             self.assertTrue(os.access(shell_artifact, os.X_OK))
@@ -1251,6 +1315,11 @@ echo "carla_backend_ok"
             self.assertIn("BACKEND_INGEST_ARGS=(", shell_text)
             self.assertIn("--ingest-meta", shell_text)
             self.assertIn("--ingest-frame", shell_text)
+            direct_command_text = result.artifacts["backend_direct_run_command"].read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("carla", direct_command_text)
+            self.assertIn("--ingest-frame", direct_command_text)
 
             self.assertEqual(result.metrics.get("renderer_backend_frame_manifest_written"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_frame_count"), 2.0)
@@ -1270,9 +1339,12 @@ echo "carla_backend_ok"
             self.assertEqual(result.metrics.get("renderer_backend_bundle_incomplete_frame_count"), 0.0)
             self.assertEqual(result.metrics.get("renderer_backend_launcher_template_written"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_ingestion_shell_written"), 1.0)
+            self.assertEqual(result.metrics.get("renderer_backend_runner_request_written"), 1.0)
+            self.assertEqual(result.metrics.get("renderer_backend_runner_command_written"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_launcher_arg_count"), 18.0)
             self.assertEqual(result.metrics.get("renderer_backend_launcher_frame_arg_count"), 12.0)
             self.assertEqual(result.metrics.get("renderer_backend_launcher_meta_arg_count"), 6.0)
+            self.assertGreater(result.metrics.get("renderer_backend_runner_arg_count", 0.0), 0.0)
 
     def test_renderer_runtime_backend_frame_manifest_selection_options(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
