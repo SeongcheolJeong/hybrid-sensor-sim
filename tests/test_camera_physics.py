@@ -1444,6 +1444,12 @@ EOF
                         "minimum_detection_snr_db": 0.0,
                         "return_all_hits": True,
                     },
+                    "lidar_return_model": {
+                        "mode": "MULTI",
+                        "max_returns": 3,
+                        "selection_mode": "FIRST",
+                        "signal_decay": 0.0,
+                    },
                     "lidar_multipath_model": {
                         "enabled": True,
                         "mode": "HYBRID",
@@ -1503,6 +1509,167 @@ EOF
                 places=6,
             )
 
+    def test_lidar_return_selection_mode_last_orders_farthest_first(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+10.0 0.0 0.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "radar_postprocess_enabled": False,
+                    "lidar_postprocess_enabled": True,
+                    "lidar_noise": "none",
+                    "lidar_dropout_probability": 0.0,
+                    "lidar_ground_truth_reflectivity": 1.0,
+                    "lidar_physics_model": {
+                        "reflectivity_coefficient": 1.0,
+                        "ambient_power_dbw": -30.0,
+                        "signal_photon_scale": 10000.0,
+                        "ambient_photon_scale": 1000.0,
+                        "minimum_detection_snr_db": 0.0,
+                        "return_all_hits": True,
+                    },
+                    "lidar_return_model": {
+                        "mode": "DUAL",
+                        "max_returns": 2,
+                        "selection_mode": "LAST",
+                        "range_separation_m": 1.0,
+                        "signal_decay": 0.5,
+                        "minimum_secondary_snr_db": 0.0,
+                    },
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            preview = json.loads(
+                result.artifacts["lidar_noisy_preview_json"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(preview["return_model"]["selection_mode"], "LAST")
+            self.assertEqual(preview["output_count"], 2)
+            self.assertEqual(
+                [point["ground_truth_detection_type"] for point in preview["preview_points"]],
+                ["RETROREFLECTION", "TARGET"],
+            )
+            self.assertGreater(
+                preview["preview_points"][0]["range_m"],
+                preview["preview_points"][1]["range_m"],
+            )
+
+    def test_lidar_range_discrimination_merges_close_returns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+10.0 0.0 0.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "radar_postprocess_enabled": False,
+                    "lidar_postprocess_enabled": True,
+                    "lidar_noise": "none",
+                    "lidar_dropout_probability": 0.0,
+                    "lidar_ground_truth_reflectivity": 1.0,
+                    "lidar_physics_model": {
+                        "reflectivity_coefficient": 1.0,
+                        "ambient_power_dbw": -30.0,
+                        "signal_photon_scale": 10000.0,
+                        "ambient_photon_scale": 1000.0,
+                        "minimum_detection_snr_db": 0.0,
+                        "return_all_hits": True,
+                    },
+                    "lidar_return_model": {
+                        "mode": "DUAL",
+                        "max_returns": 2,
+                        "selection_mode": "FIRST",
+                        "range_discrimination": 1.0,
+                        "range_separation_m": 0.4,
+                        "signal_decay": 0.5,
+                        "minimum_secondary_snr_db": 0.0,
+                    },
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            self.assertEqual(result.metrics.get("lidar_range_discrimination_merge_count"), 1.0)
+            preview = json.loads(
+                result.artifacts["lidar_noisy_preview_json"].read_text(encoding="utf-8")
+            )
+            self.assertAlmostEqual(preview["return_model"]["range_discrimination"], 1.0)
+            self.assertEqual(preview["output_count"], 1)
+            merged_point = preview["preview_points"][0]
+            self.assertEqual(merged_point["merged_return_count"], 2)
+            self.assertEqual(merged_point["ground_truth_detection_type"], "TARGET")
+            self.assertGreater(merged_point["range_m"], 10.0)
+            self.assertLess(merged_point["range_m"], 10.4)
+
     def test_lidar_weather_model_reduces_snr_and_adds_noise_points(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1547,6 +1714,11 @@ EOF
                     "signal_photon_scale": 10000.0,
                     "ambient_photon_scale": 1000.0,
                     "minimum_detection_snr_db": -20.0,
+                },
+                "lidar_return_model": {
+                    "mode": "DUAL",
+                    "max_returns": 2,
+                    "selection_mode": "FIRST",
                 },
             }
             clear_request = SensorSimRequest(

@@ -169,8 +169,9 @@ class SensorConfigTests(unittest.TestCase):
                     "return_all_hits": True,
                 },
                 "lidar_return_model": {
-                    "mode": "dual",
-                    "max_returns": 2,
+                    "mode": "strongest",
+                    "return_count": 2,
+                    "range_discrimination": 1.25,
                     "range_separation_m": 0.8,
                     "signal_decay": 0.45,
                     "minimum_secondary_snr_db": -4.0,
@@ -303,6 +304,8 @@ class SensorConfigTests(unittest.TestCase):
         self.assertTrue(config.lidar.physics_model.return_all_hits)
         self.assertEqual(config.lidar.return_model.mode, "DUAL")
         self.assertEqual(config.lidar.return_model.max_returns, 2)
+        self.assertEqual(config.lidar.return_model.selection_mode, "STRONGEST")
+        self.assertAlmostEqual(config.lidar.return_model.range_discrimination_m, 1.25)
         self.assertAlmostEqual(config.lidar.return_model.range_separation_m, 0.8)
         self.assertAlmostEqual(config.lidar.return_model.signal_decay, 0.45)
         self.assertAlmostEqual(config.lidar.return_model.minimum_secondary_snr_db, -4.0)
@@ -383,6 +386,8 @@ class SensorConfigTests(unittest.TestCase):
                 "lidar_return_model": {
                     "mode": "multi",
                     "max_returns": 3,
+                    "selection_mode": "last",
+                    "range_discrimination": 0.9,
                     "range_separation_m": 0.6,
                 },
                 "lidar_environment_model": {
@@ -459,6 +464,14 @@ class SensorConfigTests(unittest.TestCase):
         )
         self.assertEqual(contract["sensor_setup"]["lidar"]["return_model"]["mode"], "MULTI")
         self.assertEqual(contract["sensor_setup"]["lidar"]["return_model"]["max_returns"], 3)
+        self.assertEqual(
+            contract["sensor_setup"]["lidar"]["return_model"]["selection_mode"],
+            "LAST",
+        )
+        self.assertAlmostEqual(
+            contract["sensor_setup"]["lidar"]["return_model"]["range_discrimination"],
+            0.9,
+        )
         self.assertAlmostEqual(
             contract["sensor_setup"]["lidar"]["environment_model"]["fog_density"],
             0.4,

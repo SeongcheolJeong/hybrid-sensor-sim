@@ -396,6 +396,8 @@ class LidarPhysicsModelConfig:
 class LidarReturnModelConfig:
     mode: str = "SINGLE"
     max_returns: int = 1
+    selection_mode: str = "FIRST"
+    range_discrimination_m: float = 0.0
     range_separation_m: float = 0.35
     signal_decay: float = 0.55
     minimum_secondary_snr_db: float = -8.0
@@ -404,6 +406,8 @@ class LidarReturnModelConfig:
         return {
             "mode": self.mode,
             "max_returns": self.max_returns,
+            "selection_mode": self.selection_mode,
+            "range_discrimination": self.range_discrimination_m,
             "range_separation_m": self.range_separation_m,
             "signal_decay": self.signal_decay,
             "minimum_secondary_snr_db": self.minimum_secondary_snr_db,
@@ -1005,10 +1009,24 @@ def _parse_lidar_return_model(options: Mapping[str, Any]) -> LidarReturnModelCon
     raw = _as_dict(options.get("lidar_return_model"))
     max_returns = max(
         1,
-        _as_int(raw.get("max_returns", options.get("lidar_max_returns")), 1),
+        _as_int(
+            raw.get(
+                "max_returns",
+                raw.get("return_count", options.get("lidar_return_count", options.get("lidar_max_returns"))),
+            ),
+            1,
+        ),
     )
-    mode = _as_str(raw.get("mode", options.get("lidar_return_mode")), "")
-    if not mode:
+    mode_raw = _as_str(raw.get("mode", options.get("lidar_return_mode")), "").upper()
+    selection_mode = _as_str(
+        raw.get("selection_mode", options.get("lidar_return_selection_mode")),
+        "",
+    ).upper()
+    if not selection_mode and mode_raw in {"STRONGEST", "FIRST", "LAST"}:
+        selection_mode = mode_raw
+    if mode_raw in {"SINGLE", "DUAL", "MULTI"}:
+        mode = mode_raw
+    else:
         if max_returns <= 1:
             mode = "SINGLE"
         elif max_returns == 2:
@@ -1016,8 +1034,13 @@ def _parse_lidar_return_model(options: Mapping[str, Any]) -> LidarReturnModelCon
         else:
             mode = "MULTI"
     return LidarReturnModelConfig(
-        mode=mode.upper(),
+        mode=mode,
         max_returns=max_returns,
+        selection_mode=selection_mode or "FIRST",
+        range_discrimination_m=_as_float(
+            raw.get("range_discrimination", options.get("lidar_range_discrimination_m")),
+            0.0,
+        ),
         range_separation_m=_as_float(
             raw.get("range_separation_m", options.get("lidar_return_range_separation_m")),
             0.35,

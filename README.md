@@ -200,9 +200,12 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - multi-return controls:
     - `lidar_return_model.mode=SINGLE|DUAL|MULTI`
     - `lidar_return_model.max_returns`
+    - `lidar_return_model.selection_mode=FIRST|LAST|STRONGEST`
+    - `lidar_return_model.range_discrimination`
     - `lidar_return_model.range_separation_m`
     - `lidar_return_model.signal_decay`
     - `lidar_return_model.minimum_secondary_snr_db`
+    - Applied-style alias: `return_count` can be used instead of `max_returns`
   - geometry-aware multipath controls:
     - `lidar_multipath_model.enabled`
     - `lidar_multipath_model.mode=GROUND_PLANE|VERTICAL_PLANE|HYBRID`
@@ -237,6 +240,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - signal metadata: `intensity`, `intensity_units`, `reflectivity`, `ground_truth_reflectivity`, `laser_cross_section`, `signal_power_dbw`, `ambient_power_dbw`, `signal_photons`, `ambient_photons`, `snr`, `snr_db`, `return_id`
     - multi-return/weather metadata: `path_length_offset_m`, `ground_truth_hit_index`, `ground_truth_last_bounce_index`, `weather_extinction_factor`, `ground_truth_detection_type`
     - multipath metadata: `multipath_surface`, `multipath_path_length_m`, `multipath_base_range_m`, `multipath_surface_reflectivity`, `multipath_model_mode`, `multipath_reflection_point`
+    - selection metadata: `merged_return_count`, `range_discrimination_m`
     - emitter metadata: `channel_loss_db`, `optical_loss_db`, `peak_power_w`, `beam_divergence_az_rad`, `beam_divergence_el_rad`, `beam_footprint_area_m2`, `beam_azimuth_offset_deg`, `beam_elevation_offset_deg`
 - LiDAR trajectory sweep preview:
   - enable `lidar_trajectory_sweep_enabled=true`

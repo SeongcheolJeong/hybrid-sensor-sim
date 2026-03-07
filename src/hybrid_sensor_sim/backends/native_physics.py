@@ -2110,6 +2110,8 @@ class NativePhysicsBackend(SensorBackend):
                     "multipath_surface_reflectivity": base.get("multipath_surface_reflectivity"),
                     "multipath_model_mode": base.get("multipath_model_mode"),
                     "multipath_reflection_point": base.get("multipath_reflection_point"),
+                    "merged_return_count": base.get("merged_return_count"),
+                    "range_discrimination_m": base.get("range_discrimination_m"),
                     "ground_truth_detection_type": base.get("ground_truth_detection_type"),
                 }
             )
@@ -2152,6 +2154,7 @@ class NativePhysicsBackend(SensorBackend):
         return_mode = str(getattr(lidar_config.return_model, "mode", "SINGLE")).upper()
         if max_returns <= 1 or return_mode == "SINGLE":
             return self._lidar_finalize_return_series(
+                lidar_config=lidar_config,
                 primary_point=point_xyz,
                 primary_metadata=primary_metadata,
                 supplemental_returns=supplemental_returns,
@@ -2160,6 +2163,7 @@ class NativePhysicsBackend(SensorBackend):
         base_range_m = float(primary_metadata.get("range_m", base_metadata.get("range_m", 0.0)))
         if base_range_m <= 1e-9:
             return self._lidar_finalize_return_series(
+                lidar_config=lidar_config,
                 primary_point=point_xyz,
                 primary_metadata=primary_metadata,
                 supplemental_returns=supplemental_returns,
@@ -2224,6 +2228,7 @@ class NativePhysicsBackend(SensorBackend):
             )
             supplemental_returns.append((return_point, secondary_metadata))
         return self._lidar_finalize_return_series(
+            lidar_config=lidar_config,
             primary_point=point_xyz,
             primary_metadata=primary_metadata,
             supplemental_returns=supplemental_returns,
@@ -2232,22 +2237,194 @@ class NativePhysicsBackend(SensorBackend):
     def _lidar_finalize_return_series(
         self,
         *,
+        lidar_config: Any,
         primary_point: tuple[float, float, float],
         primary_metadata: dict[str, object],
         supplemental_returns: list[tuple[tuple[float, float, float], dict[str, object]]],
     ) -> list[tuple[tuple[float, float, float], dict[str, object]]]:
-        ordered_returns = sorted(
-            supplemental_returns,
-            key=lambda item: float(item[1].get("range_m", sqrt(item[0][0] ** 2 + item[0][1] ** 2 + item[0][2] ** 2))),
-        )
-        return_series: list[tuple[tuple[float, float, float], dict[str, object]]] = [
-            (primary_point, dict(primary_metadata, return_id=0))
+        candidates: list[tuple[tuple[float, float, float], dict[str, object]]] = [
+            (primary_point, dict(primary_metadata))
         ]
-        for return_id, (return_point, metadata) in enumerate(ordered_returns, start=1):
+        candidates.extend(supplemental_returns)
+        merged_candidates = self._lidar_merge_range_discriminated_returns(
+            candidates=candidates,
+            lidar_config=lidar_config,
+        )
+        ordered_returns = self._lidar_order_return_candidates(
+            candidates=merged_candidates,
+            selection_mode=self._lidar_return_selection_mode(lidar_config),
+        )[: self._lidar_requested_return_count(lidar_config)]
+        return_series: list[tuple[tuple[float, float, float], dict[str, object]]] = []
+        for return_id, (return_point, metadata) in enumerate(ordered_returns):
             payload = dict(metadata)
             payload["return_id"] = return_id
             return_series.append((return_point, payload))
         return return_series
+
+    def _lidar_requested_return_count(self, lidar_config: Any) -> int:
+        max_returns = max(1, int(getattr(lidar_config.return_model, "max_returns", 1)))
+        count_mode = str(getattr(lidar_config.return_model, "mode", "SINGLE")).upper().strip()
+        if count_mode == "SINGLE":
+            return 1
+        if count_mode == "DUAL":
+            return min(max_returns, 2)
+        return max_returns
+
+    def _lidar_return_selection_mode(self, lidar_config: Any) -> str:
+        selection_mode = str(getattr(lidar_config.return_model, "selection_mode", "FIRST")).upper().strip()
+        if selection_mode not in {"FIRST", "LAST", "STRONGEST"}:
+            return "FIRST"
+        return selection_mode
+
+    def _lidar_order_return_candidates(
+        self,
+        *,
+        candidates: list[tuple[tuple[float, float, float], dict[str, object]]],
+        selection_mode: str,
+    ) -> list[tuple[tuple[float, float, float], dict[str, object]]]:
+        if selection_mode == "STRONGEST":
+            return sorted(
+                candidates,
+                key=lambda item: (
+                    -float(item[1].get("snr_db", -1e9)),
+                    float(item[1].get("range_m", sqrt(item[0][0] ** 2 + item[0][1] ** 2 + item[0][2] ** 2))),
+                ),
+            )
+        if selection_mode == "LAST":
+            return sorted(
+                candidates,
+                key=lambda item: float(item[1].get("range_m", sqrt(item[0][0] ** 2 + item[0][1] ** 2 + item[0][2] ** 2))),
+                reverse=True,
+            )
+        return sorted(
+            candidates,
+            key=lambda item: float(item[1].get("range_m", sqrt(item[0][0] ** 2 + item[0][1] ** 2 + item[0][2] ** 2))),
+        )
+
+    def _lidar_merge_range_discriminated_returns(
+        self,
+        *,
+        candidates: list[tuple[tuple[float, float, float], dict[str, object]]],
+        lidar_config: Any,
+    ) -> list[tuple[tuple[float, float, float], dict[str, object]]]:
+        range_discrimination_m = max(float(lidar_config.return_model.range_discrimination_m), 0.0)
+        if range_discrimination_m <= 1e-9 or len(candidates) <= 1:
+            return candidates
+        ordered = sorted(
+            candidates,
+            key=lambda item: float(item[1].get("range_m", sqrt(item[0][0] ** 2 + item[0][1] ** 2 + item[0][2] ** 2))),
+        )
+        merged: list[tuple[tuple[float, float, float], dict[str, object]]] = []
+        cluster: list[tuple[tuple[float, float, float], dict[str, object]]] = []
+        previous_range_m: float | None = None
+        for candidate in ordered:
+            candidate_range_m = float(
+                candidate[1].get("range_m", sqrt(candidate[0][0] ** 2 + candidate[0][1] ** 2 + candidate[0][2] ** 2))
+            )
+            if not cluster:
+                cluster = [candidate]
+                previous_range_m = candidate_range_m
+                continue
+            if previous_range_m is not None and candidate_range_m - previous_range_m <= range_discrimination_m:
+                cluster.append(candidate)
+            else:
+                merged.append(
+                    self._lidar_merge_return_cluster(
+                        cluster=cluster,
+                        lidar_config=lidar_config,
+                        range_discrimination_m=range_discrimination_m,
+                    )
+                )
+                cluster = [candidate]
+            previous_range_m = candidate_range_m
+        if cluster:
+            merged.append(
+                self._lidar_merge_return_cluster(
+                    cluster=cluster,
+                    lidar_config=lidar_config,
+                    range_discrimination_m=range_discrimination_m,
+                )
+            )
+        return merged
+
+    def _lidar_merge_return_cluster(
+        self,
+        *,
+        cluster: list[tuple[tuple[float, float, float], dict[str, object]]],
+        lidar_config: Any,
+        range_discrimination_m: float,
+    ) -> tuple[tuple[float, float, float], dict[str, object]]:
+        if len(cluster) == 1:
+            point_xyz, metadata = cluster[0]
+            payload = dict(metadata)
+            payload["merged_return_count"] = int(payload.get("merged_return_count", 1))
+            payload["range_discrimination_m"] = range_discrimination_m
+            return point_xyz, payload
+        weights = [
+            max(pow(10.0, float(metadata.get("signal_power_dbw", -120.0)) / 10.0), 1e-12)
+            for _, metadata in cluster
+        ]
+        total_weight = sum(weights)
+        dominant_index = max(range(len(cluster)), key=lambda index: weights[index])
+        dominant_point, dominant_metadata = cluster[dominant_index]
+        merged_point = (
+            sum(point[0] * weight for (point, _), weight in zip(cluster, weights)) / total_weight,
+            sum(point[1] * weight for (point, _), weight in zip(cluster, weights)) / total_weight,
+            sum(point[2] * weight for (point, _), weight in zip(cluster, weights)) / total_weight,
+        )
+        range_m = sum(float(metadata.get("range_m", 0.0)) * weight for (_, metadata), weight in zip(cluster, weights)) / total_weight
+        signal_power_linear = sum(weights)
+        signal_photons = sum(float(metadata.get("signal_photons", 0.0)) for _, metadata in cluster)
+        ambient_photons = max(float(dominant_metadata.get("ambient_photons", 0.0)), 1e-9)
+        snr = signal_photons / ambient_photons
+        snr_db = 10.0 * log10(max(snr, 1e-9))
+        reflectivity = sum(float(metadata.get("reflectivity", 0.0)) * weight for (_, metadata), weight in zip(cluster, weights)) / total_weight
+        ground_truth_reflectivity = sum(
+            float(metadata.get("ground_truth_reflectivity", 0.0)) * weight
+            for (_, metadata), weight in zip(cluster, weights)
+        ) / total_weight
+        laser_cross_section = sum(
+            float(metadata.get("laser_cross_section", 0.0)) * weight
+            for (_, metadata), weight in zip(cluster, weights)
+        ) / total_weight
+        intensity_value = self._lidar_intensity_value(
+            intensity_config=lidar_config.intensity,
+            signal_power_linear=signal_power_linear,
+            reflectivity=reflectivity,
+            ground_truth_reflectivity=ground_truth_reflectivity,
+            laser_cross_section=laser_cross_section,
+            snr=snr,
+        )
+        metadata = dict(dominant_metadata)
+        metadata.update(
+            {
+                "detected": bool(lidar_config.physics_model.return_all_hits)
+                or snr_db >= float(lidar_config.physics_model.minimum_detection_snr_db),
+                "range_m": range_m,
+                "intensity": intensity_value,
+                "reflectivity": reflectivity,
+                "ground_truth_reflectivity": ground_truth_reflectivity,
+                "laser_cross_section": laser_cross_section,
+                "signal_power_dbw": 10.0 * log10(max(signal_power_linear, 1e-9)),
+                "signal_photons": signal_photons,
+                "ambient_photons": ambient_photons,
+                "snr": snr,
+                "snr_db": snr_db,
+                "path_length_offset_m": sum(
+                    float(item_metadata.get("path_length_offset_m", 0.0)) * weight
+                    for (_, item_metadata), weight in zip(cluster, weights)
+                )
+                / total_weight,
+                "weather_extinction_factor": sum(
+                    float(item_metadata.get("weather_extinction_factor", 1.0)) * weight
+                    for (_, item_metadata), weight in zip(cluster, weights)
+                )
+                / total_weight,
+                "merged_return_count": len(cluster),
+                "range_discrimination_m": range_discrimination_m,
+            }
+        )
+        return merged_point, metadata
 
     def _lidar_geometry_multipath_returns(
         self,
@@ -3006,6 +3183,11 @@ class NativePhysicsBackend(SensorBackend):
             for point in preview_points
             if isinstance(point, dict) and point.get("channel_loss_db") is not None
         ]
+        merged_counts = [
+            int(point["merged_return_count"])
+            for point in preview_points
+            if isinstance(point, dict) and point.get("merged_return_count") is not None
+        ]
         metrics["lidar_secondary_return_count"] = float(
             sum(1 for return_id in return_ids if return_id > 0)
         )
@@ -3033,6 +3215,11 @@ class NativePhysicsBackend(SensorBackend):
         ) else 0.0
         metrics["lidar_multipath_max_extra_path_length_m"] = float(
             lidar_config.multipath_model.max_extra_path_length_m
+        )
+        metrics["lidar_selected_return_count"] = float(len(preview_points))
+        metrics["lidar_range_discrimination_m"] = float(lidar_config.return_model.range_discrimination_m)
+        metrics["lidar_range_discrimination_merge_count"] = float(
+            sum(max(0, count - 1) for count in merged_counts)
         )
         metrics["lidar_peak_power_w"] = float(lidar_config.emitter_params.peak_power_w)
         metrics["lidar_max_channel_loss_db"] = max(channel_loss_values) if channel_loss_values else 0.0

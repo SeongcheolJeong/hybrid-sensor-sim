@@ -573,8 +573,9 @@ Current status:
     - SNR-threshold based detection gating with `return_all_hits` override
   - synthetic multi-return surface:
     - `SINGLE`, `DUAL`, `MULTI` return modes
-    - `max_returns`, `range_separation_m`, `signal_decay`, `minimum_secondary_snr_db`
+    - `max_returns`, `selection_mode`, `range_discrimination`, `range_separation_m`, `signal_decay`, `minimum_secondary_snr_db`
     - per-return `ground_truth_hit_index` and `ground_truth_last_bounce_index` preview metadata
+    - Applied-style `return_count` alias and `FIRST|LAST|STRONGEST` selection ordering
   - geometry-aware multipath surface:
     - `GROUND_PLANE`, `VERTICAL_PLANE`, `HYBRID` bounce modes
     - `max_paths`, `path_signal_decay`, `minimum_path_snr_db`, `max_extra_path_length_m`
@@ -591,7 +592,7 @@ Current status:
     - `peak_power` and range-dependent `optical_loss`
     - per-point channel radiometric metadata in preview artifacts
 - next missing items:
-  - non-synthetic return selection beyond current plane-reflection multipath
+  - stronger raytracing fidelity beyond current selection/merge approximation
   - richer rain/snow particle field calibration beyond current preview heuristic
   - channel profile / sidelobe modeling beyond current scalar divergence-loss approximation
 
