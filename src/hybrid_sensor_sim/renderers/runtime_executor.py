@@ -330,6 +330,7 @@ def _build_backend_invocation_payload(
     backend_frame_manifest: str | None,
     backend_ingestion_profile: str | None,
     backend_sensor_bundle_summary: str | None,
+    backend_output_spec: str | None,
     backend_launcher_template: str | None,
     backend_runner_request: str | None,
     backend_direct_run_command: str | None,
@@ -356,6 +357,7 @@ def _build_backend_invocation_payload(
         "backend_frame_inputs_manifest": backend_frame_manifest,
         "backend_ingestion_profile": backend_ingestion_profile,
         "backend_sensor_bundle_summary": backend_sensor_bundle_summary,
+        "backend_output_spec": backend_output_spec,
         "backend_launcher_template": backend_launcher_template,
         "backend_runner_request": backend_runner_request,
         "backend_direct_run_command": backend_direct_run_command,
@@ -387,6 +389,7 @@ def _write_backend_run_manifest(
     frame_manifest_path: Path | None,
     ingestion_profile_path: Path | None,
     bundle_summary_path: Path | None,
+    output_spec_path: Path | None,
     launcher_template_path: Path | None,
     runner_request_path: Path | None,
     direct_run_command_path: Path | None,
@@ -426,6 +429,7 @@ def _write_backend_run_manifest(
             "backend_frame_inputs_manifest": str(frame_manifest_path) if frame_manifest_path else None,
             "backend_ingestion_profile": str(ingestion_profile_path) if ingestion_profile_path else None,
             "backend_sensor_bundle_summary": str(bundle_summary_path) if bundle_summary_path else None,
+            "backend_output_spec": str(output_spec_path) if output_spec_path else None,
             "backend_launcher_template": str(launcher_template_path) if launcher_template_path else None,
             "backend_runner_request": str(runner_request_path) if runner_request_path else None,
             "backend_direct_run_command": str(direct_run_command_path) if direct_run_command_path else None,
@@ -1362,6 +1366,9 @@ def execute_renderer_runtime(
         "backend_frame_inputs_manifest": str(frame_manifest_path) if frame_manifest_path else None,
         "backend_ingestion_profile": str(ingestion_profile_path) if ingestion_profile_path else None,
         "backend_sensor_bundle_summary": str(bundle_summary_path) if bundle_summary_path else None,
+        "backend_output_spec": str(runner_artifacts["backend_output_spec"])
+        if "backend_output_spec" in runner_artifacts
+        else None,
         "backend_launcher_template": str(launcher_template_artifacts["backend_launcher_template"])
         if "backend_launcher_template" in launcher_template_artifacts
         else None,
@@ -1390,6 +1397,7 @@ def execute_renderer_runtime(
     }
     plan_path.write_text(json.dumps(plan_payload, indent=2), encoding="utf-8")
     backend_invocation_path = runtime_dir / "backend_invocation.json"
+    output_spec_path = runner_artifacts.get("backend_output_spec")
     launcher_template_path = launcher_template_artifacts.get("backend_launcher_template")
     frame_count = int(frame_manifest_metrics.get("renderer_backend_frame_count", 0.0))
     sensor_bindings = int(frame_manifest_metrics.get("renderer_backend_sensor_bindings", 0.0))
@@ -1418,6 +1426,7 @@ def execute_renderer_runtime(
         backend_frame_manifest=str(frame_manifest_path) if frame_manifest_path else None,
         backend_ingestion_profile=str(ingestion_profile_path) if ingestion_profile_path else None,
         backend_sensor_bundle_summary=str(bundle_summary_path) if bundle_summary_path else None,
+        backend_output_spec=str(output_spec_path) if output_spec_path is not None else None,
         backend_launcher_template=(
             str(launcher_template_path) if launcher_template_path is not None else None
         ),
@@ -1496,6 +1505,7 @@ def execute_renderer_runtime(
             frame_manifest_path=frame_manifest_path,
             ingestion_profile_path=ingestion_profile_path,
             bundle_summary_path=bundle_summary_path,
+            output_spec_path=output_spec_path,
             launcher_template_path=launcher_template_path,
             runner_request_path=runner_request_path,
             direct_run_command_path=direct_run_command_path,
@@ -1536,6 +1546,7 @@ def execute_renderer_runtime(
             frame_manifest_path=frame_manifest_path,
             ingestion_profile_path=ingestion_profile_path,
             bundle_summary_path=bundle_summary_path,
+            output_spec_path=output_spec_path,
             launcher_template_path=launcher_template_path,
             runner_request_path=runner_request_path,
             direct_run_command_path=direct_run_command_path,
@@ -1576,6 +1587,7 @@ def execute_renderer_runtime(
             frame_manifest_path=frame_manifest_path,
             ingestion_profile_path=ingestion_profile_path,
             bundle_summary_path=bundle_summary_path,
+            output_spec_path=output_spec_path,
             launcher_template_path=launcher_template_path,
             runner_request_path=runner_request_path,
             direct_run_command_path=direct_run_command_path,
@@ -1640,6 +1652,7 @@ def execute_renderer_runtime(
                 frame_manifest_path=frame_manifest_path,
                 ingestion_profile_path=ingestion_profile_path,
                 bundle_summary_path=bundle_summary_path,
+                output_spec_path=output_spec_path,
                 launcher_template_path=launcher_template_path,
                 runner_request_path=runner_request_path,
                 direct_run_command_path=direct_run_command_path,
@@ -1680,6 +1693,7 @@ def execute_renderer_runtime(
             frame_manifest_path=frame_manifest_path,
             ingestion_profile_path=ingestion_profile_path,
             bundle_summary_path=bundle_summary_path,
+            output_spec_path=output_spec_path,
             launcher_template_path=launcher_template_path,
             runner_request_path=runner_request_path,
             direct_run_command_path=direct_run_command_path,
@@ -1741,6 +1755,7 @@ def execute_renderer_runtime(
                 frame_manifest_path=frame_manifest_path,
                 ingestion_profile_path=ingestion_profile_path,
                 bundle_summary_path=bundle_summary_path,
+                output_spec_path=output_spec_path,
                 launcher_template_path=launcher_template_path,
                 runner_request_path=runner_request_path,
                 direct_run_command_path=direct_run_command_path,
@@ -1790,6 +1805,7 @@ def execute_renderer_runtime(
             frame_manifest_path=frame_manifest_path,
             ingestion_profile_path=ingestion_profile_path,
             bundle_summary_path=bundle_summary_path,
+            output_spec_path=output_spec_path,
             launcher_template_path=launcher_template_path,
             runner_request_path=runner_request_path,
             direct_run_command_path=direct_run_command_path,
@@ -1834,6 +1850,7 @@ def execute_renderer_runtime(
         frame_manifest_path=frame_manifest_path,
         ingestion_profile_path=ingestion_profile_path,
         bundle_summary_path=bundle_summary_path,
+        output_spec_path=output_spec_path,
         launcher_template_path=launcher_template_path,
         runner_request_path=runner_request_path,
         direct_run_command_path=direct_run_command_path,

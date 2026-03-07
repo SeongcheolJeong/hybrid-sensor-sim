@@ -20,6 +20,62 @@ _BACKEND_ENV_BIN_KEYS: dict[str, str] = {
     "carla": "CARLA_BIN",
 }
 
+_BACKEND_EXPECTED_OUTPUT_PRESETS: dict[str, list[dict[str, Any]]] = {
+    "awsim": [
+        {
+            "artifact_key": "backend_output_root_dir",
+            "relative_path": ".",
+            "kind": "directory",
+            "required": False,
+            "description": "Backend-specific output root directory.",
+        },
+        {
+            "artifact_key": "awsim_sensor_exports_dir",
+            "relative_path": "sensor_exports",
+            "kind": "directory",
+            "required": False,
+            "description": "AWSIM sensor export directory.",
+        },
+        {
+            "artifact_key": "awsim_runtime_state_json",
+            "relative_path": "awsim_runtime_state.json",
+            "kind": "file",
+            "required": False,
+            "description": "AWSIM runtime state summary.",
+        },
+    ],
+    "carla": [
+        {
+            "artifact_key": "backend_output_root_dir",
+            "relative_path": ".",
+            "kind": "directory",
+            "required": False,
+            "description": "Backend-specific output root directory.",
+        },
+        {
+            "artifact_key": "carla_sensor_exports_dir",
+            "relative_path": "sensor_exports",
+            "kind": "directory",
+            "required": False,
+            "description": "CARLA sensor export directory.",
+        },
+        {
+            "artifact_key": "carla_recorder_log",
+            "relative_path": "carla_recorder.log",
+            "kind": "file",
+            "required": False,
+            "description": "CARLA recorder log.",
+        },
+        {
+            "artifact_key": "carla_runtime_state_json",
+            "relative_path": "carla_runtime_state.json",
+            "kind": "file",
+            "required": False,
+            "description": "CARLA runtime state summary.",
+        },
+    ],
+}
+
 
 @dataclass
 class BackendRunnerExecutionResult:
@@ -134,6 +190,47 @@ def _load_launcher_args(launcher_template_path: Path | None) -> list[str]:
     return _coerce_arg_list(payload.get("args", []))
 
 
+def _build_backend_output_spec(
+    *,
+    backend: str,
+    runtime_dir: Path,
+) -> tuple[Path | None, Path | None, list[dict[str, Any]], dict[str, float]]:
+    if backend in {"", "none"}:
+        return None, None, [], {
+            "renderer_backend_output_spec_written": 0.0,
+            "renderer_backend_expected_output_count": 0.0,
+        }
+
+    output_root = runtime_dir / "backend_outputs" / backend
+    preset_entries = _BACKEND_EXPECTED_OUTPUT_PRESETS.get(backend, [])
+    expected_outputs: list[dict[str, Any]] = []
+    for entry in preset_entries:
+        relative_path = str(entry.get("relative_path", "")).strip()
+        artifact_path = (output_root / relative_path).resolve() if relative_path else output_root.resolve()
+        expected_outputs.append(
+            {
+                "artifact_key": str(entry.get("artifact_key", "")).strip(),
+                "kind": str(entry.get("kind", "file")).strip() or "file",
+                "required": bool(entry.get("required", False)),
+                "description": str(entry.get("description", "")).strip(),
+                "path": str(artifact_path),
+            }
+        )
+
+    spec_payload = {
+        "backend": backend,
+        "output_root": str(output_root),
+        "expected_output_count": len(expected_outputs),
+        "expected_outputs": expected_outputs,
+    }
+    spec_path = runtime_dir / "backend_output_spec.json"
+    spec_path.write_text(json.dumps(spec_payload, indent=2), encoding="utf-8")
+    return spec_path, output_root, expected_outputs, {
+        "renderer_backend_output_spec_written": 1.0,
+        "renderer_backend_expected_output_count": float(len(expected_outputs)),
+    }
+
+
 def build_backend_runner_artifacts(
     *,
     options: dict[str, Any],
@@ -156,11 +253,17 @@ def build_backend_runner_artifacts(
             "renderer_backend_runner_scene_arg_count": 0.0,
             "renderer_backend_runner_mount_arg_count": 0.0,
             "renderer_backend_runner_ingestion_arg_count": 0.0,
+            "renderer_backend_output_spec_written": 0.0,
+            "renderer_backend_expected_output_count": 0.0,
         }
 
     resolved_backend_bin, backend_bin_source, backend_bin_env_key = _resolve_direct_backend_bin(
         options=options,
         backend=backend,
+    )
+    output_spec_path, output_root, expected_outputs, output_spec_metrics = _build_backend_output_spec(
+        backend=backend,
+        runtime_dir=runtime_dir,
     )
     extra_args = _collect_extra_args(options=options, backend=backend)
     scene_args = _collect_scene_args(backend_args_preview)
@@ -186,11 +289,19 @@ def build_backend_runner_artifacts(
         "scene_args": scene_args,
         "mount_args": mount_args,
         "ingestion_args": ingestion_args,
+        "output_root": str(output_root) if output_root is not None else None,
+        "output_spec_path": str(output_spec_path) if output_spec_path is not None else None,
+        "expected_outputs": expected_outputs,
+        "env": {
+            "BACKEND_OUTPUT_ROOT": str(output_root) if output_root is not None else "",
+            "BACKEND_OUTPUT_SPEC_PATH": str(output_spec_path) if output_spec_path is not None else "",
+        },
         "artifacts": {
             "backend_frame_inputs_manifest": str(frame_manifest_path) if frame_manifest_path else None,
             "backend_ingestion_profile": str(ingestion_profile_path) if ingestion_profile_path else None,
             "backend_sensor_bundle_summary": str(bundle_summary_path) if bundle_summary_path else None,
             "backend_launcher_template": str(launcher_template_path) if launcher_template_path else None,
+            "backend_output_spec": str(output_spec_path) if output_spec_path else None,
         },
     }
     request_path = runtime_dir / "backend_runner_request.json"
@@ -213,16 +324,21 @@ def build_backend_runner_artifacts(
     )
     shell_path.chmod(0o755)
 
-    return {
+    artifacts = {
         "backend_runner_request": request_path,
         "backend_direct_run_command": shell_path,
-    }, {
+    }
+    if output_spec_path is not None:
+        artifacts["backend_output_spec"] = output_spec_path
+
+    return artifacts, {
         "renderer_backend_runner_request_written": 1.0,
         "renderer_backend_runner_command_written": 1.0,
         "renderer_backend_runner_arg_count": float(len(command)),
         "renderer_backend_runner_scene_arg_count": float(len(scene_args)),
         "renderer_backend_runner_mount_arg_count": float(len(mount_args)),
         "renderer_backend_runner_ingestion_arg_count": float(len(ingestion_args)),
+        **output_spec_metrics,
     }
 
 
@@ -234,6 +350,9 @@ def _write_execution_manifest(
     message: str,
     return_code: int | None,
     payload: dict[str, Any] | None,
+    expected_outputs: list[dict[str, Any]] | None,
+    found_expected_outputs: int = 0,
+    missing_expected_outputs: int = 0,
     stdout_path: Path | None,
     stderr_path: Path | None,
 ) -> None:
@@ -246,12 +365,65 @@ def _write_execution_manifest(
         "cwd": str(payload.get("cwd", "")) if isinstance(payload, dict) else "",
         "runner_mode": str(payload.get("runner_mode", "")) if isinstance(payload, dict) else "",
         "command": payload.get("command", []) if isinstance(payload, dict) else [],
+        "expected_output_summary": {
+            "found_count": found_expected_outputs,
+            "missing_count": missing_expected_outputs,
+        },
+        "expected_outputs": expected_outputs if isinstance(expected_outputs, list) else [],
         "artifacts": {
             "backend_runner_stdout": str(stdout_path) if stdout_path else None,
             "backend_runner_stderr": str(stderr_path) if stderr_path else None,
         },
     }
     path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+
+def _normalize_expected_outputs(raw: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw, list):
+        return []
+    outputs: list[dict[str, Any]] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        artifact_key = str(entry.get("artifact_key", "")).strip()
+        path = str(entry.get("path", "")).strip()
+        if not artifact_key or not path:
+            continue
+        outputs.append(
+            {
+                "artifact_key": artifact_key,
+                "path": path,
+                "kind": str(entry.get("kind", "file")).strip() or "file",
+                "required": bool(entry.get("required", False)),
+                "description": str(entry.get("description", "")).strip(),
+            }
+        )
+    return outputs
+
+
+def _inspect_expected_outputs(expected_outputs: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Path], int, int]:
+    inspected: list[dict[str, Any]] = []
+    artifacts: dict[str, Path] = {}
+    found_count = 0
+    missing_count = 0
+    for entry in expected_outputs:
+        path = Path(str(entry.get("path", ""))).expanduser()
+        exists = path.exists()
+        if exists:
+            found_count += 1
+        else:
+            missing_count += 1
+        record = {
+            **entry,
+            "exists": exists,
+            "is_dir": path.is_dir() if exists else False,
+        }
+        if exists and path.is_file():
+            record["size_bytes"] = path.stat().st_size
+        inspected.append(record)
+        if exists:
+            artifacts[str(entry.get("artifact_key"))] = path
+    return inspected, artifacts, found_count, missing_count
 
 
 def execute_backend_runner_request(
@@ -286,6 +458,9 @@ def execute_backend_runner_request(
             message=f"Backend runner request read error: {exc}",
             return_code=None,
             payload=None,
+            expected_outputs=None,
+            found_expected_outputs=0,
+            missing_expected_outputs=0,
             stdout_path=None,
             stderr_path=stderr_path,
         )
@@ -304,6 +479,9 @@ def execute_backend_runner_request(
             message=f"Backend runner request decode error: {exc}",
             return_code=None,
             payload=None,
+            expected_outputs=None,
+            found_expected_outputs=0,
+            missing_expected_outputs=0,
             stdout_path=None,
             stderr_path=stderr_path,
         )
@@ -323,6 +501,9 @@ def execute_backend_runner_request(
             message="Backend runner request payload must be a JSON object.",
             return_code=None,
             payload=None,
+            expected_outputs=None,
+            found_expected_outputs=0,
+            missing_expected_outputs=0,
             stdout_path=None,
             stderr_path=stderr_path,
         )
@@ -343,6 +524,9 @@ def execute_backend_runner_request(
             message="Backend runner request command must be a non-empty list.",
             return_code=None,
             payload=payload,
+            expected_outputs=None,
+            found_expected_outputs=0,
+            missing_expected_outputs=0,
             stdout_path=None,
             stderr_path=stderr_path,
         )
@@ -357,11 +541,25 @@ def execute_backend_runner_request(
     if not cwd.is_absolute():
         cwd = (resolved_request_path.parent / cwd).resolve()
     command_tokens = [str(item) for item in command]
+    env = dict(os.environ)
+    raw_env = payload.get("env")
+    if isinstance(raw_env, dict):
+        for key, value in raw_env.items():
+            key_text = str(key).strip()
+            if not key_text:
+                continue
+            env[key_text] = str(value)
+    env["BACKEND_RUNNER_REQUEST_PATH"] = str(resolved_request_path)
+    expected_outputs = _normalize_expected_outputs(payload.get("expected_outputs"))
+    for entry in expected_outputs:
+        path = Path(str(entry["path"])).expanduser()
+        path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
         proc = subprocess.run(  # noqa: S603
             command_tokens,
             cwd=str(cwd),
+            env=env,
             text=True,
             capture_output=True,
             check=False,
@@ -375,6 +573,9 @@ def execute_backend_runner_request(
             message=f"Backend runner process error: {exc}",
             return_code=-1,
             payload=payload,
+            expected_outputs=expected_outputs,
+            found_expected_outputs=0,
+            missing_expected_outputs=len(expected_outputs),
             stdout_path=None,
             stderr_path=stderr_path,
         )
@@ -387,6 +588,10 @@ def execute_backend_runner_request(
 
     stdout_path.write_text(proc.stdout, encoding="utf-8")
     stderr_path.write_text(proc.stderr, encoding="utf-8")
+    inspected_outputs, discovered_artifacts, found_count, missing_count = _inspect_expected_outputs(
+        expected_outputs
+    )
+    artifacts.update(discovered_artifacts)
     success = proc.returncode == 0
     status = "EXECUTION_SUCCEEDED" if success else "EXECUTION_FAILED"
     message = (
@@ -401,9 +606,15 @@ def execute_backend_runner_request(
         message=message,
         return_code=proc.returncode,
         payload=payload,
+        expected_outputs=inspected_outputs,
+        found_expected_outputs=found_count,
+        missing_expected_outputs=missing_count,
         stdout_path=stdout_path,
         stderr_path=stderr_path,
     )
+    artifacts["backend_runner_execution_manifest"] = execution_manifest_path
+    artifacts["backend_runner_stdout"] = stdout_path
+    artifacts["backend_runner_stderr"] = stderr_path
     return BackendRunnerExecutionResult(
         success=success,
         message=message,

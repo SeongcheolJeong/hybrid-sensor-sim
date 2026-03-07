@@ -464,6 +464,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `backend_launcher_template.json`: deduplicated backend launch args (`meta_args` + `frame_args`) for direct runner integration.
     - `backend_ingestion_args.sh`: shell-ready `BACKEND_INGEST_ARGS` array generated from launcher template.
     - `backend_runner_request.json`: wrapper-free direct backend launch request assembled from scene args, mount args, and launcher template args.
+    - `backend_output_spec.json`: backend-specific expected output schema and canonical output paths.
     - `backend_direct_run_command.sh`: executable shell command generated from `backend_runner_request.json`.
     - `backend_runner_execution_manifest.json`: standalone runner execution status and artifact pointers.
     - `backend_runner_stdout.log` / `backend_runner_stderr.log`: stdout/stderr captured by standalone runner execution.
@@ -472,6 +473,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `renderer_execute_via_runner=true` executes the backend using `backend_runner_request.json` instead of the wrapper/renderer command path.
     - in that mode, plan/invocation/run-manifest keep both the planned wrapper path and the actual `execution_command` / `execution_command_source=backend_runner`.
     - the same request can be executed standalone via `python -m hybrid_sensor_sim.renderers.backend_runner <backend_runner_request.json>`.
+    - standalone runner execution inspects `expected_outputs` from `backend_output_spec.json` and records found/missing output artifacts in `backend_runner_execution_manifest.json`.
   - contract argument controls:
     - `renderer_contract_flag` (default `--contract`)
     - `renderer_inject_contract_arg` / `renderer_contract_positional`

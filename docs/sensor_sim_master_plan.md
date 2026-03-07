@@ -230,6 +230,7 @@ Primary code references:
   - backend frame manifest generation
   - ingestion profile generation
   - backend sensor bundle summary generation
+  - backend output spec generation and expected-output inspection
   - backend run manifest generation
   - backend runner request and direct command generation
   - optional direct backend execution via runner request

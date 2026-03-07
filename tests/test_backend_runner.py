@@ -19,6 +19,8 @@ class BackendRunnerTests(unittest.TestCase):
             fake_backend.write_text(
                 """#!/usr/bin/env bash
 set -euo pipefail
+mkdir -p "$(dirname "${BACKEND_OUTPUT_FILE}")"
+printf '{"status":"ok"}\n' > "${BACKEND_OUTPUT_FILE}"
 echo "runner_ok"
 echo "runner_warn" >&2
 """,
@@ -26,6 +28,7 @@ echo "runner_warn" >&2
             )
             fake_backend.chmod(0o755)
 
+            output_file = root / "backend_outputs" / "awsim" / "awsim_runtime_state.json"
             request_path = root / "backend_runner_request.json"
             request_path.write_text(
                 json.dumps(
@@ -34,6 +37,18 @@ echo "runner_warn" >&2
                         "cwd": str(root),
                         "runner_mode": "direct_backend",
                         "command": [str(fake_backend), "--demo"],
+                        "env": {
+                            "BACKEND_OUTPUT_FILE": str(output_file),
+                        },
+                        "expected_outputs": [
+                            {
+                                "artifact_key": "awsim_runtime_state_json",
+                                "path": str(output_file),
+                                "kind": "file",
+                                "required": False,
+                                "description": "AWSIM runtime state summary.",
+                            }
+                        ],
                     }
                 ),
                 encoding="utf-8",
@@ -46,6 +61,7 @@ echo "runner_warn" >&2
             self.assertIn("backend_runner_execution_manifest", result.artifacts)
             self.assertIn("backend_runner_stdout", result.artifacts)
             self.assertIn("backend_runner_stderr", result.artifacts)
+            self.assertIn("awsim_runtime_state_json", result.artifacts)
             manifest = json.loads(
                 result.artifacts["backend_runner_execution_manifest"].read_text(encoding="utf-8")
             )
@@ -53,6 +69,9 @@ echo "runner_warn" >&2
             stderr = result.artifacts["backend_runner_stderr"].read_text(encoding="utf-8")
             self.assertEqual(manifest["status"], "EXECUTION_SUCCEEDED")
             self.assertEqual(manifest["return_code"], 0)
+            self.assertEqual(manifest["expected_output_summary"]["found_count"], 1)
+            self.assertEqual(manifest["expected_output_summary"]["missing_count"], 0)
+            self.assertTrue(manifest["expected_outputs"][0]["exists"])
             self.assertIn("runner_ok", stdout)
             self.assertIn("runner_warn", stderr)
 
