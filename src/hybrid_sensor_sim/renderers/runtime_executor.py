@@ -10,6 +10,7 @@ from typing import Any
 
 from hybrid_sensor_sim.renderers.backend_runner import (
     build_backend_runner_artifacts,
+    execute_and_inspect_backend_runner_request,
     execute_backend_runner_request,
 )
 
@@ -319,6 +320,7 @@ def _build_backend_invocation_payload(
     backend: str,
     execute: bool,
     execute_via_runner: bool,
+    execute_and_inspect_via_runner: bool,
     cwd: Path,
     command: list[str],
     command_source: str,
@@ -346,6 +348,7 @@ def _build_backend_invocation_payload(
         "backend": backend,
         "execute": execute,
         "execute_via_runner": execute_via_runner,
+        "execute_and_inspect_via_runner": execute_and_inspect_via_runner,
         "cwd": str(cwd),
         "command": command,
         "command_source": command_source,
@@ -394,6 +397,8 @@ def _write_backend_run_manifest(
     runner_request_path: Path | None,
     direct_run_command_path: Path | None,
     runner_execution_manifest_path: Path | None,
+    output_inspection_manifest_path: Path | None,
+    runner_smoke_manifest_path: Path | None,
     wrapper_dump_path: Path | None,
     stdout_path: Path | None,
     stderr_path: Path | None,
@@ -438,6 +443,12 @@ def _write_backend_run_manifest(
             "backend_direct_run_command": str(direct_run_command_path) if direct_run_command_path else None,
             "backend_runner_execution_manifest": (
                 str(runner_execution_manifest_path) if runner_execution_manifest_path else None
+            ),
+            "backend_output_inspection_manifest": (
+                str(output_inspection_manifest_path) if output_inspection_manifest_path else None
+            ),
+            "backend_runner_smoke_manifest": (
+                str(runner_smoke_manifest_path) if runner_smoke_manifest_path else None
             ),
             "backend_sensor_output_summary": (
                 str(sensor_output_summary_path) if sensor_output_summary_path else None
@@ -513,6 +524,7 @@ def _write_renderer_pipeline_summary(
     backend: str,
     execute: bool,
     execute_via_runner: bool,
+    execute_and_inspect_via_runner: bool,
     status: str,
     success: bool,
     message: str,
@@ -539,6 +551,8 @@ def _write_renderer_pipeline_summary(
     runner_request_path: Path | None,
     direct_run_command_path: Path | None,
     runner_execution_manifest_path: Path | None,
+    output_inspection_manifest_path: Path | None,
+    runner_smoke_manifest_path: Path | None,
     sensor_output_summary_path: Path | None,
     output_smoke_report_path: Path | None,
     output_comparison_report_path: Path | None,
@@ -656,6 +670,54 @@ def _write_renderer_pipeline_summary(
                 found_output_count = len(found_output_keys)
             if missing_output_count <= 0:
                 missing_output_count = len(missing_output_keys)
+
+    output_inspection_available = False
+    output_inspection_status: str | None = None
+    output_inspection_success: bool | None = None
+    output_inspection_return_code: int | None = None
+    output_inspection_message: str | None = None
+    output_inspection_payload = (
+        _read_contract_payload(output_inspection_manifest_path)
+        if output_inspection_manifest_path
+        else None
+    )
+    if isinstance(output_inspection_payload, dict):
+        output_inspection_available = True
+        raw_status = output_inspection_payload.get("status")
+        output_inspection_status = str(raw_status).strip() if raw_status is not None else None
+        raw_success = output_inspection_payload.get("success")
+        if isinstance(raw_success, bool):
+            output_inspection_success = raw_success
+        raw_return_code = output_inspection_payload.get("return_code")
+        if raw_return_code is not None:
+            output_inspection_return_code = _coerce_int(raw_return_code, default=0)
+        raw_message = output_inspection_payload.get("message")
+        output_inspection_message = (
+            str(raw_message).strip() if raw_message is not None else None
+        )
+
+    runner_smoke_available = False
+    runner_smoke_status: str | None = None
+    runner_smoke_success: bool | None = None
+    runner_smoke_return_code: int | None = None
+    runner_smoke_message: str | None = None
+    runner_smoke_payload = (
+        _read_contract_payload(runner_smoke_manifest_path)
+        if runner_smoke_manifest_path
+        else None
+    )
+    if isinstance(runner_smoke_payload, dict):
+        runner_smoke_available = True
+        raw_status = runner_smoke_payload.get("status")
+        runner_smoke_status = str(raw_status).strip() if raw_status is not None else None
+        raw_success = runner_smoke_payload.get("success")
+        if isinstance(raw_success, bool):
+            runner_smoke_success = raw_success
+        raw_return_code = runner_smoke_payload.get("return_code")
+        if raw_return_code is not None:
+            runner_smoke_return_code = _coerce_int(raw_return_code, default=0)
+        raw_message = runner_smoke_payload.get("message")
+        runner_smoke_message = str(raw_message).strip() if raw_message is not None else None
 
     sensor_output_summary_available = False
     found_sensor_output_count = 0
@@ -814,6 +876,7 @@ def _write_renderer_pipeline_summary(
         "backend": backend,
         "execute_requested": execute,
         "execute_via_runner": execute_via_runner,
+        "execute_and_inspect_via_runner": execute_and_inspect_via_runner,
         "status": status,
         "success": success,
         "message": message,
@@ -855,6 +918,20 @@ def _write_renderer_pipeline_summary(
             "by_artifact_type": expected_output_groups_by_artifact_type,
             "found_artifact_keys": sorted(set(found_output_keys)),
             "missing_artifact_keys": sorted(set(missing_output_keys)),
+        },
+        "output_inspection": {
+            "available": output_inspection_available,
+            "status": output_inspection_status,
+            "success": output_inspection_success,
+            "return_code": output_inspection_return_code,
+            "message": output_inspection_message,
+        },
+        "runner_smoke": {
+            "available": runner_smoke_available,
+            "status": runner_smoke_status,
+            "success": runner_smoke_success,
+            "return_code": runner_smoke_return_code,
+            "message": runner_smoke_message,
         },
         "sensor_outputs": {
             "summary_available": sensor_output_summary_available,
@@ -907,6 +984,12 @@ def _write_renderer_pipeline_summary(
             "backend_runner_execution_manifest": (
                 str(runner_execution_manifest_path) if runner_execution_manifest_path else None
             ),
+            "backend_output_inspection_manifest": (
+                str(output_inspection_manifest_path) if output_inspection_manifest_path else None
+            ),
+            "backend_runner_smoke_manifest": (
+                str(runner_smoke_manifest_path) if runner_smoke_manifest_path else None
+            ),
             "backend_sensor_output_summary": (
                 str(sensor_output_summary_path) if sensor_output_summary_path else None
             ),
@@ -928,6 +1011,12 @@ def _write_renderer_pipeline_summary(
         "renderer_pipeline_summary_written": 1.0,
         "renderer_pipeline_expected_output_inspection_available": (
             1.0 if inspection_available else 0.0
+        ),
+        "renderer_pipeline_output_inspection_available": (
+            1.0 if output_inspection_available else 0.0
+        ),
+        "renderer_pipeline_runner_smoke_available": (
+            1.0 if runner_smoke_available else 0.0
         ),
         "renderer_pipeline_sensor_output_summary_available": (
             1.0 if sensor_output_summary_available else 0.0
@@ -1724,6 +1813,9 @@ def execute_renderer_runtime(
     plan_path = runtime_dir / "renderer_execution_plan.json"
     backend = str(options.get("renderer_backend", "none")).lower().strip()
     execute = bool(options.get("renderer_execute", False))
+    execute_and_inspect_via_runner = bool(
+        options.get("renderer_execute_and_inspect_via_runner", False)
+    )
     cwd = _resolve_renderer_cwd(options)
     contract_payload = _read_contract_payload(contract_path)
 
@@ -1810,6 +1902,7 @@ def execute_renderer_runtime(
         "backend": backend,
         "execute": execute,
         "execute_via_runner": execute_via_runner,
+        "execute_and_inspect_via_runner": execute_and_inspect_via_runner,
         "contract_path": str(contract_path),
         "cwd": str(cwd),
         "command": command,
@@ -1877,6 +1970,7 @@ def execute_renderer_runtime(
         backend=backend,
         execute=execute,
         execute_via_runner=execute_via_runner,
+        execute_and_inspect_via_runner=execute_and_inspect_via_runner,
         cwd=cwd,
         command=command,
         command_source=command_source,
@@ -1911,6 +2005,8 @@ def execute_renderer_runtime(
     backend_run_manifest_path = runtime_dir / "backend_run_manifest.json"
     pipeline_summary_path = runtime_dir / "renderer_pipeline_summary.json"
     runner_execution_manifest_path: Path | None = None
+    output_inspection_manifest_path: Path | None = None
+    runner_smoke_manifest_path: Path | None = None
     sensor_output_summary_path: Path | None = None
     output_smoke_report_path: Path | None = None
     output_comparison_report_path: Path | None = None
@@ -1933,6 +2029,9 @@ def execute_renderer_runtime(
         "renderer_runtime_planned": 1.0,
         "renderer_execute_requested": 1.0 if execute else 0.0,
         "renderer_execute_via_runner_requested": 1.0 if execute_via_runner else 0.0,
+        "renderer_execute_and_inspect_via_runner_requested": (
+            1.0 if execute_and_inspect_via_runner else 0.0
+        ),
         "renderer_backend_wrapper_used": 1.0 if backend_wrapper_used else 0.0,
         "renderer_backend_runner_execution_used": 1.0
         if execution_command_source == "backend_runner"
@@ -1964,6 +2063,8 @@ def execute_renderer_runtime(
         stdout_path_for_summary: Path | None,
         stderr_path_for_summary: Path | None,
         runner_execution_manifest_path_for_summary: Path | None,
+        output_inspection_manifest_path_for_summary: Path | None,
+        runner_smoke_manifest_path_for_summary: Path | None,
         sensor_output_summary_path_for_summary: Path | None,
         output_smoke_report_path_for_summary: Path | None = None,
         output_comparison_report_path_for_summary: Path | None = None,
@@ -1977,6 +2078,7 @@ def execute_renderer_runtime(
                 backend=backend,
                 execute=execute,
                 execute_via_runner=execute_via_runner,
+                execute_and_inspect_via_runner=execute_and_inspect_via_runner,
                 status=status,
                 success=success,
                 message=message,
@@ -2003,6 +2105,8 @@ def execute_renderer_runtime(
                 runner_request_path=runner_request_path,
                 direct_run_command_path=direct_run_command_path,
                 runner_execution_manifest_path=runner_execution_manifest_path_for_summary,
+                output_inspection_manifest_path=output_inspection_manifest_path_for_summary,
+                runner_smoke_manifest_path=runner_smoke_manifest_path_for_summary,
                 sensor_output_summary_path=sensor_output_summary_path_for_summary,
                 output_smoke_report_path=output_smoke_report_path_for_summary,
                 output_comparison_report_path=output_comparison_report_path_for_summary,
@@ -2061,6 +2165,8 @@ def execute_renderer_runtime(
             stdout_path_for_summary=None,
             stderr_path_for_summary=None,
             runner_execution_manifest_path_for_summary=None,
+            output_inspection_manifest_path_for_summary=None,
+            runner_smoke_manifest_path_for_summary=None,
             sensor_output_summary_path_for_summary=None,
             runner_stdout_path_for_summary=None,
             runner_stderr_path_for_summary=None,
@@ -2095,6 +2201,8 @@ def execute_renderer_runtime(
             runner_request_path=runner_request_path,
             direct_run_command_path=direct_run_command_path,
             runner_execution_manifest_path=None,
+            output_inspection_manifest_path=None,
+            runner_smoke_manifest_path=None,
             sensor_output_summary_path=None,
             wrapper_dump_path=wrapper_dump_path if execution_backend_wrapper_used else None,
             stdout_path=None,
@@ -2119,6 +2227,8 @@ def execute_renderer_runtime(
             stdout_path_for_summary=None,
             stderr_path_for_summary=None,
             runner_execution_manifest_path_for_summary=None,
+            output_inspection_manifest_path_for_summary=None,
+            runner_smoke_manifest_path_for_summary=None,
             sensor_output_summary_path_for_summary=None,
             runner_stdout_path_for_summary=None,
             runner_stderr_path_for_summary=None,
@@ -2153,6 +2263,8 @@ def execute_renderer_runtime(
             runner_request_path=runner_request_path,
             direct_run_command_path=direct_run_command_path,
             runner_execution_manifest_path=None,
+            output_inspection_manifest_path=None,
+            runner_smoke_manifest_path=None,
             sensor_output_summary_path=None,
             wrapper_dump_path=wrapper_dump_path if execution_backend_wrapper_used else None,
             stdout_path=None,
@@ -2177,6 +2289,8 @@ def execute_renderer_runtime(
             stdout_path_for_summary=None,
             stderr_path_for_summary=None,
             runner_execution_manifest_path_for_summary=None,
+            output_inspection_manifest_path_for_summary=None,
+            runner_smoke_manifest_path_for_summary=None,
             sensor_output_summary_path_for_summary=None,
             runner_stdout_path_for_summary=None,
             runner_stderr_path_for_summary=None,
@@ -2192,12 +2306,24 @@ def execute_renderer_runtime(
     stdout_path = runtime_dir / "renderer_stdout.log"
     stderr_path = runtime_dir / "renderer_stderr.log"
     if execution_command_source == "backend_runner" and runner_request_path is not None:
-        runner_result = execute_backend_runner_request(
-            request_path=runner_request_path,
-            output_dir=runtime_dir,
-        )
+        if execute_and_inspect_via_runner:
+            runner_result = execute_and_inspect_backend_runner_request(
+                request_path=runner_request_path,
+                output_dir=runtime_dir,
+            )
+        else:
+            runner_result = execute_backend_runner_request(
+                request_path=runner_request_path,
+                output_dir=runtime_dir,
+            )
         runner_execution_manifest_path = runner_result.artifacts.get(
             "backend_runner_execution_manifest"
+        )
+        output_inspection_manifest_path = runner_result.artifacts.get(
+            "backend_output_inspection_manifest"
+        )
+        runner_smoke_manifest_path = runner_result.artifacts.get(
+            "backend_runner_smoke_manifest"
         )
         sensor_output_summary_path = runner_result.artifacts.get("backend_sensor_output_summary")
         output_smoke_report_path = runner_result.artifacts.get("backend_output_smoke_report")
@@ -2217,7 +2343,21 @@ def execute_renderer_runtime(
             metrics["renderer_return_code"] = float(runner_result.return_code)
         if not runner_result.success:
             status = "PROCESS_ERROR" if runner_result.return_code == -1 else "EXECUTION_FAILED"
-            failure_reason = "PROCESS_ERROR" if runner_result.return_code == -1 else "NONZERO_EXIT"
+            if runner_result.return_code == -1:
+                failure_reason = "PROCESS_ERROR"
+            elif execute_and_inspect_via_runner and runner_smoke_manifest_path is not None:
+                smoke_payload = _read_contract_payload(runner_smoke_manifest_path)
+                smoke_status = (
+                    str(smoke_payload.get("status", "")).strip()
+                    if isinstance(smoke_payload, dict)
+                    else ""
+                )
+                if smoke_status in {"INSPECTION_FAILED", "SMOKE_FAILED"}:
+                    failure_reason = "OUTPUT_CONTRACT_MISMATCH"
+                else:
+                    failure_reason = "NONZERO_EXIT"
+            else:
+                failure_reason = "NONZERO_EXIT"
             _write_backend_run_manifest(
                 path=backend_run_manifest_path,
                 backend=backend,
@@ -2240,6 +2380,8 @@ def execute_renderer_runtime(
                 runner_request_path=runner_request_path,
                 direct_run_command_path=direct_run_command_path,
                 runner_execution_manifest_path=runner_execution_manifest_path,
+                output_inspection_manifest_path=output_inspection_manifest_path,
+                runner_smoke_manifest_path=runner_smoke_manifest_path,
                 sensor_output_summary_path=sensor_output_summary_path,
                 output_smoke_report_path=output_smoke_report_path,
                 output_comparison_report_path=output_comparison_report_path,
@@ -2264,6 +2406,8 @@ def execute_renderer_runtime(
                 stdout_path_for_summary=stdout_path if runner_stdout_path is not None else None,
                 stderr_path_for_summary=stderr_path if runner_stderr_path is not None else None,
                 runner_execution_manifest_path_for_summary=runner_execution_manifest_path,
+                output_inspection_manifest_path_for_summary=output_inspection_manifest_path,
+                runner_smoke_manifest_path_for_summary=runner_smoke_manifest_path,
                 sensor_output_summary_path_for_summary=sensor_output_summary_path,
                 output_smoke_report_path_for_summary=output_smoke_report_path,
                 output_comparison_report_path_for_summary=output_comparison_report_path,
@@ -2300,6 +2444,8 @@ def execute_renderer_runtime(
             runner_request_path=runner_request_path,
             direct_run_command_path=direct_run_command_path,
             runner_execution_manifest_path=runner_execution_manifest_path,
+            output_inspection_manifest_path=output_inspection_manifest_path,
+            runner_smoke_manifest_path=runner_smoke_manifest_path,
             sensor_output_summary_path=sensor_output_summary_path,
             output_smoke_report_path=output_smoke_report_path,
             output_comparison_report_path=output_comparison_report_path,
@@ -2324,6 +2470,8 @@ def execute_renderer_runtime(
             stdout_path_for_summary=stdout_path if runner_stdout_path is not None else None,
             stderr_path_for_summary=stderr_path if runner_stderr_path is not None else None,
             runner_execution_manifest_path_for_summary=runner_execution_manifest_path,
+            output_inspection_manifest_path_for_summary=output_inspection_manifest_path,
+            runner_smoke_manifest_path_for_summary=runner_smoke_manifest_path,
             sensor_output_summary_path_for_summary=sensor_output_summary_path,
             output_smoke_report_path_for_summary=output_smoke_report_path,
             output_comparison_report_path_for_summary=output_comparison_report_path,
@@ -2381,6 +2529,8 @@ def execute_renderer_runtime(
                 runner_request_path=runner_request_path,
                 direct_run_command_path=direct_run_command_path,
                 runner_execution_manifest_path=None,
+                output_inspection_manifest_path=None,
+                runner_smoke_manifest_path=None,
                 sensor_output_summary_path=None,
                 wrapper_dump_path=(
                     wrapper_dump_path
@@ -2411,6 +2561,8 @@ def execute_renderer_runtime(
                 stdout_path_for_summary=stdout_path,
                 stderr_path_for_summary=stderr_path,
                 runner_execution_manifest_path_for_summary=None,
+                output_inspection_manifest_path_for_summary=None,
+                runner_smoke_manifest_path_for_summary=None,
                 sensor_output_summary_path_for_summary=None,
                 runner_stdout_path_for_summary=None,
                 runner_stderr_path_for_summary=None,
@@ -2450,6 +2602,8 @@ def execute_renderer_runtime(
             runner_request_path=runner_request_path,
             direct_run_command_path=direct_run_command_path,
             runner_execution_manifest_path=None,
+            output_inspection_manifest_path=None,
+            runner_smoke_manifest_path=None,
             sensor_output_summary_path=None,
             wrapper_dump_path=(
                 wrapper_dump_path
@@ -2480,6 +2634,8 @@ def execute_renderer_runtime(
             stdout_path_for_summary=None,
             stderr_path_for_summary=stderr_path,
             runner_execution_manifest_path_for_summary=None,
+            output_inspection_manifest_path_for_summary=None,
+            runner_smoke_manifest_path_for_summary=None,
             sensor_output_summary_path_for_summary=None,
             runner_stdout_path_for_summary=None,
             runner_stderr_path_for_summary=None,
@@ -2514,6 +2670,8 @@ def execute_renderer_runtime(
         runner_request_path=runner_request_path,
         direct_run_command_path=direct_run_command_path,
         runner_execution_manifest_path=None,
+        output_inspection_manifest_path=None,
+        runner_smoke_manifest_path=None,
         sensor_output_summary_path=None,
         wrapper_dump_path=(
             wrapper_dump_path if execution_backend_wrapper_used and wrapper_dump_path.exists() else None
@@ -2540,6 +2698,8 @@ def execute_renderer_runtime(
         stdout_path_for_summary=stdout_path,
         stderr_path_for_summary=stderr_path,
         runner_execution_manifest_path_for_summary=None,
+        output_inspection_manifest_path_for_summary=None,
+        runner_smoke_manifest_path_for_summary=None,
         sensor_output_summary_path_for_summary=None,
         runner_stdout_path_for_summary=None,
         runner_stderr_path_for_summary=None,

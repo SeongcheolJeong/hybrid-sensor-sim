@@ -492,6 +492,8 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - standalone runner execution inspects `expected_outputs` from `backend_output_spec.json`, records found/missing output artifacts in `backend_runner_execution_manifest.json`, and writes both `backend_output_smoke_report.json` and `backend_output_comparison_report.json` for completeness and unexpected-output checks.
     - `python -m hybrid_sensor_sim.renderers.backend_runner --compare-only <backend_runner_request.json>` skips backend execution and re-runs output inspection/comparison against an existing `output_root`.
     - `python -m hybrid_sensor_sim.renderers.backend_runner --execute-and-inspect <backend_runner_request.json>` performs direct backend execution and then writes `backend_runner_smoke_manifest.json` after a follow-up inspection pass.
+    - `renderer_execute_and_inspect_via_runner=true` makes renderer runtime use the same execute-plus-inspect flow and surfaces `backend_output_inspection_manifest.json` and `backend_runner_smoke_manifest.json` in runtime artifacts.
+    - combine `renderer_execute_and_inspect_via_runner=true` with `renderer_fail_on_error=true` to fail hybrid runs on backend output contract mismatches, not only process exit failures.
   - contract argument controls:
     - `renderer_contract_flag` (default `--contract`)
     - `renderer_inject_contract_arg` / `renderer_contract_positional`

@@ -959,10 +959,18 @@ printf "%s\\n" "$@"
             self.assertIn("backend_sensor_output_summary", result.artifacts)
             self.assertIn("backend_output_smoke_report", result.artifacts)
             self.assertIn("backend_output_comparison_report", result.artifacts)
+            self.assertNotIn("backend_output_inspection_manifest", result.artifacts)
+            self.assertNotIn("backend_runner_smoke_manifest", result.artifacts)
             self.assertEqual(result.metrics.get("renderer_execute_via_runner_requested"), 1.0)
+            self.assertEqual(
+                result.metrics.get("renderer_execute_and_inspect_via_runner_requested"),
+                0.0,
+            )
             self.assertEqual(result.metrics.get("renderer_backend_runner_execution_used"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_execution_wrapper_used"), 0.0)
             self.assertEqual(result.metrics.get("renderer_pipeline_summary_written"), 1.0)
+            self.assertEqual(result.metrics.get("renderer_pipeline_output_inspection_available"), 0.0)
+            self.assertEqual(result.metrics.get("renderer_pipeline_runner_smoke_available"), 0.0)
             self.assertEqual(result.metrics.get("renderer_pipeline_sensor_output_summary_available"), 1.0)
             self.assertEqual(result.metrics.get("renderer_pipeline_output_smoke_report_available"), 1.0)
             self.assertEqual(result.metrics.get("renderer_pipeline_output_comparison_available"), 1.0)
@@ -1003,11 +1011,13 @@ printf "%s\\n" "$@"
                 result.artifacts["renderer_pipeline_summary"].read_text(encoding="utf-8")
             )
             self.assertTrue(plan["execute_via_runner"])
+            self.assertFalse(plan["execute_and_inspect_via_runner"])
             self.assertEqual(plan["command_source"], "backend_wrapper")
             self.assertEqual(plan["execution_command_source"], "backend_runner")
             self.assertFalse(plan["execution_backend_wrapper_used"])
             self.assertTrue(plan["execution_command"][0].endswith("fake_awsim_direct.sh"))
             self.assertTrue(backend_invocation["execute_via_runner"])
+            self.assertFalse(backend_invocation["execute_and_inspect_via_runner"])
             self.assertEqual(backend_invocation["execution_command_source"], "backend_runner")
             self.assertFalse(backend_invocation["execution_backend_wrapper_used"])
             self.assertEqual(run_manifest["status"], "EXECUTION_SUCCEEDED")
@@ -1153,6 +1163,8 @@ printf "%s\\n" "$@"
             )
             self.assertEqual(pipeline_summary["status"], "EXECUTION_SUCCEEDED")
             self.assertTrue(pipeline_summary["expected_outputs"]["inspection_available"])
+            self.assertFalse(pipeline_summary["output_inspection"]["available"])
+            self.assertFalse(pipeline_summary["runner_smoke"]["available"])
             self.assertTrue(pipeline_summary["sensor_outputs"]["summary_available"])
             self.assertTrue(pipeline_summary["output_smoke_report"]["available"])
             self.assertTrue(pipeline_summary["output_comparison"]["available"])
@@ -1215,6 +1227,109 @@ printf "%s\\n" "$@"
             self.assertEqual(
                 pipeline_summary["artifacts"]["backend_output_comparison_report"],
                 str(result.artifacts["backend_output_comparison_report"]),
+            )
+
+    def test_renderer_runtime_can_execute_and_inspect_via_backend_runner(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+
+            fake_awsim = root / "fake_awsim_direct.sh"
+            fake_awsim.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+mkdir -p "${BACKEND_OUTPUT_ROOT}"
+printf '{"status":"ok"}\n' > "${BACKEND_OUTPUT_ROOT}/awsim_runtime_state.json"
+printf "direct_backend_smoke\\n"
+printf "%s\\n" "$@"
+""",
+                encoding="utf-8",
+            )
+            fake_awsim.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "renderer_bridge_enabled": True,
+                    "renderer_backend": "awsim",
+                    "renderer_execute": True,
+                    "renderer_execute_via_runner": True,
+                    "renderer_execute_and_inspect_via_runner": True,
+                    "renderer_fail_on_error": True,
+                    "renderer_bin": "",
+                    "awsim_bin": "",
+                    "renderer_command": [],
+                    "renderer_map": "Town09",
+                    "camera_projection_enabled": True,
+                    "renderer_sensor_mounts_only_enabled": False,
+                },
+            )
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            with mock.patch.dict(os.environ, {"AWSIM_BIN": str(fake_awsim)}, clear=False):
+                result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertFalse(result.success)
+            self.assertIn("backend_output_inspection_manifest", result.artifacts)
+            self.assertIn("backend_runner_smoke_manifest", result.artifacts)
+            self.assertEqual(
+                result.metrics.get("renderer_execute_and_inspect_via_runner_requested"),
+                1.0,
+            )
+            self.assertEqual(result.metrics.get("renderer_pipeline_output_inspection_available"), 1.0)
+            self.assertEqual(result.metrics.get("renderer_pipeline_runner_smoke_available"), 1.0)
+            run_manifest = json.loads(
+                result.artifacts["backend_run_manifest"].read_text(encoding="utf-8")
+            )
+            inspection_manifest = json.loads(
+                result.artifacts["backend_output_inspection_manifest"].read_text(
+                    encoding="utf-8"
+                )
+            )
+            smoke_manifest = json.loads(
+                result.artifacts["backend_runner_smoke_manifest"].read_text(
+                    encoding="utf-8"
+                )
+            )
+            pipeline_summary = json.loads(
+                result.artifacts["renderer_pipeline_summary"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(run_manifest["status"], "EXECUTION_FAILED")
+            self.assertEqual(run_manifest["failure_reason"], "OUTPUT_CONTRACT_MISMATCH")
+            self.assertEqual(run_manifest["return_code"], 2)
+            self.assertEqual(
+                run_manifest["artifacts"]["backend_output_inspection_manifest"],
+                str(result.artifacts["backend_output_inspection_manifest"]),
+            )
+            self.assertEqual(
+                run_manifest["artifacts"]["backend_runner_smoke_manifest"],
+                str(result.artifacts["backend_runner_smoke_manifest"]),
+            )
+            self.assertEqual(inspection_manifest["status"], "MISSING_EXPECTED")
+            self.assertFalse(inspection_manifest["success"])
+            self.assertEqual(smoke_manifest["status"], "INSPECTION_FAILED")
+            self.assertFalse(smoke_manifest["success"])
+            self.assertEqual(smoke_manifest["inspection"]["status"], "MISSING_EXPECTED")
+            self.assertTrue(pipeline_summary["output_inspection"]["available"])
+            self.assertEqual(pipeline_summary["output_inspection"]["status"], "MISSING_EXPECTED")
+            self.assertFalse(pipeline_summary["output_inspection"]["success"])
+            self.assertTrue(pipeline_summary["runner_smoke"]["available"])
+            self.assertEqual(pipeline_summary["runner_smoke"]["status"], "INSPECTION_FAILED")
+            self.assertFalse(pipeline_summary["runner_smoke"]["success"])
+            self.assertEqual(
+                pipeline_summary["artifacts"]["backend_output_inspection_manifest"],
+                str(result.artifacts["backend_output_inspection_manifest"]),
+            )
+            self.assertEqual(
+                pipeline_summary["artifacts"]["backend_runner_smoke_manifest"],
+                str(result.artifacts["backend_runner_smoke_manifest"]),
             )
 
     def test_renderer_runtime_carla_wrapper_execution_transforms_sensor_mount_json(self) -> None:

@@ -239,6 +239,7 @@ Primary code references:
   - role-level backend filename mismatch detection for fallback/export-name drift
   - compare-only backend output inspection path for post-run AWSIM/CARLA artifact audits
   - combined execute-plus-inspect smoke manifest for standalone backend runner audits
+  - runtime-native execute-plus-inspect option for direct backend runner smoke enforcement
   - sensor-specific expected export paths derived from runtime ingestion data
   - backend-namespaced sensor export candidate paths and sensor output summary generation
   - backend-specific sensor export filename conventions (for example AWSIM vs CARLA camera outputs)
