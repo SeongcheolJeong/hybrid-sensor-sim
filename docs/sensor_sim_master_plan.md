@@ -229,8 +229,10 @@ Primary code references:
   - playback contract generation
   - backend frame manifest generation
   - ingestion profile generation
+  - backend sensor bundle summary generation
   - launcher template generation
   - wrapper-first renderer/backend command flow
+  - wrapper-level bundle summary consumption for backend-debug/runtime inspection
   - trajectory-aware extrinsics propagation
 - Camera:
   - pinhole-style projection flow

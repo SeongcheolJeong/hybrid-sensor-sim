@@ -451,6 +451,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
       - CARLA: repeated `--ingest-frame <renderer_frame_id:sensor:payload_path>`
         plus `--ingest-meta <sensor:sensor_id:data_format:attach_actor>`
     - wrappers can consume `--ingestion-profile <backend_ingestion_profile.json>` directly (takes precedence over frame-manifest parsing when both are present).
+    - wrappers also consume `--sensor-bundle-summary <backend_sensor_bundle_summary.json>` for debug/runtime inspection and do not forward that flag to the backend binary.
   - execution plan includes `backend_args_preview` for normalized scene/sensor-mount argument inspection.
   - runtime artifacts:
     - `backend_invocation.json`: normalized backend command + preview snapshot.
@@ -458,6 +459,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
       - depth cameras are tagged as `camera_depth_json`.
       - semantic cameras are tagged as `camera_semantic_json`.
     - `backend_ingestion_profile.json`: backend-specific ingest flag/value expansion generated from frame manifest.
+    - `backend_sensor_bundle_summary.json`: per-frame sensor availability/completeness summary with backend ingestion bindings and payload pointers.
     - `backend_launcher_template.json`: deduplicated backend launch args (`meta_args` + `frame_args`) for direct runner integration.
     - `backend_ingestion_args.sh`: shell-ready `BACKEND_INGEST_ARGS` array generated from launcher template.
     - `backend_wrapper_invocation.json`: wrapper input/output args snapshot (when wrapper path is used and execution is enabled).
@@ -466,6 +468,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `renderer_inject_contract_arg` / `renderer_contract_positional`
     - frame manifest arg: `renderer_inject_frame_manifest_arg` (default `true`), `renderer_frame_manifest_flag` (default `--frame-manifest`), `renderer_frame_manifest_positional`
     - ingestion profile arg: `renderer_inject_ingestion_profile_arg` (default wrapper mode only), `renderer_ingestion_profile_flag` (default `--ingestion-profile`), `renderer_ingestion_profile_positional`
+    - bundle summary arg: `renderer_inject_bundle_summary_arg` (default wrapper mode only), `renderer_bundle_summary_flag` (default `--sensor-bundle-summary`), `renderer_bundle_summary_positional`
     - frame manifest selection: `renderer_backend_frame_start` (default `0`), `renderer_backend_frame_stride` (default `1`), `renderer_backend_max_frames` (default all)
   - safety behavior:
     - `renderer_fail_on_error=true` makes hybrid result fail when renderer runtime fails.

@@ -320,9 +320,11 @@ def _build_backend_invocation_payload(
     backend_args_preview: dict[str, Any] | None,
     backend_frame_manifest: str | None,
     backend_ingestion_profile: str | None,
+    backend_sensor_bundle_summary: str | None,
     backend_launcher_template: str | None,
     backend_frame_count: int,
     backend_sensor_bindings: int,
+    backend_complete_frame_count: int,
     backend_ingestion_entry_count: int,
     backend_launcher_arg_count: int,
     build_error: str | None,
@@ -337,9 +339,11 @@ def _build_backend_invocation_payload(
         "backend_args_preview": backend_args_preview,
         "backend_frame_inputs_manifest": backend_frame_manifest,
         "backend_ingestion_profile": backend_ingestion_profile,
+        "backend_sensor_bundle_summary": backend_sensor_bundle_summary,
         "backend_launcher_template": backend_launcher_template,
         "backend_frame_count": backend_frame_count,
         "backend_sensor_bindings": backend_sensor_bindings,
+        "backend_complete_frame_count": backend_complete_frame_count,
         "backend_ingestion_entry_count": backend_ingestion_entry_count,
         "backend_launcher_arg_count": backend_launcher_arg_count,
         "error": build_error,
@@ -663,6 +667,194 @@ def _build_backend_ingestion_profile(
     }
 
 
+def _availability_pattern(available_sensors: list[str]) -> str:
+    if not available_sensors:
+        return "none"
+    return "+".join(sorted(set(available_sensors)))
+
+
+def _build_backend_sensor_bundle_summary(
+    *,
+    backend: str,
+    frame_manifest_path: Path | None,
+    ingestion_profile_path: Path | None,
+    runtime_dir: Path,
+) -> tuple[Path | None, dict[str, float]]:
+    if frame_manifest_path is None or not frame_manifest_path.exists():
+        return None, {
+            "renderer_backend_bundle_summary_written": 0.0,
+            "renderer_backend_bundle_frame_count": 0.0,
+            "renderer_backend_bundle_camera_frame_count": 0.0,
+            "renderer_backend_bundle_lidar_frame_count": 0.0,
+            "renderer_backend_bundle_radar_frame_count": 0.0,
+            "renderer_backend_bundle_complete_frame_count": 0.0,
+            "renderer_backend_bundle_incomplete_frame_count": 0.0,
+            "renderer_backend_bundle_unique_pattern_count": 0.0,
+        }
+
+    manifest = _read_contract_payload(frame_manifest_path)
+    if not isinstance(manifest, dict):
+        return None, {
+            "renderer_backend_bundle_summary_written": 0.0,
+            "renderer_backend_bundle_frame_count": 0.0,
+            "renderer_backend_bundle_camera_frame_count": 0.0,
+            "renderer_backend_bundle_lidar_frame_count": 0.0,
+            "renderer_backend_bundle_radar_frame_count": 0.0,
+            "renderer_backend_bundle_complete_frame_count": 0.0,
+            "renderer_backend_bundle_incomplete_frame_count": 0.0,
+            "renderer_backend_bundle_unique_pattern_count": 0.0,
+        }
+
+    frames = manifest.get("frames")
+    if not isinstance(frames, list):
+        frames = []
+
+    ingestion_entries_by_key: dict[tuple[int, str], dict[str, Any]] = {}
+    meta_entries_by_sensor: dict[tuple[str, str], dict[str, Any]] = {}
+    if ingestion_profile_path is not None and ingestion_profile_path.exists():
+        ingestion_profile = _read_contract_payload(ingestion_profile_path)
+        if isinstance(ingestion_profile, dict):
+            raw_entries = ingestion_profile.get("entries")
+            if isinstance(raw_entries, list):
+                for entry in raw_entries:
+                    if not isinstance(entry, dict):
+                        continue
+                    renderer_frame_id = _coerce_int(entry.get("renderer_frame_id"), default=0)
+                    sensor_name = str(entry.get("sensor_name", "")).strip().lower()
+                    if sensor_name:
+                        ingestion_entries_by_key[(renderer_frame_id, sensor_name)] = entry
+                    sensor_id = str(entry.get("sensor_id", "")).strip()
+                    if sensor_name and sensor_id:
+                        meta_entries_by_sensor[(sensor_name, sensor_id)] = {
+                            "sensor_name": sensor_name,
+                            "sensor_id": sensor_id,
+                            "data_format": str(entry.get("data_format", "")).strip(),
+                            "meta_flag": str(entry.get("meta_flag", "")).strip(),
+                            "meta_value": str(entry.get("meta_value", "")).strip(),
+                        }
+
+    expected_sensors: set[str] = set()
+    for frame in frames:
+        if not isinstance(frame, dict):
+            continue
+        for sensor_name in ("camera", "lidar", "radar"):
+            source = frame.get(sensor_name)
+            if not isinstance(source, dict):
+                continue
+            resolved_sensor_name = str(source.get("sensor_name", sensor_name)).strip().lower()
+            if resolved_sensor_name:
+                expected_sensors.add(resolved_sensor_name)
+    ordered_expected_sensors = [name for name in ("camera", "lidar", "radar") if name in expected_sensors]
+
+    sensor_frame_counts = {sensor_name: 0 for sensor_name in ("camera", "lidar", "radar")}
+    source_type_counts = {sensor_name: {} for sensor_name in ("camera", "lidar", "radar")}
+    availability_patterns: dict[str, int] = {}
+    bundle_frames: list[dict[str, Any]] = []
+    complete_frame_count = 0
+
+    for frame in frames:
+        if not isinstance(frame, dict):
+            continue
+        renderer_frame_id = _coerce_int(frame.get("renderer_frame_id"), default=0)
+        sensors: dict[str, Any] = {}
+        available_sensors: list[str] = []
+        for sensor_name in ordered_expected_sensors:
+            source = frame.get(sensor_name)
+            if not isinstance(source, dict):
+                sensors[sensor_name] = {"available": False, "missing_from_frame": True}
+                continue
+            available = bool(source.get("available", False))
+            if available:
+                available_sensors.append(sensor_name)
+                sensor_frame_counts[sensor_name] += 1
+                source_type = str(source.get("source_type", "unknown")).strip() or "unknown"
+                sensor_source_type_counts = source_type_counts[sensor_name]
+                sensor_source_type_counts[source_type] = (
+                    _coerce_int(sensor_source_type_counts.get(source_type), default=0) + 1
+                )
+            entry = ingestion_entries_by_key.get((renderer_frame_id, sensor_name), {})
+            sensor_payload = {
+                "available": available,
+                "sensor_id": str(source.get("sensor_id", "")).strip(),
+                "attach_to_actor_id": str(source.get("attach_to_actor_id", "")).strip(),
+                "data_format": str(source.get("data_format", "")).strip(),
+                "source_type": str(source.get("source_type", "")).strip(),
+                "payload_artifact": str(source.get("payload_artifact", "")).strip(),
+                "materialized_payload_artifact": str(
+                    source.get("materialized_payload_artifact", "")
+                ).strip(),
+                "ingestion": {
+                    "frame_flag": str(entry.get("frame_flag", "")).strip(),
+                    "frame_value": str(entry.get("frame_value", "")).strip(),
+                    "meta_flag": str(entry.get("meta_flag", "")).strip(),
+                    "meta_value": str(entry.get("meta_value", "")).strip(),
+                },
+            }
+            if "resolved_frame_index" in source:
+                sensor_payload["resolved_frame_index"] = _coerce_int(
+                    source.get("resolved_frame_index"),
+                    default=0,
+                )
+            sensors[sensor_name] = sensor_payload
+
+        missing_sensors = [
+            sensor_name for sensor_name in ordered_expected_sensors if sensor_name not in available_sensors
+        ]
+        availability_pattern = _availability_pattern(available_sensors)
+        availability_patterns[availability_pattern] = (
+            _coerce_int(availability_patterns.get(availability_pattern), default=0) + 1
+        )
+        bundle_complete = bool(ordered_expected_sensors) and not missing_sensors
+        if bundle_complete:
+            complete_frame_count += 1
+        bundle_frames.append(
+            {
+                "frame_id": _coerce_int(frame.get("frame_id"), default=0),
+                "renderer_frame_id": renderer_frame_id,
+                "time_s": _coerce_float(frame.get("time_s"), default=0.0),
+                "expected_sensors": ordered_expected_sensors,
+                "available_sensors": available_sensors,
+                "missing_sensors": missing_sensors,
+                "availability_pattern": availability_pattern,
+                "bundle_complete": bundle_complete,
+                "sensor_count": len(available_sensors),
+                "sensors": sensors,
+            }
+        )
+
+    summary_payload = {
+        "backend": backend,
+        "frame_manifest": str(frame_manifest_path),
+        "ingestion_profile": str(ingestion_profile_path) if ingestion_profile_path else None,
+        "frame_count": len(bundle_frames),
+        "expected_sensors": ordered_expected_sensors,
+        "sensor_frame_counts": sensor_frame_counts,
+        "sensor_source_type_counts": source_type_counts,
+        "complete_frame_count": complete_frame_count,
+        "incomplete_frame_count": max(0, len(bundle_frames) - complete_frame_count),
+        "availability_patterns": [
+            {"pattern": pattern, "count": count}
+            for pattern, count in sorted(availability_patterns.items())
+        ],
+        "meta_entries": list(meta_entries_by_sensor.values()),
+        "frames": bundle_frames,
+    }
+    summary_path = runtime_dir / "backend_sensor_bundle_summary.json"
+    summary_path.write_text(json.dumps(summary_payload, indent=2), encoding="utf-8")
+    return summary_path, {
+        "renderer_backend_bundle_summary_written": 1.0,
+        "renderer_backend_bundle_frame_count": float(len(bundle_frames)),
+        "renderer_backend_bundle_camera_frame_count": float(sensor_frame_counts["camera"]),
+        "renderer_backend_bundle_lidar_frame_count": float(sensor_frame_counts["lidar"]),
+        "renderer_backend_bundle_radar_frame_count": float(sensor_frame_counts["radar"]),
+        "renderer_backend_bundle_complete_frame_count": float(complete_frame_count),
+        "renderer_backend_bundle_incomplete_frame_count": float(
+            max(0, len(bundle_frames) - complete_frame_count)
+        ),
+        "renderer_backend_bundle_unique_pattern_count": float(len(availability_patterns)),
+    }
+
+
 def _build_backend_launcher_templates(
     *,
     backend: str,
@@ -836,6 +1028,33 @@ def _inject_ingestion_profile_arg(
     return 1
 
 
+def _inject_bundle_summary_arg(
+    *,
+    command: list[str],
+    options: dict[str, Any],
+    bundle_summary_path: Path | None,
+    backend_wrapper_used: bool,
+) -> int:
+    if bundle_summary_path is None:
+        return 0
+    inject_option = options.get("renderer_inject_bundle_summary_arg")
+    if inject_option is None:
+        inject_enabled = backend_wrapper_used
+    else:
+        inject_enabled = bool(inject_option)
+    if not inject_enabled:
+        return 0
+    bundle_flag = str(options.get("renderer_bundle_summary_flag", "--sensor-bundle-summary")).strip()
+    if bool(options.get("renderer_bundle_summary_positional", False)):
+        command.append(str(bundle_summary_path))
+        return 1
+    if bundle_flag:
+        command.extend([bundle_flag, str(bundle_summary_path)])
+        return 2
+    command.append(str(bundle_summary_path))
+    return 1
+
+
 def _build_renderer_command(
     options: dict[str, Any],
     backend: str,
@@ -935,6 +1154,12 @@ def execute_renderer_runtime(
         frame_manifest_path=frame_manifest_path,
         runtime_dir=runtime_dir,
     )
+    bundle_summary_path, bundle_summary_metrics = _build_backend_sensor_bundle_summary(
+        backend=backend,
+        frame_manifest_path=frame_manifest_path,
+        ingestion_profile_path=ingestion_profile_path,
+        runtime_dir=runtime_dir,
+    )
     launcher_template_artifacts, launcher_template_metrics = _build_backend_launcher_templates(
         backend=backend,
         ingestion_profile_path=ingestion_profile_path,
@@ -950,6 +1175,12 @@ def execute_renderer_runtime(
         command=command,
         options=options,
         ingestion_profile_path=ingestion_profile_path,
+        backend_wrapper_used=backend_wrapper_used,
+    )
+    bundle_summary_args_count = _inject_bundle_summary_arg(
+        command=command,
+        options=options,
+        bundle_summary_path=bundle_summary_path,
         backend_wrapper_used=backend_wrapper_used,
     )
     backend_args_preview = _build_backend_args_preview(
@@ -971,15 +1202,20 @@ def execute_renderer_runtime(
         "contract_sensor_mount_args_count": sensor_mount_args_count,
         "contract_frame_manifest_args_count": frame_manifest_args_count,
         "contract_ingestion_profile_args_count": ingestion_profile_args_count,
+        "contract_bundle_summary_args_count": bundle_summary_args_count,
         "backend_args_preview": backend_args_preview,
         "backend_frame_inputs_manifest": str(frame_manifest_path) if frame_manifest_path else None,
         "backend_ingestion_profile": str(ingestion_profile_path) if ingestion_profile_path else None,
+        "backend_sensor_bundle_summary": str(bundle_summary_path) if bundle_summary_path else None,
         "backend_launcher_template": str(launcher_template_artifacts["backend_launcher_template"])
         if "backend_launcher_template" in launcher_template_artifacts
         else None,
         "backend_frame_count": int(frame_manifest_metrics.get("renderer_backend_frame_count", 0.0)),
         "backend_sensor_bindings": int(
             frame_manifest_metrics.get("renderer_backend_sensor_bindings", 0.0)
+        ),
+        "backend_complete_frame_count": int(
+            bundle_summary_metrics.get("renderer_backend_bundle_complete_frame_count", 0.0)
         ),
         "backend_ingestion_entry_count": int(
             ingestion_profile_metrics.get("renderer_backend_ingestion_entry_count", 0.0)
@@ -1002,6 +1238,7 @@ def execute_renderer_runtime(
         backend_args_preview=backend_args_preview,
         backend_frame_manifest=str(frame_manifest_path) if frame_manifest_path else None,
         backend_ingestion_profile=str(ingestion_profile_path) if ingestion_profile_path else None,
+        backend_sensor_bundle_summary=str(bundle_summary_path) if bundle_summary_path else None,
         backend_launcher_template=(
             str(launcher_template_artifacts["backend_launcher_template"])
             if "backend_launcher_template" in launcher_template_artifacts
@@ -1010,6 +1247,9 @@ def execute_renderer_runtime(
         backend_frame_count=int(frame_manifest_metrics.get("renderer_backend_frame_count", 0.0)),
         backend_sensor_bindings=int(
             frame_manifest_metrics.get("renderer_backend_sensor_bindings", 0.0)
+        ),
+        backend_complete_frame_count=int(
+            bundle_summary_metrics.get("renderer_backend_bundle_complete_frame_count", 0.0)
         ),
         backend_ingestion_entry_count=int(
             ingestion_profile_metrics.get("renderer_backend_ingestion_entry_count", 0.0)
@@ -1031,6 +1271,8 @@ def execute_renderer_runtime(
         artifacts["backend_frame_inputs_manifest"] = frame_manifest_path
     if ingestion_profile_path is not None:
         artifacts["backend_ingestion_profile"] = ingestion_profile_path
+    if bundle_summary_path is not None:
+        artifacts["backend_sensor_bundle_summary"] = bundle_summary_path
     artifacts.update(launcher_template_artifacts)
     metrics: dict[str, float] = {
         "renderer_runtime_planned": 1.0,
@@ -1041,9 +1283,11 @@ def execute_renderer_runtime(
         "renderer_contract_sensor_mount_args_count": float(sensor_mount_args_count),
         "renderer_contract_frame_manifest_args_count": float(frame_manifest_args_count),
         "renderer_contract_ingestion_profile_args_count": float(ingestion_profile_args_count),
+        "renderer_contract_bundle_summary_args_count": float(bundle_summary_args_count),
     }
     metrics.update(frame_manifest_metrics)
     metrics.update(ingestion_profile_metrics)
+    metrics.update(bundle_summary_metrics)
     metrics.update(launcher_template_metrics)
 
     if backend in {"", "none"}:

@@ -129,13 +129,19 @@ class RendererRuntimeTests(unittest.TestCase):
             self.assertEqual(plan["command"][flag_index + 1], str(manifest_path))
             self.assertEqual(plan["contract_frame_manifest_args_count"], 2)
             self.assertEqual(plan["contract_ingestion_profile_args_count"], 0)
+            self.assertEqual(plan["contract_bundle_summary_args_count"], 0)
             self.assertNotIn("--ingestion-profile", plan["command"])
+            self.assertNotIn("--sensor-bundle-summary", plan["command"])
             self.assertEqual(
                 result.metrics.get("renderer_contract_frame_manifest_args_count"),
                 2.0,
             )
             self.assertEqual(
                 result.metrics.get("renderer_contract_ingestion_profile_args_count"),
+                0.0,
+            )
+            self.assertEqual(
+                result.metrics.get("renderer_contract_bundle_summary_args_count"),
                 0.0,
             )
 
@@ -437,11 +443,19 @@ echo "renderer_ok ${contract}"
             self.assertIn("--map", plan["command"])
             self.assertIn("wrapper_map", plan["command"])
             self.assertIn("--ingestion-profile", plan["command"])
+            self.assertIn("--sensor-bundle-summary", plan["command"])
             self.assertEqual(plan["contract_ingestion_profile_args_count"], 2)
+            self.assertEqual(plan["contract_bundle_summary_args_count"], 2)
             self.assertEqual(result.metrics.get("renderer_backend_wrapper_used"), 1.0)
             self.assertEqual(plan["backend_args_preview"]["scene"]["map"], "wrapper_map")
+            self.assertIn("backend_sensor_bundle_summary", plan)
+            self.assertTrue(Path(plan["backend_sensor_bundle_summary"]).exists())
             self.assertEqual(
                 result.metrics.get("renderer_contract_ingestion_profile_args_count"),
+                2.0,
+            )
+            self.assertEqual(
+                result.metrics.get("renderer_contract_bundle_summary_args_count"),
                 2.0,
             )
 
@@ -535,10 +549,16 @@ echo "awsim_backend_ok"
             )
             self.assertEqual(wrapper_invocation["wrapper"], "awsim")
             self.assertIn("--ingestion-profile", wrapper_invocation["input_args"])
+            self.assertIn("--sensor-bundle-summary", wrapper_invocation["input_args"])
+            self.assertEqual(
+                wrapper_invocation["sensor_bundle_summary"],
+                str(result.artifacts["backend_sensor_bundle_summary"]),
+            )
             self.assertIn("--mount-sensor", wrapper_invocation["output_args"])
             self.assertIn("--mount-pose", wrapper_invocation["output_args"])
             self.assertIn("--map", wrapper_invocation["output_args"])
             self.assertIn("Town07", wrapper_invocation["output_args"])
+            self.assertNotIn("--sensor-bundle-summary", wrapper_invocation["output_args"])
             self.assertIn(
                 "cam_front:1.0:2.0:3.0:0.1:0.2:0.3",
                 wrapper_invocation["output_args"],
@@ -673,6 +693,11 @@ echo "awsim_backend_ok"
             )
             output_args = wrapper_invocation["output_args"]
             self.assertIn("--ingestion-profile", wrapper_invocation["input_args"])
+            self.assertIn("--sensor-bundle-summary", wrapper_invocation["input_args"])
+            self.assertEqual(
+                wrapper_invocation["sensor_bundle_summary"],
+                str(result.artifacts["backend_sensor_bundle_summary"]),
+            )
             ingest_indices = [idx for idx, token in enumerate(output_args) if token == "--ingest-sensor-frame"]
             self.assertEqual(len(ingest_indices), 6)
             ingest_payloads = [output_args[idx + 1] for idx in ingest_indices]
@@ -689,6 +714,7 @@ echo "awsim_backend_ok"
             self.assertIn("camera:camera_front:camera_projection_json:ego", meta_payloads)
             self.assertIn("lidar:lidar_top:lidar_points_json:ego", meta_payloads)
             self.assertIn("radar:radar_front:radar_targets_json:ego", meta_payloads)
+            self.assertNotIn("--sensor-bundle-summary", output_args)
 
     def test_renderer_runtime_carla_wrapper_consumes_frame_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -745,6 +771,11 @@ echo "carla_backend_ok"
             )
             output_args = wrapper_invocation["output_args"]
             self.assertIn("--ingestion-profile", wrapper_invocation["input_args"])
+            self.assertIn("--sensor-bundle-summary", wrapper_invocation["input_args"])
+            self.assertEqual(
+                wrapper_invocation["sensor_bundle_summary"],
+                str(result.artifacts["backend_sensor_bundle_summary"]),
+            )
             ingest_indices = [idx for idx, token in enumerate(output_args) if token == "--ingest-frame"]
             self.assertEqual(len(ingest_indices), 6)
             ingest_payloads = [output_args[idx + 1] for idx in ingest_indices]
@@ -761,6 +792,7 @@ echo "carla_backend_ok"
             self.assertIn("camera:camera_front:camera_projection_json:ego", meta_payloads)
             self.assertIn("lidar:lidar_top:lidar_points_json:ego", meta_payloads)
             self.assertIn("radar:radar_front:radar_targets_json:ego", meta_payloads)
+            self.assertNotIn("--sensor-bundle-summary", output_args)
 
     def test_renderer_runtime_injects_scene_and_sensor_mount_args_from_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1002,6 +1034,7 @@ echo "carla_backend_ok"
             self.assertTrue(result.success)
             self.assertIn("backend_frame_inputs_manifest", result.artifacts)
             self.assertIn("backend_ingestion_profile", result.artifacts)
+            self.assertIn("backend_sensor_bundle_summary", result.artifacts)
             self.assertIn("backend_launcher_template", result.artifacts)
             self.assertIn("backend_ingestion_args_sh", result.artifacts)
             manifest = json.loads(
@@ -1009,6 +1042,9 @@ echo "carla_backend_ok"
             )
             ingestion_profile = json.loads(
                 result.artifacts["backend_ingestion_profile"].read_text(encoding="utf-8")
+            )
+            bundle_summary = json.loads(
+                result.artifacts["backend_sensor_bundle_summary"].read_text(encoding="utf-8")
             )
             launcher_template = json.loads(
                 result.artifacts["backend_launcher_template"].read_text(encoding="utf-8")
@@ -1043,12 +1079,38 @@ echo "carla_backend_ok"
             self.assertEqual(ingestion_profile["meta_flag"], "--ingest-meta")
             self.assertEqual(ingestion_profile["entry_count"], 6)
             self.assertEqual(len(ingestion_profile["entries"]), 6)
+            self.assertEqual(bundle_summary["backend"], "carla")
+            self.assertEqual(bundle_summary["frame_count"], 2)
+            self.assertEqual(bundle_summary["expected_sensors"], ["camera", "lidar", "radar"])
+            self.assertEqual(bundle_summary["sensor_frame_counts"]["camera"], 2)
+            self.assertEqual(bundle_summary["sensor_frame_counts"]["lidar"], 2)
+            self.assertEqual(bundle_summary["sensor_frame_counts"]["radar"], 2)
+            self.assertEqual(bundle_summary["complete_frame_count"], 2)
+            self.assertEqual(bundle_summary["incomplete_frame_count"], 0)
+            self.assertEqual(bundle_summary["availability_patterns"], [{"pattern": "camera+lidar+radar", "count": 2}])
+            self.assertEqual(len(bundle_summary["meta_entries"]), 3)
+            for frame in bundle_summary["frames"]:
+                self.assertTrue(frame["bundle_complete"])
+                self.assertEqual(frame["available_sensors"], ["camera", "lidar", "radar"])
+                self.assertEqual(frame["missing_sensors"], [])
+                self.assertEqual(frame["availability_pattern"], "camera+lidar+radar")
+                self.assertEqual(frame["sensor_count"], 3)
+                self.assertEqual(
+                    frame["sensors"]["camera"]["ingestion"]["frame_flag"],
+                    "--ingest-frame",
+                )
+                self.assertTrue(frame["sensors"]["camera"]["payload_artifact"])
             self.assertEqual(launcher_template["backend"], "carla")
             self.assertEqual(launcher_template["arg_count"], 18)
             self.assertEqual(launcher_template["frame_arg_count"], 12)
             self.assertEqual(launcher_template["meta_arg_count"], 6)
             self.assertIn("--ingest-frame", launcher_template["args"])
             self.assertIn("--ingest-meta", launcher_template["args"])
+            self.assertEqual(
+                backend_invocation["backend_sensor_bundle_summary"],
+                str(result.artifacts["backend_sensor_bundle_summary"]),
+            )
+            self.assertEqual(backend_invocation["backend_complete_frame_count"], 2)
             self.assertEqual(
                 backend_invocation["backend_launcher_template"],
                 str(result.artifacts["backend_launcher_template"]),
@@ -1071,6 +1133,13 @@ echo "carla_backend_ok"
             )
             self.assertEqual(result.metrics.get("renderer_backend_ingestion_profile_written"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_ingestion_entry_count"), 6.0)
+            self.assertEqual(result.metrics.get("renderer_backend_bundle_summary_written"), 1.0)
+            self.assertEqual(result.metrics.get("renderer_backend_bundle_frame_count"), 2.0)
+            self.assertEqual(result.metrics.get("renderer_backend_bundle_camera_frame_count"), 2.0)
+            self.assertEqual(result.metrics.get("renderer_backend_bundle_lidar_frame_count"), 2.0)
+            self.assertEqual(result.metrics.get("renderer_backend_bundle_radar_frame_count"), 2.0)
+            self.assertEqual(result.metrics.get("renderer_backend_bundle_complete_frame_count"), 2.0)
+            self.assertEqual(result.metrics.get("renderer_backend_bundle_incomplete_frame_count"), 0.0)
             self.assertEqual(result.metrics.get("renderer_backend_launcher_template_written"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_ingestion_shell_written"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_launcher_arg_count"), 18.0)

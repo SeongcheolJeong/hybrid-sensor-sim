@@ -17,6 +17,7 @@ output_args=()
 ingest_frame_args=()
 ingest_meta_args=()
 ingestion_profile_mode=0
+bundle_summary_path=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --sensor-mount)
@@ -238,6 +239,18 @@ PY
         esac
       done <<<"${parsed_profile}"
       ;;
+    --sensor-bundle-summary)
+      if [[ $# -lt 2 ]]; then
+        echo "missing payload for --sensor-bundle-summary" >&2
+        exit 2
+      fi
+      bundle_summary_path="$2"
+      shift 2
+      if [[ ! -f "${bundle_summary_path}" ]]; then
+        echo "sensor bundle summary does not exist: ${bundle_summary_path}" >&2
+        exit 2
+      fi
+      ;;
     *)
       output_args+=("$1")
       shift
@@ -252,12 +265,13 @@ if (( ${#ingest_frame_args[@]} > 0 )); then
 fi
 
 if [[ -n "${RENDERER_WRAPPER_DUMP:-}" ]]; then
-  python3 - "${RENDERER_WRAPPER_DUMP}" "${backend_bin}" "${input_args[@]}" "__WRAPSEP__" "${output_args[@]}" <<'PY'
+  python3 - "${RENDERER_WRAPPER_DUMP}" "${backend_bin}" "${bundle_summary_path}" "${input_args[@]}" "__WRAPSEP__" "${output_args[@]}" <<'PY'
 import json
 import sys
 dump = sys.argv[1]
 backend = sys.argv[2]
-args = sys.argv[3:]
+bundle_summary = sys.argv[3] or None
+args = sys.argv[4:]
 sep = "__WRAPSEP__"
 if sep in args:
     idx = args.index(sep)
@@ -271,6 +285,7 @@ with open(dump, "w", encoding="utf-8") as fp:
         {
             "wrapper": "carla",
             "backend_bin": backend,
+            "sensor_bundle_summary": bundle_summary,
             "input_args": in_args,
             "output_args": out_args,
         },
