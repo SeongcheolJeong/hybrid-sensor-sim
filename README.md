@@ -391,6 +391,19 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `radar_extrinsics_auto_use_orientation=true|false`
     - `radar_extrinsics_auto_offsets`
   - emits `radar_targets_trajectory_sweep.json` with per-frame `targets_preview`, optional `tracks_preview`, and `multipath_target_count`.
+  - trajectory tracks now expose continuity metadata:
+    - `persistent_track_id`
+    - `track_history_length`
+    - `track_first_seen_time_s`
+    - `track_last_seen_time_s`
+    - `track_age_s`
+    - `track_status=NEW|CONTINUING`
+    - `track_reassociated`
+  - top-level sweep summary also exposes:
+    - `persistent_track_count`
+    - `track_reassociation_count`
+    - `max_track_history_length`
+    - `max_track_age_s`
   - hybrid outputs now also emit `sensor_coverage_summary.json` with per-sensor target counts plus combined overlap/blindspot coverage summary.
 
 ## Renderer bridge notes

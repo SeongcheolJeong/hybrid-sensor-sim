@@ -5424,6 +5424,12 @@ class NativePhysicsBackend(SensorBackend):
         total_multipath_targets = 0
         total_multipath_path_type_counts: dict[str, int] = {}
         total_adaptive_sampling_targets = 0
+        persistent_track_states: dict[int, dict[str, object]] = {}
+        next_persistent_track_id = 0
+        persistent_track_ids: set[int] = set()
+        total_track_reassociations = 0
+        max_track_history_length = 0
+        max_track_age_s = 0.0
         coverage_target_lists: list[list[dict[str, object]]] = []
         coverage_total_observation_count = 0
         coverage_anonymous_observation_count = 0
@@ -5458,8 +5464,33 @@ class NativePhysicsBackend(SensorBackend):
                 rng=rng,
                 false_target_count=false_target_count,
             )
+            tracks, persistent_track_states, next_persistent_track_id, frame_track_reassociations = (
+                self._annotate_radar_tracks_with_history(
+                    radar_config=radar_config,
+                    tracks=tracks,
+                    previous_track_states=persistent_track_states,
+                    next_persistent_track_id=next_persistent_track_id,
+                    frame_id=frame_id,
+                    frame_time_s=float(pose.time_s - behavior_time_origin_s),
+                )
+            )
             total_targets += len(targets)
             total_tracks += len(tracks)
+            total_track_reassociations += frame_track_reassociations
+            persistent_track_ids.update(
+                int(track["persistent_track_id"])
+                for track in tracks
+                if track.get("persistent_track_id") is not None
+            )
+            for track in tracks:
+                max_track_history_length = max(
+                    max_track_history_length,
+                    int(track.get("track_history_length", 0)),
+                )
+                max_track_age_s = max(
+                    max_track_age_s,
+                    float(track.get("track_age_s", 0.0)),
+                )
             frame_multipath_target_count = sum(
                 1
                 for target in targets
@@ -5525,6 +5556,14 @@ class NativePhysicsBackend(SensorBackend):
                     "multipath_target_count": frame_multipath_target_count,
                     "multipath_path_type_counts": frame_multipath_path_type_counts,
                     "adaptive_sampling_target_count": frame_adaptive_sampling_target_count,
+                    "persistent_track_count": len(
+                        {
+                            int(track["persistent_track_id"])
+                            for track in tracks
+                            if track.get("persistent_track_id") is not None
+                        }
+                    ),
+                    "track_reassociation_count": frame_track_reassociations,
                     "false_target_count": false_added,
                     "output_mode": "TRACKS" if radar_config.tracking.output_tracks else "POINTS",
                     "ground_truth_fields": self._radar_ground_truth_fields(),
@@ -5550,6 +5589,12 @@ class NativePhysicsBackend(SensorBackend):
         metrics["radar_trajectory_sweep_total_multipath_target_count"] = float(
             total_multipath_targets
         )
+        metrics["radar_trajectory_sweep_persistent_track_count"] = float(len(persistent_track_ids))
+        metrics["radar_trajectory_sweep_track_reassociation_count"] = float(
+            total_track_reassociations
+        )
+        metrics["radar_trajectory_sweep_max_track_history_length"] = float(max_track_history_length)
+        metrics["radar_trajectory_sweep_max_track_age_s"] = float(max_track_age_s)
         metrics["radar_trajectory_sweep_total_multipath_forward_count"] = float(
             total_multipath_path_type_counts.get("FORWARD", 0)
         )
@@ -5577,6 +5622,10 @@ class NativePhysicsBackend(SensorBackend):
             "output_mode": "TRACKS" if radar_config.tracking.output_tracks else "POINTS",
             "radar_config": radar_config.to_dict(),
             "multipath_path_type_counts": total_multipath_path_type_counts,
+            "persistent_track_count": len(persistent_track_ids),
+            "track_reassociation_count": total_track_reassociations,
+            "max_track_history_length": max_track_history_length,
+            "max_track_age_s": max_track_age_s,
             "ground_truth_fields": self._radar_ground_truth_fields(),
             "coverage_metric_name": "radar_detections_on_target",
             "coverage_total_observation_count": coverage_total_observation_count,
@@ -6496,6 +6545,116 @@ class NativePhysicsBackend(SensorBackend):
                 continue
             counts[source] = counts.get(source, 0) + 1
         return counts
+
+    def _match_radar_track_state(
+        self,
+        *,
+        radar_config: Any,
+        track: dict[str, object],
+        previous_track_states: dict[int, dict[str, object]],
+        candidate_state_ids: set[int],
+    ) -> int | None:
+        if not candidate_state_ids:
+            return None
+        range_gate_m = max(3.0, 4.0 * float(radar_config.system.range_resolution_m))
+        az_gate_deg = max(8.0, 4.0 * float(radar_config.system.angular_resolution.az_deg))
+        el_gate_deg = max(8.0, 4.0 * float(radar_config.system.angular_resolution.el_deg))
+        best_state_id: int | None = None
+        best_score = float("inf")
+        track_actor_id = track.get("ground_truth_actor_id")
+        track_semantic_class = track.get("ground_truth_semantic_class")
+        for state_id in candidate_state_ids:
+            state = previous_track_states[state_id]
+            state_actor_id = state.get("ground_truth_actor_id")
+            if track_actor_id is not None and state_actor_id is not None and track_actor_id != state_actor_id:
+                continue
+            state_semantic_class = state.get("ground_truth_semantic_class")
+            if (
+                track_actor_id is None
+                and state_actor_id is None
+                and track_semantic_class is not None
+                and state_semantic_class is not None
+                and track_semantic_class != state_semantic_class
+            ):
+                continue
+            range_delta = abs(float(track.get("range_m", 0.0)) - float(state.get("range_m", 0.0)))
+            az_delta = abs(
+                self._normalize_angle_deg(
+                    float(track.get("azimuth_deg", 0.0)) - float(state.get("azimuth_deg", 0.0))
+                )
+            )
+            el_delta = abs(float(track.get("elevation_deg", 0.0)) - float(state.get("elevation_deg", 0.0)))
+            if range_delta > range_gate_m or az_delta > az_gate_deg or el_delta > el_gate_deg:
+                continue
+            score = range_delta / range_gate_m + az_delta / az_gate_deg + el_delta / el_gate_deg
+            if score < best_score:
+                best_score = score
+                best_state_id = state_id
+        return best_state_id
+
+    def _annotate_radar_tracks_with_history(
+        self,
+        *,
+        radar_config: Any,
+        tracks: list[dict[str, object]],
+        previous_track_states: dict[int, dict[str, object]],
+        next_persistent_track_id: int,
+        frame_id: int,
+        frame_time_s: float,
+    ) -> tuple[list[dict[str, object]], dict[int, dict[str, object]], int, int]:
+        frame_period_s = 1.0 / max(float(radar_config.system.frame_rate_hz), 1e-6)
+        available_state_ids = set(previous_track_states.keys())
+        updated_track_states: dict[int, dict[str, object]] = {}
+        reassociation_count = 0
+        for track in tracks:
+            group_key = str(track.get("group_key", "")).strip()
+            matched_state_id: int | None = None
+            if group_key.startswith("actor:"):
+                for state_id in list(available_state_ids):
+                    if str(previous_track_states[state_id].get("group_key", "")) == group_key:
+                        matched_state_id = state_id
+                        break
+            if matched_state_id is None:
+                matched_state_id = self._match_radar_track_state(
+                    radar_config=radar_config,
+                    track=track,
+                    previous_track_states=previous_track_states,
+                    candidate_state_ids=available_state_ids,
+                )
+            if matched_state_id is None:
+                persistent_track_id = next_persistent_track_id
+                next_persistent_track_id += 1
+                first_seen_time_s = frame_time_s
+                history_length = 1
+                reassociated = False
+            else:
+                previous_state = previous_track_states[matched_state_id]
+                persistent_track_id = matched_state_id
+                first_seen_time_s = float(previous_state.get("first_seen_time_s", frame_time_s))
+                history_length = int(previous_state.get("history_length", 0)) + 1
+                reassociated = True
+                reassociation_count += 1
+                available_state_ids.discard(matched_state_id)
+            track["persistent_track_id"] = persistent_track_id
+            track["track_history_length"] = history_length
+            track["track_first_seen_time_s"] = first_seen_time_s
+            track["track_last_seen_time_s"] = frame_time_s
+            track["track_age_s"] = max(frame_period_s, frame_time_s - first_seen_time_s + frame_period_s)
+            track["track_status"] = "CONTINUING" if reassociated else "NEW"
+            track["track_reassociated"] = reassociated
+            track["trajectory_frame_id"] = frame_id
+            updated_track_states[persistent_track_id] = {
+                "group_key": group_key,
+                "ground_truth_actor_id": track.get("ground_truth_actor_id"),
+                "ground_truth_semantic_class": track.get("ground_truth_semantic_class"),
+                "range_m": float(track.get("range_m", 0.0)),
+                "azimuth_deg": float(track.get("azimuth_deg", 0.0)),
+                "elevation_deg": float(track.get("elevation_deg", 0.0)),
+                "first_seen_time_s": first_seen_time_s,
+                "history_length": history_length,
+                "last_seen_time_s": frame_time_s,
+            }
+        return tracks, updated_track_states, next_persistent_track_id, reassociation_count
 
     def _build_radar_tracks(
         self,

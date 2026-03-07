@@ -262,6 +262,10 @@ Primary code references:
     - incoherent RCS sum
     - geometric-center range/angle track state
     - multipath source summary on tracks
+    - trajectory-sweep continuity:
+      - persistent track IDs
+      - track history length / age
+      - reassociation summary
   - path-type-aware multipath approximation:
     - `fidelity.multipath`
     - `fidelity.multipath_bounces`

@@ -2775,6 +2775,171 @@ EOF
             self.assertGreater(radial_velocities[0], radial_velocities[1])
             self.assertGreater(radial_velocities[1], radial_velocities[2])
 
+    def test_radar_trajectory_sweep_persists_track_ids_for_same_actor(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+18.0 0.0 0.0
+EOF
+cat > "${rootdir}/scan_trajectory.txt" <<EOF
+0.0 0.0 0.0 0.0 0.0 0.0 0.0
+1.0 0.0 0.0 1.0 0.0 0.0 0.0
+2.0 0.0 0.0 2.0 0.0 0.0 0.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "lidar_postprocess_enabled": False,
+                    "radar_postprocess_enabled": True,
+                    "radar_trajectory_sweep_enabled": True,
+                    "radar_trajectory_sweep_frames": 3,
+                    "radar_preview_targets_per_frame": 4,
+                    "radar_clutter": "none",
+                    "radar_false_target_count": 0,
+                    "radar_point_actor_ids": [77],
+                    "radar_tracking_params": {
+                        "tracks": True,
+                        "max_tracks": 4,
+                    },
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+            self.assertTrue(result.success)
+
+            payload = json.loads(
+                result.artifacts["radar_targets_trajectory_sweep"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(payload["persistent_track_count"], 1)
+            self.assertEqual(payload["track_reassociation_count"], 2)
+            self.assertEqual(payload["max_track_history_length"], 3)
+            persistent_ids = []
+            history_lengths = []
+            track_ages = []
+            track_statuses = []
+            for frame in payload["frames"]:
+                self.assertEqual(frame["track_count"], 1)
+                self.assertEqual(frame["persistent_track_count"], 1)
+                track = frame["tracks_preview"][0]
+                persistent_ids.append(track["persistent_track_id"])
+                history_lengths.append(track["track_history_length"])
+                track_ages.append(track["track_age_s"])
+                track_statuses.append(track["track_status"])
+            self.assertEqual(persistent_ids, [0, 0, 0])
+            self.assertEqual(history_lengths, [1, 2, 3])
+            self.assertEqual(track_statuses, ["NEW", "CONTINUING", "CONTINUING"])
+            self.assertLess(track_ages[0], track_ages[1])
+            self.assertLess(track_ages[1], track_ages[2])
+            self.assertEqual(result.metrics.get("radar_trajectory_sweep_persistent_track_count"), 1.0)
+            self.assertEqual(result.metrics.get("radar_trajectory_sweep_track_reassociation_count"), 2.0)
+            self.assertEqual(result.metrics.get("radar_trajectory_sweep_max_track_history_length"), 3.0)
+
+    def test_radar_trajectory_sweep_matches_tracks_without_actor_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+16.0 1.0 0.0
+EOF
+cat > "${rootdir}/scan_trajectory.txt" <<EOF
+0.0 0.0 0.0 0.0 0.0 0.0 0.0
+0.5 0.0 0.0 1.0 0.0 0.0 0.0
+1.0 0.0 0.0 2.0 0.0 0.0 0.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "lidar_postprocess_enabled": False,
+                    "radar_postprocess_enabled": True,
+                    "radar_trajectory_sweep_enabled": True,
+                    "radar_trajectory_sweep_frames": 3,
+                    "radar_preview_targets_per_frame": 4,
+                    "radar_clutter": "none",
+                    "radar_false_target_count": 0,
+                    "radar_tracking_params": {
+                        "tracks": True,
+                        "max_tracks": 4,
+                    },
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+            self.assertTrue(result.success)
+
+            payload = json.loads(
+                result.artifacts["radar_targets_trajectory_sweep"].read_text(encoding="utf-8")
+            )
+            persistent_ids = [
+                frame["tracks_preview"][0]["persistent_track_id"]
+                for frame in payload["frames"]
+            ]
+            self.assertEqual(persistent_ids, [0, 0, 0])
+            self.assertEqual(
+                [frame["tracks_preview"][0]["track_history_length"] for frame in payload["frames"]],
+                [1, 2, 3],
+            )
+
     def test_hybrid_generates_renderer_playback_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
