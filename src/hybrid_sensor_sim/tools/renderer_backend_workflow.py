@@ -299,6 +299,7 @@ def _render_workflow_markdown_report(summary: dict[str, Any], summary_path: Path
                 f"- target platform: `{_inline(linux_handoff.get('target_platform'))}`",
                 f"- command: `{_inline(linux_handoff.get('runner_command'))}`",
                 f"- script command: `{_inline(linux_handoff.get('script_command'))}`",
+                f"- helper command: `{_inline(linux_handoff.get('helper_command'))}`",
                 f"- pack command: `{_inline(linux_handoff.get('pack_command'))}`",
                 f"- unpack command: `{_inline(linux_handoff.get('unpack_command'))}`",
                 "",
@@ -1272,6 +1273,13 @@ def _build_linux_handoff(
     handoff["unpack_command"] = (
         f"bash {workflow_root / 'renderer_backend_workflow_linux_handoff_unpack.sh'}"
     )
+    handoff["helper_command"] = (
+        'python3 scripts/run_renderer_backend_linux_handoff.py '
+        '--bundle "${HANDOFF_BUNDLE_PATH}" '
+        '--transfer-manifest "${HANDOFF_TRANSFER_MANIFEST_PATH}" '
+        '--bundle-manifest "${HANDOFF_BUNDLE_MANIFEST_PATH}" '
+        '--repo-root "${WORKFLOW_REPO_ROOT:-$(pwd)}"'
+    )
     return handoff
 
 
@@ -1685,6 +1693,7 @@ def build_renderer_backend_workflow(
                 f"--backend {backend} --setup-summary {active_setup_summary_path}"
             ),
             "linux_handoff": linux_handoff.get("script_command"),
+            "linux_handoff_helper": linux_handoff.get("helper_command"),
             "linux_handoff_pack": linux_handoff.get("pack_command"),
             "linux_handoff_unpack": linux_handoff.get("unpack_command"),
         },

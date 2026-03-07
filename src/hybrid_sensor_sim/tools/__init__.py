@@ -14,12 +14,16 @@ from hybrid_sensor_sim.tools.renderer_backend_package_stage import (
 from hybrid_sensor_sim.tools.renderer_backend_workflow import (
     build_renderer_backend_workflow,
 )
+from hybrid_sensor_sim.tools.renderer_backend_linux_handoff import (
+    run_renderer_backend_linux_handoff,
+)
 
 __all__ = [
     "build_renderer_backend_local_setup",
     "build_renderer_backend_package_acquire",
     "build_renderer_backend_package_stage",
     "build_renderer_backend_workflow",
+    "run_renderer_backend_linux_handoff",
     "build_renderer_backend_smoke_summary",
     "main",
 ]

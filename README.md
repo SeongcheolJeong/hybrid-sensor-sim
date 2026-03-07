@@ -593,13 +593,14 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - `python3 scripts/run_renderer_backend_workflow.py --backend awsim --setup-summary artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json --auto-acquire`
 - `python3 scripts/run_renderer_backend_workflow.py --backend carla --setup-summary artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json --dry-run`
 - `python3 scripts/run_renderer_backend_workflow.py --backend awsim --setup-summary artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json --dry-run --pack-linux-handoff --verify-linux-handoff-bundle`
+- `python3 scripts/run_renderer_backend_linux_handoff.py --bundle <handoff_bundle.tar.gz> --transfer-manifest <renderer_backend_workflow_linux_handoff_transfer_manifest.json> --bundle-manifest <renderer_backend_workflow_linux_handoff_bundle_manifest.json> --repo-root <linux_repo_checkout>`
 - behavior:
   - loads or generates local setup summary
   - reuses resolved `HELIOS_*`, backend binary, and renderer map selections
   - blocks smoke when the selected backend binary exists but is not executable on the current host
   - when the runtime is host-incompatible, materializes a Linux-runner handoff config/env/script instead of stopping at a blocker message
   - `--pack-linux-handoff` also builds the handoff tarball locally
-  - `--verify-linux-handoff-bundle` unpacks that tarball into a local verification root and checks per-file checksums before any runner-side execution
+- `--verify-linux-handoff-bundle` unpacks that tarball into a local verification root and checks per-file checksums before any runner-side execution
   - if backend runtime is missing and `--auto-acquire` is set, runs acquire+stage automatically
   - runs `renderer_backend_smoke.py` when all prerequisites are ready
 - emits:
@@ -622,6 +623,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - plus smoke artifacts/reports when smoke executes
 - the workflow summary/report now includes structured blocker codes, a recommended next command, and Linux handoff transfer/env requirements when the selected runtime must move to a Linux runner
 - the Linux handoff path also emits a transfer manifest with per-file verification data, a local pack script, a bundle manifest, and a Linux unpack/verify script so the required inputs can be bundled and revalidated before smoke execution
+- `scripts/run_renderer_backend_linux_handoff.py` is the runner-side helper that consumes the bundle plus manifests, revalidates checksums, and optionally executes the extracted handoff script
 
 ## Next implementation target
 
