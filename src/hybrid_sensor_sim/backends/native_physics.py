@@ -1538,6 +1538,7 @@ class NativePhysicsBackend(SensorBackend):
                     "environment_model": lidar_config.environment_model.to_dict(),
                     "noise_performance": lidar_config.noise_performance.to_dict(),
                     "emitter_params": lidar_config.emitter_params.to_dict(),
+                    "multipath_model": lidar_config.multipath_model.to_dict(),
                     "preview_points": preview_points,
                 },
                 indent=2,
@@ -1724,6 +1725,7 @@ class NativePhysicsBackend(SensorBackend):
             "environment_model": lidar_config.environment_model.to_dict(),
             "noise_performance": lidar_config.noise_performance.to_dict(),
             "emitter_params": lidar_config.emitter_params.to_dict(),
+            "multipath_model": lidar_config.multipath_model.to_dict(),
             "frames": frames,
         }
         output_path = enhanced_output / "lidar_trajectory_sweep.json"
@@ -2102,6 +2104,12 @@ class NativePhysicsBackend(SensorBackend):
                     "beam_footprint_area_m2": base.get("beam_footprint_area_m2"),
                     "beam_azimuth_offset_deg": base.get("beam_azimuth_offset_deg"),
                     "beam_elevation_offset_deg": base.get("beam_elevation_offset_deg"),
+                    "multipath_surface": base.get("multipath_surface"),
+                    "multipath_path_length_m": base.get("multipath_path_length_m"),
+                    "multipath_base_range_m": base.get("multipath_base_range_m"),
+                    "multipath_surface_reflectivity": base.get("multipath_surface_reflectivity"),
+                    "multipath_model_mode": base.get("multipath_model_mode"),
+                    "multipath_reflection_point": base.get("multipath_reflection_point"),
                     "ground_truth_detection_type": base.get("ground_truth_detection_type"),
                 }
             )
@@ -2121,11 +2129,18 @@ class NativePhysicsBackend(SensorBackend):
             point_xyz=point_xyz,
             base_metadata=base_metadata,
         )
-        return_series: list[tuple[tuple[float, float, float], dict[str, object]]] = [
-            (point_xyz, primary_metadata)
-        ]
-        return_series.extend(
+        supplemental_returns: list[tuple[tuple[float, float, float], dict[str, object]]] = []
+        supplemental_returns.extend(
             self._lidar_environment_backscatter_returns(
+                request=request,
+                lidar_config=lidar_config,
+                point_xyz=point_xyz,
+                primary_metadata=primary_metadata,
+                base_metadata=base_metadata,
+            )
+        )
+        supplemental_returns.extend(
+            self._lidar_geometry_multipath_returns(
                 request=request,
                 lidar_config=lidar_config,
                 point_xyz=point_xyz,
@@ -2136,11 +2151,19 @@ class NativePhysicsBackend(SensorBackend):
         max_returns = max(1, int(getattr(lidar_config.return_model, "max_returns", 1)))
         return_mode = str(getattr(lidar_config.return_model, "mode", "SINGLE")).upper()
         if max_returns <= 1 or return_mode == "SINGLE":
-            return return_series
+            return self._lidar_finalize_return_series(
+                primary_point=point_xyz,
+                primary_metadata=primary_metadata,
+                supplemental_returns=supplemental_returns,
+            )
 
         base_range_m = float(primary_metadata.get("range_m", base_metadata.get("range_m", 0.0)))
         if base_range_m <= 1e-9:
-            return return_series
+            return self._lidar_finalize_return_series(
+                primary_point=point_xyz,
+                primary_metadata=primary_metadata,
+                supplemental_returns=supplemental_returns,
+            )
         range_separation_m = max(float(lidar_config.return_model.range_separation_m), 0.0)
         signal_decay = min(max(float(lidar_config.return_model.signal_decay), 0.0), 1.0)
         primary_signal_power_linear = pow(
@@ -2199,8 +2222,285 @@ class NativePhysicsBackend(SensorBackend):
                     "ground_truth_detection_type": "RETROREFLECTION",
                 }
             )
-            return_series.append((return_point, secondary_metadata))
+            supplemental_returns.append((return_point, secondary_metadata))
+        return self._lidar_finalize_return_series(
+            primary_point=point_xyz,
+            primary_metadata=primary_metadata,
+            supplemental_returns=supplemental_returns,
+        )
+
+    def _lidar_finalize_return_series(
+        self,
+        *,
+        primary_point: tuple[float, float, float],
+        primary_metadata: dict[str, object],
+        supplemental_returns: list[tuple[tuple[float, float, float], dict[str, object]]],
+    ) -> list[tuple[tuple[float, float, float], dict[str, object]]]:
+        ordered_returns = sorted(
+            supplemental_returns,
+            key=lambda item: float(item[1].get("range_m", sqrt(item[0][0] ** 2 + item[0][1] ** 2 + item[0][2] ** 2))),
+        )
+        return_series: list[tuple[tuple[float, float, float], dict[str, object]]] = [
+            (primary_point, dict(primary_metadata, return_id=0))
+        ]
+        for return_id, (return_point, metadata) in enumerate(ordered_returns, start=1):
+            payload = dict(metadata)
+            payload["return_id"] = return_id
+            return_series.append((return_point, payload))
         return return_series
+
+    def _lidar_geometry_multipath_returns(
+        self,
+        *,
+        request: SensorSimRequest,
+        lidar_config: Any,
+        point_xyz: tuple[float, float, float],
+        primary_metadata: dict[str, object],
+        base_metadata: dict[str, object],
+    ) -> list[tuple[tuple[float, float, float], dict[str, object]]]:
+        multipath_model = lidar_config.multipath_model
+        if not bool(multipath_model.enabled):
+            return []
+        mode = str(multipath_model.mode).upper().strip()
+        candidates: list[tuple[tuple[float, float, float], dict[str, object]]] = []
+        if mode in {"GROUND_PLANE", "HYBRID"}:
+            candidate = self._lidar_plane_multipath_candidate(
+                request=request,
+                lidar_config=lidar_config,
+                primary_metadata=primary_metadata,
+                base_metadata=base_metadata,
+                reflected_point=self._lidar_reflect_point_across_horizontal_plane(
+                    point_xyz=point_xyz,
+                    plane_height_m=float(multipath_model.ground_plane_height_m),
+                ),
+                surface="GROUND_PLANE",
+                surface_reflectivity=float(multipath_model.ground_reflectivity),
+                plane_coordinate=float(multipath_model.ground_plane_height_m),
+            )
+            if candidate is not None:
+                candidates.append(candidate)
+        if mode in {"VERTICAL_PLANE", "HYBRID"}:
+            candidate = self._lidar_plane_multipath_candidate(
+                request=request,
+                lidar_config=lidar_config,
+                primary_metadata=primary_metadata,
+                base_metadata=base_metadata,
+                reflected_point=self._lidar_reflect_point_across_vertical_plane(
+                    point_xyz=point_xyz,
+                    plane_x_m=float(multipath_model.wall_plane_x_m),
+                ),
+                surface="VERTICAL_PLANE",
+                surface_reflectivity=float(multipath_model.wall_reflectivity),
+                plane_coordinate=float(multipath_model.wall_plane_x_m),
+            )
+            if candidate is not None:
+                candidates.append(candidate)
+        max_paths = max(1, int(multipath_model.max_paths))
+        ordered_candidates = sorted(
+            candidates,
+            key=lambda item: float(item[1].get("range_m", 0.0)),
+        )[:max_paths]
+        for hit_index, (_, metadata) in enumerate(ordered_candidates, start=1):
+            metadata["ground_truth_hit_index"] = hit_index
+            metadata["ground_truth_last_bounce_index"] = 1
+        return ordered_candidates
+
+    def _lidar_plane_multipath_candidate(
+        self,
+        *,
+        request: SensorSimRequest,
+        lidar_config: Any,
+        primary_metadata: dict[str, object],
+        base_metadata: dict[str, object],
+        reflected_point: tuple[float, float, float] | None,
+        surface: str,
+        surface_reflectivity: float,
+        plane_coordinate: float,
+    ) -> tuple[tuple[float, float, float], dict[str, object]] | None:
+        if reflected_point is None:
+            return None
+        base_range_m = float(primary_metadata.get("range_m", 0.0))
+        path_length_m = sqrt(
+            reflected_point[0] * reflected_point[0]
+            + reflected_point[1] * reflected_point[1]
+            + reflected_point[2] * reflected_point[2]
+        )
+        path_length_offset_m = path_length_m - base_range_m
+        if path_length_offset_m <= 1e-6:
+            return None
+        if path_length_offset_m > float(lidar_config.multipath_model.max_extra_path_length_m):
+            return None
+        reflection_point = self._lidar_multipath_reflection_point(
+            reflected_point=reflected_point,
+            surface=surface,
+            plane_coordinate=plane_coordinate,
+        )
+        if reflection_point is None:
+            return None
+        return (
+            reflected_point,
+            self._lidar_multipath_metadata(
+                request=request,
+                lidar_config=lidar_config,
+                primary_metadata=primary_metadata,
+                base_metadata=base_metadata,
+                point_xyz=reflected_point,
+                reflection_point=reflection_point,
+                surface=surface,
+                surface_reflectivity=surface_reflectivity,
+                path_length_m=path_length_m,
+                path_length_offset_m=path_length_offset_m,
+            ),
+        )
+
+    def _lidar_reflect_point_across_horizontal_plane(
+        self,
+        *,
+        point_xyz: tuple[float, float, float],
+        plane_height_m: float,
+    ) -> tuple[float, float, float] | None:
+        x, y, z = point_xyz
+        if (0.0 - plane_height_m) * (z - plane_height_m) <= 0.0:
+            return None
+        reflected_z = 2.0 * plane_height_m - z
+        return (x, y, reflected_z)
+
+    def _lidar_reflect_point_across_vertical_plane(
+        self,
+        *,
+        point_xyz: tuple[float, float, float],
+        plane_x_m: float,
+    ) -> tuple[float, float, float] | None:
+        x, y, z = point_xyz
+        if plane_x_m <= 0.0:
+            return None
+        if (0.0 - plane_x_m) * (x - plane_x_m) <= 0.0:
+            return None
+        reflected_x = 2.0 * plane_x_m - x
+        return (reflected_x, y, z)
+
+    def _lidar_multipath_reflection_point(
+        self,
+        *,
+        reflected_point: tuple[float, float, float],
+        surface: str,
+        plane_coordinate: float,
+    ) -> tuple[float, float, float] | None:
+        x, y, z = reflected_point
+        if surface == "GROUND_PLANE":
+            if abs(z) <= 1e-9:
+                return None
+            alpha = plane_coordinate / z
+            if alpha <= 0.0 or alpha >= 1.0:
+                return None
+            return (x * alpha, y * alpha, plane_coordinate)
+        if abs(x) <= 1e-9:
+            return None
+        alpha = plane_coordinate / x
+        if alpha <= 0.0 or alpha >= 1.0:
+            return None
+        return (plane_coordinate, y * alpha, z * alpha)
+
+    def _lidar_multipath_metadata(
+        self,
+        *,
+        request: SensorSimRequest,
+        lidar_config: Any,
+        primary_metadata: dict[str, object],
+        base_metadata: dict[str, object],
+        point_xyz: tuple[float, float, float],
+        reflection_point: tuple[float, float, float],
+        surface: str,
+        surface_reflectivity: float,
+        path_length_m: float,
+        path_length_offset_m: float,
+    ) -> dict[str, object]:
+        primary_range_m = max(float(primary_metadata.get("range_m", 0.0)), 1e-9)
+        primary_signal_power_linear = pow(
+            10.0,
+            float(primary_metadata.get("signal_power_dbw", -120.0)) / 10.0,
+        )
+        attenuation_rate = max(0.0, float(lidar_config.physics_model.atmospheric_attenuation_rate))
+        primary_weather = max(float(primary_metadata.get("weather_extinction_factor", 1.0)), 1e-9)
+        multipath_weather = self._lidar_weather_extinction_factor(
+            lidar_config=lidar_config,
+            range_m=path_length_m,
+        )
+        geometry_scale = (
+            max(primary_range_m * primary_range_m, 1.0)
+            / max(path_length_m * path_length_m, 1.0)
+            * exp(-attenuation_rate * max(path_length_m - primary_range_m, 0.0))
+            * (multipath_weather / primary_weather)
+        )
+        signal_scale = max(float(lidar_config.multipath_model.path_signal_decay), 0.0) * max(
+            surface_reflectivity,
+            0.0,
+        )
+        signal_power_linear = primary_signal_power_linear * geometry_scale * signal_scale
+        ambient_power_dbw = float(primary_metadata.get("ambient_power_dbw", -30.0))
+        ambient_photons = float(primary_metadata.get("ambient_photons", 0.0))
+        signal_photons = signal_power_linear * max(float(lidar_config.physics_model.signal_photon_scale), 0.0)
+        snr = signal_photons / max(ambient_photons, 1e-9)
+        snr_db = 10.0 * log10(max(snr, 1e-9))
+        minimum_path_snr_db = max(
+            float(lidar_config.multipath_model.minimum_path_snr_db),
+            float(lidar_config.physics_model.minimum_detection_snr_db),
+        )
+        reflectivity = min(max(float(primary_metadata.get("reflectivity", 0.0)) * surface_reflectivity, 0.0), 1.0)
+        ground_truth_reflectivity = min(
+            max(float(primary_metadata.get("ground_truth_reflectivity", 0.0)) * surface_reflectivity, 0.0),
+            1.0,
+        )
+        laser_cross_section = reflectivity
+        intensity_value = self._lidar_intensity_value(
+            intensity_config=lidar_config.intensity,
+            signal_power_linear=signal_power_linear,
+            reflectivity=reflectivity,
+            ground_truth_reflectivity=ground_truth_reflectivity,
+            laser_cross_section=laser_cross_section,
+            snr=snr,
+        )
+        azimuth_deg = atan2(point_xyz[1], point_xyz[0]) * 180.0 / pi
+        elevation_deg = atan2(
+            point_xyz[2],
+            max(sqrt(point_xyz[0] * point_xyz[0] + point_xyz[1] * point_xyz[1]), 1e-9),
+        ) * 180.0 / pi
+        metadata = dict(base_metadata)
+        metadata.update(
+            {
+                "detected": bool(lidar_config.physics_model.return_all_hits) or snr_db >= minimum_path_snr_db,
+                "range_m": path_length_m,
+                "azimuth_deg": azimuth_deg,
+                "elevation_deg": elevation_deg,
+                "intensity": intensity_value,
+                "intensity_units": lidar_config.intensity.units,
+                "reflectivity": reflectivity,
+                "ground_truth_reflectivity": ground_truth_reflectivity,
+                "laser_cross_section": laser_cross_section,
+                "signal_power_dbw": 10.0 * log10(max(signal_power_linear, 1e-9)),
+                "ambient_power_dbw": ambient_power_dbw,
+                "signal_photons": signal_photons,
+                "ambient_photons": ambient_photons,
+                "snr": snr,
+                "snr_db": snr_db,
+                "path_length_offset_m": path_length_offset_m,
+                "ground_truth_hit_index": 1,
+                "ground_truth_last_bounce_index": 1,
+                "weather_extinction_factor": multipath_weather,
+                "multipath_surface": surface,
+                "multipath_path_length_m": path_length_m,
+                "multipath_base_range_m": primary_range_m,
+                "multipath_surface_reflectivity": surface_reflectivity,
+                "multipath_model_mode": str(lidar_config.multipath_model.mode).upper(),
+                "multipath_reflection_point": {
+                    "x": reflection_point[0],
+                    "y": reflection_point[1],
+                    "z": reflection_point[2],
+                },
+                "ground_truth_detection_type": "MULTIPATH",
+            }
+        )
+        return metadata
 
     def _lidar_signal_metadata(
         self,
@@ -2691,6 +2991,11 @@ class NativePhysicsBackend(SensorBackend):
             for point in preview_points
             if isinstance(point, dict) and str(point.get("ground_truth_detection_type", "")).upper() == "NOISE"
         ]
+        multipath_points = [
+            point
+            for point in preview_points
+            if isinstance(point, dict) and str(point.get("ground_truth_detection_type", "")).upper() == "MULTIPATH"
+        ]
         beam_offset_values = [
             abs(float(point["beam_azimuth_offset_deg"]))
             for point in preview_points
@@ -2707,6 +3012,8 @@ class NativePhysicsBackend(SensorBackend):
         metrics["lidar_multi_return_applied"] = 1.0 if any(return_id > 0 for return_id in return_ids) else 0.0
         metrics["lidar_max_return_id"] = float(max(return_ids)) if return_ids else 0.0
         metrics["lidar_backscatter_or_noise_count"] = float(len(noise_points))
+        metrics["lidar_multipath_return_count"] = float(len(multipath_points))
+        metrics["lidar_geometry_multipath_applied"] = 1.0 if multipath_points else 0.0
         metrics["lidar_weather_model_applied"] = 1.0 if (
             float(lidar_config.environment_model.fog_density) > 0.0
             or float(lidar_config.environment_model.precipitation_rate) > 0.0
@@ -2724,6 +3031,9 @@ class NativePhysicsBackend(SensorBackend):
             or abs(float(lidar_config.emitter_params.peak_power_w) - 1.0) > 1e-12
             or bool(lidar_config.emitter_params.optical_loss)
         ) else 0.0
+        metrics["lidar_multipath_max_extra_path_length_m"] = float(
+            lidar_config.multipath_model.max_extra_path_length_m
+        )
         metrics["lidar_peak_power_w"] = float(lidar_config.emitter_params.peak_power_w)
         metrics["lidar_max_channel_loss_db"] = max(channel_loss_values) if channel_loss_values else 0.0
         metrics["lidar_max_beam_azimuth_offset_deg"] = max(beam_offset_values) if beam_offset_values else 0.0

@@ -496,6 +496,34 @@ class LidarEmitterConfig:
 
 
 @dataclass(frozen=True)
+class LidarMultipathConfig:
+    enabled: bool = False
+    mode: str = "HYBRID"
+    max_paths: int = 2
+    path_signal_decay: float = 0.3
+    minimum_path_snr_db: float = -8.0
+    max_extra_path_length_m: float = 80.0
+    ground_plane_height_m: float = -1.5
+    ground_reflectivity: float = 0.35
+    wall_plane_x_m: float = 25.0
+    wall_reflectivity: float = 0.25
+
+    def to_dict(self) -> dict[str, float | int | str | bool]:
+        return {
+            "enabled": self.enabled,
+            "mode": self.mode,
+            "max_paths": self.max_paths,
+            "path_signal_decay": self.path_signal_decay,
+            "minimum_path_snr_db": self.minimum_path_snr_db,
+            "max_extra_path_length_m": self.max_extra_path_length_m,
+            "ground_plane_height_m": self.ground_plane_height_m,
+            "ground_reflectivity": self.ground_reflectivity,
+            "wall_plane_x_m": self.wall_plane_x_m,
+            "wall_reflectivity": self.wall_reflectivity,
+        }
+
+
+@dataclass(frozen=True)
 class CameraRollingShutterConfig:
     enabled: bool = False
     col_delay_ns: float = 0.0
@@ -614,6 +642,7 @@ class LidarSensorConfig:
     environment_model: LidarEnvironmentConfig = field(default_factory=LidarEnvironmentConfig)
     noise_performance: LidarNoisePerformanceConfig = field(default_factory=LidarNoisePerformanceConfig)
     emitter_params: LidarEmitterConfig = field(default_factory=LidarEmitterConfig)
+    multipath_model: LidarMultipathConfig = field(default_factory=LidarMultipathConfig)
     extrinsics: SensorExtrinsicsConfig = field(default_factory=SensorExtrinsicsConfig)
     behaviors: list[SensorBehaviorConfig] = field(default_factory=list)
 
@@ -656,6 +685,7 @@ class LidarSensorConfig:
             "environment_model": self.environment_model.to_dict(),
             "noise_performance": self.noise_performance.to_dict(),
             "emitter_params": self.emitter_params.to_dict(),
+            "multipath_model": self.multipath_model.to_dict(),
             "extrinsics": self.extrinsics.to_dict(),
             "behaviors": [behavior.to_dict() for behavior in self.behaviors],
         }
@@ -1114,6 +1144,49 @@ def _parse_lidar_emitter_params(options: Mapping[str, Any]) -> LidarEmitterConfi
     )
 
 
+def _parse_lidar_multipath_model(options: Mapping[str, Any]) -> LidarMultipathConfig:
+    raw = _as_dict(options.get("lidar_multipath_model"))
+    return LidarMultipathConfig(
+        enabled=_as_bool(raw.get("enabled", options.get("lidar_multipath_enabled")), False),
+        mode=_as_str(raw.get("mode", options.get("lidar_multipath_mode")), "HYBRID").upper(),
+        max_paths=max(
+            1,
+            _as_int(raw.get("max_paths", options.get("lidar_multipath_max_paths")), 2),
+        ),
+        path_signal_decay=_as_float(
+            raw.get("path_signal_decay", options.get("lidar_multipath_path_signal_decay")),
+            0.3,
+        ),
+        minimum_path_snr_db=_as_float(
+            raw.get("minimum_path_snr_db", options.get("lidar_multipath_minimum_path_snr_db")),
+            -8.0,
+        ),
+        max_extra_path_length_m=_as_float(
+            raw.get(
+                "max_extra_path_length_m",
+                options.get("lidar_multipath_max_extra_path_length_m"),
+            ),
+            80.0,
+        ),
+        ground_plane_height_m=_as_float(
+            raw.get("ground_plane_height_m", options.get("lidar_ground_plane_height_m")),
+            -1.5,
+        ),
+        ground_reflectivity=_as_float(
+            raw.get("ground_reflectivity", options.get("lidar_ground_reflectivity")),
+            0.35,
+        ),
+        wall_plane_x_m=_as_float(
+            raw.get("wall_plane_x_m", options.get("lidar_wall_plane_x_m")),
+            25.0,
+        ),
+        wall_reflectivity=_as_float(
+            raw.get("wall_reflectivity", options.get("lidar_wall_reflectivity")),
+            0.25,
+        ),
+    )
+
+
 def _parse_behaviors(options: Mapping[str, Any], sensor_name: str) -> list[SensorBehaviorConfig]:
     nested = _as_dict(options.get("sensor_behaviors")).get(sensor_name)
     raw_behaviors = options.get(f"{sensor_name}_behaviors", nested)
@@ -1288,6 +1361,7 @@ def build_sensor_sim_config(
             environment_model=_parse_lidar_environment_model(data),
             noise_performance=_parse_lidar_noise_performance(data),
             emitter_params=_parse_lidar_emitter_params(data),
+            multipath_model=_parse_lidar_multipath_model(data),
             extrinsics=_parse_extrinsics(_as_dict(data.get("lidar_extrinsics"))),
             behaviors=_parse_behaviors(data, "lidar"),
         ),

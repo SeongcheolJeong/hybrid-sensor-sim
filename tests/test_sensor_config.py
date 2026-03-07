@@ -36,6 +36,8 @@ class SensorConfigTests(unittest.TestCase):
         self.assertTrue(config.lidar.environment_model.enable_ambient)
         self.assertAlmostEqual(config.lidar.environment_model.extinction_coefficient_scale, 0.05)
         self.assertAlmostEqual(config.lidar.noise_performance.probability_false_alarm, 0.0)
+        self.assertFalse(config.lidar.multipath_model.enabled)
+        self.assertEqual(config.lidar.multipath_model.mode, "HYBRID")
         self.assertEqual(config.radar.clutter_model, "basic")
         self.assertEqual(config.radar.range_min_m, 0.5)
 
@@ -202,6 +204,18 @@ class SensorConfigTests(unittest.TestCase):
                         {"range": 50.0, "loss": -1.5},
                     ],
                 },
+                "lidar_multipath_model": {
+                    "enabled": True,
+                    "mode": "hybrid",
+                    "max_paths": 2,
+                    "path_signal_decay": 0.28,
+                    "minimum_path_snr_db": -6.0,
+                    "max_extra_path_length_m": 60.0,
+                    "ground_plane_height_m": -1.7,
+                    "ground_reflectivity": 0.4,
+                    "wall_plane_x_m": 18.0,
+                    "wall_reflectivity": 0.3,
+                },
                 "lidar_behaviors": [{"continuous_motion": {"tx": 0.2, "rz": 0.1}}],
                 "radar_clutter": "none",
                 "radar_range_min_m": "1.5",
@@ -311,6 +325,16 @@ class SensorConfigTests(unittest.TestCase):
         self.assertAlmostEqual(config.lidar.emitter_params.peak_power_w, 2.5)
         self.assertEqual(len(config.lidar.emitter_params.optical_loss), 2)
         self.assertAlmostEqual(config.lidar.emitter_params.optical_loss[1].loss_db, -1.5)
+        self.assertTrue(config.lidar.multipath_model.enabled)
+        self.assertEqual(config.lidar.multipath_model.mode, "HYBRID")
+        self.assertEqual(config.lidar.multipath_model.max_paths, 2)
+        self.assertAlmostEqual(config.lidar.multipath_model.path_signal_decay, 0.28)
+        self.assertAlmostEqual(config.lidar.multipath_model.minimum_path_snr_db, -6.0)
+        self.assertAlmostEqual(config.lidar.multipath_model.max_extra_path_length_m, 60.0)
+        self.assertAlmostEqual(config.lidar.multipath_model.ground_plane_height_m, -1.7)
+        self.assertAlmostEqual(config.lidar.multipath_model.ground_reflectivity, 0.4)
+        self.assertAlmostEqual(config.lidar.multipath_model.wall_plane_x_m, 18.0)
+        self.assertAlmostEqual(config.lidar.multipath_model.wall_reflectivity, 0.3)
         self.assertEqual(config.radar.sensor_id, "radar_bumper")
         self.assertEqual(config.radar.clutter_model, "none")
         self.assertEqual(config.radar.false_target_count, 0)
@@ -376,6 +400,13 @@ class SensorConfigTests(unittest.TestCase):
                     "source_variance": {"az": 0.0001, "el": 0.0002},
                     "peak_power": 1.8,
                     "optical_loss": [{"range": 25.0, "loss": -0.8}],
+                },
+                "lidar_multipath_model": {
+                    "enabled": True,
+                    "mode": "ground_plane",
+                    "max_paths": 1,
+                    "ground_plane_height_m": -1.8,
+                    "ground_reflectivity": 0.55,
                 },
                 "lidar_behaviors": [{"continuous_motion": {"tx": 0.1}}],
                 "radar_clutter": "none",
@@ -447,6 +478,12 @@ class SensorConfigTests(unittest.TestCase):
         self.assertAlmostEqual(
             contract["sensor_setup"]["lidar"]["emitter_params"]["peak_power"],
             1.8,
+        )
+        self.assertTrue(contract["sensor_setup"]["lidar"]["multipath_model"]["enabled"])
+        self.assertEqual(contract["sensor_setup"]["lidar"]["multipath_model"]["mode"], "GROUND_PLANE")
+        self.assertAlmostEqual(
+            contract["sensor_setup"]["lidar"]["multipath_model"]["ground_plane_height_m"],
+            -1.8,
         )
         self.assertEqual(
             contract["sensor_setup"]["radar"]["behaviors"][0]["point_at"]["id"],

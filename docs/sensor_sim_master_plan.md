@@ -575,6 +575,11 @@ Current status:
     - `SINGLE`, `DUAL`, `MULTI` return modes
     - `max_returns`, `range_separation_m`, `signal_decay`, `minimum_secondary_snr_db`
     - per-return `ground_truth_hit_index` and `ground_truth_last_bounce_index` preview metadata
+  - geometry-aware multipath surface:
+    - `GROUND_PLANE`, `VERTICAL_PLANE`, `HYBRID` bounce modes
+    - `max_paths`, `path_signal_decay`, `minimum_path_snr_db`, `max_extra_path_length_m`
+    - plane parameters: `ground_plane_height_m`, `ground_reflectivity`, `wall_plane_x_m`, `wall_reflectivity`
+    - preview metadata: reflection point, bounce surface, apparent path length
   - environment/weather surface:
     - fog attenuation with `fog_density * extinction_coefficient_scale`
     - backscatter/noise returns using `backscatter_scale`
@@ -586,7 +591,7 @@ Current status:
     - `peak_power` and range-dependent `optical_loss`
     - per-point channel radiometric metadata in preview artifacts
 - next missing items:
-  - geometry-aware multipath and non-synthetic return selection
+  - non-synthetic return selection beyond current plane-reflection multipath
   - richer rain/snow particle field calibration beyond current preview heuristic
   - channel profile / sidelobe modeling beyond current scalar divergence-loss approximation
 

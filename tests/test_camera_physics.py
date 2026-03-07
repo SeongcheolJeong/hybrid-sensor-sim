@@ -1395,6 +1395,114 @@ EOF
             self.assertEqual(secondary_point["ground_truth_detection_type"], "RETROREFLECTION")
             self.assertLess(secondary_point["snr_db"], primary_point["snr_db"])
 
+    def test_lidar_preview_generates_geometry_multipath_returns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+8.0 1.0 -0.5
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "radar_postprocess_enabled": False,
+                    "lidar_postprocess_enabled": True,
+                    "lidar_noise": "none",
+                    "lidar_dropout_probability": 0.0,
+                    "lidar_ground_truth_reflectivity": 1.0,
+                    "lidar_physics_model": {
+                        "reflectivity_coefficient": 1.0,
+                        "ambient_power_dbw": -30.0,
+                        "signal_photon_scale": 10000.0,
+                        "ambient_photon_scale": 1000.0,
+                        "minimum_detection_snr_db": 0.0,
+                        "return_all_hits": True,
+                    },
+                    "lidar_multipath_model": {
+                        "enabled": True,
+                        "mode": "HYBRID",
+                        "max_paths": 2,
+                        "path_signal_decay": 0.4,
+                        "minimum_path_snr_db": 0.0,
+                        "max_extra_path_length_m": 20.0,
+                        "ground_plane_height_m": -1.5,
+                        "ground_reflectivity": 0.5,
+                        "wall_plane_x_m": 12.0,
+                        "wall_reflectivity": 0.35,
+                    },
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            self.assertEqual(result.metrics.get("lidar_multipath_return_count"), 2.0)
+            self.assertEqual(result.metrics.get("lidar_geometry_multipath_applied"), 1.0)
+            preview = json.loads(
+                result.artifacts["lidar_noisy_preview_json"].read_text(encoding="utf-8")
+            )
+            self.assertTrue(preview["multipath_model"]["enabled"])
+            self.assertEqual(preview["output_count"], 3)
+            self.assertEqual([point["return_id"] for point in preview["preview_points"]], [0, 1, 2])
+            multipath_points = [
+                point
+                for point in preview["preview_points"]
+                if point["ground_truth_detection_type"] == "MULTIPATH"
+            ]
+            self.assertEqual(len(multipath_points), 2)
+            surfaces = {point["multipath_surface"] for point in multipath_points}
+            self.assertEqual(surfaces, {"GROUND_PLANE", "VERTICAL_PLANE"})
+            ground_point = next(
+                point for point in multipath_points if point["multipath_surface"] == "GROUND_PLANE"
+            )
+            wall_point = next(
+                point for point in multipath_points if point["multipath_surface"] == "VERTICAL_PLANE"
+            )
+            self.assertGreater(ground_point["range_m"], preview["preview_points"][0]["range_m"])
+            self.assertGreater(wall_point["range_m"], ground_point["range_m"])
+            self.assertGreater(ground_point["path_length_offset_m"], 0.0)
+            self.assertGreater(wall_point["path_length_offset_m"], ground_point["path_length_offset_m"])
+            self.assertAlmostEqual(
+                ground_point["multipath_reflection_point"]["z"],
+                -1.5,
+                places=6,
+            )
+            self.assertAlmostEqual(
+                wall_point["multipath_reflection_point"]["x"],
+                12.0,
+                places=6,
+            )
+
     def test_lidar_weather_model_reduces_snr_and_adds_noise_points(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
