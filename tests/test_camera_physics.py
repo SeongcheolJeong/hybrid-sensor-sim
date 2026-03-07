@@ -265,6 +265,95 @@ EOF
             self.assertEqual(result.metrics.get("camera_image_chain_enabled"), 1.0)
             self.assertEqual(result.metrics.get("camera_image_signal_output_count"), 3.0)
 
+    def test_hybrid_applies_lens_vignetting_and_flare_in_visible_preview(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+0.0 0.0 10.0
+5.0 0.0 10.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": True,
+                    "camera_image_params": {
+                        "iso": 120,
+                        "shutter_speed": 4000.0,
+                        "readout_noise": 0.0,
+                        "white_balance": 6500,
+                        "seed": 3,
+                        "fixed_pattern_noise": {
+                            "dsnu": 0.0,
+                            "prnu": 0.0,
+                        },
+                    },
+                    "camera_lens_params": {
+                        "lens_flare": 1.0,
+                        "spot_size": 0.005,
+                        "vignetting": {
+                            "intensity": 0.8,
+                            "alpha": 1.25,
+                            "radius": 0.4,
+                        },
+                    },
+                    "camera_intrinsics": {
+                        "fx": 1000.0,
+                        "fy": 1000.0,
+                        "cx": 960.0,
+                        "cy": 540.0,
+                        "width": 1920,
+                        "height": 1080,
+                    },
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            preview = json.loads(
+                result.artifacts["camera_projection_preview"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(preview["lens_params"]["lens_flare"], 1.0)
+            self.assertEqual(preview["lens_params"]["spot_size"], 0.005)
+            samples = preview["preview_image_signal_samples"]
+            self.assertEqual(len(samples), 2)
+            center_sample = samples[0]
+            edge_sample = samples[1]
+            self.assertGreater(center_sample["vignetting_factor"], edge_sample["vignetting_factor"])
+            self.assertGreater(center_sample["lens_flare_strength"], edge_sample["lens_flare_strength"])
+            self.assertGreater(center_sample["spot_blur_radius_px"], 0.0)
+            self.assertEqual(result.metrics.get("camera_lens_artifact_enabled"), 1.0)
+
     def test_hybrid_generates_depth_preview_with_rolling_shutter_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

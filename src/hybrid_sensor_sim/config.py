@@ -301,6 +301,34 @@ class CameraImageChainConfig:
 
 
 @dataclass(frozen=True)
+class CameraVignettingConfig:
+    intensity: float = 0.0
+    alpha: float = 1.0
+    radius: float = 1.0
+
+    def to_dict(self) -> dict[str, float]:
+        return {
+            "intensity": self.intensity,
+            "alpha": self.alpha,
+            "radius": self.radius,
+        }
+
+
+@dataclass(frozen=True)
+class CameraLensConfig:
+    lens_flare: float = 0.0
+    spot_size: float = 0.0
+    vignetting: CameraVignettingConfig = field(default_factory=CameraVignettingConfig)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "lens_flare": self.lens_flare,
+            "spot_size": self.spot_size,
+            "vignetting": self.vignetting.to_dict(),
+        }
+
+
+@dataclass(frozen=True)
 class CameraRollingShutterConfig:
     enabled: bool = False
     col_delay_ns: float = 0.0
@@ -359,6 +387,7 @@ class CameraSensorConfig:
     depth_params: CameraDepthConfig = field(default_factory=CameraDepthConfig)
     semantic_params: CameraSemanticConfig = field(default_factory=CameraSemanticConfig)
     image_chain: CameraImageChainConfig = field(default_factory=CameraImageChainConfig)
+    lens_params: CameraLensConfig = field(default_factory=CameraLensConfig)
     rolling_shutter: CameraRollingShutterConfig = field(default_factory=CameraRollingShutterConfig)
     extrinsics: SensorExtrinsicsConfig = field(default_factory=SensorExtrinsicsConfig)
     behaviors: list[SensorBehaviorConfig] = field(default_factory=list)
@@ -378,6 +407,7 @@ class CameraSensorConfig:
             "depth_params": self.depth_params.to_dict(),
             "semantic_params": self.semantic_params.to_dict(),
             "image_chain": self.image_chain.to_dict(),
+            "lens_params": self.lens_params.to_dict(),
             "rolling_shutter": self.rolling_shutter.to_dict(),
             "extrinsics": self.extrinsics.to_dict(),
             "behaviors": [behavior.to_dict() for behavior in self.behaviors],
@@ -614,6 +644,29 @@ def _parse_camera_image_chain(options: Mapping[str, Any]) -> CameraImageChainCon
     )
 
 
+def _parse_camera_lens(options: Mapping[str, Any]) -> CameraLensConfig:
+    raw = _as_dict(options.get("camera_lens_params"))
+    raw_vignetting = _as_dict(raw.get("vignetting"))
+    return CameraLensConfig(
+        lens_flare=_as_float(raw.get("lens_flare", options.get("camera_lens_flare")), 0.0),
+        spot_size=_as_float(raw.get("spot_size", options.get("camera_spot_size")), 0.0),
+        vignetting=CameraVignettingConfig(
+            intensity=_as_float(
+                raw_vignetting.get("intensity", options.get("camera_vignetting_intensity")),
+                0.0,
+            ),
+            alpha=_as_float(
+                raw_vignetting.get("alpha", options.get("camera_vignetting_alpha")),
+                1.0,
+            ),
+            radius=_as_float(
+                raw_vignetting.get("radius", options.get("camera_vignetting_radius")),
+                1.0,
+            ),
+        ),
+    )
+
+
 def _parse_camera_rolling_shutter(options: Mapping[str, Any]) -> CameraRollingShutterConfig:
     raw = _as_dict(options.get("camera_rolling_shutter"))
     col_delay_ns = _as_float(raw.get("col_delay_ns", options.get("camera_col_delay_ns")), 0.0)
@@ -731,6 +784,7 @@ def build_sensor_sim_config(
             depth_params=_parse_camera_depth(data),
             semantic_params=_parse_camera_semantic(data),
             image_chain=_parse_camera_image_chain(data),
+            lens_params=_parse_camera_lens(data),
             rolling_shutter=_parse_camera_rolling_shutter(data),
             extrinsics=_parse_extrinsics(_as_dict(data.get("camera_extrinsics"))),
             behaviors=_parse_behaviors(data, "camera"),

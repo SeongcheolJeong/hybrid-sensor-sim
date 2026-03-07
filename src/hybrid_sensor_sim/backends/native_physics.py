@@ -371,6 +371,16 @@ class NativePhysicsBackend(SensorBackend):
             if camera_config.image_chain.enabled and camera_config.sensor_type.upper() == "VISIBLE"
             else 0.0
         )
+        metrics["camera_lens_artifact_enabled"] = (
+            1.0
+            if camera_config.sensor_type.upper() == "VISIBLE"
+            and (
+                camera_config.lens_params.lens_flare > 0.0
+                or camera_config.lens_params.spot_size > 0.0
+                or camera_config.lens_params.vignetting.intensity > 0.0
+            )
+            else 0.0
+        )
         metrics["camera_image_signal_output_count"] = (
             float(len(projected))
             if camera_config.image_chain.enabled and camera_config.sensor_type.upper() == "VISIBLE"
@@ -416,6 +426,7 @@ class NativePhysicsBackend(SensorBackend):
             "depth_params": camera_config.depth_params.to_dict(),
             "semantic_params": camera_config.semantic_params.to_dict(),
             "image_chain": camera_config.image_chain.to_dict(),
+            "lens_params": camera_config.lens_params.to_dict(),
             **preview_payload,
         }
         output_path = enhanced_output / "camera_projection_preview.json"
@@ -567,6 +578,7 @@ class NativePhysicsBackend(SensorBackend):
             "depth_params": camera_config.depth_params.to_dict(),
             "semantic_params": camera_config.semantic_params.to_dict(),
             "image_chain": camera_config.image_chain.to_dict(),
+            "lens_params": camera_config.lens_params.to_dict(),
             "input_count": len(points_xyz),
             "frame_count": len(frames),
             "reference_point_xyz": {
@@ -1074,6 +1086,7 @@ class NativePhysicsBackend(SensorBackend):
             semantic_source = "heuristic"
 
         image_chain = camera_config.image_chain
+        lens = camera_config.lens_params
         base_rgb = [float(channel) / 255.0 for channel in semantic["color_rgb"]]
         distance_attenuation = 1.0 / max(z_m * z_m, 1.0)
         normalized_u = (u - intrinsics.cx) / float(max(intrinsics.width, 1))
@@ -1091,8 +1104,25 @@ class NativePhysicsBackend(SensorBackend):
         white_balance_gains = self._camera_white_balance_gains(
             image_chain.white_balance_kelvin
         )
+        vignetting_factor = self._camera_vignetting_factor(
+            off_axis=off_axis,
+            intensity=lens.vignetting.intensity,
+            alpha=lens.vignetting.alpha,
+            radius=lens.vignetting.radius,
+        )
+        spot_blur_radius_px = self._camera_spot_blur_radius_px(
+            intrinsics=intrinsics,
+            spot_size=lens.spot_size,
+        )
+        lens_flare_strength = self._camera_lens_flare_strength(
+            scene_luminance=scene_luminance,
+            bloom=image_chain.bloom,
+            lens_flare=lens.lens_flare,
+            off_axis=off_axis,
+        )
 
         linear_rgb: list[float] = []
+        lens_rgb: list[float] = []
         digital_rgb: list[int] = []
         noisy_signal_rgb: list[float] = []
         bloom_boost = 0.0
@@ -1104,7 +1134,13 @@ class NativePhysicsBackend(SensorBackend):
                 + int(round(u)) * 17
                 + int(round(v)) * 19
             )
-            photons = max(0.0, signal_photons * base_value * white_balance_gains[channel_index])
+            photons = max(
+                0.0,
+                signal_photons
+                * base_value
+                * white_balance_gains[channel_index]
+                * vignetting_factor,
+            )
             shot_noise = channel_rng.gauss(0.0, sqrt(max(photons, 1.0))) / 1000.0
             dsnu = channel_rng.gauss(0.0, image_chain.fixed_pattern_noise.dsnu)
             prnu = 1.0 + channel_rng.gauss(0.0, image_chain.fixed_pattern_noise.prnu)
@@ -1114,11 +1150,19 @@ class NativePhysicsBackend(SensorBackend):
             channel_linear = max(0.0, channel_linear)
             linear_rgb.append(channel_linear)
             noisy_signal_rgb.append(channel_linear)
+        flare_rgb = [
+            lens_flare_strength * 0.85,
+            lens_flare_strength * 0.92,
+            lens_flare_strength,
+        ]
+        lens_rgb = [max(0.0, linear_rgb[index] + flare_rgb[index]) for index in range(3)]
+        post_lens_rgb = list(lens_rgb)
         if image_chain.bloom > 0.0:
-            bloom_boost = image_chain.bloom * max(max(linear_rgb) - 1.0, 0.0)
-            linear_rgb = [value + bloom_boost for value in linear_rgb]
+            bloom_threshold = max(max(lens_rgb) - 1.0, 0.0)
+            bloom_boost = image_chain.bloom * bloom_threshold * (1.0 + spot_blur_radius_px * 0.05)
+            lens_rgb = [value + bloom_boost for value in lens_rgb]
         gamma = max(image_chain.gamma, 1e-6)
-        for channel_linear in linear_rgb:
+        for channel_linear in lens_rgb:
             encoded = pow(max(min(channel_linear, 1.0), 0.0), 1.0 / gamma)
             digital_rgb.append(int(round(encoded * 255.0)))
 
@@ -1133,8 +1177,12 @@ class NativePhysicsBackend(SensorBackend):
             "white_balance_gains": white_balance_gains,
             "scene_luminance": scene_luminance,
             "signal_photons": signal_photons,
+            "vignetting_factor": vignetting_factor,
+            "lens_flare_strength": lens_flare_strength,
+            "spot_blur_radius_px": spot_blur_radius_px,
             "noisy_signal_rgb_linear": noisy_signal_rgb,
-            "post_bloom_rgb_linear": linear_rgb,
+            "post_lens_rgb_linear": post_lens_rgb,
+            "post_bloom_rgb_linear": lens_rgb,
             "digital_rgb": digital_rgb,
             "exposure_scale": exposure_scale,
             "iso": image_chain.iso,
@@ -1166,6 +1214,46 @@ class NativePhysicsBackend(SensorBackend):
         if max_gain <= 1e-9:
             return [1.0, 1.0, 1.0]
         return [value / max_gain for value in gains]
+
+    def _camera_vignetting_factor(
+        self,
+        *,
+        off_axis: float,
+        intensity: float,
+        alpha: float,
+        radius: float,
+    ) -> float:
+        if intensity <= 0.0:
+            return 1.0
+        safe_radius = max(radius, 1e-6)
+        normalized = min(max(off_axis / safe_radius, 0.0), 1.0)
+        power = pow(normalized, max(alpha, 1e-6))
+        return max(0.05, 1.0 - intensity * power)
+
+    def _camera_spot_blur_radius_px(
+        self,
+        *,
+        intrinsics: CameraIntrinsics,
+        spot_size: float,
+    ) -> float:
+        if spot_size <= 0.0:
+            return 0.0
+        focal_mean = max((intrinsics.fx + intrinsics.fy) * 0.5, 1.0)
+        return max(0.0, spot_size * focal_mean)
+
+    def _camera_lens_flare_strength(
+        self,
+        *,
+        scene_luminance: float,
+        bloom: float,
+        lens_flare: float,
+        off_axis: float,
+    ) -> float:
+        if lens_flare <= 0.0:
+            return 0.0
+        center_bias = max(0.0, 1.0 - min(off_axis / 0.65, 1.0))
+        highlight = max(scene_luminance - 0.75, 0.0)
+        return lens_flare * (0.08 + bloom * 0.04) * highlight * center_bias
 
     def _coerce_int(self, raw: object, default: int = 0) -> int:
         if raw is None:

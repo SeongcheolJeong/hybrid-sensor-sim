@@ -305,7 +305,7 @@ Primary code references:
 | Sensor behavior engine | missing | `point_at`, `continuous_motion`, transform updates | P1 |
 | Camera geometry families | `pinhole` + `rectilinear` + `equidistant` + `orthographic` implemented in local physics path | rectilinear + equidistant + orthographic + projection field adapter | P1 |
 | Camera temporal model | rolling shutter timing + trajectory pose-distortion implemented; behavior-driven motion still missing | rolling shutter + exposure sampling | P1 |
-| Camera image chain | depth + semantic + visible image-chain preview implemented; richer lens artifacts still missing | noise, gain, white balance, depth/semantic variants | P2 |
+| Camera image chain | depth + semantic + visible image-chain preview implemented; vignetting/lens flare/spot blur added, richer optical artifacts still missing | noise, gain, white balance, depth/semantic variants | P2 |
 | Lidar scan generation | preview only | source angles + scan path + scan type engine | P1 |
 | Lidar signal/intensity | very weak | reflectivity, SNR/intensity units, returns, weather | P1 |
 | Lidar multipath/material model | missing | HELIOS-backed or local hybrid path | P2 |
@@ -515,10 +515,11 @@ Current status:
   - depth preview output path
   - semantic preview output path with legacy/granular class version support
   - visible image-chain preview with exposure/gain/white-balance/readout-noise/fixed-pattern-noise
+  - lens artifact preview with vignetting / lens flare / spot blur radius
   - rolling shutter timing metadata
   - rolling shutter pose-distortion using HELIOS trajectory poses
 - next missing items:
-  - richer lens artifacts such as vignetting/lens flare/bloom spill
+  - richer optical artifacts such as chromatic aberration / lens contamination / flare ghosts
   - behavior-driven motion updates for rolling shutter
 
 Primary references:

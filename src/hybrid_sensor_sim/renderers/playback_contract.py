@@ -318,6 +318,7 @@ def build_renderer_playback_contract(
                 "depth_params": config.camera.depth_params.to_dict(),
                 "semantic_params": config.camera.semantic_params.to_dict(),
                 "image_chain": config.camera.image_chain.to_dict(),
+                "lens_params": config.camera.lens_params.to_dict(),
                 "rolling_shutter": config.camera.rolling_shutter.to_dict(),
                 "extrinsics": camera_extrinsics,
                 "extrinsics_source": camera_extrinsics_source,

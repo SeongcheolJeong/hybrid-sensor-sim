@@ -23,6 +23,8 @@ class SensorConfigTests(unittest.TestCase):
         self.assertEqual(config.camera.intrinsics.fx, 1200.0)
         self.assertEqual(config.camera.image_chain.iso, 100)
         self.assertAlmostEqual(config.camera.image_chain.shutter_speed_us, 6000.0)
+        self.assertAlmostEqual(config.camera.lens_params.lens_flare, 0.0)
+        self.assertAlmostEqual(config.camera.lens_params.spot_size, 0.0)
         self.assertEqual(config.lidar.noise_model, "gaussian")
         self.assertEqual(config.lidar.scan_type, "spin")
         self.assertEqual(config.radar.clutter_model, "basic")
@@ -90,6 +92,15 @@ class SensorConfigTests(unittest.TestCase):
                         "prnu": 0.0006,
                     },
                 },
+                "camera_lens_params": {
+                    "lens_flare": 0.8,
+                    "spot_size": 0.004,
+                    "vignetting": {
+                        "intensity": 0.5,
+                        "alpha": 1.25,
+                        "radius": 0.9,
+                    },
+                },
                 "camera_rolling_shutter": {
                     "enabled": True,
                     "row_delay_ns": 1000,
@@ -153,6 +164,11 @@ class SensorConfigTests(unittest.TestCase):
         self.assertEqual(config.camera.image_chain.seed, 13)
         self.assertAlmostEqual(config.camera.image_chain.fixed_pattern_noise.dsnu, 0.0004)
         self.assertAlmostEqual(config.camera.image_chain.fixed_pattern_noise.prnu, 0.0006)
+        self.assertAlmostEqual(config.camera.lens_params.lens_flare, 0.8)
+        self.assertAlmostEqual(config.camera.lens_params.spot_size, 0.004)
+        self.assertAlmostEqual(config.camera.lens_params.vignetting.intensity, 0.5)
+        self.assertAlmostEqual(config.camera.lens_params.vignetting.alpha, 1.25)
+        self.assertAlmostEqual(config.camera.lens_params.vignetting.radius, 0.9)
         self.assertTrue(config.camera.rolling_shutter.enabled)
         self.assertEqual(config.camera.rolling_shutter.num_time_steps, 8)
         self.assertEqual(config.camera.rolling_shutter.num_exposure_samples_per_pixel, 4)
@@ -192,6 +208,11 @@ class SensorConfigTests(unittest.TestCase):
                     "white_balance": 5200,
                     "readout_noise": 0.005,
                 },
+                "camera_lens_params": {
+                    "lens_flare": 0.6,
+                    "spot_size": 0.003,
+                    "vignetting": {"intensity": 0.4, "alpha": 1.1, "radius": 1.0},
+                },
                 "camera_row_delay_ns": 5000,
                 "camera_behaviors": [{"point_at": {"id": 3}}],
                 "lidar_scan_type": "flash",
@@ -227,6 +248,12 @@ class SensorConfigTests(unittest.TestCase):
         self.assertEqual(
             contract["sensor_setup"]["camera"]["image_chain"]["readout_noise"],
             0.005,
+        )
+        self.assertEqual(contract["sensor_setup"]["camera"]["lens_params"]["lens_flare"], 0.6)
+        self.assertEqual(contract["sensor_setup"]["camera"]["lens_params"]["spot_size"], 0.003)
+        self.assertEqual(
+            contract["sensor_setup"]["camera"]["lens_params"]["vignetting"]["intensity"],
+            0.4,
         )
         self.assertTrue(contract["sensor_setup"]["camera"]["rolling_shutter"]["enabled"])
         self.assertEqual(contract["sensor_setup"]["camera"]["behaviors"][0]["point_at"]["id"], "3")
