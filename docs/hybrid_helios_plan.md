@@ -1,47 +1,65 @@
 # Hybrid HELIOS Plan
 
-## Objective
+This file is now a secondary index.
 
-Deliver feature coverage fast by combining:
+The active Sensor Sim master plan is:
 
-- `HELIOS` for scene-level ray tracing and core LiDAR simulation.
-- `Local modules` for project-specific sensor physics enhancements.
+- `/Users/seongcheoljeong/Documents/Test/docs/sensor_sim_master_plan.md`
 
-## Boundary definition
+## HELIOS Role Inside The Master Plan
+
+`HELIOS++` remains the preferred high-fidelity lidar backend inside the broader Sensor Sim roadmap.
+
+Its role is:
+
+1. scene-level ray tracing for lidar
+2. high-fidelity scan generation
+3. optional hybrid execution alongside the native local path
+
+## Boundary Definition
 
 ### HELIOS side
 
-- Asset/scene loading.
-- Ray casting and raw hit generation.
-- Baseline point cloud generation.
+- scene loading
+- ray casting
+- raw hit generation
+- scan-path-driven point cloud generation
 
 ### Local side
 
-- Sensor profile conversion and config management.
-- Distortion/noise/motion-compensation extensions.
-- Runtime orchestration, fallback, and artifact standardization.
+- typed sensor config/schema
+- artifact normalization
+- intensity/ground-truth enrichment
+- runtime orchestration and fallback
+- renderer/backend integration
 
-## Execution modes
+## Execution Modes
 
-- `HELIOS_ONLY`: run HELIOS adapter only.
-- `NATIVE_ONLY`: run local simulation only.
-- `HYBRID_AUTO`: HELIOS first, then local enhancement; fallback to local-only on HELIOS failure.
+- `HELIOS_ONLY`
+- `NATIVE_ONLY`
+- `HYBRID_AUTO`
 
-## Milestones
+## Current Priority
 
-1. Interface baseline (done in this repository skeleton).
-2. Real HELIOS process contract integration.
-3. Raw output parser and schema normalization.
-4. Physics enhancement chain (camera geometry, distortion, radar/lidar noise).
-5. Performance pass and validation scenarios.
+The current repository priority is no longer generic HELIOS integration first.
 
-## Main hurdles and mitigation
+The order is:
 
-- HELIOS I/O contract drift:
-  - Mitigation: freeze adapter schema version and add parser contract tests.
-- Native/HELIOS output mismatch:
-  - Mitigation: define canonical artifact schema with explicit metadata version.
-- Platform/runtime variance:
-  - Mitigation: containerized HELIOS execution profile and smoke tests.
-- Over-forking risk:
-  - Mitigation: keep HELIOS as external module; patch locally in adapter layer first.
+1. Sensor config/schema foundation
+2. Camera feature expansion
+3. Lidar feature expansion with HELIOS adapter path
+4. Radar feature expansion
+5. Ground truth and coverage metrics
+6. Runtime consolidation
+
+## HELIOS-Specific Risks
+
+- contract drift between HELIOS output and local schema
+- runtime portability across local and Linux runner environments
+- over-coupling to HELIOS-specific file formats
+
+## Mitigation
+
+- freeze canonical local artifact schema first
+- keep HELIOS behind adapter boundaries
+- preserve local native fallback for fast iteration
