@@ -103,6 +103,10 @@ class RendererBackendWorkflowTests(unittest.TestCase):
     def test_workflow_dry_run_reports_blocked_when_backend_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
             setup_summary = root / "renderer_backend_local_setup.json"
             setup_summary.write_text(
                 json.dumps(
@@ -129,12 +133,19 @@ class RendererBackendWorkflowTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            config_path = self._write_base_config(
+                root=root,
+                survey=survey,
+                helios_bin=fake_helios,
+                output_dir=root / "smoke_base_output",
+            )
 
             summary = build_renderer_backend_workflow(
                 backend="awsim",
                 repo_root=root / "repo",
                 workflow_root=root / "workflow",
                 setup_summary_path=setup_summary,
+                config_path=config_path,
                 dry_run=True,
             )
 
@@ -143,10 +154,16 @@ class RendererBackendWorkflowTests(unittest.TestCase):
             self.assertIn("AWSIM_BIN is not resolved", "\n".join(summary["issues"]))
             self.assertEqual(summary["recommended_next_command"], summary["commands"]["acquire"])
             self.assertEqual(summary["final_selection"]["AWSIM_BIN"], None)
+            self.assertTrue(summary["smoke"]["planned_effective_config_ready"])
+            self.assertEqual(
+                summary["smoke"]["planned_effective_config"]["options"]["renderer_backend"],
+                "awsim",
+            )
             blocker_codes = [entry["code"] for entry in summary["blockers"]]
             self.assertIn("BACKEND_BIN_MISSING", blocker_codes)
             self.assertIn("AUTO_ACQUIRE_DISABLED", blocker_codes)
             self.assertIn("BACKEND_PLATFORM_UNSUPPORTED", blocker_codes)
+            self.assertNotIn("SMOKE_CONFIG_UNRESOLVED", blocker_codes)
 
     def test_workflow_can_auto_acquire_and_run_smoke(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -208,8 +225,13 @@ class RendererBackendWorkflowTests(unittest.TestCase):
             self.assertTrue(summary["smoke"]["executed"])
             self.assertEqual(summary["smoke"]["summary"]["backend"], "awsim")
             self.assertEqual(summary["smoke"]["summary"]["output_comparison"]["status"], "MATCHED")
+            self.assertTrue(summary["smoke"]["planned_effective_config_ready"])
             self.assertTrue(summary["final_selection"]["AWSIM_BIN"])
             self.assertEqual(summary["final_selection"]["AWSIM_RENDERER_MAP"], "Town12")
+            self.assertEqual(
+                summary["commands"]["rerun_smoke"].startswith("python3 scripts/run_renderer_backend_smoke.py"),
+                True,
+            )
             blocker_codes = [entry["code"] for entry in summary["blockers"]]
             self.assertIn("BACKEND_PLATFORM_UNSUPPORTED", blocker_codes)
             self.assertNotIn("BACKEND_BIN_MISSING", blocker_codes)
@@ -314,20 +336,31 @@ class RendererBackendWorkflowTests(unittest.TestCase):
             env_path = output_root / "renderer_backend_workflow.env.sh"
             report_path = output_root / "renderer_backend_workflow_report.md"
             next_step_path = output_root / "renderer_backend_workflow_next_step.sh"
+            smoke_config_path = output_root / "renderer_backend_workflow_smoke_config.json"
+            rerun_smoke_path = output_root / "renderer_backend_workflow_rerun_smoke.sh"
             self.assertTrue(summary_path.exists())
             self.assertTrue(env_path.exists())
             self.assertTrue(report_path.exists())
             self.assertTrue(next_step_path.exists())
+            self.assertTrue(smoke_config_path.exists())
+            self.assertTrue(rerun_smoke_path.exists())
             payload = json.loads(summary_path.read_text(encoding="utf-8"))
             env_text = env_path.read_text(encoding="utf-8")
             report_text = report_path.read_text(encoding="utf-8")
             next_step_text = next_step_path.read_text(encoding="utf-8")
+            smoke_config = json.loads(smoke_config_path.read_text(encoding="utf-8"))
+            rerun_smoke_text = rerun_smoke_path.read_text(encoding="utf-8")
             self.assertEqual(payload["status"], "DRY_RUN_BLOCKED")
+            blocker_codes = [entry["code"] for entry in payload["blockers"]]
             self.assertIn("AWSIM_BIN", env_text)
             self.assertIn("Renderer Backend Workflow Report", report_text)
             self.assertIn("Blockers", report_text)
             self.assertIn("acquire_renderer_backend_package.py", next_step_text)
+            self.assertIn("error", smoke_config)
+            self.assertIn("Workflow smoke config is not ready yet", rerun_smoke_text)
+            self.assertIn("SMOKE_CONFIG_UNRESOLVED", blocker_codes)
             self.assertTrue(os.access(next_step_path, os.X_OK))
+            self.assertTrue(os.access(rerun_smoke_path, os.X_OK))
             self.assertIn("renderer_backend_workflow_summary.json", stdout.getvalue())
 
 

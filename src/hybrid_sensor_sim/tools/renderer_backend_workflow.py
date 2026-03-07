@@ -18,6 +18,9 @@ from hybrid_sensor_sim.tools.renderer_backend_local_setup import (
 from hybrid_sensor_sim.tools.renderer_backend_package_acquire import (
     build_renderer_backend_package_acquire,
 )
+from hybrid_sensor_sim.tools.renderer_backend_smoke import (
+    _build_effective_config as _build_smoke_effective_config,
+)
 from hybrid_sensor_sim.tools.renderer_backend_smoke import main as smoke_main
 
 
@@ -316,6 +319,8 @@ def _build_blockers(
     acquire_summary: dict[str, Any] | None,
     smoke_executed: bool,
     smoke_exit_code: int | None,
+    planned_smoke_config_ready: bool,
+    planned_smoke_config_error: str | None,
     recommended_next_command: str | None,
 ) -> list[dict[str, Any]]:
     blockers: list[dict[str, Any]] = []
@@ -377,6 +382,15 @@ def _build_blockers(
                     "recommended_command": recommended_next_command,
                 }
             )
+    if not planned_smoke_config_ready and planned_smoke_config_error:
+        blockers.append(
+            {
+                "code": "SMOKE_CONFIG_UNRESOLVED",
+                "severity": "blocking",
+                "message": planned_smoke_config_error,
+                "recommended_command": recommended_next_command,
+            }
+        )
     if smoke_executed and smoke_exit_code not in (None, 0):
         blockers.append(
             {
@@ -392,6 +406,7 @@ def _build_blockers(
 def _render_next_step_script(summary: dict[str, Any]) -> str:
     env_path = summary.get("artifacts", {}).get("env_path")
     recommended = summary.get("recommended_next_command")
+    rerun_smoke_command = summary.get("commands", {}).get("rerun_smoke")
     smoke_command = summary.get("commands", {}).get("smoke")
     lines = [
         "#!/usr/bin/env bash",
@@ -404,6 +419,8 @@ def _render_next_step_script(summary: dict[str, Any]) -> str:
     lines.append("")
     if recommended:
         lines.append(recommended)
+    elif rerun_smoke_command:
+        lines.append(rerun_smoke_command)
     elif smoke_command:
         lines.append(smoke_command)
     else:
@@ -515,6 +532,8 @@ def build_renderer_backend_workflow(
     smoke_summary_path = smoke_output_dir / "renderer_backend_smoke_summary.json"
     smoke_markdown_path = smoke_output_dir / "renderer_backend_smoke_report.md"
     smoke_html_path = smoke_output_dir / "renderer_backend_smoke_report.html"
+    workflow_smoke_config_path = workflow_root / "renderer_backend_workflow_smoke_config.json"
+    workflow_rerun_smoke_script_path = workflow_root / "renderer_backend_workflow_rerun_smoke.sh"
 
     smoke_args: list[str] = [
         "--config",
@@ -536,6 +555,29 @@ def build_renderer_backend_workflow(
         smoke_args.extend(["--renderer-map", selected_renderer_map])
     for raw in option_overrides:
         smoke_args.extend(["--set-option", raw])
+    planned_smoke_config_ready = False
+    planned_smoke_config_error: str | None = None
+    planned_forced_options: dict[str, Any] = {}
+    try:
+        smoke_base_config = _load_json(smoke_config_path)
+        planned_effective_config, planned_forced_options = _build_smoke_effective_config(
+            base_config=smoke_base_config,
+            backend=backend,
+            output_dir_override=smoke_output_dir,
+            backend_bin_override=selected_backend_bin,
+            renderer_map_override=selected_renderer_map,
+            option_overrides=option_overrides,
+            repo_root=repo_root,
+        )
+        planned_smoke_config_ready = True
+    except Exception as exc:
+        planned_smoke_config_error = str(exc)
+        issues.append(f"Planned smoke config could not be materialized: {exc}")
+        planned_effective_config = {
+            "error": str(exc),
+            "config_path": str(smoke_config_path),
+            "config_source": smoke_config_source,
+        }
 
     smoke_executed = False
     smoke_exit_code: int | None = None
@@ -594,6 +636,8 @@ def build_renderer_backend_workflow(
         acquire_summary=acquire_summary,
         smoke_executed=smoke_executed,
         smoke_exit_code=smoke_exit_code,
+        planned_smoke_config_ready=planned_smoke_config_ready,
+        planned_smoke_config_error=planned_smoke_config_error,
         recommended_next_command=recommended_next_command,
     )
     return {
@@ -621,6 +665,11 @@ def build_renderer_backend_workflow(
             "config_source": smoke_config_source,
             "output_dir": str(smoke_output_dir),
             "summary_path": str(smoke_summary_path),
+            "planned_effective_config_path": str(workflow_smoke_config_path),
+            "planned_effective_config_ready": planned_smoke_config_ready,
+            "planned_effective_config_error": planned_smoke_config_error,
+            "planned_effective_config": planned_effective_config,
+            "planned_forced_options": planned_forced_options,
             "stdout": smoke_stdout,
             "backend_bin": selected_backend_bin,
             "renderer_map": selected_renderer_map,
@@ -631,6 +680,14 @@ def build_renderer_backend_workflow(
             "smoke": "python3 scripts/run_renderer_backend_smoke.py " + " ".join(
                 f"\"{arg}\"" if " " in arg else arg for arg in smoke_args
             ),
+            "rerun_smoke": (
+                "python3 scripts/run_renderer_backend_smoke.py "
+                f"--config {shlex.quote(str(workflow_smoke_config_path))} "
+                f"--backend {backend} "
+                f"--output-dir {shlex.quote(str(smoke_output_dir))}"
+            )
+            if planned_smoke_config_ready
+            else None,
             "acquire": (
                 "python3 scripts/acquire_renderer_backend_package.py "
                 f"--backend {backend} --setup-summary {resolved_setup_summary_path}"
@@ -641,6 +698,8 @@ def build_renderer_backend_workflow(
             "env_path": str(env_path),
             "report_path": str(report_path),
             "next_step_script_path": str(workflow_root / "renderer_backend_workflow_next_step.sh"),
+            "smoke_config_path": str(workflow_smoke_config_path),
+            "rerun_smoke_script_path": str(workflow_rerun_smoke_script_path),
         },
     }
 
@@ -673,10 +732,29 @@ def main(argv: list[str] | None = None) -> int:
     env_path = Path(summary["artifacts"]["env_path"])
     report_path = Path(summary["artifacts"]["report_path"])
     next_step_script_path = Path(summary["artifacts"]["next_step_script_path"])
+    workflow_smoke_config_path = Path(summary["artifacts"]["smoke_config_path"])
+    workflow_rerun_smoke_script_path = Path(summary["artifacts"]["rerun_smoke_script_path"])
     _write_json(summary_path, summary)
+    _write_json(workflow_smoke_config_path, summary["smoke"]["planned_effective_config"])
     _write_text(env_path, _render_workflow_env_file(summary))
     _write_text(report_path, _render_workflow_markdown_report(summary, summary_path))
     _write_executable_text(next_step_script_path, _render_next_step_script(summary))
+    _write_executable_text(
+        workflow_rerun_smoke_script_path,
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                "# Generated by renderer_backend_workflow.py",
+                "",
+                f"source {shlex.quote(str(env_path))}",
+                summary["commands"]["rerun_smoke"]
+                if summary["commands"]["rerun_smoke"]
+                else "echo 'Workflow smoke config is not ready yet. Check renderer_backend_workflow_summary.json for blockers.'\nexit 1",
+                "",
+            ]
+        ),
+    )
     print(json.dumps(summary, indent=2))
     return 0 if summary["success"] else 1
 
