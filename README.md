@@ -23,6 +23,7 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `docs/hybrid_helios_plan.md`: functional roadmap and risk management.
 - `scripts/setup_helios.sh`: bootstrap helper for cloning/building HELIOS.
 - `scripts/run_renderer_backend_smoke.py`: AWSIM/CARLA smoke launcher that forces direct backend execution plus output-contract inspection.
+- `scripts/discover_renderer_backend_local_env.py`: discovers local HELIOS/AWSIM/CARLA runtime candidates and writes a reusable env file plus readiness summary.
 
 ## Quick start
 
@@ -525,6 +526,18 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - [configs/renderer_backend_smoke.carla.example.json](/Users/seongcheoljeong/Documents/Test/configs/renderer_backend_smoke.carla.example.json): CARLA smoke preset with the same sensor contract surface.
 - [configs/renderer_backend_smoke.awsim.local.example.json](/Users/seongcheoljeong/Documents/Test/configs/renderer_backend_smoke.awsim.local.example.json): env-driven AWSIM local smoke preset using `${HELIOS_BIN}`, `${AWSIM_BIN}`, `${AWSIM_RENDERER_MAP}`.
 - [configs/renderer_backend_smoke.carla.local.example.json](/Users/seongcheoljeong/Documents/Test/configs/renderer_backend_smoke.carla.local.example.json): env-driven CARLA local smoke preset using `${HELIOS_BIN}`, `${CARLA_BIN}`, `${CARLA_RENDERER_MAP}`.
+
+### Local runtime discovery
+
+- `python3 scripts/discover_renderer_backend_local_env.py` writes:
+  - `artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json`
+  - `artifacts/renderer_backend_local_setup/renderer_backend_local.env.sh`
+- the summary reports:
+  - selected `HELIOS_BIN`, `AWSIM_BIN`, `CARLA_BIN`
+  - `helios_ready`, `awsim_ready`, `carla_ready`
+  - `awsim_smoke_ready`, `carla_smoke_ready`
+  - reference repo roots versus executable runtime candidates
+- use `--no-default-search-roots` when you want discovery to only scan explicit `--search-root` inputs plus the repo root.
 
 ## Next implementation target
 
