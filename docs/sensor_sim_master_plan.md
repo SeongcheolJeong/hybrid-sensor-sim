@@ -230,6 +230,7 @@ Primary code references:
   - backend frame manifest generation
   - ingestion profile generation
   - backend sensor bundle summary generation
+  - backend run manifest generation
   - launcher template generation
   - wrapper-first renderer/backend command flow
   - wrapper-level bundle summary consumption for backend-debug/runtime inspection

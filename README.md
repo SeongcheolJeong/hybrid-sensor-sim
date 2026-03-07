@@ -455,6 +455,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - execution plan includes `backend_args_preview` for normalized scene/sensor-mount argument inspection.
   - runtime artifacts:
     - `backend_invocation.json`: normalized backend command + preview snapshot.
+    - `backend_run_manifest.json`: execution-status manifest with `PLANNED_ONLY|PLAN_ERROR|EXECUTION_SUCCEEDED|EXECUTION_FAILED|PROCESS_ERROR|SKIPPED`, failure reason, return code, and artifact pointers.
     - `backend_frame_inputs_manifest.json`: contract frame sources resolved into backend-consumable payload pointers, enriched with `sensor_id` / `data_format` / `attach_to_actor_id`.
       - depth cameras are tagged as `camera_depth_json`.
       - semantic cameras are tagged as `camera_semantic_json`.

@@ -79,16 +79,28 @@ class RendererRuntimeTests(unittest.TestCase):
             self.assertTrue(result.success)
             self.assertIn("renderer_playback_contract", result.artifacts)
             self.assertIn("renderer_execution_plan", result.artifacts)
+            self.assertIn("backend_run_manifest", result.artifacts)
             self.assertEqual(result.metrics.get("renderer_runtime_planned"), 1.0)
             self.assertEqual(result.metrics.get("renderer_execute_requested"), 0.0)
             self.assertEqual(result.metrics.get("renderer_runtime_success"), 1.0)
+            self.assertEqual(result.metrics.get("renderer_backend_run_manifest_written"), 1.0)
+            self.assertEqual(result.metrics.get("renderer_backend_run_planned_only"), 1.0)
 
             contract_path = result.artifacts["renderer_playback_contract"]
             plan = json.loads(
                 result.artifacts["renderer_execution_plan"].read_text(encoding="utf-8")
             )
+            run_manifest = json.loads(
+                result.artifacts["backend_run_manifest"].read_text(encoding="utf-8")
+            )
             self.assertFalse(plan["execute"])
             self.assertIn(str(contract_path), plan["command"])
+            self.assertEqual(run_manifest["status"], "PLANNED_ONLY")
+            self.assertIsNone(run_manifest["return_code"])
+            self.assertEqual(
+                run_manifest["artifacts"]["backend_sensor_bundle_summary"],
+                str(result.artifacts["backend_sensor_bundle_summary"]),
+            )
 
     def test_renderer_runtime_injects_frame_manifest_arg_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -338,11 +350,118 @@ echo "renderer_ok ${contract}"
             self.assertTrue(result.success)
             self.assertIn("renderer_stdout", result.artifacts)
             self.assertIn("renderer_stderr", result.artifacts)
+            self.assertIn("backend_run_manifest", result.artifacts)
             self.assertEqual(result.metrics.get("renderer_execute_requested"), 1.0)
             self.assertEqual(result.metrics.get("renderer_return_code"), 0.0)
             self.assertEqual(result.metrics.get("renderer_runtime_success"), 1.0)
+            self.assertEqual(result.metrics.get("renderer_backend_run_execution_succeeded"), 1.0)
             stdout = result.artifacts["renderer_stdout"].read_text(encoding="utf-8")
+            run_manifest = json.loads(
+                result.artifacts["backend_run_manifest"].read_text(encoding="utf-8")
+            )
             self.assertIn("renderer_ok", stdout)
+            self.assertEqual(run_manifest["status"], "EXECUTION_SUCCEEDED")
+            self.assertEqual(run_manifest["return_code"], 0)
+            self.assertEqual(
+                run_manifest["artifacts"]["renderer_stdout"],
+                str(result.artifacts["renderer_stdout"]),
+            )
+            self.assertEqual(
+                run_manifest["artifacts"]["renderer_stderr"],
+                str(result.artifacts["renderer_stderr"]),
+            )
+
+    def test_renderer_runtime_execution_failure_writes_backend_run_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+
+            fake_renderer = root / "fake_renderer_fail.sh"
+            fake_renderer.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+echo "renderer_fail" >&2
+exit 7
+""",
+                encoding="utf-8",
+            )
+            fake_renderer.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "lidar_postprocess_enabled": False,
+                    "radar_postprocess_enabled": False,
+                    "renderer_bridge_enabled": True,
+                    "renderer_backend": "awsim",
+                    "renderer_execute": True,
+                    "renderer_command": [str(fake_renderer), "--contract", "{contract}"],
+                },
+            )
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+            self.assertTrue(result.artifacts["backend_run_manifest"].exists())
+            self.assertEqual(result.metrics.get("renderer_runtime_success"), 0.0)
+            self.assertIn("backend_run_manifest", result.artifacts)
+            self.assertEqual(result.metrics.get("renderer_return_code"), 7.0)
+            self.assertEqual(result.metrics.get("renderer_backend_run_execution_failed"), 1.0)
+            run_manifest = json.loads(
+                result.artifacts["backend_run_manifest"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(run_manifest["status"], "EXECUTION_FAILED")
+            self.assertEqual(run_manifest["failure_reason"], "NONZERO_EXIT")
+            self.assertEqual(run_manifest["return_code"], 7)
+            self.assertEqual(
+                run_manifest["artifacts"]["renderer_stderr"],
+                str(result.artifacts["renderer_stderr"]),
+            )
+
+    def test_renderer_runtime_plan_error_writes_backend_run_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "lidar_postprocess_enabled": False,
+                    "radar_postprocess_enabled": False,
+                    "renderer_bridge_enabled": True,
+                    "renderer_backend": "carla",
+                    "renderer_execute": False,
+                    "renderer_bin": "renderer-bin",
+                    "renderer_extra_args": "--invalid",
+                },
+            )
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+            self.assertEqual(result.metrics.get("renderer_runtime_success"), 0.0)
+            self.assertIn("backend_run_manifest", result.artifacts)
+            self.assertEqual(result.metrics.get("renderer_backend_run_plan_error"), 1.0)
+            run_manifest = json.loads(
+                result.artifacts["backend_run_manifest"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(run_manifest["status"], "PLAN_ERROR")
+            self.assertEqual(run_manifest["failure_reason"], "BUILD_ERROR")
+            self.assertIn("renderer_extra_args must be a list", run_manifest["message"])
 
     def test_renderer_runtime_uses_backend_default_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -537,6 +656,7 @@ echo "awsim_backend_ok"
             self.assertEqual(result.metrics.get("renderer_backend_wrapper_used"), 1.0)
             self.assertIn("backend_invocation", result.artifacts)
             self.assertIn("backend_wrapper_invocation", result.artifacts)
+            self.assertIn("backend_run_manifest", result.artifacts)
 
             backend_invocation = json.loads(
                 result.artifacts["backend_invocation"].read_text(encoding="utf-8")
@@ -546,6 +666,9 @@ echo "awsim_backend_ok"
 
             wrapper_invocation = json.loads(
                 result.artifacts["backend_wrapper_invocation"].read_text(encoding="utf-8")
+            )
+            run_manifest = json.loads(
+                result.artifacts["backend_run_manifest"].read_text(encoding="utf-8")
             )
             self.assertEqual(wrapper_invocation["wrapper"], "awsim")
             self.assertIn("--ingestion-profile", wrapper_invocation["input_args"])
@@ -562,6 +685,11 @@ echo "awsim_backend_ok"
             self.assertIn(
                 "cam_front:1.0:2.0:3.0:0.1:0.2:0.3",
                 wrapper_invocation["output_args"],
+            )
+            self.assertEqual(run_manifest["status"], "EXECUTION_SUCCEEDED")
+            self.assertEqual(
+                run_manifest["artifacts"]["backend_wrapper_invocation"],
+                str(result.artifacts["backend_wrapper_invocation"]),
             )
 
     def test_renderer_runtime_carla_wrapper_execution_transforms_sensor_mount_json(self) -> None:
