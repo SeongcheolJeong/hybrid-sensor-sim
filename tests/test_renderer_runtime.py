@@ -781,6 +781,9 @@ printf "%s\\n" "$@"
 
             self.assertTrue(result.success)
             self.assertNotIn("backend_wrapper_invocation", result.artifacts)
+            self.assertIn("backend_runner_execution_manifest", result.artifacts)
+            self.assertIn("backend_runner_stdout", result.artifacts)
+            self.assertIn("backend_runner_stderr", result.artifacts)
             self.assertEqual(result.metrics.get("renderer_execute_via_runner_requested"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_runner_execution_used"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_execution_wrapper_used"), 0.0)
@@ -800,6 +803,11 @@ printf "%s\\n" "$@"
             run_manifest = json.loads(
                 result.artifacts["backend_run_manifest"].read_text(encoding="utf-8")
             )
+            runner_execution_manifest = json.loads(
+                result.artifacts["backend_runner_execution_manifest"].read_text(
+                    encoding="utf-8"
+                )
+            )
             self.assertTrue(plan["execute_via_runner"])
             self.assertEqual(plan["command_source"], "backend_wrapper")
             self.assertEqual(plan["execution_command_source"], "backend_runner")
@@ -812,6 +820,15 @@ printf "%s\\n" "$@"
             self.assertEqual(run_manifest["command_source"], "backend_runner")
             self.assertFalse(run_manifest["backend_wrapper_used"])
             self.assertIsNone(run_manifest["artifacts"]["backend_wrapper_invocation"])
+            self.assertEqual(
+                run_manifest["artifacts"]["backend_runner_execution_manifest"],
+                str(result.artifacts["backend_runner_execution_manifest"]),
+            )
+            self.assertEqual(
+                run_manifest["artifacts"]["backend_runner_stdout"],
+                str(result.artifacts["backend_runner_stdout"]),
+            )
+            self.assertEqual(runner_execution_manifest["status"], "EXECUTION_SUCCEEDED")
 
     def test_renderer_runtime_carla_wrapper_execution_transforms_sensor_mount_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

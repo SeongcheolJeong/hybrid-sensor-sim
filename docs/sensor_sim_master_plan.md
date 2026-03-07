@@ -233,6 +233,7 @@ Primary code references:
   - backend run manifest generation
   - backend runner request and direct command generation
   - optional direct backend execution via runner request
+  - standalone backend runner API/CLI execution path
   - launcher template generation
   - wrapper-first renderer/backend command flow
   - wrapper-level bundle summary consumption for backend-debug/runtime inspection

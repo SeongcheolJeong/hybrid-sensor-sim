@@ -1,3 +1,8 @@
+from hybrid_sensor_sim.renderers.backend_runner import (
+    BackendRunnerExecutionResult,
+    build_backend_runner_artifacts,
+    execute_backend_runner_request,
+)
 from hybrid_sensor_sim.renderers.playback_contract import build_renderer_playback_contract
 from hybrid_sensor_sim.renderers.runtime_executor import (
     RendererRuntimeResult,
@@ -5,7 +10,10 @@ from hybrid_sensor_sim.renderers.runtime_executor import (
 )
 
 __all__ = [
+    "BackendRunnerExecutionResult",
+    "build_backend_runner_artifacts",
     "build_renderer_playback_contract",
+    "execute_backend_runner_request",
     "execute_renderer_runtime",
     "RendererRuntimeResult",
 ]

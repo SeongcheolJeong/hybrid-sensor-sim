@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import shlex
+import subprocess
+import sys
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +19,14 @@ _BACKEND_ENV_BIN_KEYS: dict[str, str] = {
     "awsim": "AWSIM_BIN",
     "carla": "CARLA_BIN",
 }
+
+
+@dataclass
+class BackendRunnerExecutionResult:
+    success: bool
+    message: str
+    return_code: int | None = None
+    artifacts: dict[str, Path] = field(default_factory=dict)
 
 
 def _coerce_arg_list(raw: Any) -> list[str]:
@@ -212,3 +224,215 @@ def build_backend_runner_artifacts(
         "renderer_backend_runner_mount_arg_count": float(len(mount_args)),
         "renderer_backend_runner_ingestion_arg_count": float(len(ingestion_args)),
     }
+
+
+def _write_execution_manifest(
+    *,
+    path: Path,
+    request_path: Path,
+    status: str,
+    message: str,
+    return_code: int | None,
+    payload: dict[str, Any] | None,
+    stdout_path: Path | None,
+    stderr_path: Path | None,
+) -> None:
+    manifest = {
+        "request_path": str(request_path),
+        "backend": str(payload.get("backend", "")) if isinstance(payload, dict) else "",
+        "status": status,
+        "message": message,
+        "return_code": return_code,
+        "cwd": str(payload.get("cwd", "")) if isinstance(payload, dict) else "",
+        "runner_mode": str(payload.get("runner_mode", "")) if isinstance(payload, dict) else "",
+        "command": payload.get("command", []) if isinstance(payload, dict) else [],
+        "artifacts": {
+            "backend_runner_stdout": str(stdout_path) if stdout_path else None,
+            "backend_runner_stderr": str(stderr_path) if stderr_path else None,
+        },
+    }
+    path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+
+def execute_backend_runner_request(
+    *,
+    request_path: Path,
+    output_dir: Path | None = None,
+) -> BackendRunnerExecutionResult:
+    resolved_request_path = request_path.expanduser().resolve()
+    runner_output_dir = (
+        output_dir.expanduser().resolve()
+        if output_dir is not None
+        else resolved_request_path.parent
+    )
+    runner_output_dir.mkdir(parents=True, exist_ok=True)
+    execution_manifest_path = runner_output_dir / "backend_runner_execution_manifest.json"
+    stdout_path = runner_output_dir / "backend_runner_stdout.log"
+    stderr_path = runner_output_dir / "backend_runner_stderr.log"
+    artifacts = {
+        "backend_runner_execution_manifest": execution_manifest_path,
+        "backend_runner_stdout": stdout_path,
+        "backend_runner_stderr": stderr_path,
+    }
+
+    try:
+        payload = json.loads(resolved_request_path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        stderr_path.write_text(str(exc), encoding="utf-8")
+        _write_execution_manifest(
+            path=execution_manifest_path,
+            request_path=resolved_request_path,
+            status="REQUEST_ERROR",
+            message=f"Backend runner request read error: {exc}",
+            return_code=None,
+            payload=None,
+            stdout_path=None,
+            stderr_path=stderr_path,
+        )
+        return BackendRunnerExecutionResult(
+            success=False,
+            message=f"Backend runner request read error: {exc}",
+            return_code=None,
+            artifacts=artifacts,
+        )
+    except json.JSONDecodeError as exc:
+        stderr_path.write_text(str(exc), encoding="utf-8")
+        _write_execution_manifest(
+            path=execution_manifest_path,
+            request_path=resolved_request_path,
+            status="REQUEST_ERROR",
+            message=f"Backend runner request decode error: {exc}",
+            return_code=None,
+            payload=None,
+            stdout_path=None,
+            stderr_path=stderr_path,
+        )
+        return BackendRunnerExecutionResult(
+            success=False,
+            message=f"Backend runner request decode error: {exc}",
+            return_code=None,
+            artifacts=artifacts,
+        )
+
+    if not isinstance(payload, dict):
+        stderr_path.write_text("backend runner request payload must be a JSON object", encoding="utf-8")
+        _write_execution_manifest(
+            path=execution_manifest_path,
+            request_path=resolved_request_path,
+            status="REQUEST_ERROR",
+            message="Backend runner request payload must be a JSON object.",
+            return_code=None,
+            payload=None,
+            stdout_path=None,
+            stderr_path=stderr_path,
+        )
+        return BackendRunnerExecutionResult(
+            success=False,
+            message="Backend runner request payload must be a JSON object.",
+            return_code=None,
+            artifacts=artifacts,
+        )
+
+    command = payload.get("command")
+    if not isinstance(command, list) or not command:
+        stderr_path.write_text("backend runner request command must be a non-empty list", encoding="utf-8")
+        _write_execution_manifest(
+            path=execution_manifest_path,
+            request_path=resolved_request_path,
+            status="REQUEST_ERROR",
+            message="Backend runner request command must be a non-empty list.",
+            return_code=None,
+            payload=payload,
+            stdout_path=None,
+            stderr_path=stderr_path,
+        )
+        return BackendRunnerExecutionResult(
+            success=False,
+            message="Backend runner request command must be a non-empty list.",
+            return_code=None,
+            artifacts=artifacts,
+        )
+
+    cwd = Path(str(payload.get("cwd", "."))).expanduser()
+    if not cwd.is_absolute():
+        cwd = (resolved_request_path.parent / cwd).resolve()
+    command_tokens = [str(item) for item in command]
+
+    try:
+        proc = subprocess.run(  # noqa: S603
+            command_tokens,
+            cwd=str(cwd),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except OSError as exc:
+        stderr_path.write_text(str(exc), encoding="utf-8")
+        _write_execution_manifest(
+            path=execution_manifest_path,
+            request_path=resolved_request_path,
+            status="PROCESS_ERROR",
+            message=f"Backend runner process error: {exc}",
+            return_code=-1,
+            payload=payload,
+            stdout_path=None,
+            stderr_path=stderr_path,
+        )
+        return BackendRunnerExecutionResult(
+            success=False,
+            message=f"Backend runner process error: {exc}",
+            return_code=-1,
+            artifacts=artifacts,
+        )
+
+    stdout_path.write_text(proc.stdout, encoding="utf-8")
+    stderr_path.write_text(proc.stderr, encoding="utf-8")
+    success = proc.returncode == 0
+    status = "EXECUTION_SUCCEEDED" if success else "EXECUTION_FAILED"
+    message = (
+        "Backend runner execution completed."
+        if success
+        else f"Backend runner command failed with exit code {proc.returncode}."
+    )
+    _write_execution_manifest(
+        path=execution_manifest_path,
+        request_path=resolved_request_path,
+        status=status,
+        message=message,
+        return_code=proc.returncode,
+        payload=payload,
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+    )
+    return BackendRunnerExecutionResult(
+        success=success,
+        message=message,
+        return_code=proc.returncode,
+        artifacts=artifacts,
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Execute a backend runner request JSON.")
+    parser.add_argument("request_path", help="Path to backend_runner_request.json")
+    parser.add_argument(
+        "--output-dir",
+        help="Directory for backend_runner execution artifacts. Defaults to request directory.",
+    )
+    args = parser.parse_args(argv)
+    output_dir = Path(args.output_dir).expanduser() if args.output_dir else None
+    result = execute_backend_runner_request(
+        request_path=Path(args.request_path),
+        output_dir=output_dir,
+    )
+    stream = sys.stdout if result.success else sys.stderr
+    print(result.message, file=stream)
+    if result.success:
+        return 0
+    if result.return_code is not None and result.return_code >= 0:
+        return result.return_code
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

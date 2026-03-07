@@ -8,7 +8,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from hybrid_sensor_sim.renderers.backend_runner import build_backend_runner_artifacts
+from hybrid_sensor_sim.renderers.backend_runner import (
+    build_backend_runner_artifacts,
+    execute_backend_runner_request,
+)
 
 _BACKEND_PRESETS: dict[str, dict[str, str]] = {
     "awsim": {
@@ -387,9 +390,12 @@ def _write_backend_run_manifest(
     launcher_template_path: Path | None,
     runner_request_path: Path | None,
     direct_run_command_path: Path | None,
+    runner_execution_manifest_path: Path | None,
     wrapper_dump_path: Path | None,
     stdout_path: Path | None,
     stderr_path: Path | None,
+    runner_stdout_path: Path | None,
+    runner_stderr_path: Path | None,
     frame_count: int,
     sensor_bindings: int,
     complete_frame_count: int,
@@ -423,9 +429,14 @@ def _write_backend_run_manifest(
             "backend_launcher_template": str(launcher_template_path) if launcher_template_path else None,
             "backend_runner_request": str(runner_request_path) if runner_request_path else None,
             "backend_direct_run_command": str(direct_run_command_path) if direct_run_command_path else None,
+            "backend_runner_execution_manifest": (
+                str(runner_execution_manifest_path) if runner_execution_manifest_path else None
+            ),
             "backend_wrapper_invocation": str(wrapper_dump_path) if wrapper_dump_path else None,
             "renderer_stdout": str(stdout_path) if stdout_path else None,
             "renderer_stderr": str(stderr_path) if stderr_path else None,
+            "backend_runner_stdout": str(runner_stdout_path) if runner_stdout_path else None,
+            "backend_runner_stderr": str(runner_stderr_path) if runner_stderr_path else None,
         },
     }
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -1427,6 +1438,9 @@ def execute_renderer_runtime(
         encoding="utf-8",
     )
     backend_run_manifest_path = runtime_dir / "backend_run_manifest.json"
+    runner_execution_manifest_path: Path | None = None
+    runner_stdout_path: Path | None = None
+    runner_stderr_path: Path | None = None
     artifacts: dict[str, Path] = {
         "renderer_execution_plan": plan_path,
         "backend_invocation": backend_invocation_path,
@@ -1485,9 +1499,12 @@ def execute_renderer_runtime(
             launcher_template_path=launcher_template_path,
             runner_request_path=runner_request_path,
             direct_run_command_path=direct_run_command_path,
+            runner_execution_manifest_path=None,
             wrapper_dump_path=wrapper_dump_path if execution_backend_wrapper_used else None,
             stdout_path=None,
             stderr_path=None,
+            runner_stdout_path=None,
+            runner_stderr_path=None,
             frame_count=frame_count,
             sensor_bindings=sensor_bindings,
             complete_frame_count=complete_frame_count,
@@ -1522,9 +1539,12 @@ def execute_renderer_runtime(
             launcher_template_path=launcher_template_path,
             runner_request_path=runner_request_path,
             direct_run_command_path=direct_run_command_path,
+            runner_execution_manifest_path=None,
             wrapper_dump_path=wrapper_dump_path if execution_backend_wrapper_used else None,
             stdout_path=None,
             stderr_path=None,
+            runner_stdout_path=None,
+            runner_stderr_path=None,
             frame_count=frame_count,
             sensor_bindings=sensor_bindings,
             complete_frame_count=complete_frame_count,
@@ -1559,9 +1579,12 @@ def execute_renderer_runtime(
             launcher_template_path=launcher_template_path,
             runner_request_path=runner_request_path,
             direct_run_command_path=direct_run_command_path,
+            runner_execution_manifest_path=None,
             wrapper_dump_path=wrapper_dump_path if execution_backend_wrapper_used else None,
             stdout_path=None,
             stderr_path=None,
+            runner_stdout_path=None,
+            runner_stderr_path=None,
             frame_count=frame_count,
             sensor_bindings=sensor_bindings,
             complete_frame_count=complete_frame_count,
@@ -1578,6 +1601,108 @@ def execute_renderer_runtime(
 
     stdout_path = runtime_dir / "renderer_stdout.log"
     stderr_path = runtime_dir / "renderer_stderr.log"
+    if execution_command_source == "backend_runner" and runner_request_path is not None:
+        runner_result = execute_backend_runner_request(
+            request_path=runner_request_path,
+            output_dir=runtime_dir,
+        )
+        runner_execution_manifest_path = runner_result.artifacts.get(
+            "backend_runner_execution_manifest"
+        )
+        runner_stdout_path = runner_result.artifacts.get("backend_runner_stdout")
+        runner_stderr_path = runner_result.artifacts.get("backend_runner_stderr")
+        artifacts.update(runner_result.artifacts)
+        if runner_stdout_path is not None:
+            artifacts["renderer_stdout"] = runner_stdout_path
+            stdout_path = runner_stdout_path
+        if runner_stderr_path is not None:
+            artifacts["renderer_stderr"] = runner_stderr_path
+            stderr_path = runner_stderr_path
+        if runner_result.return_code is not None:
+            metrics["renderer_return_code"] = float(runner_result.return_code)
+        if not runner_result.success:
+            status = "PROCESS_ERROR" if runner_result.return_code == -1 else "EXECUTION_FAILED"
+            failure_reason = "PROCESS_ERROR" if runner_result.return_code == -1 else "NONZERO_EXIT"
+            _write_backend_run_manifest(
+                path=backend_run_manifest_path,
+                backend=backend,
+                execute=execute,
+                cwd=cwd,
+                command=execution_command,
+                command_source=execution_command_source,
+                backend_wrapper_used=execution_backend_wrapper_used,
+                status=status,
+                message=runner_result.message,
+                failure_reason=failure_reason,
+                return_code=runner_result.return_code,
+                plan_path=plan_path,
+                backend_invocation_path=backend_invocation_path,
+                frame_manifest_path=frame_manifest_path,
+                ingestion_profile_path=ingestion_profile_path,
+                bundle_summary_path=bundle_summary_path,
+                launcher_template_path=launcher_template_path,
+                runner_request_path=runner_request_path,
+                direct_run_command_path=direct_run_command_path,
+                runner_execution_manifest_path=runner_execution_manifest_path,
+                wrapper_dump_path=None,
+                stdout_path=stdout_path if runner_stdout_path is not None else None,
+                stderr_path=stderr_path if runner_stderr_path is not None else None,
+                runner_stdout_path=runner_stdout_path,
+                runner_stderr_path=runner_stderr_path,
+                frame_count=frame_count,
+                sensor_bindings=sensor_bindings,
+                complete_frame_count=complete_frame_count,
+                ingestion_entry_count=ingestion_entry_count,
+                launcher_arg_count=launcher_arg_count,
+            )
+            metrics.update(_backend_run_status_metrics(status))
+            return RendererRuntimeResult(
+                success=False,
+                message=runner_result.message,
+                artifacts=artifacts,
+                metrics=metrics,
+            )
+
+        _write_backend_run_manifest(
+            path=backend_run_manifest_path,
+            backend=backend,
+            execute=execute,
+            cwd=cwd,
+            command=execution_command,
+            command_source=execution_command_source,
+            backend_wrapper_used=execution_backend_wrapper_used,
+            status="EXECUTION_SUCCEEDED",
+            message=runner_result.message,
+            failure_reason=None,
+            return_code=runner_result.return_code,
+            plan_path=plan_path,
+            backend_invocation_path=backend_invocation_path,
+            frame_manifest_path=frame_manifest_path,
+            ingestion_profile_path=ingestion_profile_path,
+            bundle_summary_path=bundle_summary_path,
+            launcher_template_path=launcher_template_path,
+            runner_request_path=runner_request_path,
+            direct_run_command_path=direct_run_command_path,
+            runner_execution_manifest_path=runner_execution_manifest_path,
+            wrapper_dump_path=None,
+            stdout_path=stdout_path if runner_stdout_path is not None else None,
+            stderr_path=stderr_path if runner_stderr_path is not None else None,
+            runner_stdout_path=runner_stdout_path,
+            runner_stderr_path=runner_stderr_path,
+            frame_count=frame_count,
+            sensor_bindings=sensor_bindings,
+            complete_frame_count=complete_frame_count,
+            ingestion_entry_count=ingestion_entry_count,
+            launcher_arg_count=launcher_arg_count,
+        )
+        metrics.update(_backend_run_status_metrics("EXECUTION_SUCCEEDED"))
+        return RendererRuntimeResult(
+            success=True,
+            message=runner_result.message,
+            artifacts=artifacts,
+            metrics=metrics,
+        )
+
     run_env = None
     if execution_backend_wrapper_used:
         run_env = dict(os.environ)
@@ -1619,6 +1744,7 @@ def execute_renderer_runtime(
                 launcher_template_path=launcher_template_path,
                 runner_request_path=runner_request_path,
                 direct_run_command_path=direct_run_command_path,
+                runner_execution_manifest_path=None,
                 wrapper_dump_path=(
                     wrapper_dump_path
                     if execution_backend_wrapper_used and wrapper_dump_path.exists()
@@ -1626,6 +1752,8 @@ def execute_renderer_runtime(
                 ),
                 stdout_path=stdout_path,
                 stderr_path=stderr_path,
+                runner_stdout_path=None,
+                runner_stderr_path=None,
                 frame_count=frame_count,
                 sensor_bindings=sensor_bindings,
                 complete_frame_count=complete_frame_count,
@@ -1665,6 +1793,7 @@ def execute_renderer_runtime(
             launcher_template_path=launcher_template_path,
             runner_request_path=runner_request_path,
             direct_run_command_path=direct_run_command_path,
+            runner_execution_manifest_path=None,
             wrapper_dump_path=(
                 wrapper_dump_path
                 if execution_backend_wrapper_used and wrapper_dump_path.exists()
@@ -1672,6 +1801,8 @@ def execute_renderer_runtime(
             ),
             stdout_path=None,
             stderr_path=stderr_path,
+            runner_stdout_path=None,
+            runner_stderr_path=None,
             frame_count=frame_count,
             sensor_bindings=sensor_bindings,
             complete_frame_count=complete_frame_count,
@@ -1706,11 +1837,14 @@ def execute_renderer_runtime(
         launcher_template_path=launcher_template_path,
         runner_request_path=runner_request_path,
         direct_run_command_path=direct_run_command_path,
+        runner_execution_manifest_path=None,
         wrapper_dump_path=(
             wrapper_dump_path if execution_backend_wrapper_used and wrapper_dump_path.exists() else None
         ),
         stdout_path=stdout_path,
         stderr_path=stderr_path,
+        runner_stdout_path=None,
+        runner_stderr_path=None,
         frame_count=frame_count,
         sensor_bindings=sensor_bindings,
         complete_frame_count=complete_frame_count,
