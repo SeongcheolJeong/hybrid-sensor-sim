@@ -374,6 +374,7 @@ def build_renderer_playback_contract(
                 "detector_params": config.radar.detector.to_dict(),
                 "estimator_params": config.radar.estimator.to_dict(),
                 "tracking_params": config.radar.tracking.to_dict(),
+                "fidelity": config.radar.fidelity.to_dict(),
                 "behaviors": [behavior.to_dict() for behavior in config.radar.behaviors],
             },
         },

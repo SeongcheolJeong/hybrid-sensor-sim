@@ -289,6 +289,15 @@ class SensorConfigTests(unittest.TestCase):
                     "tracks": True,
                     "max_tracks": 12,
                 },
+                "radar_fidelity": {
+                    "level": "high",
+                    "multipath": True,
+                    "multipath_bounces": 2,
+                    "coherence_factor": 0.35,
+                    "enable_micro_doppler": True,
+                    "near_clipping_distance": 1.2,
+                    "sub_ray_angular_resolution": 0.01,
+                },
                 "sensor_behaviors": {
                     "radar": [{"point_at": {"id": "ped_1"}}],
                 },
@@ -447,6 +456,13 @@ class SensorConfigTests(unittest.TestCase):
         self.assertAlmostEqual(config.radar.estimator.range_accuracy_regions[0].range_min_m, 50.0)
         self.assertTrue(config.radar.tracking.output_tracks)
         self.assertEqual(config.radar.tracking.max_tracks, 12)
+        self.assertEqual(config.radar.fidelity.level, "HIGH")
+        self.assertTrue(config.radar.fidelity.multipath_enabled)
+        self.assertEqual(config.radar.fidelity.multipath_bounces, 2)
+        self.assertAlmostEqual(config.radar.fidelity.coherence_factor, 0.35)
+        self.assertTrue(config.radar.fidelity.enable_micro_doppler)
+        self.assertAlmostEqual(config.radar.fidelity.near_clipping_distance_m, 1.2)
+        self.assertAlmostEqual(config.radar.fidelity.sub_ray_angular_resolution_deg, 0.01 * 180.0 / 3.141592653589793)
         self.assertEqual(config.radar.behaviors[0].target_actor_id, "ped_1")
 
     def test_renderer_playback_contract_uses_typed_sensor_config(self) -> None:
@@ -546,6 +562,12 @@ class SensorConfigTests(unittest.TestCase):
                 "radar_tracking_params": {
                     "tracks": True,
                     "max_tracks": 6,
+                },
+                "radar_fidelity": {
+                    "multipath": True,
+                    "multipath_bounces": 3,
+                    "coherence_factor": 0.2,
+                    "enable_micro_doppler": True,
                 },
                 "sensor_behaviors": {
                     "radar": [{"point_at": {"id": "vehicle_9"}}],
@@ -662,6 +684,9 @@ class SensorConfigTests(unittest.TestCase):
         )
         self.assertTrue(contract["sensor_setup"]["radar"]["tracking_params"]["tracks"])
         self.assertEqual(contract["sensor_setup"]["radar"]["tracking_params"]["max_tracks"], 6)
+        self.assertTrue(contract["sensor_setup"]["radar"]["fidelity"]["multipath"])
+        self.assertEqual(contract["sensor_setup"]["radar"]["fidelity"]["multipath_bounces"], 3)
+        self.assertTrue(contract["sensor_setup"]["radar"]["fidelity"]["enable_micro_doppler"])
         self.assertEqual(
             contract["sensor_setup"]["radar"]["behaviors"][0]["point_at"]["id"],
             "vehicle_9",

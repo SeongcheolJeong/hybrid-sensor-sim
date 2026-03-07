@@ -999,6 +999,97 @@ EOF
             self.assertIn("confidence", preview["tracks"][0])
             self.assertIn("source_target_id", preview["tracks"][0])
 
+    def test_radar_preview_reports_multipath_and_micro_doppler(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+40.0 0.0 0.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "lidar_postprocess_enabled": False,
+                    "radar_postprocess_enabled": True,
+                    "radar_clutter": "none",
+                    "radar_false_target_count": 0,
+                    "radar_max_targets": 8,
+                    "radar_point_rcs_dbsm": [16.0],
+                    "radar_detector_params": {
+                        "minimum_snr_db": -40.0,
+                        "noise_variance_dbw": -95.0,
+                        "noise_performance": {
+                            "target_detectability": {
+                                "probability_detection": 0.99,
+                                "target": {
+                                    "range": 200.0,
+                                    "radar_cross_section": 10.0,
+                                },
+                            },
+                        },
+                    },
+                    "radar_fidelity": {
+                        "multipath": True,
+                        "multipath_bounces": 2,
+                        "coherence_factor": 0.15,
+                        "enable_micro_doppler": True,
+                    },
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+            self.assertTrue(result.success)
+
+            preview = json.loads(
+                result.artifacts["radar_targets_preview"].read_text(encoding="utf-8")
+            )
+            self.assertGreater(preview["multipath_target_count"], 0)
+            multipath_targets = [
+                target
+                for target in preview["targets"]
+                if target["measurement_source"] == "MULTIPATH"
+            ]
+            self.assertTrue(multipath_targets)
+            self.assertEqual(multipath_targets[0]["ground_truth_detection_type"], "MULTIPATH")
+            self.assertGreater(multipath_targets[0]["path_length_offset_m"], 0.0)
+            self.assertGreaterEqual(multipath_targets[0]["ground_truth_hit_index"], 1)
+            self.assertIn(multipath_targets[0]["multipath_surface"], {"GROUND_PLANE", "VERTICAL_PLANE"})
+            self.assertNotEqual(multipath_targets[0]["micro_doppler_velocity_offset_mps"], 0.0)
+            self.assertEqual(result.metrics.get("radar_multipath_enabled"), 1.0)
+            self.assertGreater(result.metrics.get("radar_multipath_target_count"), 0.0)
+            self.assertEqual(result.metrics.get("radar_micro_doppler_enabled"), 1.0)
+            self.assertGreater(result.metrics.get("radar_micro_doppler_target_count"), 0.0)
+
     def test_lidar_trajectory_sweep_applies_motion_compensation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -863,6 +863,28 @@ class RadarTrackingConfig:
 
 
 @dataclass(frozen=True)
+class RadarFidelityConfig:
+    level: str = "LOW"
+    multipath_enabled: bool = False
+    multipath_bounces: int = 3
+    coherence_factor: float = 0.0
+    enable_micro_doppler: bool = False
+    near_clipping_distance_m: float = 0.0
+    sub_ray_angular_resolution_deg: float = 0.0
+
+    def to_dict(self) -> dict[str, float | int | bool | str]:
+        return {
+            "level": self.level,
+            "multipath": self.multipath_enabled,
+            "multipath_bounces": self.multipath_bounces,
+            "coherence_factor": self.coherence_factor,
+            "enable_micro_doppler": self.enable_micro_doppler,
+            "near_clipping_distance": self.near_clipping_distance_m,
+            "sub_ray_angular_resolution_deg": self.sub_ray_angular_resolution_deg,
+        }
+
+
+@dataclass(frozen=True)
 class RadarSystemConfig:
     frame_rate_hz: float = 10.0
     transmit_power_dbm: float = 55.0
@@ -920,6 +942,7 @@ class RadarSensorConfig:
     detector: RadarDetectorConfig = field(default_factory=RadarDetectorConfig)
     estimator: RadarEstimatorConfig = field(default_factory=RadarEstimatorConfig)
     tracking: RadarTrackingConfig = field(default_factory=RadarTrackingConfig)
+    fidelity: RadarFidelityConfig = field(default_factory=RadarFidelityConfig)
     extrinsics: SensorExtrinsicsConfig = field(default_factory=SensorExtrinsicsConfig)
     behaviors: list[SensorBehaviorConfig] = field(default_factory=list)
 
@@ -949,6 +972,7 @@ class RadarSensorConfig:
             "detector_params": self.detector.to_dict(),
             "estimator_params": self.estimator.to_dict(),
             "tracking_params": self.tracking.to_dict(),
+            "fidelity": self.fidelity.to_dict(),
             "extrinsics": self.extrinsics.to_dict(),
             "behaviors": [behavior.to_dict() for behavior in self.behaviors],
         }
@@ -1891,6 +1915,49 @@ def _parse_radar_tracking(options: Mapping[str, Any]) -> RadarTrackingConfig:
     )
 
 
+def _parse_radar_fidelity(options: Mapping[str, Any]) -> RadarFidelityConfig:
+    sections = _radar_model_sections(options)
+    raw = _as_dict(options.get("radar_fidelity"))
+    fidelity = raw if raw else _as_dict(_as_dict(options.get("radar_model")).get("fidelity"))
+    raytracing = _as_dict(fidelity.get("raytracing"))
+    return RadarFidelityConfig(
+        level=_as_str(fidelity.get("level", options.get("radar_fidelity_level")), "LOW").upper(),
+        multipath_enabled=_as_bool(
+            fidelity.get("multipath", options.get("radar_multipath_enabled")),
+            False,
+        ),
+        multipath_bounces=max(
+            1,
+            _as_int(
+                fidelity.get("multipath_bounces", options.get("radar_multipath_bounces")),
+                3,
+            ),
+        ),
+        coherence_factor=_as_float(
+            fidelity.get("coherence_factor", options.get("radar_coherence_factor")),
+            0.0,
+        ),
+        enable_micro_doppler=_as_bool(
+            fidelity.get("enable_micro_doppler", options.get("radar_enable_micro_doppler")),
+            False,
+        ),
+        near_clipping_distance_m=_as_float(
+            fidelity.get("near_clipping_distance", options.get("radar_near_clipping_distance_m")),
+            0.0,
+        ),
+        sub_ray_angular_resolution_deg=_as_float(
+            options.get("radar_sub_ray_angular_resolution_deg"),
+            _as_radians_to_deg(
+                fidelity.get(
+                    "sub_ray_angular_resolution",
+                    raytracing.get("sub_ray_angular_resolution"),
+                ),
+                0.0,
+            ),
+        ),
+    )
+
+
 def build_sensor_sim_config(
     *,
     sensor_profile: str = "default",
@@ -1903,6 +1970,7 @@ def build_sensor_sim_config(
     radar_detector = _parse_radar_detector(data)
     radar_estimator = _parse_radar_estimator(data)
     radar_tracking = _parse_radar_tracking(data)
+    radar_fidelity = _parse_radar_fidelity(data)
     radar_field_of_view = radar_sections["field_of_view"]
 
     return SensorSimConfig(
@@ -2060,6 +2128,7 @@ def build_sensor_sim_config(
             detector=radar_detector,
             estimator=radar_estimator,
             tracking=radar_tracking,
+            fidelity=radar_fidelity,
             extrinsics=_parse_extrinsics(_as_dict(data.get("radar_extrinsics"))),
             behaviors=_parse_behaviors(data, "radar"),
         ),

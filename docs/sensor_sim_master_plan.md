@@ -258,6 +258,13 @@ Primary code references:
     - `probability_false_alarm`
   - global/per-region accuracy surface
   - optional track output mode
+  - stage-1 synthetic multipath:
+    - `fidelity.multipath`
+    - `fidelity.multipath_bounces`
+    - `coherence_factor`
+    - multipath ghost detections with bounce metadata
+  - micro-doppler velocity hook:
+    - `enable_micro_doppler`
   - trajectory sweep preview
   - ego-velocity-based radial velocity estimation
 
@@ -290,9 +297,9 @@ Primary code references:
   - richer antenna/directivity tables beyond current HPBW approximation
   - deeper datasheet calibration against real devices
   - track lifecycle/filtering beyond one-frame track projection
-  - multipath physics
+  - geometry-aware multipath physics beyond current synthetic stage-1 model
   - adaptive sampling
-  - micro-doppler
+  - richer micro-doppler beyond current velocity hook
   - hardware ray-tracing equivalent path
 
 ## Gap Assessment
@@ -317,7 +324,7 @@ Primary code references:
 | Lidar signal/intensity | very weak | reflectivity, SNR/intensity units, returns, weather | P1 |
 | Lidar multipath/material model | missing | HELIOS-backed or local hybrid path | P2 |
 | Radar beam/detectability | typed HPBW + detectability + false alarm calibration implemented | richer antenna tables + calibration | P1 |
-| Radar multipath/tracking | track output + region accuracies implemented, multipath still missing | multipath + stronger tracker | P2 |
+| Radar multipath/tracking | track output + region accuracies + synthetic multipath implemented | geometry-aware multipath + stronger tracker | P2 |
 | Ground truth | partial metadata only | semantic/material/component labels in outputs | P1 |
 | Coverage metrics | missing | camera/lidar/radar target coverage stats | P1 |
 | Runtime integration | strong | keep extending, do not make this the primary bottleneck | P2 |

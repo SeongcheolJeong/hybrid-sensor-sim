@@ -304,9 +304,26 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - tracking params:
     - `radar_tracking_params.tracks`
     - `radar_tracking_params.max_tracks`
+  - fidelity params:
+    - `radar_fidelity.level`
+    - `radar_fidelity.multipath`
+    - `radar_fidelity.multipath_bounces`
+    - `radar_fidelity.coherence_factor`
+    - `radar_fidelity.enable_micro_doppler`
+    - `radar_fidelity.near_clipping_distance`
+    - `radar_fidelity.sub_ray_angular_resolution`
   - ego-motion velocity source: `radar_use_ego_velocity_from_trajectory`
   - emits `radar_targets_preview.json`.
-  - preview includes `snr_db`, `detection_probability`, `antenna_gain_db`, accuracy-region indices, and optional `tracks`.
+  - preview includes `snr_db`, `detection_probability`, `antenna_gain_db`, accuracy-region indices, optional `tracks`, and stage-1 synthetic radar multipath metadata:
+    - `measurement_source=DETECTION|MULTIPATH|FALSE_ALARM`
+    - `ground_truth_detection_type`
+    - `ground_truth_hit_index`
+    - `ground_truth_last_bounce_index`
+    - `path_length_offset_m`
+    - `multipath_surface`
+    - `multipath_bounce_count`
+    - `coherence_factor`
+    - `micro_doppler_velocity_offset_mps`
 - Radar trajectory sweep preview:
   - enable `radar_trajectory_sweep_enabled=true`
   - set `radar_trajectory_sweep_frames` and `radar_preview_targets_per_frame`
@@ -314,7 +331,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `radar_extrinsics_auto_use_position=none|xy|xyz`
     - `radar_extrinsics_auto_use_orientation=true|false`
     - `radar_extrinsics_auto_offsets`
-  - emits `radar_targets_trajectory_sweep.json` with per-frame `targets_preview` and optional `tracks_preview`.
+  - emits `radar_targets_trajectory_sweep.json` with per-frame `targets_preview`, optional `tracks_preview`, and `multipath_target_count`.
 
 ## Renderer bridge notes
 
