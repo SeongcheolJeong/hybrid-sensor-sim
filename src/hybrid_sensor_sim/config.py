@@ -329,6 +329,70 @@ class CameraLensConfig:
 
 
 @dataclass(frozen=True)
+class ScalarRangeConfig:
+    min_value: float = 0.0
+    max_value: float = 1.0
+
+    def to_dict(self) -> dict[str, float]:
+        return {
+            "min": self.min_value,
+            "max": self.max_value,
+        }
+
+
+@dataclass(frozen=True)
+class RangeScalePointConfig:
+    input_value: float
+    output_value: float
+
+    def to_dict(self) -> dict[str, float]:
+        return {
+            "input": self.input_value,
+            "output": self.output_value,
+        }
+
+
+@dataclass(frozen=True)
+class LidarIntensityConfig:
+    units: str = "REFLECTIVITY"
+    input_range: ScalarRangeConfig = field(default_factory=ScalarRangeConfig)
+    output_scale: ScalarRangeConfig = field(
+        default_factory=lambda: ScalarRangeConfig(min_value=0.0, max_value=255.0)
+    )
+    range_scale_map: list[RangeScalePointConfig] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "units": self.units,
+            "range": self.input_range.to_dict(),
+            "scale": self.output_scale.to_dict(),
+            "range_scale_map": [point.to_dict() for point in self.range_scale_map],
+        }
+
+
+@dataclass(frozen=True)
+class LidarPhysicsModelConfig:
+    reflectivity_coefficient: float = 1.0
+    atmospheric_attenuation_rate: float = 0.003
+    ambient_power_dbw: float = -30.0
+    signal_photon_scale: float = 10000.0
+    ambient_photon_scale: float = 1000.0
+    minimum_detection_snr_db: float = -20.0
+    return_all_hits: bool = False
+
+    def to_dict(self) -> dict[str, float | bool]:
+        return {
+            "reflectivity_coefficient": self.reflectivity_coefficient,
+            "atmospheric_attenuation_rate": self.atmospheric_attenuation_rate,
+            "ambient_power_dbw": self.ambient_power_dbw,
+            "signal_photon_scale": self.signal_photon_scale,
+            "ambient_photon_scale": self.ambient_photon_scale,
+            "minimum_detection_snr_db": self.minimum_detection_snr_db,
+            "return_all_hits": self.return_all_hits,
+        }
+
+
+@dataclass(frozen=True)
 class CameraRollingShutterConfig:
     enabled: bool = False
     col_delay_ns: float = 0.0
@@ -441,6 +505,8 @@ class LidarSensorConfig:
     multi_scan_path_deg: list[list[float]] = field(default_factory=list)
     range_min_m: float = 0.0
     range_max_m: float = 200.0
+    intensity: LidarIntensityConfig = field(default_factory=LidarIntensityConfig)
+    physics_model: LidarPhysicsModelConfig = field(default_factory=LidarPhysicsModelConfig)
     extrinsics: SensorExtrinsicsConfig = field(default_factory=SensorExtrinsicsConfig)
     behaviors: list[SensorBehaviorConfig] = field(default_factory=list)
 
@@ -477,6 +543,8 @@ class LidarSensorConfig:
                 "min": self.range_min_m,
                 "max": self.range_max_m,
             },
+            "intensity": self.intensity.to_dict(),
+            "physics_model": self.physics_model.to_dict(),
             "extrinsics": self.extrinsics.to_dict(),
             "behaviors": [behavior.to_dict() for behavior in self.behaviors],
         }
@@ -726,6 +794,72 @@ def _parse_camera_rolling_shutter(options: Mapping[str, Any]) -> CameraRollingSh
     )
 
 
+def _parse_lidar_intensity(options: Mapping[str, Any]) -> LidarIntensityConfig:
+    raw = _as_dict(options.get("lidar_intensity"))
+    raw_range = _as_dict(raw.get("range"))
+    raw_scale = _as_dict(raw.get("scale"))
+    range_scale_map: list[RangeScalePointConfig] = []
+    for point in _as_list(raw.get("range_scale_map", options.get("lidar_intensity_range_scale_map"))):
+        point_raw = _as_dict(point)
+        if not point_raw:
+            continue
+        range_scale_map.append(
+            RangeScalePointConfig(
+                input_value=_as_float(point_raw.get("input"), 0.0),
+                output_value=_as_float(point_raw.get("output"), 0.0),
+            )
+        )
+    return LidarIntensityConfig(
+        units=_as_str(raw.get("units", options.get("lidar_intensity_units")), "REFLECTIVITY").upper(),
+        input_range=ScalarRangeConfig(
+            min_value=_as_float(raw_range.get("min", options.get("lidar_intensity_range_min")), 0.0),
+            max_value=_as_float(raw_range.get("max", options.get("lidar_intensity_range_max")), 1.0),
+        ),
+        output_scale=ScalarRangeConfig(
+            min_value=_as_float(raw_scale.get("min", options.get("lidar_intensity_scale_min")), 0.0),
+            max_value=_as_float(raw_scale.get("max", options.get("lidar_intensity_scale_max")), 255.0),
+        ),
+        range_scale_map=range_scale_map,
+    )
+
+
+def _parse_lidar_physics_model(options: Mapping[str, Any]) -> LidarPhysicsModelConfig:
+    raw = _as_dict(options.get("lidar_physics_model"))
+    return LidarPhysicsModelConfig(
+        reflectivity_coefficient=_as_float(
+            raw.get("reflectivity_coefficient", options.get("lidar_reflectivity_coefficient")),
+            1.0,
+        ),
+        atmospheric_attenuation_rate=_as_float(
+            raw.get(
+                "atmospheric_attenuation_rate",
+                options.get("lidar_atmospheric_attenuation_rate"),
+            ),
+            0.003,
+        ),
+        ambient_power_dbw=_as_float(
+            raw.get("ambient_power_dbw", options.get("lidar_ambient_power_dbw")),
+            -30.0,
+        ),
+        signal_photon_scale=_as_float(
+            raw.get("signal_photon_scale", options.get("lidar_signal_photon_scale")),
+            10000.0,
+        ),
+        ambient_photon_scale=_as_float(
+            raw.get("ambient_photon_scale", options.get("lidar_ambient_photon_scale")),
+            1000.0,
+        ),
+        minimum_detection_snr_db=_as_float(
+            raw.get("minimum_detection_snr_db", options.get("lidar_minimum_detection_snr_db")),
+            -20.0,
+        ),
+        return_all_hits=_as_bool(
+            raw.get("return_all_hits", options.get("lidar_return_all_hits")),
+            False,
+        ),
+    )
+
+
 def _parse_behaviors(options: Mapping[str, Any], sensor_name: str) -> list[SensorBehaviorConfig]:
     nested = _as_dict(options.get("sensor_behaviors")).get(sensor_name)
     raw_behaviors = options.get(f"{sensor_name}_behaviors", nested)
@@ -894,6 +1028,8 @@ def build_sensor_sim_config(
             ),
             range_min_m=_as_float(data.get("lidar_range_min_m"), 0.0),
             range_max_m=_as_float(data.get("lidar_range_max_m"), 200.0),
+            intensity=_parse_lidar_intensity(data),
+            physics_model=_parse_lidar_physics_model(data),
             extrinsics=_parse_extrinsics(_as_dict(data.get("lidar_extrinsics"))),
             behaviors=_parse_behaviors(data, "lidar"),
         ),

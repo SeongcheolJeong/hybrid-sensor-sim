@@ -29,6 +29,8 @@ class SensorConfigTests(unittest.TestCase):
         self.assertEqual(config.lidar.scan_type, "SPIN")
         self.assertEqual(config.lidar.scan_frequency_hz, 10.0)
         self.assertEqual(config.lidar.source_angles_deg, [])
+        self.assertEqual(config.lidar.intensity.units, "REFLECTIVITY")
+        self.assertAlmostEqual(config.lidar.physics_model.reflectivity_coefficient, 1.0)
         self.assertEqual(config.radar.clutter_model, "basic")
         self.assertEqual(config.radar.range_min_m, 0.5)
 
@@ -140,6 +142,25 @@ class SensorConfigTests(unittest.TestCase):
                 "lidar_scan_duration_s": "0.2",
                 "lidar_noise": "none",
                 "lidar_dropout_probability": "0.05",
+                "lidar_intensity": {
+                    "units": "snr_scaled",
+                    "range": {"min": 0.0, "max": 25.0},
+                    "scale": {"min": 0.0, "max": 255.0},
+                    "range_scale_map": [
+                        {"input": 0.0, "output": 0.0},
+                        {"input": 10.0, "output": 128.0},
+                        {"input": 20.0, "output": 255.0},
+                    ],
+                },
+                "lidar_physics_model": {
+                    "reflectivity_coefficient": 0.7,
+                    "atmospheric_attenuation_rate": 0.02,
+                    "ambient_power_dbw": -28.0,
+                    "signal_photon_scale": 25000.0,
+                    "ambient_photon_scale": 500.0,
+                    "minimum_detection_snr_db": 6.0,
+                    "return_all_hits": True,
+                },
                 "lidar_behaviors": [{"continuous_motion": {"tx": 0.2, "rz": 0.1}}],
                 "radar_clutter": "none",
                 "radar_range_min_m": "1.5",
@@ -212,6 +233,19 @@ class SensorConfigTests(unittest.TestCase):
         self.assertAlmostEqual(config.lidar.scan_duration_s, 0.2)
         self.assertEqual(config.lidar.noise_model, "none")
         self.assertAlmostEqual(config.lidar.dropout_probability, 0.05)
+        self.assertEqual(config.lidar.intensity.units, "SNR_SCALED")
+        self.assertAlmostEqual(config.lidar.intensity.input_range.min_value, 0.0)
+        self.assertAlmostEqual(config.lidar.intensity.input_range.max_value, 25.0)
+        self.assertAlmostEqual(config.lidar.intensity.output_scale.max_value, 255.0)
+        self.assertEqual(len(config.lidar.intensity.range_scale_map), 3)
+        self.assertAlmostEqual(config.lidar.intensity.range_scale_map[1].output_value, 128.0)
+        self.assertAlmostEqual(config.lidar.physics_model.reflectivity_coefficient, 0.7)
+        self.assertAlmostEqual(config.lidar.physics_model.atmospheric_attenuation_rate, 0.02)
+        self.assertAlmostEqual(config.lidar.physics_model.ambient_power_dbw, -28.0)
+        self.assertAlmostEqual(config.lidar.physics_model.signal_photon_scale, 25000.0)
+        self.assertAlmostEqual(config.lidar.physics_model.ambient_photon_scale, 500.0)
+        self.assertAlmostEqual(config.lidar.physics_model.minimum_detection_snr_db, 6.0)
+        self.assertTrue(config.lidar.physics_model.return_all_hits)
         self.assertEqual(config.radar.sensor_id, "radar_bumper")
         self.assertEqual(config.radar.clutter_model, "none")
         self.assertEqual(config.radar.false_target_count, 0)
@@ -248,6 +282,15 @@ class SensorConfigTests(unittest.TestCase):
                 "lidar_scan_type": "flash",
                 "lidar_source_angles": [-12.5, -2.0, 8.0],
                 "lidar_scan_path": [0.0, 30.0],
+                "lidar_intensity": {
+                    "units": "power",
+                    "range": {"min": 0.0, "max": 1.0},
+                    "scale": {"min": 0.0, "max": 100.0},
+                },
+                "lidar_physics_model": {
+                    "reflectivity_coefficient": 0.6,
+                    "minimum_detection_snr_db": -12.0,
+                },
                 "lidar_behaviors": [{"continuous_motion": {"tx": 0.1}}],
                 "radar_clutter": "none",
                 "sensor_behaviors": {
@@ -292,6 +335,11 @@ class SensorConfigTests(unittest.TestCase):
         self.assertEqual(contract["sensor_setup"]["lidar"]["scan_type"], "FLASH")
         self.assertEqual(contract["sensor_setup"]["lidar"]["source_angles_deg"], [-12.5, -2.0, 8.0])
         self.assertEqual(contract["sensor_setup"]["lidar"]["scan_path_deg"], [0.0, 30.0])
+        self.assertEqual(contract["sensor_setup"]["lidar"]["intensity"]["units"], "POWER")
+        self.assertAlmostEqual(
+            contract["sensor_setup"]["lidar"]["physics_model"]["reflectivity_coefficient"],
+            0.6,
+        )
         self.assertEqual(
             contract["sensor_setup"]["radar"]["behaviors"][0]["point_at"]["id"],
             "vehicle_9",

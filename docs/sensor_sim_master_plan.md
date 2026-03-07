@@ -567,10 +567,14 @@ Current status:
   - scan field and scan field offset filtering
   - scan path and multi-scan path filtering in preview/trajectory sweep
   - structured lidar preview metadata alongside existing xyz compatibility path
+  - intensity/signal output surface:
+    - `REFLECTIVITY`, `REFLECTIVITY_SCALED`, `SNR`, `SNR_SCALED`, `POWER`, `LASER_CROSS_SECTION`, `GROUND_TRUTH_REFLECTIVITY`
+    - `signal_photons`, `ambient_photons`, `snr`, `snr_db`, `return_id` preview fields
+    - SNR-threshold based detection gating with `return_all_hits` override
 - next missing items:
   - per-channel divergence/loss calibration
-  - reflectivity/intensity/return model
-  - weather/backscatter and multi-return behavior
+  - multi-return generation beyond single-return `return_id=0`
+  - weather attenuation / backscatter / false detections
 
 ### Phase 3: Radar Core Feature Expansion
 

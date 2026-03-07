@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import random
-from math import atan2, log, log10, pi, sqrt
+from math import atan2, exp, log, log10, pi, sqrt
 from pathlib import Path
 from typing import Any
 
@@ -1503,6 +1503,7 @@ class NativePhysicsBackend(SensorBackend):
         rng = random.Random(int(request.seed) + 17)
         noisy_points, preview_scan_points = self._apply_lidar_noise_and_dropout_with_metadata(
             request=request,
+            lidar_config=lidar_config,
             points_xyz=scan_points,
             metadata_points=scan_meta["points"] if isinstance(scan_meta.get("points"), list) else [],
             rng=rng,
@@ -1531,6 +1532,8 @@ class NativePhysicsBackend(SensorBackend):
                     "scan_field_offset_deg": scan_meta["scan_field_offset_deg"],
                     "scan_path_deg": list(scan_meta["scan_path_deg"]),
                     "multi_scan_path_deg": [list(path) for path in lidar_config.multi_scan_path_deg],
+                    "intensity": lidar_config.intensity.to_dict(),
+                    "physics_model": lidar_config.physics_model.to_dict(),
                     "preview_points": preview_points,
                 },
                 indent=2,
@@ -1550,6 +1553,7 @@ class NativePhysicsBackend(SensorBackend):
         metrics["lidar_scan_model_applied"] = 1.0 if scan_meta["applied"] else 0.0
         metrics["lidar_source_angle_count"] = float(len(lidar_config.source_angles_deg))
         metrics["lidar_scan_path_point_count"] = float(len(scan_meta["scan_path_deg"]))
+        self._update_lidar_signal_metrics(metrics=metrics, preview_points=preview_points, lidar_config=lidar_config)
         return output_path, metadata_path
 
     def _generate_lidar_trajectory_sweep_if_available(
@@ -1635,6 +1639,7 @@ class NativePhysicsBackend(SensorBackend):
             rng = random.Random(int(request.seed) + 937 + frame_id)
             noisy_points, frame_scan_points = self._apply_lidar_noise_and_dropout_with_metadata(
                 request=request,
+                lidar_config=lidar_config,
                 points_xyz=scan_points,
                 metadata_points=scan_meta["points"] if isinstance(scan_meta.get("points"), list) else [],
                 rng=rng,
@@ -1709,10 +1714,22 @@ class NativePhysicsBackend(SensorBackend):
             },
             "scan_path_deg": list(lidar_config.scan_path_deg),
             "multi_scan_path_deg": [list(path) for path in lidar_config.multi_scan_path_deg],
+            "intensity": lidar_config.intensity.to_dict(),
+            "physics_model": lidar_config.physics_model.to_dict(),
             "frames": frames,
         }
         output_path = enhanced_output / "lidar_trajectory_sweep.json"
         output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        self._update_lidar_signal_metrics(
+            metrics=metrics,
+            preview_points=[
+                point
+                for frame in frames
+                for point in frame.get("preview_points", [])
+                if isinstance(point, dict)
+            ],
+            lidar_config=lidar_config,
+        )
         return output_path
 
     def _apply_lidar_noise_and_dropout(
@@ -1746,6 +1763,7 @@ class NativePhysicsBackend(SensorBackend):
         self,
         *,
         request: SensorSimRequest,
+        lidar_config: Any,
         points_xyz: list[tuple[float, float, float]],
         metadata_points: list[dict[str, object]],
         rng: random.Random,
@@ -1758,6 +1776,19 @@ class NativePhysicsBackend(SensorBackend):
         noisy_points: list[tuple[float, float, float]] = []
         noisy_metadata: list[dict[str, object]] = []
         for index, (x, y, z) in enumerate(points_xyz):
+            base_metadata = (
+                dict(metadata_points[index])
+                if index < len(metadata_points) and isinstance(metadata_points[index], dict)
+                else {}
+            )
+            signal_metadata = self._lidar_signal_metadata(
+                request=request,
+                lidar_config=lidar_config,
+                point_xyz=(x, y, z),
+                base_metadata=base_metadata,
+            )
+            if not bool(signal_metadata.get("detected", True)):
+                continue
             if dropout_prob > 0.0 and rng.random() < dropout_prob:
                 continue
             if noise_model == "gaussian":
@@ -1769,10 +1800,10 @@ class NativePhysicsBackend(SensorBackend):
             else:
                 noisy_point = (x, y, z)
             noisy_points.append(noisy_point)
-            if index < len(metadata_points):
-                noisy_metadata.append(dict(metadata_points[index]))
-            else:
-                noisy_metadata.append({})
+            payload = dict(base_metadata)
+            payload.update(signal_metadata)
+            payload.pop("detected", None)
+            noisy_metadata.append(payload)
         return noisy_points, noisy_metadata
 
     def _apply_lidar_scan_model(
@@ -2007,9 +2038,189 @@ class NativePhysicsBackend(SensorBackend):
                     "channel_id": base.get("channel_id"),
                     "source_angle_deg": base.get("source_angle_deg"),
                     "scan_path_index": base.get("scan_path_index"),
+                    "intensity": base.get("intensity"),
+                    "intensity_units": base.get("intensity_units"),
+                    "reflectivity": base.get("reflectivity"),
+                    "ground_truth_reflectivity": base.get("ground_truth_reflectivity"),
+                    "laser_cross_section": base.get("laser_cross_section"),
+                    "signal_power_dbw": base.get("signal_power_dbw"),
+                    "ambient_power_dbw": base.get("ambient_power_dbw"),
+                    "signal_photons": base.get("signal_photons"),
+                    "ambient_photons": base.get("ambient_photons"),
+                    "snr": base.get("snr"),
+                    "snr_db": base.get("snr_db"),
+                    "return_id": base.get("return_id"),
+                    "ground_truth_detection_type": base.get("ground_truth_detection_type"),
                 }
             )
         return payload
+
+    def _lidar_signal_metadata(
+        self,
+        *,
+        request: SensorSimRequest,
+        lidar_config: Any,
+        point_xyz: tuple[float, float, float],
+        base_metadata: dict[str, object],
+    ) -> dict[str, object]:
+        x, y, z = point_xyz
+        range_m = float(base_metadata.get("range_m", sqrt(x * x + y * y + z * z)))
+        ground_truth_reflectivity = self._lidar_ground_truth_reflectivity(
+            request=request,
+            base_metadata=base_metadata,
+        )
+        reflectivity = max(
+            0.0,
+            ground_truth_reflectivity * float(lidar_config.physics_model.reflectivity_coefficient),
+        )
+        attenuation_rate = max(0.0, float(lidar_config.physics_model.atmospheric_attenuation_rate))
+        signal_power_linear = reflectivity * exp(-attenuation_rate * range_m) / max(range_m * range_m, 1.0)
+        ambient_power_dbw = float(lidar_config.physics_model.ambient_power_dbw)
+        ambient_power_linear = pow(10.0, ambient_power_dbw / 10.0)
+        signal_photons = signal_power_linear * max(float(lidar_config.physics_model.signal_photon_scale), 0.0)
+        ambient_photons = ambient_power_linear * max(float(lidar_config.physics_model.ambient_photon_scale), 0.0)
+        snr = signal_photons / max(ambient_photons, 1e-9)
+        snr_db = 10.0 * log10(max(snr, 1e-9))
+        laser_cross_section = reflectivity
+        intensity_value = self._lidar_intensity_value(
+            intensity_config=lidar_config.intensity,
+            signal_power_linear=signal_power_linear,
+            reflectivity=reflectivity,
+            ground_truth_reflectivity=ground_truth_reflectivity,
+            laser_cross_section=laser_cross_section,
+            snr=snr,
+        )
+        detected = bool(lidar_config.physics_model.return_all_hits) or (
+            snr_db >= float(lidar_config.physics_model.minimum_detection_snr_db)
+        )
+        return {
+            "detected": detected,
+            "intensity": intensity_value,
+            "intensity_units": lidar_config.intensity.units,
+            "reflectivity": reflectivity,
+            "ground_truth_reflectivity": ground_truth_reflectivity,
+            "laser_cross_section": laser_cross_section,
+            "signal_power_dbw": 10.0 * log10(max(signal_power_linear, 1e-9)),
+            "ambient_power_dbw": ambient_power_dbw,
+            "signal_photons": signal_photons,
+            "ambient_photons": ambient_photons,
+            "snr": snr,
+            "snr_db": snr_db,
+            "return_id": 0,
+            "ground_truth_detection_type": "TARGET",
+        }
+
+    def _lidar_ground_truth_reflectivity(
+        self,
+        *,
+        request: SensorSimRequest,
+        base_metadata: dict[str, object],
+    ) -> float:
+        point_index = int(base_metadata.get("point_index", -1))
+        point_reflectivities = request.options.get("lidar_point_reflectivities")
+        if isinstance(point_reflectivities, list) and 0 <= point_index < len(point_reflectivities):
+            return min(max(float(point_reflectivities[point_index]), 0.0), 1.0)
+        channel_id = base_metadata.get("channel_id")
+        channel_reflectivities = request.options.get("lidar_channel_reflectivities")
+        if (
+            isinstance(channel_reflectivities, list)
+            and isinstance(channel_id, int)
+            and 0 <= channel_id < len(channel_reflectivities)
+        ):
+            return min(max(float(channel_reflectivities[channel_id]), 0.0), 1.0)
+        return min(max(float(request.options.get("lidar_ground_truth_reflectivity", 0.35)), 0.0), 1.0)
+
+    def _lidar_intensity_value(
+        self,
+        *,
+        intensity_config: Any,
+        signal_power_linear: float,
+        reflectivity: float,
+        ground_truth_reflectivity: float,
+        laser_cross_section: float,
+        snr: float,
+    ) -> float:
+        units = str(intensity_config.units).upper().strip()
+        if units == "SNR":
+            return snr
+        if units == "SNR_SCALED":
+            return self._lidar_scale_intensity(raw_value=snr, intensity_config=intensity_config)
+        if units == "REFLECTIVITY":
+            return reflectivity
+        if units == "REFLECTIVITY_SCALED":
+            return self._lidar_scale_intensity(raw_value=reflectivity, intensity_config=intensity_config)
+        if units == "POWER":
+            return signal_power_linear
+        if units == "LASER_CROSS_SECTION":
+            return laser_cross_section
+        if units == "GROUND_TRUTH_REFLECTIVITY":
+            return ground_truth_reflectivity
+        return reflectivity
+
+    def _lidar_scale_intensity(self, *, raw_value: float, intensity_config: Any) -> float:
+        range_scale_map = sorted(
+            [
+                {
+                    "input": float(getattr(point, "input_value", 0.0)),
+                    "output": float(getattr(point, "output_value", 0.0)),
+                }
+                for point in getattr(intensity_config, "range_scale_map", [])
+            ],
+            key=lambda point: point["input"],
+        )
+        if range_scale_map:
+            if raw_value <= range_scale_map[0]["input"]:
+                return range_scale_map[0]["output"]
+            if raw_value >= range_scale_map[-1]["input"]:
+                return range_scale_map[-1]["output"]
+            for index in range(1, len(range_scale_map)):
+                left = range_scale_map[index - 1]
+                right = range_scale_map[index]
+                if raw_value > right["input"]:
+                    continue
+                delta = right["input"] - left["input"]
+                if abs(delta) <= 1e-9:
+                    return right["output"]
+                alpha = (raw_value - left["input"]) / delta
+                return left["output"] + (right["output"] - left["output"]) * alpha
+        input_min = float(intensity_config.input_range.min_value)
+        input_max = float(intensity_config.input_range.max_value)
+        output_min = float(intensity_config.output_scale.min_value)
+        output_max = float(intensity_config.output_scale.max_value)
+        if input_max <= input_min:
+            return output_min
+        alpha = (raw_value - input_min) / (input_max - input_min)
+        alpha = min(max(alpha, 0.0), 1.0)
+        return output_min + (output_max - output_min) * alpha
+
+    def _update_lidar_signal_metrics(
+        self,
+        *,
+        metrics: dict[str, float],
+        preview_points: list[dict[str, object]],
+        lidar_config: Any,
+    ) -> None:
+        snr_db_values = [
+            float(point["snr_db"])
+            for point in preview_points
+            if isinstance(point, dict) and point.get("snr_db") is not None
+        ]
+        metrics["lidar_intensity_output_count"] = float(
+            sum(
+                1
+                for point in preview_points
+                if isinstance(point, dict) and point.get("intensity") is not None
+            )
+        )
+        metrics["lidar_detection_snr_threshold_db"] = float(
+            lidar_config.physics_model.minimum_detection_snr_db
+        )
+        if snr_db_values:
+            metrics["lidar_min_snr_db"] = float(min(snr_db_values))
+            metrics["lidar_max_snr_db"] = float(max(snr_db_values))
+        else:
+            metrics["lidar_min_snr_db"] = 0.0
+            metrics["lidar_max_snr_db"] = 0.0
 
     def _lidar_scan_field_payload(self, lidar_config: Any) -> dict[str, float]:
         return {

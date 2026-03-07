@@ -1144,6 +1144,91 @@ EOF
             self.assertEqual(payload["frames"][0]["preview_points"][0]["scan_path_index"], 0)
             self.assertEqual(payload["frames"][1]["preview_points"][0]["scan_path_index"], 0)
 
+    def test_lidar_preview_emits_intensity_and_snr_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+5.0 0.0 0.0
+15.0 0.0 0.0
+50.0 0.0 0.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "radar_postprocess_enabled": False,
+                    "lidar_postprocess_enabled": True,
+                    "lidar_noise": "none",
+                    "lidar_dropout_probability": 0.0,
+                    "lidar_intensity": {
+                        "units": "SNR_SCALED",
+                        "range": {"min": 0.0, "max": 20.0},
+                        "scale": {"min": 0.0, "max": 255.0},
+                    },
+                    "lidar_physics_model": {
+                        "reflectivity_coefficient": 0.5,
+                        "ambient_power_dbw": -30.0,
+                        "signal_photon_scale": 10000.0,
+                        "ambient_photon_scale": 1000.0,
+                        "minimum_detection_snr_db": 0.0,
+                    },
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            self.assertEqual(result.metrics.get("lidar_output_count"), 2.0)
+            self.assertEqual(result.metrics.get("lidar_intensity_output_count"), 2.0)
+            preview = json.loads(
+                result.artifacts["lidar_noisy_preview_json"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(preview["intensity"]["units"], "SNR_SCALED")
+            self.assertAlmostEqual(
+                preview["physics_model"]["reflectivity_coefficient"],
+                0.5,
+            )
+            self.assertEqual(preview["output_count"], 2)
+            self.assertEqual(len(preview["preview_points"]), 2)
+            near_point = preview["preview_points"][0]
+            mid_point = preview["preview_points"][1]
+            self.assertEqual(near_point["intensity_units"], "SNR_SCALED")
+            self.assertGreater(near_point["snr_db"], mid_point["snr_db"])
+            self.assertGreater(near_point["intensity"], mid_point["intensity"])
+            self.assertGreater(near_point["signal_photons"], mid_point["signal_photons"])
+            self.assertAlmostEqual(near_point["ground_truth_reflectivity"], 0.35)
+            self.assertEqual(near_point["return_id"], 0)
+
     def test_radar_trajectory_sweep_uses_local_velocity_per_frame(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
