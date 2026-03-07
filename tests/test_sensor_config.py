@@ -50,6 +50,10 @@ class SensorConfigTests(unittest.TestCase):
         self.assertAlmostEqual(config.radar.system.frame_rate_hz, 10.0)
         self.assertAlmostEqual(config.radar.detector.minimum_snr_db, -10.0)
         self.assertFalse(config.radar.tracking.output_tracks)
+        self.assertEqual(config.radar.tracking.max_tracks, 0)
+        self.assertEqual(config.radar.tracking.max_coast_frames, 0)
+        self.assertTrue(config.radar.tracking.emit_coasted_tracks)
+        self.assertAlmostEqual(config.radar.tracking.coast_confidence_decay, 0.85)
         self.assertEqual(config.radar.system.antenna_model.model_type, "PARAMETRIC_BEAM")
         self.assertEqual(config.radar.fidelity.raytracing.mode, "DEFAULT")
 
@@ -326,6 +330,9 @@ class SensorConfigTests(unittest.TestCase):
                 "radar_tracking_params": {
                     "tracks": True,
                     "max_tracks": 12,
+                    "max_coast_frames": 2,
+                    "emit_coasted_tracks": False,
+                    "coast_confidence_decay": 0.6,
                 },
                 "radar_fidelity": {
                     "level": "high",
@@ -515,6 +522,9 @@ class SensorConfigTests(unittest.TestCase):
         self.assertAlmostEqual(config.radar.estimator.range_accuracy_regions[0].range_min_m, 50.0)
         self.assertTrue(config.radar.tracking.output_tracks)
         self.assertEqual(config.radar.tracking.max_tracks, 12)
+        self.assertEqual(config.radar.tracking.max_coast_frames, 2)
+        self.assertFalse(config.radar.tracking.emit_coasted_tracks)
+        self.assertAlmostEqual(config.radar.tracking.coast_confidence_decay, 0.6)
         self.assertEqual(config.radar.fidelity.level, "HIGH")
         self.assertTrue(config.radar.fidelity.multipath_enabled)
         self.assertEqual(config.radar.fidelity.multipath_bounces, 2)
@@ -628,6 +638,9 @@ class SensorConfigTests(unittest.TestCase):
                 "radar_tracking_params": {
                     "tracks": True,
                     "max_tracks": 6,
+                    "max_coast_frames": 3,
+                    "emit_coasted_tracks": True,
+                    "coast_confidence_decay": 0.55,
                 },
                 "radar_fidelity": {
                     "multipath": True,
@@ -759,6 +772,12 @@ class SensorConfigTests(unittest.TestCase):
         )
         self.assertTrue(contract["sensor_setup"]["radar"]["tracking_params"]["tracks"])
         self.assertEqual(contract["sensor_setup"]["radar"]["tracking_params"]["max_tracks"], 6)
+        self.assertEqual(contract["sensor_setup"]["radar"]["tracking_params"]["max_coast_frames"], 3)
+        self.assertTrue(contract["sensor_setup"]["radar"]["tracking_params"]["emit_coasted_tracks"])
+        self.assertAlmostEqual(
+            contract["sensor_setup"]["radar"]["tracking_params"]["coast_confidence_decay"],
+            0.55,
+        )
         self.assertTrue(contract["sensor_setup"]["radar"]["fidelity"]["multipath"])
         self.assertEqual(contract["sensor_setup"]["radar"]["fidelity"]["multipath_bounces"], 3)
         self.assertTrue(contract["sensor_setup"]["radar"]["fidelity"]["enable_micro_doppler"])

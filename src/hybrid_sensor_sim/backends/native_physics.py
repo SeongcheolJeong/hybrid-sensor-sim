@@ -5428,6 +5428,9 @@ class NativePhysicsBackend(SensorBackend):
         next_persistent_track_id = 0
         persistent_track_ids: set[int] = set()
         total_track_reassociations = 0
+        total_coasted_track_count = 0
+        total_terminated_track_count = 0
+        terminated_track_records: list[dict[str, object]] = []
         max_track_history_length = 0
         max_track_age_s = 0.0
         coverage_target_lists: list[list[dict[str, object]]] = []
@@ -5464,7 +5467,7 @@ class NativePhysicsBackend(SensorBackend):
                 rng=rng,
                 false_target_count=false_target_count,
             )
-            tracks, persistent_track_states, next_persistent_track_id, frame_track_reassociations = (
+            tracks, persistent_track_states, next_persistent_track_id, frame_track_summary = (
                 self._annotate_radar_tracks_with_history(
                     radar_config=radar_config,
                     tracks=tracks,
@@ -5476,7 +5479,7 @@ class NativePhysicsBackend(SensorBackend):
             )
             total_targets += len(targets)
             total_tracks += len(tracks)
-            total_track_reassociations += frame_track_reassociations
+            total_track_reassociations += int(frame_track_summary["reassociation_count"])
             persistent_track_ids.update(
                 int(track["persistent_track_id"])
                 for track in tracks
@@ -5491,6 +5494,9 @@ class NativePhysicsBackend(SensorBackend):
                     max_track_age_s,
                     float(track.get("track_age_s", 0.0)),
                 )
+            total_coasted_track_count += int(frame_track_summary["coasted_track_count"])
+            total_terminated_track_count += int(frame_track_summary["terminated_track_count"])
+            terminated_track_records.extend(list(frame_track_summary["terminated_tracks"]))
             frame_multipath_target_count = sum(
                 1
                 for target in targets
@@ -5563,7 +5569,13 @@ class NativePhysicsBackend(SensorBackend):
                             if track.get("persistent_track_id") is not None
                         }
                     ),
-                    "track_reassociation_count": frame_track_reassociations,
+                    "track_reassociation_count": int(frame_track_summary["reassociation_count"]),
+                    "coasted_track_count": int(frame_track_summary["coasted_track_count"]),
+                    "terminated_track_count": int(frame_track_summary["terminated_track_count"]),
+                    "terminated_track_ids": [
+                        int(item["persistent_track_id"])
+                        for item in list(frame_track_summary["terminated_tracks"])
+                    ],
                     "false_target_count": false_added,
                     "output_mode": "TRACKS" if radar_config.tracking.output_tracks else "POINTS",
                     "ground_truth_fields": self._radar_ground_truth_fields(),
@@ -5593,6 +5605,8 @@ class NativePhysicsBackend(SensorBackend):
         metrics["radar_trajectory_sweep_track_reassociation_count"] = float(
             total_track_reassociations
         )
+        metrics["radar_trajectory_sweep_total_coasted_track_count"] = float(total_coasted_track_count)
+        metrics["radar_trajectory_sweep_total_terminated_track_count"] = float(total_terminated_track_count)
         metrics["radar_trajectory_sweep_max_track_history_length"] = float(max_track_history_length)
         metrics["radar_trajectory_sweep_max_track_age_s"] = float(max_track_age_s)
         metrics["radar_trajectory_sweep_total_multipath_forward_count"] = float(
@@ -5624,6 +5638,9 @@ class NativePhysicsBackend(SensorBackend):
             "multipath_path_type_counts": total_multipath_path_type_counts,
             "persistent_track_count": len(persistent_track_ids),
             "track_reassociation_count": total_track_reassociations,
+            "coasted_track_count": total_coasted_track_count,
+            "terminated_track_count": total_terminated_track_count,
+            "terminated_tracks": terminated_track_records,
             "max_track_history_length": max_track_history_length,
             "max_track_age_s": max_track_age_s,
             "ground_truth_fields": self._radar_ground_truth_fields(),
@@ -6601,8 +6618,15 @@ class NativePhysicsBackend(SensorBackend):
         next_persistent_track_id: int,
         frame_id: int,
         frame_time_s: float,
-    ) -> tuple[list[dict[str, object]], dict[int, dict[str, object]], int, int]:
+    ) -> tuple[list[dict[str, object]], dict[int, dict[str, object]], int, dict[str, object]]:
         frame_period_s = 1.0 / max(float(radar_config.system.frame_rate_hz), 1e-6)
+        max_coast_frames = max(0, int(radar_config.tracking.max_coast_frames))
+        emit_coasted_tracks = bool(radar_config.tracking.emit_coasted_tracks)
+        coast_confidence_decay = min(
+            max(float(radar_config.tracking.coast_confidence_decay), 0.0),
+            1.0,
+        )
+        max_tracks = max(0, int(radar_config.tracking.max_tracks))
         available_state_ids = set(previous_track_states.keys())
         updated_track_states: dict[int, dict[str, object]] = {}
         reassociation_count = 0
@@ -6642,6 +6666,7 @@ class NativePhysicsBackend(SensorBackend):
             track["track_age_s"] = max(frame_period_s, frame_time_s - first_seen_time_s + frame_period_s)
             track["track_status"] = "CONTINUING" if reassociated else "NEW"
             track["track_reassociated"] = reassociated
+            track["track_coast_frame_count"] = 0
             track["trajectory_frame_id"] = frame_id
             updated_track_states[persistent_track_id] = {
                 "group_key": group_key,
@@ -6653,8 +6678,89 @@ class NativePhysicsBackend(SensorBackend):
                 "first_seen_time_s": first_seen_time_s,
                 "history_length": history_length,
                 "last_seen_time_s": frame_time_s,
+                "coast_frame_count": 0,
+                "base_confidence": float(track.get("confidence", 0.0)),
+                "track_payload": json.loads(json.dumps(track)),
             }
-        return tracks, updated_track_states, next_persistent_track_id, reassociation_count
+        coasted_tracks: list[dict[str, object]] = []
+        terminated_tracks: list[dict[str, object]] = []
+        for state_id in sorted(available_state_ids):
+            previous_state = previous_track_states[state_id]
+            next_coast_frame_count = int(previous_state.get("coast_frame_count", 0)) + 1
+            if next_coast_frame_count > max_coast_frames:
+                terminated_tracks.append(
+                    {
+                        "persistent_track_id": state_id,
+                        "terminated_frame_id": frame_id,
+                        "termination_reason": "COAST_LIMIT",
+                        "last_seen_time_s": float(previous_state.get("last_seen_time_s", frame_time_s)),
+                        "coast_frame_count": int(previous_state.get("coast_frame_count", 0)),
+                    }
+                )
+                continue
+            history_length = int(previous_state.get("history_length", 0)) + 1
+            first_seen_time_s = float(previous_state.get("first_seen_time_s", frame_time_s))
+            last_seen_time_s = float(previous_state.get("last_seen_time_s", frame_time_s))
+            coast_track = json.loads(json.dumps(previous_state.get("track_payload", {})))
+            if not coast_track:
+                coast_track = {
+                    "group_key": previous_state.get("group_key"),
+                    "ground_truth_actor_id": previous_state.get("ground_truth_actor_id"),
+                    "ground_truth_semantic_class": previous_state.get("ground_truth_semantic_class"),
+                    "range_m": float(previous_state.get("range_m", 0.0)),
+                    "azimuth_deg": float(previous_state.get("azimuth_deg", 0.0)),
+                    "elevation_deg": float(previous_state.get("elevation_deg", 0.0)),
+                    "measurement_source": "TRACK",
+                }
+            coast_track["persistent_track_id"] = state_id
+            coast_track["track_history_length"] = history_length
+            coast_track["track_first_seen_time_s"] = first_seen_time_s
+            coast_track["track_last_seen_time_s"] = last_seen_time_s
+            coast_track["track_age_s"] = max(
+                frame_period_s,
+                frame_time_s - first_seen_time_s + frame_period_s,
+            )
+            coast_track["track_status"] = "COASTING"
+            coast_track["track_reassociated"] = False
+            coast_track["track_coast_frame_count"] = next_coast_frame_count
+            coast_track["trajectory_frame_id"] = frame_id
+            coast_track["confidence"] = min(
+                max(
+                    float(previous_state.get("base_confidence", coast_track.get("confidence", 0.0)))
+                    * (coast_confidence_decay ** next_coast_frame_count),
+                    0.0,
+                ),
+                1.0,
+            )
+            updated_track_states[state_id] = {
+                "group_key": previous_state.get("group_key"),
+                "ground_truth_actor_id": previous_state.get("ground_truth_actor_id"),
+                "ground_truth_semantic_class": previous_state.get("ground_truth_semantic_class"),
+                "range_m": float(previous_state.get("range_m", 0.0)),
+                "azimuth_deg": float(previous_state.get("azimuth_deg", 0.0)),
+                "elevation_deg": float(previous_state.get("elevation_deg", 0.0)),
+                "first_seen_time_s": first_seen_time_s,
+                "history_length": history_length,
+                "last_seen_time_s": last_seen_time_s,
+                "coast_frame_count": next_coast_frame_count,
+                "base_confidence": float(previous_state.get("base_confidence", coast_track["confidence"])),
+                "track_payload": json.loads(json.dumps(coast_track)),
+            }
+            if emit_coasted_tracks and (max_tracks <= 0 or len(tracks) + len(coasted_tracks) < max_tracks):
+                coast_track["id"] = len(tracks) + len(coasted_tracks)
+                coasted_tracks.append(coast_track)
+        output_tracks = tracks + coasted_tracks
+        return (
+            output_tracks,
+            updated_track_states,
+            next_persistent_track_id,
+            {
+                "reassociation_count": reassociation_count,
+                "coasted_track_count": len(coasted_tracks),
+                "terminated_track_count": len(terminated_tracks),
+                "terminated_tracks": terminated_tracks,
+            },
+        )
 
     def _build_radar_tracks(
         self,

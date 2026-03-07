@@ -266,6 +266,7 @@ Primary code references:
       - persistent track IDs
       - track history length / age
       - reassociation summary
+      - coast / termination state
   - path-type-aware multipath approximation:
     - `fidelity.multipath`
     - `fidelity.multipath_bounces`

@@ -872,11 +872,17 @@ class RadarEstimatorConfig:
 class RadarTrackingConfig:
     output_tracks: bool = False
     max_tracks: int = 0
+    max_coast_frames: int = 0
+    emit_coasted_tracks: bool = True
+    coast_confidence_decay: float = 0.85
 
-    def to_dict(self) -> dict[str, int | bool]:
+    def to_dict(self) -> dict[str, int | bool | float]:
         return {
             "tracks": self.output_tracks,
             "max_tracks": self.max_tracks,
+            "max_coast_frames": self.max_coast_frames,
+            "emit_coasted_tracks": self.emit_coasted_tracks,
+            "coast_confidence_decay": self.coast_confidence_decay,
         }
 
 
@@ -2103,6 +2109,33 @@ def _parse_radar_tracking(options: Mapping[str, Any]) -> RadarTrackingConfig:
         max_tracks=max(
             0,
             _as_int(tracking.get("max_tracks", options.get("radar_max_tracks")), 0),
+        ),
+        max_coast_frames=max(
+            0,
+            _as_int(
+                tracking.get("max_coast_frames", options.get("radar_max_coast_frames")),
+                0,
+            ),
+        ),
+        emit_coasted_tracks=_as_bool(
+            tracking.get(
+                "emit_coasted_tracks",
+                options.get("radar_emit_coasted_tracks"),
+            ),
+            True,
+        ),
+        coast_confidence_decay=min(
+            max(
+                _as_float(
+                    tracking.get(
+                        "coast_confidence_decay",
+                        options.get("radar_coast_confidence_decay"),
+                    ),
+                    0.85,
+                ),
+                0.0,
+            ),
+            1.0,
         ),
     )
 

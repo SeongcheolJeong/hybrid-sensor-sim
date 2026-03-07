@@ -2940,6 +2940,185 @@ EOF
                 [1, 2, 3],
             )
 
+    def test_radar_trajectory_sweep_coasts_and_terminates_tracks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+2.0 0.0 0.0
+EOF
+cat > "${rootdir}/scan_trajectory.txt" <<EOF
+0.0 0.0 0.0 0.0 0.0 0.0 0.0
+4.0 0.0 0.0 1.0 0.0 0.0 0.0
+8.0 0.0 0.0 2.0 0.0 0.0 0.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "lidar_postprocess_enabled": False,
+                    "radar_postprocess_enabled": True,
+                    "radar_trajectory_sweep_enabled": True,
+                    "radar_trajectory_sweep_frames": 3,
+                    "radar_preview_targets_per_frame": 4,
+                    "radar_clutter": "none",
+                    "radar_false_target_count": 0,
+                    "radar_tracking_params": {
+                        "tracks": True,
+                        "max_tracks": 4,
+                        "max_coast_frames": 1,
+                        "emit_coasted_tracks": True,
+                        "coast_confidence_decay": 0.5,
+                    },
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+            self.assertTrue(result.success)
+
+            payload = json.loads(
+                result.artifacts["radar_targets_trajectory_sweep"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(payload["coasted_track_count"], 1)
+            self.assertEqual(payload["terminated_track_count"], 1)
+            self.assertEqual(len(payload["terminated_tracks"]), 1)
+            self.assertEqual(payload["terminated_tracks"][0]["persistent_track_id"], 0)
+            self.assertEqual(payload["terminated_tracks"][0]["termination_reason"], "COAST_LIMIT")
+
+            frame0 = payload["frames"][0]
+            frame1 = payload["frames"][1]
+            frame2 = payload["frames"][2]
+            self.assertEqual(frame0["track_count"], 1)
+            self.assertEqual(frame0["tracks_preview"][0]["track_status"], "NEW")
+            self.assertEqual(frame1["target_count"], 0)
+            self.assertEqual(frame1["track_count"], 1)
+            self.assertEqual(frame1["coasted_track_count"], 1)
+            self.assertEqual(frame1["tracks_preview"][0]["track_status"], "COASTING")
+            self.assertEqual(frame1["tracks_preview"][0]["track_coast_frame_count"], 1)
+            self.assertLess(
+                frame1["tracks_preview"][0]["confidence"],
+                frame0["tracks_preview"][0]["confidence"],
+            )
+            self.assertEqual(frame2["track_count"], 0)
+            self.assertEqual(frame2["coasted_track_count"], 0)
+            self.assertEqual(frame2["terminated_track_count"], 1)
+            self.assertEqual(frame2["terminated_track_ids"], [0])
+            self.assertEqual(result.metrics.get("radar_trajectory_sweep_total_coasted_track_count"), 1.0)
+            self.assertEqual(result.metrics.get("radar_trajectory_sweep_total_terminated_track_count"), 1.0)
+
+    def test_radar_trajectory_sweep_resumes_track_after_coast(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+2.0 0.0 0.0
+EOF
+cat > "${rootdir}/scan_trajectory.txt" <<EOF
+0.0 0.0 0.0 0.0 0.0 0.0 0.0
+4.0 0.0 0.0 1.0 0.0 0.0 0.0
+0.0 0.0 0.0 2.0 0.0 0.0 0.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "lidar_postprocess_enabled": False,
+                    "radar_postprocess_enabled": True,
+                    "radar_trajectory_sweep_enabled": True,
+                    "radar_trajectory_sweep_frames": 3,
+                    "radar_preview_targets_per_frame": 4,
+                    "radar_clutter": "none",
+                    "radar_false_target_count": 0,
+                    "radar_point_actor_ids": [55],
+                    "radar_tracking_params": {
+                        "tracks": True,
+                        "max_tracks": 4,
+                        "max_coast_frames": 1,
+                        "emit_coasted_tracks": True,
+                    },
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+            self.assertTrue(result.success)
+
+            payload = json.loads(
+                result.artifacts["radar_targets_trajectory_sweep"].read_text(encoding="utf-8")
+            )
+            tracks = [frame["tracks_preview"][0] for frame in payload["frames"]]
+            self.assertEqual([track["persistent_track_id"] for track in tracks], [0, 0, 0])
+            self.assertEqual(
+                [track["track_status"] for track in tracks],
+                ["NEW", "COASTING", "CONTINUING"],
+            )
+            self.assertEqual(
+                [track["track_coast_frame_count"] for track in tracks],
+                [0, 1, 0],
+            )
+            self.assertEqual(
+                [track["track_history_length"] for track in tracks],
+                [1, 2, 3],
+            )
+            self.assertEqual(payload["terminated_track_count"], 0)
+
     def test_hybrid_generates_renderer_playback_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

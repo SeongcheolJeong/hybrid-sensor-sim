@@ -329,6 +329,9 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - tracking params:
     - `radar_tracking_params.tracks`
     - `radar_tracking_params.max_tracks`
+    - `radar_tracking_params.max_coast_frames`
+    - `radar_tracking_params.emit_coasted_tracks`
+    - `radar_tracking_params.coast_confidence_decay`
   - track mode combines detections with the same `ground_truth_actor_id`:
     - `rcs_dbsm` is an incoherent sum across grouped detections
     - `range_m`, `azimuth_deg`, `elevation_deg` are the geometric center of grouped detections
@@ -397,11 +400,15 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `track_first_seen_time_s`
     - `track_last_seen_time_s`
     - `track_age_s`
-    - `track_status=NEW|CONTINUING`
+    - `track_status=NEW|CONTINUING|COASTING`
     - `track_reassociated`
+    - `track_coast_frame_count`
   - top-level sweep summary also exposes:
     - `persistent_track_count`
     - `track_reassociation_count`
+    - `coasted_track_count`
+    - `terminated_track_count`
+    - `terminated_tracks`
     - `max_track_history_length`
     - `max_track_age_s`
   - hybrid outputs now also emit `sensor_coverage_summary.json` with per-sensor target counts plus combined overlap/blindspot coverage summary.
