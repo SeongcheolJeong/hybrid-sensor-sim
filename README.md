@@ -22,6 +22,7 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `src/hybrid_sensor_sim/orchestrator.py`: mode selection and pipeline chaining.
 - `docs/hybrid_helios_plan.md`: functional roadmap and risk management.
 - `scripts/setup_helios.sh`: bootstrap helper for cloning/building HELIOS.
+- `scripts/run_renderer_backend_smoke.py`: AWSIM/CARLA smoke launcher that forces direct backend execution plus output-contract inspection.
 
 ## Quick start
 
@@ -494,6 +495,10 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `python -m hybrid_sensor_sim.renderers.backend_runner --execute-and-inspect <backend_runner_request.json>` performs direct backend execution and then writes `backend_runner_smoke_manifest.json` after a follow-up inspection pass.
     - `renderer_execute_and_inspect_via_runner=true` makes renderer runtime use the same execute-plus-inspect flow and surfaces `backend_output_inspection_manifest.json` and `backend_runner_smoke_manifest.json` in runtime artifacts.
     - combine `renderer_execute_and_inspect_via_runner=true` with `renderer_fail_on_error=true` to fail hybrid runs on backend output contract mismatches, not only process exit failures.
+    - `python3 scripts/run_renderer_backend_smoke.py --config <config.json> --backend awsim --backend-bin <awsim_bin>` writes:
+      - `renderer_backend_smoke_config.json`
+      - `renderer_backend_smoke_summary.json`
+      - runtime artifacts under the chosen `output_dir`
   - contract argument controls:
     - `renderer_contract_flag` (default `--contract`)
     - `renderer_inject_contract_arg` / `renderer_contract_positional`
