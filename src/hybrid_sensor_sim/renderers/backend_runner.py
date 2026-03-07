@@ -120,6 +120,12 @@ _BACKEND_SENSOR_EXPORT_LAYOUTS: dict[str, dict[str, dict[str, str]]] = {
             "output_role": "radar_detections",
             "artifact_type": "awsim_radar_detections_json",
         },
+        "radar_tracks_json": {
+            "modality": "radar",
+            "filename": "tracks.json",
+            "output_role": "radar_tracks",
+            "artifact_type": "awsim_radar_tracks_json",
+        },
     },
     "carla": {
         "camera_projection_json": {
@@ -163,6 +169,12 @@ _BACKEND_SENSOR_EXPORT_LAYOUTS: dict[str, dict[str, dict[str, str]]] = {
             "filename": "detections.json",
             "output_role": "radar_detections",
             "artifact_type": "carla_radar_detections_json",
+        },
+        "radar_tracks_json": {
+            "modality": "radar",
+            "filename": "tracks.json",
+            "output_role": "radar_tracks",
+            "artifact_type": "carla_radar_tracks_json",
         },
     },
 }
@@ -294,6 +306,7 @@ def _sensor_export_filename(data_format: str) -> str:
         "lidar_points_json": "lidar_points.json",
         "lidar_points": "lidar_points.dat",
         "radar_targets_json": "radar_targets.json",
+        "radar_tracks_json": "radar_tracks.json",
     }
     return mapping.get(data_format, f"{_sanitize_artifact_key(data_format)}.dat")
 

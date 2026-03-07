@@ -864,6 +864,16 @@ def _infer_sensor_payload_format(
             return "lidar_points_json"
         return "lidar_points"
     if sensor_name == "radar":
+        if isinstance(contract_payload, dict):
+            sensor_setup = contract_payload.get("sensor_setup")
+            if isinstance(sensor_setup, dict):
+                radar_setup = sensor_setup.get("radar")
+                if isinstance(radar_setup, dict):
+                    tracking_params = radar_setup.get("tracking_params")
+                    if isinstance(tracking_params, dict) and bool(
+                        tracking_params.get("tracks", False)
+                    ):
+                        return "radar_tracks_json"
         return "radar_targets_json"
     return "unknown"
 

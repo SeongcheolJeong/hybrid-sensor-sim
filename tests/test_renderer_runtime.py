@@ -291,6 +291,68 @@ class RendererRuntimeTests(unittest.TestCase):
             )
             self.assertEqual(manifest["frames"][0]["camera"]["data_format"], "camera_semantic_json")
 
+    def test_renderer_runtime_uses_radar_track_payload_format(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "renderer_bridge_enabled": True,
+                    "renderer_backend": "carla",
+                    "renderer_execute": False,
+                    "renderer_command": ["echo", "renderer_plan", "{contract}"],
+                    "camera_projection_enabled": False,
+                    "lidar_postprocess_enabled": False,
+                    "radar_postprocess_enabled": True,
+                    "radar_trajectory_sweep_enabled": True,
+                    "radar_trajectory_sweep_frames": 2,
+                    "radar_tracking_params": {
+                        "tracks": True,
+                        "max_tracks": 4,
+                    },
+                },
+            )
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            contract = json.loads(
+                result.artifacts["renderer_playback_contract"].read_text(encoding="utf-8")
+            )
+            manifest = json.loads(
+                result.artifacts["backend_frame_inputs_manifest"].read_text(encoding="utf-8")
+            )
+            output_spec = json.loads(
+                result.artifacts["backend_output_spec"].read_text(encoding="utf-8")
+            )
+            self.assertTrue(contract["sensor_setup"]["radar"]["tracking_params"]["tracks"])
+            self.assertEqual(manifest["frames"][0]["radar"]["data_format"], "radar_tracks_json")
+            outputs_by_sensor = {
+                entry["sensor_id"]: entry for entry in output_spec["expected_outputs_by_sensor"]
+            }
+            self.assertEqual(
+                outputs_by_sensor["radar_front"]["outputs"][0]["output_role"],
+                "radar_tracks",
+            )
+            self.assertEqual(
+                outputs_by_sensor["radar_front"]["outputs"][0]["artifact_type"],
+                "carla_radar_tracks_json",
+            )
+            self.assertEqual(
+                outputs_by_sensor["radar_front"]["outputs"][0]["backend_filename"],
+                "tracks.json",
+            )
+
     def test_renderer_runtime_can_disable_frame_manifest_arg_injection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

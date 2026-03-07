@@ -469,7 +469,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
       - includes sensor-specific expected export files derived from the ingestion profile (`sensor_exports/<sensor_id>/...`).
       - sensor-specific entries also include `relative_path` and `path_candidates` for backend namespaced layouts such as `sensor_exports/<backend>/<sensor_id>/...`.
       - filenames are backend-specific, for example CARLA camera exports default to `image.json` while AWSIM camera exports default to `rgb_frame.json`.
-      - sensor entries are additionally classified by `output_role` and `artifact_type` so runtime/pipeline layers can distinguish visible camera, depth camera, semantic camera, lidar point clouds, and radar detections.
+      - sensor entries are additionally classified by `output_role` and `artifact_type` so runtime/pipeline layers can distinguish visible camera, depth camera, semantic camera, lidar point clouds, radar detections, and radar tracks.
     - `backend_direct_run_command.sh`: executable shell command generated from `backend_runner_request.json`.
     - `backend_runner_execution_manifest.json`: standalone runner execution status and artifact pointers.
     - `backend_sensor_output_summary.json`: sensor-grouped output discovery summary generated from expected-output inspection, including `output_role_counts` and `artifact_type_counts`.
