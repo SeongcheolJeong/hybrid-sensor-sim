@@ -306,7 +306,7 @@ Primary code references:
 | Camera geometry families | `pinhole` + `rectilinear` + `equidistant` + `orthographic` implemented in local physics path | rectilinear + equidistant + orthographic + projection field adapter | P1 |
 | Camera temporal model | rolling shutter timing + trajectory pose-distortion implemented; behavior-driven motion still missing | rolling shutter + exposure sampling | P1 |
 | Camera image chain | depth + semantic + visible image-chain preview implemented; vignetting/lens flare/spot blur added, richer optical artifacts still missing | noise, gain, white balance, depth/semantic variants | P2 |
-| Lidar scan generation | preview only | source angles + scan path + scan type engine | P1 |
+| Lidar scan generation | source angles + scan field + scan path + multi-scan path metadata/filtering implemented in local preview path | source angles + scan path + scan type engine | P1 |
 | Lidar signal/intensity | very weak | reflectivity, SNR/intensity units, returns, weather | P1 |
 | Lidar multipath/material model | missing | HELIOS-backed or local hybrid path | P2 |
 | Radar beam/detectability | weak heuristic | antenna + detectability + false alarm calibration | P1 |
@@ -558,6 +558,19 @@ Primary references:
 - Applied lidar docs
 - HELIOS++ for scan/ray path
 - AWSIM and Autoware for output/runtime compatibility
+
+Current status:
+
+- implemented:
+  - typed lidar scan config surface
+  - source angle/channel assignment
+  - scan field and scan field offset filtering
+  - scan path and multi-scan path filtering in preview/trajectory sweep
+  - structured lidar preview metadata alongside existing xyz compatibility path
+- next missing items:
+  - per-channel divergence/loss calibration
+  - reflectivity/intensity/return model
+  - weather/backscatter and multi-return behavior
 
 ### Phase 3: Radar Core Feature Expansion
 

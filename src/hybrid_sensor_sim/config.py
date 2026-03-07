@@ -427,6 +427,18 @@ class LidarSensorConfig:
     noise_stddev_m: float = 0.02
     dropout_probability: float = 0.01
     scan_type: str = "spin"
+    scan_frequency_hz: float = 10.0
+    spin_direction: str = "CCW"
+    source_angles_deg: list[float] = field(default_factory=list)
+    source_angle_tolerance_deg: float = 1.0
+    scan_field_azimuth_min_deg: float = -180.0
+    scan_field_azimuth_max_deg: float = 180.0
+    scan_field_elevation_min_deg: float = -30.0
+    scan_field_elevation_max_deg: float = 30.0
+    scan_field_azimuth_offset_deg: float = 0.0
+    scan_field_elevation_offset_deg: float = 0.0
+    scan_path_deg: list[float] = field(default_factory=list)
+    multi_scan_path_deg: list[list[float]] = field(default_factory=list)
     range_min_m: float = 0.0
     range_max_m: float = 200.0
     extrinsics: SensorExtrinsicsConfig = field(default_factory=SensorExtrinsicsConfig)
@@ -445,6 +457,22 @@ class LidarSensorConfig:
             "noise_stddev_m": self.noise_stddev_m,
             "dropout_probability": self.dropout_probability,
             "scan_type": self.scan_type,
+            "scan_frequency_hz": self.scan_frequency_hz,
+            "spin_direction": self.spin_direction,
+            "source_angles_deg": list(self.source_angles_deg),
+            "source_angle_tolerance_deg": self.source_angle_tolerance_deg,
+            "scan_field_deg": {
+                "azimuth_min": self.scan_field_azimuth_min_deg,
+                "azimuth_max": self.scan_field_azimuth_max_deg,
+                "elevation_min": self.scan_field_elevation_min_deg,
+                "elevation_max": self.scan_field_elevation_max_deg,
+            },
+            "scan_field_offset_deg": {
+                "azimuth": self.scan_field_azimuth_offset_deg,
+                "elevation": self.scan_field_elevation_offset_deg,
+            },
+            "scan_path_deg": list(self.scan_path_deg),
+            "multi_scan_path_deg": [list(path) for path in self.multi_scan_path_deg],
             "range_m": {
                 "min": self.range_min_m,
                 "max": self.range_max_m,
@@ -743,6 +771,23 @@ def _parse_behaviors(options: Mapping[str, Any], sensor_name: str) -> list[Senso
     return behaviors
 
 
+def _parse_float_list(raw: Any) -> list[float]:
+    values: list[float] = []
+    for item in _as_list(raw):
+        values.append(_as_float(item, 0.0))
+    return values
+
+
+def _parse_nested_float_lists(raw: Any) -> list[list[float]]:
+    values: list[list[float]] = []
+    for item in _as_list(raw):
+        if isinstance(item, dict):
+            values.append(_parse_float_list(item.get("angles_deg")))
+            continue
+        values.append(_parse_float_list(item))
+    return [entry for entry in values if entry]
+
+
 def build_sensor_sim_config(
     *,
     sensor_profile: str = "default",
@@ -809,7 +854,44 @@ def build_sensor_sim_config(
             noise_model=_as_str(data.get("lidar_noise"), "gaussian"),
             noise_stddev_m=_as_float(data.get("lidar_noise_stddev_m"), 0.02),
             dropout_probability=_as_float(data.get("lidar_dropout_probability"), 0.01),
-            scan_type=_as_str(data.get("lidar_scan_type"), "spin"),
+            scan_type=_as_str(data.get("lidar_scan_type"), "spin").upper(),
+            scan_frequency_hz=_as_float(data.get("lidar_scan_frequency_hz"), 10.0),
+            spin_direction=_as_str(data.get("lidar_spin_direction"), "CCW").upper(),
+            source_angles_deg=_parse_float_list(
+                data.get("lidar_source_angles_deg", data.get("lidar_source_angles"))
+            ),
+            source_angle_tolerance_deg=_as_float(
+                data.get("lidar_source_angle_tolerance_deg"),
+                1.0,
+            ),
+            scan_field_azimuth_min_deg=_as_float(
+                _as_dict(data.get("lidar_scan_field")).get("azimuth_min_deg"),
+                _as_float(data.get("lidar_scan_field_azimuth_min_deg"), -180.0),
+            ),
+            scan_field_azimuth_max_deg=_as_float(
+                _as_dict(data.get("lidar_scan_field")).get("azimuth_max_deg"),
+                _as_float(data.get("lidar_scan_field_azimuth_max_deg"), 180.0),
+            ),
+            scan_field_elevation_min_deg=_as_float(
+                _as_dict(data.get("lidar_scan_field")).get("elevation_min_deg"),
+                _as_float(data.get("lidar_scan_field_elevation_min_deg"), -30.0),
+            ),
+            scan_field_elevation_max_deg=_as_float(
+                _as_dict(data.get("lidar_scan_field")).get("elevation_max_deg"),
+                _as_float(data.get("lidar_scan_field_elevation_max_deg"), 30.0),
+            ),
+            scan_field_azimuth_offset_deg=_as_float(
+                _as_dict(data.get("lidar_scan_field_offset")).get("azimuth_deg"),
+                _as_float(data.get("lidar_scan_field_azimuth_offset_deg"), 0.0),
+            ),
+            scan_field_elevation_offset_deg=_as_float(
+                _as_dict(data.get("lidar_scan_field_offset")).get("elevation_deg"),
+                _as_float(data.get("lidar_scan_field_elevation_offset_deg"), 0.0),
+            ),
+            scan_path_deg=_parse_float_list(data.get("lidar_scan_path_deg", data.get("lidar_scan_path"))),
+            multi_scan_path_deg=_parse_nested_float_lists(
+                data.get("lidar_multi_scan_path_deg", data.get("lidar_multi_scan_path"))
+            ),
             range_min_m=_as_float(data.get("lidar_range_min_m"), 0.0),
             range_max_m=_as_float(data.get("lidar_range_max_m"), 200.0),
             extrinsics=_parse_extrinsics(_as_dict(data.get("lidar_extrinsics"))),

@@ -26,7 +26,9 @@ class SensorConfigTests(unittest.TestCase):
         self.assertAlmostEqual(config.camera.lens_params.lens_flare, 0.0)
         self.assertAlmostEqual(config.camera.lens_params.spot_size, 0.0)
         self.assertEqual(config.lidar.noise_model, "gaussian")
-        self.assertEqual(config.lidar.scan_type, "spin")
+        self.assertEqual(config.lidar.scan_type, "SPIN")
+        self.assertEqual(config.lidar.scan_frequency_hz, 10.0)
+        self.assertEqual(config.lidar.source_angles_deg, [])
         self.assertEqual(config.radar.clutter_model, "basic")
         self.assertEqual(config.radar.range_min_m, 0.5)
 
@@ -118,6 +120,22 @@ class SensorConfigTests(unittest.TestCase):
                     {"continuous_motion": {"rz": 0.5}},
                 ],
                 "lidar_scan_type": "custom",
+                "lidar_scan_frequency_hz": "15.0",
+                "lidar_spin_direction": "cw",
+                "lidar_source_angles": [-10.0, 0.0, 10.0],
+                "lidar_source_angle_tolerance_deg": 1.5,
+                "lidar_scan_field": {
+                    "azimuth_min_deg": -30.0,
+                    "azimuth_max_deg": 30.0,
+                    "elevation_min_deg": -12.0,
+                    "elevation_max_deg": 12.0,
+                },
+                "lidar_scan_field_offset": {
+                    "azimuth_deg": 2.0,
+                    "elevation_deg": -1.0,
+                },
+                "lidar_scan_path": [0.0, 15.0, 30.0],
+                "lidar_multi_scan_path": [[0.0], [45.0]],
                 "lidar_motion_compensation_enabled": "0",
                 "lidar_scan_duration_s": "0.2",
                 "lidar_noise": "none",
@@ -177,7 +195,19 @@ class SensorConfigTests(unittest.TestCase):
         self.assertEqual(config.camera.behaviors[0].target_actor_id, "7")
         self.assertAlmostEqual(config.camera.behaviors[1].rz, 0.5)
         self.assertEqual(config.lidar.sensor_id, "lidar_roof")
-        self.assertEqual(config.lidar.scan_type, "custom")
+        self.assertEqual(config.lidar.scan_type, "CUSTOM")
+        self.assertAlmostEqual(config.lidar.scan_frequency_hz, 15.0)
+        self.assertEqual(config.lidar.spin_direction, "CW")
+        self.assertEqual(config.lidar.source_angles_deg, [-10.0, 0.0, 10.0])
+        self.assertAlmostEqual(config.lidar.source_angle_tolerance_deg, 1.5)
+        self.assertAlmostEqual(config.lidar.scan_field_azimuth_min_deg, -30.0)
+        self.assertAlmostEqual(config.lidar.scan_field_azimuth_max_deg, 30.0)
+        self.assertAlmostEqual(config.lidar.scan_field_elevation_min_deg, -12.0)
+        self.assertAlmostEqual(config.lidar.scan_field_elevation_max_deg, 12.0)
+        self.assertAlmostEqual(config.lidar.scan_field_azimuth_offset_deg, 2.0)
+        self.assertAlmostEqual(config.lidar.scan_field_elevation_offset_deg, -1.0)
+        self.assertEqual(config.lidar.scan_path_deg, [0.0, 15.0, 30.0])
+        self.assertEqual(config.lidar.multi_scan_path_deg, [[0.0], [45.0]])
         self.assertFalse(config.lidar.motion_compensation_enabled)
         self.assertAlmostEqual(config.lidar.scan_duration_s, 0.2)
         self.assertEqual(config.lidar.noise_model, "none")
@@ -216,6 +246,8 @@ class SensorConfigTests(unittest.TestCase):
                 "camera_row_delay_ns": 5000,
                 "camera_behaviors": [{"point_at": {"id": 3}}],
                 "lidar_scan_type": "flash",
+                "lidar_source_angles": [-12.5, -2.0, 8.0],
+                "lidar_scan_path": [0.0, 30.0],
                 "lidar_behaviors": [{"continuous_motion": {"tx": 0.1}}],
                 "radar_clutter": "none",
                 "sensor_behaviors": {
@@ -257,7 +289,9 @@ class SensorConfigTests(unittest.TestCase):
         )
         self.assertTrue(contract["sensor_setup"]["camera"]["rolling_shutter"]["enabled"])
         self.assertEqual(contract["sensor_setup"]["camera"]["behaviors"][0]["point_at"]["id"], "3")
-        self.assertEqual(contract["sensor_setup"]["lidar"]["scan_type"], "flash")
+        self.assertEqual(contract["sensor_setup"]["lidar"]["scan_type"], "FLASH")
+        self.assertEqual(contract["sensor_setup"]["lidar"]["source_angles_deg"], [-12.5, -2.0, 8.0])
+        self.assertEqual(contract["sensor_setup"]["lidar"]["scan_path_deg"], [0.0, 30.0])
         self.assertEqual(
             contract["sensor_setup"]["radar"]["behaviors"][0]["point_at"]["id"],
             "vehicle_9",

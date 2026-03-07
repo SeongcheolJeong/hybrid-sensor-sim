@@ -153,7 +153,7 @@ class NativePhysicsBackend(SensorBackend):
         )
         if camera_projection_sweep_artifact is not None:
             artifacts["camera_projection_trajectory_sweep"] = camera_projection_sweep_artifact
-        lidar_noisy_artifact = self._generate_lidar_noisy_pointcloud_if_available(
+        lidar_noisy_artifact, lidar_noisy_metadata_artifact = self._generate_lidar_noisy_pointcloud_if_available(
             request=request,
             artifacts=artifacts,
             enhanced_output=enhanced_output,
@@ -161,6 +161,8 @@ class NativePhysicsBackend(SensorBackend):
         )
         if lidar_noisy_artifact is not None:
             artifacts["lidar_noisy_preview"] = lidar_noisy_artifact
+        if lidar_noisy_metadata_artifact is not None:
+            artifacts["lidar_noisy_preview_json"] = lidar_noisy_metadata_artifact
         lidar_sweep_artifact = self._generate_lidar_trajectory_sweep_if_available(
             request=request,
             artifacts=artifacts,
@@ -1475,41 +1477,80 @@ class NativePhysicsBackend(SensorBackend):
         artifacts: dict[str, Path],
         enhanced_output: Path,
         metrics: dict[str, float],
-    ) -> Path | None:
+    ) -> tuple[Path | None, Path | None]:
         if not bool(request.options.get("lidar_postprocess_enabled", True)):
-            return None
+            return None, None
 
         point_cloud = artifacts.get("point_cloud_primary")
         if point_cloud is None or point_cloud.suffix.lower() != ".xyz" or not point_cloud.exists():
-            return None
+            return None, None
 
         max_points = int(request.options.get("lidar_postprocess_max_points", 50000))
         points_xyz = read_xyz_points(point_cloud, max_points=max_points)
         if not points_xyz:
             metrics["lidar_input_count"] = 0.0
             metrics["lidar_output_count"] = 0.0
-            return None
+            return None, None
 
-        rng = random.Random(int(request.seed) + 17)
-        noisy_points = self._apply_lidar_noise_and_dropout(
+        lidar_config = self._sensor_config_from_request(request).lidar
+        scan_points, scan_meta = self._apply_lidar_scan_model(
             request=request,
             points_xyz=points_xyz,
+            lidar_config=lidar_config,
+            frame_id=0,
+            frame_count=1,
+        )
+        rng = random.Random(int(request.seed) + 17)
+        noisy_points, preview_scan_points = self._apply_lidar_noise_and_dropout_with_metadata(
+            request=request,
+            points_xyz=scan_points,
+            metadata_points=scan_meta["points"] if isinstance(scan_meta.get("points"), list) else [],
             rng=rng,
         )
 
         output_path = enhanced_output / "lidar_noisy_preview.xyz"
         write_xyz_points(output_path, noisy_points)
+        metadata_path = enhanced_output / "lidar_noisy_preview.json"
+        preview_points = self._lidar_preview_points_payload(
+            noisy_points=noisy_points,
+            metadata_points=preview_scan_points,
+        )
+        metadata_path.write_text(
+            json.dumps(
+                {
+                    "input_point_cloud": str(point_cloud),
+                    "input_count": len(points_xyz),
+                    "output_count": len(noisy_points),
+                    "scan_type": lidar_config.scan_type,
+                    "scan_model_applied": scan_meta["applied"],
+                    "scan_frequency_hz": lidar_config.scan_frequency_hz,
+                    "spin_direction": lidar_config.spin_direction,
+                    "source_angles_deg": list(lidar_config.source_angles_deg),
+                    "source_angle_tolerance_deg": lidar_config.source_angle_tolerance_deg,
+                    "scan_field_deg": scan_meta["scan_field_deg"],
+                    "scan_field_offset_deg": scan_meta["scan_field_offset_deg"],
+                    "scan_path_deg": list(scan_meta["scan_path_deg"]),
+                    "multi_scan_path_deg": [list(path) for path in lidar_config.multi_scan_path_deg],
+                    "preview_points": preview_points,
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
         noise_model = str(request.options.get("lidar_noise", "gaussian")).lower().strip()
         noise_stddev = float(request.options.get("lidar_noise_stddev_m", 0.02))
         metrics["lidar_input_count"] = float(len(points_xyz))
         metrics["lidar_output_count"] = float(len(noisy_points))
         metrics["lidar_dropout_ratio"] = (
-            1.0 - (float(len(noisy_points)) / float(len(points_xyz)))
-            if points_xyz
+            1.0 - (float(len(noisy_points)) / float(len(scan_points)))
+            if scan_points
             else 0.0
         )
         metrics["lidar_noise_stddev_m"] = float(noise_stddev if noise_model == "gaussian" else 0.0)
-        return output_path
+        metrics["lidar_scan_model_applied"] = 1.0 if scan_meta["applied"] else 0.0
+        metrics["lidar_source_angle_count"] = float(len(lidar_config.source_angles_deg))
+        metrics["lidar_scan_path_point_count"] = float(len(scan_meta["scan_path_deg"]))
+        return output_path, metadata_path
 
     def _generate_lidar_trajectory_sweep_if_available(
         self,
@@ -1557,9 +1598,11 @@ class NativePhysicsBackend(SensorBackend):
         motion_comp_mode = str(request.options.get("lidar_motion_compensation_mode", "linear"))
         scan_duration_s = float(request.options.get("lidar_scan_duration_s", 0.1))
         base_extrinsics = self._lidar_extrinsics_from_options(request)
+        lidar_config = self._sensor_config_from_request(request).lidar
 
         frames: list[dict[str, object]] = []
         total_output_count = 0
+        scan_applied = False
         for frame_id, (pose_index, pose) in enumerate(selected_poses):
             effective_extrinsics = self._build_lidar_extrinsics_from_pose(
                 request=request,
@@ -1581,13 +1624,26 @@ class NativePhysicsBackend(SensorBackend):
                 points_xyz=compensated_world_points,
                 extrinsics=effective_extrinsics,
             )
-            rng = random.Random(int(request.seed) + 937 + frame_id)
-            noisy_points = self._apply_lidar_noise_and_dropout(
+            scan_points, scan_meta = self._apply_lidar_scan_model(
                 request=request,
                 points_xyz=points_lidar,
+                lidar_config=lidar_config,
+                frame_id=frame_id,
+                frame_count=len(selected_poses),
+            )
+            scan_applied = scan_applied or bool(scan_meta["applied"])
+            rng = random.Random(int(request.seed) + 937 + frame_id)
+            noisy_points, frame_scan_points = self._apply_lidar_noise_and_dropout_with_metadata(
+                request=request,
+                points_xyz=scan_points,
+                metadata_points=scan_meta["points"] if isinstance(scan_meta.get("points"), list) else [],
                 rng=rng,
             )
             total_output_count += len(noisy_points)
+            preview_points = self._lidar_preview_points_payload(
+                noisy_points=noisy_points,
+                metadata_points=frame_scan_points,
+            )
             frames.append(
                 {
                     "frame_id": frame_id,
@@ -1616,17 +1672,43 @@ class NativePhysicsBackend(SensorBackend):
                         {"x": x, "y": y, "z": z}
                         for x, y, z in noisy_points[:preview_points_per_frame]
                     ],
+                    "preview_points": preview_points[:preview_points_per_frame],
+                    "scan_model_applied": scan_meta["applied"],
+                    "scan_path_deg": list(scan_meta["scan_path_deg"]),
                 }
             )
 
         metrics["lidar_trajectory_sweep_frame_count"] = float(len(frames))
         metrics["lidar_trajectory_sweep_total_output_count"] = float(total_output_count)
         metrics["lidar_motion_compensation_applied"] = 1.0 if motion_comp_enabled else 0.0
+        metrics["lidar_scan_model_applied"] = 1.0 if scan_applied else 0.0
+        metrics["lidar_source_angle_count"] = float(len(lidar_config.source_angles_deg))
+        metrics["lidar_scan_path_point_count"] = float(
+            len(lidar_config.scan_path_deg)
+            + sum(len(path) for path in lidar_config.multi_scan_path_deg)
+        )
         payload = {
             "input_point_cloud": str(point_cloud),
             "trajectory_path": str(trajectory_path),
             "input_count": len(points_xyz),
             "frame_count": len(frames),
+            "scan_type": lidar_config.scan_type,
+            "scan_frequency_hz": lidar_config.scan_frequency_hz,
+            "spin_direction": lidar_config.spin_direction,
+            "source_angles_deg": list(lidar_config.source_angles_deg),
+            "source_angle_tolerance_deg": lidar_config.source_angle_tolerance_deg,
+            "scan_field_deg": {
+                "azimuth_min": lidar_config.scan_field_azimuth_min_deg,
+                "azimuth_max": lidar_config.scan_field_azimuth_max_deg,
+                "elevation_min": lidar_config.scan_field_elevation_min_deg,
+                "elevation_max": lidar_config.scan_field_elevation_max_deg,
+            },
+            "scan_field_offset_deg": {
+                "azimuth": lidar_config.scan_field_azimuth_offset_deg,
+                "elevation": lidar_config.scan_field_elevation_offset_deg,
+            },
+            "scan_path_deg": list(lidar_config.scan_path_deg),
+            "multi_scan_path_deg": [list(path) for path in lidar_config.multi_scan_path_deg],
             "frames": frames,
         }
         output_path = enhanced_output / "lidar_trajectory_sweep.json"
@@ -1659,6 +1741,314 @@ class NativePhysicsBackend(SensorBackend):
             else:
                 noisy_points.append((x, y, z))
         return noisy_points
+
+    def _apply_lidar_noise_and_dropout_with_metadata(
+        self,
+        *,
+        request: SensorSimRequest,
+        points_xyz: list[tuple[float, float, float]],
+        metadata_points: list[dict[str, object]],
+        rng: random.Random,
+    ) -> tuple[list[tuple[float, float, float]], list[dict[str, object]]]:
+        noise_model = str(request.options.get("lidar_noise", "gaussian")).lower().strip()
+        noise_stddev = float(request.options.get("lidar_noise_stddev_m", 0.02))
+        dropout_prob = float(request.options.get("lidar_dropout_probability", 0.01))
+        dropout_prob = min(max(dropout_prob, 0.0), 1.0)
+
+        noisy_points: list[tuple[float, float, float]] = []
+        noisy_metadata: list[dict[str, object]] = []
+        for index, (x, y, z) in enumerate(points_xyz):
+            if dropout_prob > 0.0 and rng.random() < dropout_prob:
+                continue
+            if noise_model == "gaussian":
+                noisy_point = (
+                    x + rng.gauss(0.0, noise_stddev),
+                    y + rng.gauss(0.0, noise_stddev),
+                    z + rng.gauss(0.0, noise_stddev),
+                )
+            else:
+                noisy_point = (x, y, z)
+            noisy_points.append(noisy_point)
+            if index < len(metadata_points):
+                noisy_metadata.append(dict(metadata_points[index]))
+            else:
+                noisy_metadata.append({})
+        return noisy_points, noisy_metadata
+
+    def _apply_lidar_scan_model(
+        self,
+        *,
+        request: SensorSimRequest,
+        points_xyz: list[tuple[float, float, float]],
+        lidar_config: Any,
+        frame_id: int,
+        frame_count: int,
+    ) -> tuple[list[tuple[float, float, float]], dict[str, object]]:
+        if not points_xyz:
+            return [], {
+                "applied": False,
+                "scan_path_deg": [],
+                "points": [],
+                "scan_field_deg": self._lidar_scan_field_payload(lidar_config),
+                "scan_field_offset_deg": self._lidar_scan_field_offset_payload(lidar_config),
+            }
+        if not self._lidar_scan_model_requested(lidar_config):
+            return list(points_xyz), {
+                "applied": False,
+                "scan_path_deg": [],
+                "points": [
+                    self._lidar_point_metadata(
+                        x=x,
+                        y=y,
+                        z=z,
+                        point_index=index,
+                        channel_id=None,
+                        source_angle_deg=None,
+                        scan_path_index=None,
+                    )
+                    for index, (x, y, z) in enumerate(points_xyz)
+                ],
+                "scan_field_deg": self._lidar_scan_field_payload(lidar_config),
+                "scan_field_offset_deg": self._lidar_scan_field_offset_payload(lidar_config),
+            }
+
+        selected_points: list[tuple[float, float, float]] = []
+        metadata: list[dict[str, object]] = []
+        scan_path = self._lidar_resolved_scan_path_deg(
+            lidar_config=lidar_config,
+            frame_id=frame_id,
+            frame_count=frame_count,
+        )
+        source_angles = list(lidar_config.source_angles_deg)
+        tolerance = max(lidar_config.source_angle_tolerance_deg, 1e-6)
+        az_min = lidar_config.scan_field_azimuth_min_deg
+        az_max = lidar_config.scan_field_azimuth_max_deg
+        el_min = lidar_config.scan_field_elevation_min_deg
+        el_max = lidar_config.scan_field_elevation_max_deg
+        az_offset = lidar_config.scan_field_azimuth_offset_deg
+        el_offset = lidar_config.scan_field_elevation_offset_deg
+
+        for point_index, (x, y, z) in enumerate(points_xyz):
+            range_m = sqrt(x * x + y * y + z * z)
+            if range_m < lidar_config.range_min_m or range_m > lidar_config.range_max_m:
+                continue
+            horizontal = sqrt(x * x + y * y)
+            azimuth_deg = self._normalize_angle_deg((atan2(y, x) * 180.0 / pi) - az_offset)
+            elevation_deg = (atan2(z, max(horizontal, 1e-9)) * 180.0 / pi) - el_offset
+            if not self._lidar_angle_in_field(
+                angle_deg=azimuth_deg,
+                min_deg=az_min,
+                max_deg=az_max,
+                wrap=True,
+            ):
+                continue
+            if elevation_deg < el_min or elevation_deg > el_max:
+                continue
+
+            channel_id: int | None = None
+            source_angle_deg: float | None = None
+            if source_angles:
+                channel_id, source_angle_deg = self._lidar_match_source_angle(
+                    elevation_deg=elevation_deg,
+                    source_angles_deg=source_angles,
+                    tolerance_deg=tolerance,
+                )
+                if channel_id is None:
+                    continue
+
+            scan_path_index: int | None = None
+            if scan_path:
+                scan_path_index = self._lidar_match_scan_path(
+                    azimuth_deg=azimuth_deg,
+                    scan_path_deg=scan_path,
+                )
+                if scan_path_index is None:
+                    continue
+
+            selected_points.append((x, y, z))
+            metadata.append(
+                self._lidar_point_metadata(
+                    x=x,
+                    y=y,
+                    z=z,
+                    point_index=point_index,
+                    channel_id=channel_id,
+                    source_angle_deg=source_angle_deg,
+                    scan_path_index=scan_path_index,
+                )
+            )
+
+        return selected_points, {
+            "applied": True,
+            "scan_path_deg": scan_path,
+            "points": metadata,
+            "scan_field_deg": self._lidar_scan_field_payload(lidar_config),
+            "scan_field_offset_deg": self._lidar_scan_field_offset_payload(lidar_config),
+        }
+
+    def _lidar_scan_model_requested(self, lidar_config: Any) -> bool:
+        return bool(
+            lidar_config.source_angles_deg
+            or lidar_config.scan_path_deg
+            or lidar_config.multi_scan_path_deg
+            or lidar_config.scan_type.upper() in {"FLASH", "CUSTOM"}
+            or lidar_config.spin_direction.upper() != "CCW"
+            or abs(lidar_config.scan_field_azimuth_min_deg + 180.0) > 1e-9
+            or abs(lidar_config.scan_field_azimuth_max_deg - 180.0) > 1e-9
+            or abs(lidar_config.scan_field_elevation_min_deg + 30.0) > 1e-9
+            or abs(lidar_config.scan_field_elevation_max_deg - 30.0) > 1e-9
+            or abs(lidar_config.scan_field_azimuth_offset_deg) > 1e-9
+            or abs(lidar_config.scan_field_elevation_offset_deg) > 1e-9
+        )
+
+    def _lidar_resolved_scan_path_deg(
+        self,
+        *,
+        lidar_config: Any,
+        frame_id: int,
+        frame_count: int,
+    ) -> list[float]:
+        if lidar_config.multi_scan_path_deg:
+            return list(lidar_config.multi_scan_path_deg[frame_id % len(lidar_config.multi_scan_path_deg)])
+        if lidar_config.scan_path_deg:
+            return list(lidar_config.scan_path_deg)
+        if lidar_config.scan_type.upper() == "SPIN" and frame_count > 1:
+            az_min = lidar_config.scan_field_azimuth_min_deg
+            az_max = lidar_config.scan_field_azimuth_max_deg
+            span = max(az_max - az_min, 1.0)
+            step = span / float(frame_count)
+            if lidar_config.spin_direction.upper() == "CW":
+                return [az_max - step * (frame_id + 0.5)]
+            return [az_min + step * (frame_id + 0.5)]
+        return []
+
+    def _lidar_match_source_angle(
+        self,
+        *,
+        elevation_deg: float,
+        source_angles_deg: list[float],
+        tolerance_deg: float,
+    ) -> tuple[int | None, float | None]:
+        if not source_angles_deg:
+            return None, None
+        nearest_index = min(
+            range(len(source_angles_deg)),
+            key=lambda index: abs(source_angles_deg[index] - elevation_deg),
+        )
+        nearest_angle = float(source_angles_deg[nearest_index])
+        if abs(nearest_angle - elevation_deg) > tolerance_deg:
+            return None, None
+        return nearest_index, nearest_angle
+
+    def _lidar_match_scan_path(
+        self,
+        *,
+        azimuth_deg: float,
+        scan_path_deg: list[float],
+    ) -> int | None:
+        if not scan_path_deg:
+            return None
+        tolerance_deg = 8.0 if len(scan_path_deg) > 1 else 15.0
+        nearest_index = min(
+            range(len(scan_path_deg)),
+            key=lambda index: abs(self._normalize_angle_deg(azimuth_deg - scan_path_deg[index])),
+        )
+        nearest_angle = self._normalize_angle_deg(azimuth_deg - scan_path_deg[nearest_index])
+        if abs(nearest_angle) > tolerance_deg:
+            return None
+        return nearest_index
+
+    def _lidar_point_metadata(
+        self,
+        *,
+        x: float,
+        y: float,
+        z: float,
+        point_index: int,
+        channel_id: int | None,
+        source_angle_deg: float | None,
+        scan_path_index: int | None,
+    ) -> dict[str, object]:
+        horizontal = sqrt(x * x + y * y)
+        return {
+            "x": x,
+            "y": y,
+            "z": z,
+            "point_index": point_index,
+            "range_m": sqrt(x * x + y * y + z * z),
+            "azimuth_deg": atan2(y, x) * 180.0 / pi,
+            "elevation_deg": atan2(z, max(horizontal, 1e-9)) * 180.0 / pi,
+            "channel_id": channel_id,
+            "source_angle_deg": source_angle_deg,
+            "scan_path_index": scan_path_index,
+        }
+
+    def _lidar_preview_points_payload(
+        self,
+        *,
+        noisy_points: list[tuple[float, float, float]],
+        metadata_points: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        payload: list[dict[str, object]] = []
+        for index, point in enumerate(noisy_points):
+            x, y, z = point
+            base = metadata_points[index] if index < len(metadata_points) and isinstance(metadata_points[index], dict) else {}
+            payload.append(
+                {
+                    "x": x,
+                    "y": y,
+                    "z": z,
+                    "range_m": sqrt(x * x + y * y + z * z),
+                    "azimuth_deg": base.get("azimuth_deg", atan2(y, x) * 180.0 / pi),
+                    "elevation_deg": base.get(
+                        "elevation_deg",
+                        atan2(z, max(sqrt(x * x + y * y), 1e-9)) * 180.0 / pi,
+                    ),
+                    "channel_id": base.get("channel_id"),
+                    "source_angle_deg": base.get("source_angle_deg"),
+                    "scan_path_index": base.get("scan_path_index"),
+                }
+            )
+        return payload
+
+    def _lidar_scan_field_payload(self, lidar_config: Any) -> dict[str, float]:
+        return {
+            "azimuth_min": float(lidar_config.scan_field_azimuth_min_deg),
+            "azimuth_max": float(lidar_config.scan_field_azimuth_max_deg),
+            "elevation_min": float(lidar_config.scan_field_elevation_min_deg),
+            "elevation_max": float(lidar_config.scan_field_elevation_max_deg),
+        }
+
+    def _lidar_scan_field_offset_payload(self, lidar_config: Any) -> dict[str, float]:
+        return {
+            "azimuth": float(lidar_config.scan_field_azimuth_offset_deg),
+            "elevation": float(lidar_config.scan_field_elevation_offset_deg),
+        }
+
+    def _normalize_angle_deg(self, angle_deg: float) -> float:
+        normalized = (angle_deg + 180.0) % 360.0 - 180.0
+        if normalized == -180.0:
+            return 180.0
+        return normalized
+
+    def _lidar_angle_in_field(
+        self,
+        *,
+        angle_deg: float,
+        min_deg: float,
+        max_deg: float,
+        wrap: bool,
+    ) -> bool:
+        if not wrap:
+            return min_deg <= angle_deg <= max_deg
+        if max_deg - min_deg >= 359.999:
+            return True
+        normalized_angle = self._normalize_angle_deg(angle_deg)
+        normalized_min = self._normalize_angle_deg(min_deg)
+        normalized_max = self._normalize_angle_deg(max_deg)
+        if normalized_min <= normalized_max:
+            return normalized_min <= normalized_angle <= normalized_max
+        return normalized_angle >= normalized_min or normalized_angle <= normalized_max
 
     def _apply_lidar_motion_compensation(
         self,

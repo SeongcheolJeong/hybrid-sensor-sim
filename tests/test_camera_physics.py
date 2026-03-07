@@ -985,6 +985,165 @@ EOF
             self.assertAlmostEqual(x1, 10.3, places=6)
             self.assertAlmostEqual(x2, 10.4, places=6)
 
+    def test_lidar_scan_model_filters_points_by_source_angles_and_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+10.0 0.0 0.0
+10.0 10.0 0.0
+10.0 0.0 1.7633
+10.0 0.0 5.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "radar_postprocess_enabled": False,
+                    "lidar_postprocess_enabled": True,
+                    "lidar_noise": "none",
+                    "lidar_dropout_probability": 0.0,
+                    "lidar_scan_type": "CUSTOM",
+                    "lidar_source_angles": [-10.0, 0.0, 10.0],
+                    "lidar_source_angle_tolerance_deg": 1.0,
+                    "lidar_scan_field": {
+                        "azimuth_min_deg": -5.0,
+                        "azimuth_max_deg": 50.0,
+                        "elevation_min_deg": -12.0,
+                        "elevation_max_deg": 12.0,
+                    },
+                    "lidar_scan_path": [0.0, 45.0],
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            self.assertEqual(result.metrics.get("lidar_scan_model_applied"), 1.0)
+            self.assertEqual(result.metrics.get("lidar_output_count"), 3.0)
+            self.assertIn("lidar_noisy_preview_json", result.artifacts)
+            preview = json.loads(
+                result.artifacts["lidar_noisy_preview_json"].read_text(encoding="utf-8")
+            )
+            self.assertTrue(preview["scan_model_applied"])
+            self.assertEqual(preview["source_angles_deg"], [-10.0, 0.0, 10.0])
+            self.assertEqual(preview["scan_path_deg"], [0.0, 45.0])
+            self.assertEqual(preview["output_count"], 3)
+            self.assertEqual(len(preview["preview_points"]), 3)
+            self.assertEqual(preview["preview_points"][0]["channel_id"], 1)
+            self.assertEqual(preview["preview_points"][0]["scan_path_index"], 0)
+            self.assertEqual(preview["preview_points"][1]["scan_path_index"], 1)
+            self.assertEqual(preview["preview_points"][2]["channel_id"], 2)
+
+    def test_lidar_trajectory_sweep_uses_multi_scan_path_per_frame(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+10.0 0.0 0.0
+0.0 10.0 0.0
+EOF
+cat > "${rootdir}/scan_trajectory.txt" <<EOF
+0.0 0.0 0.0 0.0 0.0 0.0 0.0
+1.0 0.0 0.0 1.0 0.0 0.0 0.0
+2.0 0.0 0.0 2.0 0.0 0.0 0.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "radar_postprocess_enabled": False,
+                    "lidar_postprocess_enabled": True,
+                    "lidar_trajectory_sweep_enabled": True,
+                    "lidar_trajectory_sweep_frames": 2,
+                    "lidar_noise": "none",
+                    "lidar_dropout_probability": 0.0,
+                    "lidar_scan_type": "CUSTOM",
+                    "lidar_multi_scan_path": [[0.0], [90.0]],
+                    "lidar_extrinsics": {
+                        "enabled": True,
+                        "tx": 0.0,
+                        "ty": 0.0,
+                        "tz": 0.0,
+                        "roll_deg": 0.0,
+                        "pitch_deg": 0.0,
+                        "yaw_deg": 0.0,
+                    },
+                    "lidar_extrinsics_auto_use_position": "none",
+                    "lidar_extrinsics_auto_use_orientation": False,
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            payload = json.loads(result.artifacts["lidar_trajectory_sweep"].read_text(encoding="utf-8"))
+            self.assertEqual(payload["frame_count"], 2)
+            self.assertEqual(payload["frames"][0]["output_count"], 1)
+            self.assertEqual(payload["frames"][1]["output_count"], 1)
+            self.assertEqual(payload["frames"][0]["scan_path_deg"], [0.0])
+            self.assertEqual(payload["frames"][1]["scan_path_deg"], [90.0])
+            self.assertEqual(payload["frames"][0]["preview_points"][0]["scan_path_index"], 0)
+            self.assertEqual(payload["frames"][1]["preview_points"][0]["scan_path_index"], 0)
+
     def test_radar_trajectory_sweep_uses_local_velocity_per_frame(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

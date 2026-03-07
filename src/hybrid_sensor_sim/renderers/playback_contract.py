@@ -138,6 +138,7 @@ def build_renderer_playback_contract(
     radar_sweep = artifacts.get("radar_targets_trajectory_sweep")
     camera_preview = artifacts.get("camera_projection_preview")
     lidar_preview = artifacts.get("lidar_noisy_preview")
+    lidar_preview_json = artifacts.get("lidar_noisy_preview_json")
     radar_preview = artifacts.get("radar_targets_preview")
     generated_survey = artifacts.get("generated_survey")
     execution_plan = artifacts.get("execution_plan")
@@ -293,6 +294,7 @@ def build_renderer_playback_contract(
             "camera_projection_preview": str(camera_preview) if camera_preview is not None else None,
             "camera_projection_trajectory_sweep": str(camera_sweep) if camera_sweep is not None else None,
             "lidar_noisy_preview": str(lidar_preview) if lidar_preview is not None else None,
+            "lidar_noisy_preview_json": str(lidar_preview_json) if lidar_preview_json is not None else None,
             "lidar_trajectory_sweep": str(lidar_sweep) if lidar_sweep is not None else None,
             "radar_targets_preview": str(radar_preview) if radar_preview is not None else None,
             "radar_targets_trajectory_sweep": str(radar_sweep) if radar_sweep is not None else None,
@@ -331,6 +333,22 @@ def build_renderer_playback_contract(
                 "motion_compensation_enabled": config.lidar.motion_compensation_enabled,
                 "scan_duration_s": config.lidar.scan_duration_s,
                 "scan_type": config.lidar.scan_type,
+                "scan_frequency_hz": config.lidar.scan_frequency_hz,
+                "spin_direction": config.lidar.spin_direction,
+                "source_angles_deg": list(config.lidar.source_angles_deg),
+                "source_angle_tolerance_deg": config.lidar.source_angle_tolerance_deg,
+                "scan_field_deg": {
+                    "azimuth_min": config.lidar.scan_field_azimuth_min_deg,
+                    "azimuth_max": config.lidar.scan_field_azimuth_max_deg,
+                    "elevation_min": config.lidar.scan_field_elevation_min_deg,
+                    "elevation_max": config.lidar.scan_field_elevation_max_deg,
+                },
+                "scan_field_offset_deg": {
+                    "azimuth": config.lidar.scan_field_azimuth_offset_deg,
+                    "elevation": config.lidar.scan_field_elevation_offset_deg,
+                },
+                "scan_path_deg": list(config.lidar.scan_path_deg),
+                "multi_scan_path_deg": [list(path) for path in config.lidar.multi_scan_path_deg],
                 "behaviors": [behavior.to_dict() for behavior in config.lidar.behaviors],
             },
             "radar": {

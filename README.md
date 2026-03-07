@@ -175,7 +175,17 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - LiDAR noisy preview:
   - enable `lidar_postprocess_enabled=true`
   - noise/dropout controls: `lidar_noise`, `lidar_noise_stddev_m`, `lidar_dropout_probability`
-  - emits `lidar_noisy_preview.xyz`.
+  - scan engine controls:
+    - `lidar_scan_type=SPIN|FLASH|CUSTOM`
+    - `lidar_scan_frequency_hz`
+    - `lidar_spin_direction=CCW|CW`
+    - `lidar_source_angles`
+    - `lidar_source_angle_tolerance_deg`
+    - `lidar_scan_field.{azimuth_min_deg,azimuth_max_deg,elevation_min_deg,elevation_max_deg}`
+    - `lidar_scan_field_offset.{azimuth_deg,elevation_deg}`
+    - `lidar_scan_path`
+    - `lidar_multi_scan_path`
+  - emits `lidar_noisy_preview.xyz` and `lidar_noisy_preview.json`.
 - LiDAR trajectory sweep preview:
   - enable `lidar_trajectory_sweep_enabled=true`
   - set `lidar_trajectory_sweep_frames` and `lidar_preview_points_per_frame`
@@ -187,7 +197,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `lidar_extrinsics_auto_use_position=none|xy|xyz`
     - `lidar_extrinsics_auto_use_orientation=true|false`
     - `lidar_extrinsics_auto_offsets`
-  - emits `lidar_trajectory_sweep.json`.
+  - emits `lidar_trajectory_sweep.json` with `preview_points_xyz` and structured `preview_points` metadata (`range_m`, `azimuth_deg`, `elevation_deg`, `channel_id`, `scan_path_index`).
 - Radar target preview:
   - enable `radar_postprocess_enabled=true`
   - core controls: `radar_max_targets`, `radar_range_min_m`, `radar_range_max_m`
