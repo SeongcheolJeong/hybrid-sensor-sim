@@ -4,6 +4,7 @@ import argparse
 import contextlib
 import io
 import json
+import os
 import shlex
 from pathlib import Path
 from typing import Any
@@ -116,6 +117,11 @@ def _write_text(path: Path, payload: str) -> None:
     path.write_text(payload, encoding="utf-8")
 
 
+def _write_executable_text(path: Path, payload: str) -> None:
+    _write_text(path, payload)
+    path.chmod(path.stat().st_mode | 0o111)
+
+
 def _load_json(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
@@ -218,6 +224,27 @@ def _render_workflow_markdown_report(summary: dict[str, Any], summary_path: Path
         for issue in issues:
             lines.append(f"- `{_inline(issue)}`")
         lines.append("")
+    blockers = summary.get("blockers", [])
+    if isinstance(blockers, list) and blockers:
+        lines.extend(
+            [
+                "## Blockers",
+                "| Code | Severity | Message | Recommended Command |",
+                "| --- | --- | --- | --- |",
+            ]
+        )
+        for blocker in blockers:
+            if not isinstance(blocker, dict):
+                continue
+            lines.append(
+                "| {code} | {severity} | `{message}` | `{recommended}` |".format(
+                    code=_inline(blocker.get("code")),
+                    severity=_inline(blocker.get("severity")),
+                    message=_inline(blocker.get("message")),
+                    recommended=_inline(blocker.get("recommended_command")),
+                )
+            )
+        lines.append("")
     final_selection = summary.get("final_selection", {})
     if isinstance(final_selection, dict) and final_selection:
         lines.extend(
@@ -277,6 +304,113 @@ def _build_or_load_setup_summary(
     _write_json(summary_path, summary)
     _write_text(env_path, _render_local_setup_env_file(summary))
     return summary, summary_path, True
+
+
+def _build_blockers(
+    *,
+    backend: str,
+    setup_summary: dict[str, Any],
+    helios_ready: bool,
+    backend_bin: str | None,
+    auto_acquire: bool,
+    acquire_summary: dict[str, Any] | None,
+    smoke_executed: bool,
+    smoke_exit_code: int | None,
+    recommended_next_command: str | None,
+) -> list[dict[str, Any]]:
+    blockers: list[dict[str, Any]] = []
+    acquisition_hints = setup_summary.get("acquisition_hints", {})
+    backend_hints = acquisition_hints.get(backend, {}) if isinstance(acquisition_hints, dict) else {}
+    if isinstance(backend_hints, dict) and backend_hints.get("platform_supported") is False:
+        blockers.append(
+            {
+                "code": "BACKEND_PLATFORM_UNSUPPORTED",
+                "severity": "warning",
+                "message": str(backend_hints.get("platform_note") or f"{backend} platform unsupported"),
+                "recommended_command": recommended_next_command,
+            }
+        )
+    if not helios_ready:
+        blockers.append(
+            {
+                "code": "HELIOS_RUNTIME_MISSING",
+                "severity": "blocking",
+                "message": "HELIOS runtime is not ready for backend smoke.",
+                "recommended_command": None,
+            }
+        )
+    if backend_bin is None:
+        blockers.append(
+            {
+                "code": "BACKEND_BIN_MISSING",
+                "severity": "blocking",
+                "message": f"{backend.upper()} runtime binary is not resolved.",
+                "recommended_command": recommended_next_command,
+            }
+        )
+        if not auto_acquire:
+            blockers.append(
+                {
+                    "code": "AUTO_ACQUIRE_DISABLED",
+                    "severity": "blocking",
+                    "message": "Workflow did not attempt package acquire because --auto-acquire is disabled.",
+                    "recommended_command": recommended_next_command,
+                }
+            )
+    if auto_acquire and isinstance(acquire_summary, dict):
+        acquire_readiness = acquire_summary.get("readiness", {})
+        if acquire_readiness.get("download_url_resolved") is False:
+            blockers.append(
+                {
+                    "code": "ACQUIRE_SOURCE_UNRESOLVED",
+                    "severity": "blocking",
+                    "message": "No package URL or local archive candidate was resolved for auto-acquire.",
+                    "recommended_command": recommended_next_command,
+                }
+            )
+        elif acquire_readiness.get("stage_ready") is False and backend_bin is None:
+            blockers.append(
+                {
+                    "code": "ACQUIRE_OR_STAGE_FAILED",
+                    "severity": "blocking",
+                    "message": "Package acquire completed without producing a runnable backend binary.",
+                    "recommended_command": recommended_next_command,
+                }
+            )
+    if smoke_executed and smoke_exit_code not in (None, 0):
+        blockers.append(
+            {
+                "code": "SMOKE_EXECUTION_FAILED",
+                "severity": "blocking",
+                "message": f"Backend smoke exited with code {smoke_exit_code}.",
+                "recommended_command": recommended_next_command,
+            }
+        )
+    return blockers
+
+
+def _render_next_step_script(summary: dict[str, Any]) -> str:
+    env_path = summary.get("artifacts", {}).get("env_path")
+    recommended = summary.get("recommended_next_command")
+    smoke_command = summary.get("commands", {}).get("smoke")
+    lines = [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        "# Generated by renderer_backend_workflow.py",
+        "",
+    ]
+    if env_path:
+        lines.append(f"source {shlex.quote(str(env_path))}")
+    lines.append("")
+    if recommended:
+        lines.append(recommended)
+    elif smoke_command:
+        lines.append(smoke_command)
+    else:
+        lines.append("echo 'No recommended next command available.'")
+        lines.append("exit 1")
+    lines.append("")
+    return "\n".join(lines)
 
 
 def _determine_smoke_config(
@@ -451,6 +585,17 @@ def build_renderer_backend_workflow(
         recommended_next_command = "python3 scripts/run_renderer_backend_smoke.py " + " ".join(
             f"\"{arg}\"" if " " in arg else arg for arg in smoke_args
         )
+    blockers = _build_blockers(
+        backend=backend,
+        setup_summary=setup_summary,
+        helios_ready=helios_ready,
+        backend_bin=selected_backend_bin,
+        auto_acquire=auto_acquire,
+        acquire_summary=acquire_summary,
+        smoke_executed=smoke_executed,
+        smoke_exit_code=smoke_exit_code,
+        recommended_next_command=recommended_next_command,
+    )
     return {
         "backend": backend,
         "status": status,
@@ -458,6 +603,7 @@ def build_renderer_backend_workflow(
         "dry_run": dry_run,
         "generated_setup": generated_setup,
         "issues": issues,
+        "blockers": blockers,
         "final_selection": final_selection,
         "recommended_next_command": recommended_next_command,
         "setup": {
@@ -494,6 +640,7 @@ def build_renderer_backend_workflow(
             "summary_path": str(summary_path),
             "env_path": str(env_path),
             "report_path": str(report_path),
+            "next_step_script_path": str(workflow_root / "renderer_backend_workflow_next_step.sh"),
         },
     }
 
@@ -525,9 +672,11 @@ def main(argv: list[str] | None = None) -> int:
     summary_path = Path(summary["artifacts"]["summary_path"])
     env_path = Path(summary["artifacts"]["env_path"])
     report_path = Path(summary["artifacts"]["report_path"])
+    next_step_script_path = Path(summary["artifacts"]["next_step_script_path"])
     _write_json(summary_path, summary)
     _write_text(env_path, _render_workflow_env_file(summary))
     _write_text(report_path, _render_workflow_markdown_report(summary, summary_path))
+    _write_executable_text(next_step_script_path, _render_next_step_script(summary))
     print(json.dumps(summary, indent=2))
     return 0 if summary["success"] else 1
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
 import tempfile
 import unittest
 import zipfile
@@ -115,6 +116,12 @@ class RendererBackendWorkflowTests(unittest.TestCase):
                         "readiness": {
                             "helios_ready": True,
                         },
+                        "acquisition_hints": {
+                            "awsim": {
+                                "platform_supported": False,
+                                "platform_note": "AWSIM quick-start docs assume Ubuntu 22.04 with NVIDIA RTX and driver 570+.",
+                            }
+                        },
                         "commands": {
                             "awsim_acquire": "python3 scripts/acquire_renderer_backend_package.py --backend awsim",
                         },
@@ -136,6 +143,10 @@ class RendererBackendWorkflowTests(unittest.TestCase):
             self.assertIn("AWSIM_BIN is not resolved", "\n".join(summary["issues"]))
             self.assertEqual(summary["recommended_next_command"], summary["commands"]["acquire"])
             self.assertEqual(summary["final_selection"]["AWSIM_BIN"], None)
+            blocker_codes = [entry["code"] for entry in summary["blockers"]]
+            self.assertIn("BACKEND_BIN_MISSING", blocker_codes)
+            self.assertIn("AUTO_ACQUIRE_DISABLED", blocker_codes)
+            self.assertIn("BACKEND_PLATFORM_UNSUPPORTED", blocker_codes)
 
     def test_workflow_can_auto_acquire_and_run_smoke(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -159,6 +170,8 @@ class RendererBackendWorkflowTests(unittest.TestCase):
                         },
                         "acquisition_hints": {
                             "awsim": {
+                                "platform_supported": False,
+                                "platform_note": "AWSIM quick-start docs assume Ubuntu 22.04 with NVIDIA RTX and driver 570+.",
                                 "download_options": [
                                     {
                                         "name": "AWSIM-Demo.zip",
@@ -197,6 +210,9 @@ class RendererBackendWorkflowTests(unittest.TestCase):
             self.assertEqual(summary["smoke"]["summary"]["output_comparison"]["status"], "MATCHED")
             self.assertTrue(summary["final_selection"]["AWSIM_BIN"])
             self.assertEqual(summary["final_selection"]["AWSIM_RENDERER_MAP"], "Town12")
+            blocker_codes = [entry["code"] for entry in summary["blockers"]]
+            self.assertIn("BACKEND_PLATFORM_UNSUPPORTED", blocker_codes)
+            self.assertNotIn("BACKEND_BIN_MISSING", blocker_codes)
 
     def test_workflow_can_stage_existing_local_archive_without_download(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -221,6 +237,8 @@ class RendererBackendWorkflowTests(unittest.TestCase):
                         },
                         "acquisition_hints": {
                             "awsim": {
+                                "platform_supported": False,
+                                "platform_note": "AWSIM quick-start docs assume Ubuntu 22.04 with NVIDIA RTX and driver 570+.",
                                 "local_download_candidates": [str(local_archive)],
                             }
                         },
@@ -252,6 +270,10 @@ class RendererBackendWorkflowTests(unittest.TestCase):
             )
             self.assertTrue(summary["smoke"]["executed"])
             self.assertEqual(summary["final_selection"]["AWSIM_RENDERER_MAP"], "Town13")
+            self.assertEqual(
+                summary["recommended_next_command"],
+                None,
+            )
 
     def test_workflow_main_writes_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -291,15 +313,21 @@ class RendererBackendWorkflowTests(unittest.TestCase):
             summary_path = output_root / "renderer_backend_workflow_summary.json"
             env_path = output_root / "renderer_backend_workflow.env.sh"
             report_path = output_root / "renderer_backend_workflow_report.md"
+            next_step_path = output_root / "renderer_backend_workflow_next_step.sh"
             self.assertTrue(summary_path.exists())
             self.assertTrue(env_path.exists())
             self.assertTrue(report_path.exists())
+            self.assertTrue(next_step_path.exists())
             payload = json.loads(summary_path.read_text(encoding="utf-8"))
             env_text = env_path.read_text(encoding="utf-8")
             report_text = report_path.read_text(encoding="utf-8")
+            next_step_text = next_step_path.read_text(encoding="utf-8")
             self.assertEqual(payload["status"], "DRY_RUN_BLOCKED")
             self.assertIn("AWSIM_BIN", env_text)
             self.assertIn("Renderer Backend Workflow Report", report_text)
+            self.assertIn("Blockers", report_text)
+            self.assertIn("acquire_renderer_backend_package.py", next_step_text)
+            self.assertTrue(os.access(next_step_path, os.X_OK))
             self.assertIn("renderer_backend_workflow_summary.json", stdout.getvalue())
 
 
