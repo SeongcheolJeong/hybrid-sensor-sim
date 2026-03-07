@@ -898,7 +898,11 @@ for entry in payload.get("expected_outputs", []):
         target.write_text('{"backend":"awsim"}', encoding="utf-8")
     if entry.get("artifact_key") == "sensor_output_camera_front":
         candidates = entry.get("path_candidates", [])
-        target = pathlib.Path(candidates[1] if len(candidates) > 1 else entry["path"])
+        fallback = next(
+            (candidate for candidate in candidates if candidate.endswith("camera_projection.json")),
+            "",
+        )
+        target = pathlib.Path(fallback or (candidates[1] if len(candidates) > 1 else entry["path"]))
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text('{"sensor":"camera_front"}', encoding="utf-8")
 PY
@@ -1039,7 +1043,7 @@ printf "%s\\n" "$@"
             self.assertEqual(runner_execution_manifest["output_comparison_report"]["status"], "MIXED")
             self.assertEqual(
                 runner_execution_manifest["output_comparison_report"]["mismatch_reasons"],
-                ["MISSING_EXPECTED_OUTPUTS", "UNEXPECTED_OUTPUTS_PRESENT"],
+                ["MISSING_EXPECTED_OUTPUTS", "UNEXPECTED_OUTPUTS_PRESENT", "BACKEND_FILENAME_MISMATCH"],
             )
             self.assertGreaterEqual(
                 runner_execution_manifest["expected_output_summary"]["found_count"],
@@ -1054,7 +1058,7 @@ printf "%s\\n" "$@"
             self.assertTrue(
                 any(
                     entry.get("artifact_key") == "sensor_output_camera_front" and entry.get("exists")
-                    and "/sensor_exports/awsim/camera_front/camera/rgb_frame.json"
+                    and "/sensor_exports/camera_front/camera_projection.json"
                     in str(entry.get("resolved_path", ""))
                     for entry in runner_execution_manifest["expected_outputs"]
                 )
@@ -1076,7 +1080,7 @@ printf "%s\\n" "$@"
             self.assertEqual(output_comparison_report["status"], "MIXED")
             self.assertEqual(
                 output_comparison_report["mismatch_reasons"],
-                ["MISSING_EXPECTED_OUTPUTS", "UNEXPECTED_OUTPUTS_PRESENT"],
+                ["MISSING_EXPECTED_OUTPUTS", "UNEXPECTED_OUTPUTS_PRESENT", "BACKEND_FILENAME_MISMATCH"],
             )
             self.assertEqual(output_comparison_report["unexpected_output_count"], 1)
             self.assertEqual(
@@ -1084,7 +1088,10 @@ printf "%s\\n" "$@"
                 "extras/debug_extra.json",
             )
             self.assertEqual(output_comparison_report["by_sensor"][0]["status"], "MATCHED")
-            self.assertEqual(output_comparison_report["by_sensor"][0]["mismatch_reasons"], [])
+            self.assertEqual(
+                output_comparison_report["by_sensor"][0]["mismatch_reasons"],
+                ["BACKEND_FILENAME_MISMATCH"],
+            )
             self.assertEqual(
                 output_comparison_report["by_sensor"][0]["role_diffs"][0]["status"],
                 "MATCHED",
@@ -1092,6 +1099,18 @@ printf "%s\\n" "$@"
             self.assertEqual(
                 output_comparison_report["by_sensor"][0]["role_diffs"][0]["output_role"],
                 "camera_visible",
+            )
+            self.assertEqual(
+                output_comparison_report["by_sensor"][0]["role_diffs"][0]["mismatch_reasons"],
+                ["BACKEND_FILENAME_MISMATCH"],
+            )
+            self.assertEqual(
+                output_comparison_report["by_sensor"][0]["role_diffs"][0]["expected_backend_filenames"],
+                ["rgb_frame.json"],
+            )
+            self.assertEqual(
+                output_comparison_report["by_sensor"][0]["role_diffs"][0]["discovered_backend_filenames"],
+                ["camera_projection.json"],
             )
             self.assertEqual(
                 output_comparison_report["by_sensor"][1]["mismatch_reasons"],
@@ -1124,7 +1143,7 @@ printf "%s\\n" "$@"
                     sensor["sensor_id"] == "camera_front"
                     and sensor["available"]
                     and sensor["outputs"][0]["resolved_path"]
-                    and "/sensor_exports/awsim/camera_front/camera/rgb_frame.json"
+                    and "/sensor_exports/camera_front/camera_projection.json"
                     in sensor["outputs"][0]["resolved_path"]
                     and sensor["outputs"][0]["backend_filename"] == "rgb_frame.json"
                     and sensor["outputs"][0]["output_role"] == "camera_visible"
@@ -1141,7 +1160,7 @@ printf "%s\\n" "$@"
             self.assertEqual(pipeline_summary["output_comparison"]["status"], "MIXED")
             self.assertEqual(
                 pipeline_summary["output_comparison"]["mismatch_reasons"],
-                ["MISSING_EXPECTED_OUTPUTS", "UNEXPECTED_OUTPUTS_PRESENT"],
+                ["MISSING_EXPECTED_OUTPUTS", "UNEXPECTED_OUTPUTS_PRESENT", "BACKEND_FILENAME_MISMATCH"],
             )
             self.assertEqual(
                 pipeline_summary["output_comparison"]["by_sensor"][0]["role_diffs"][0]["status"],

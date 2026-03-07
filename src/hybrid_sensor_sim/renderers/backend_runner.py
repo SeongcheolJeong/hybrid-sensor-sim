@@ -1330,6 +1330,7 @@ def _build_backend_output_comparison_report(
     sensor_unexpected_relative_paths: dict[str, list[str]] = {}
     sensor_role_discovery_paths: dict[str, dict[str, list[str]]] = {}
     sensor_role_match_types: dict[str, dict[str, list[str]]] = {}
+    sensor_role_backend_filenames: dict[str, dict[str, list[str]]] = {}
     for discovered_file in discovered_files:
         key = str(discovered_file.resolve())
         matching_entries = path_index.get(key, [])
@@ -1407,6 +1408,12 @@ def _build_backend_output_comparison_report(
                 )
                 if match_type not in role_match_types:
                     role_match_types.append(match_type)
+                role_backend_filenames = sensor_role_backend_filenames.setdefault(
+                    sensor_id,
+                    {},
+                ).setdefault(output_role, [])
+                if discovered_file.name not in role_backend_filenames:
+                    role_backend_filenames.append(discovered_file.name)
             if artifact_type and artifact_type not in artifact_types:
                 artifact_types.append(artifact_type)
         matched_outputs.append(
@@ -1472,6 +1479,12 @@ def _build_backend_output_comparison_report(
             }
         )
         role_diffs: list[dict[str, Any]] = []
+        sensor_mismatch_reasons = _output_comparison_mismatch_reasons(
+            expected_count=expected_count,
+            missing_count=missing_count,
+            unexpected_count=unexpected_count,
+            discovered_count=discovered_count,
+        )
         for output_role in expected_roles:
             role_entries = [
                 entry
@@ -1487,6 +1500,29 @@ def _build_backend_output_comparison_report(
             role_match_types = sorted(
                 sensor_role_match_types.get(sensor_id, {}).get(output_role, [])
             )
+            role_expected_backend_filenames = sorted(
+                {
+                    str(entry.get("backend_filename", "")).strip()
+                    for entry in role_entries
+                    if str(entry.get("backend_filename", "")).strip()
+                }
+            )
+            role_discovered_backend_filenames = sorted(
+                sensor_role_backend_filenames.get(sensor_id, {}).get(output_role, [])
+            )
+            role_mismatch_reasons = _output_comparison_mismatch_reasons(
+                expected_count=role_expected_count,
+                missing_count=role_missing_count,
+                unexpected_count=0,
+                discovered_count=len(role_discovered_paths),
+            )
+            if (
+                role_discovered_backend_filenames
+                and set(role_discovered_backend_filenames) != set(role_expected_backend_filenames)
+            ):
+                role_mismatch_reasons.append("BACKEND_FILENAME_MISMATCH")
+                if "BACKEND_FILENAME_MISMATCH" not in sensor_mismatch_reasons:
+                    sensor_mismatch_reasons.append("BACKEND_FILENAME_MISMATCH")
             role_diffs.append(
                 {
                     "output_role": output_role,
@@ -1496,12 +1532,7 @@ def _build_backend_output_comparison_report(
                         unexpected_count=0,
                         discovered_count=len(role_discovered_paths),
                     ),
-                    "mismatch_reasons": _output_comparison_mismatch_reasons(
-                        expected_count=role_expected_count,
-                        missing_count=role_missing_count,
-                        unexpected_count=0,
-                        discovered_count=len(role_discovered_paths),
-                    ),
+                    "mismatch_reasons": role_mismatch_reasons,
                     "expected_output_count": role_expected_count,
                     "found_output_count": role_found_count,
                     "missing_output_count": role_missing_count,
@@ -1527,6 +1558,8 @@ def _build_backend_output_comparison_report(
                             if str(entry.get("backend_filename", "")).strip()
                         }
                     ),
+                    "expected_backend_filenames": role_expected_backend_filenames,
+                    "discovered_backend_filenames": role_discovered_backend_filenames,
                     "expected_relative_paths": sorted(
                         {
                             str(entry.get("relative_path", "")).strip()
@@ -1561,12 +1594,7 @@ def _build_backend_output_comparison_report(
                     unexpected_count=unexpected_count,
                     discovered_count=discovered_count,
                 ),
-                "mismatch_reasons": _output_comparison_mismatch_reasons(
-                    expected_count=expected_count,
-                    missing_count=missing_count,
-                    unexpected_count=unexpected_count,
-                    discovered_count=discovered_count,
-                ),
+                "mismatch_reasons": sensor_mismatch_reasons,
                 "output_roles": sorted(
                     {
                         str(entry.get("output_role", "")).strip()
@@ -1590,6 +1618,18 @@ def _build_backend_output_comparison_report(
         )
 
     overall_missing_count = sum(1 for entry in expected_outputs if not bool(entry.get("exists", False)))
+    overall_mismatch_reasons = _output_comparison_mismatch_reasons(
+        expected_count=len(expected_outputs),
+        missing_count=overall_missing_count,
+        unexpected_count=unexpected_output_count,
+        discovered_count=len(discovered_files),
+    )
+    if any(
+        "BACKEND_FILENAME_MISMATCH" in entry.get("mismatch_reasons", [])
+        for entry in by_sensor
+        if isinstance(entry, dict)
+    ) and "BACKEND_FILENAME_MISMATCH" not in overall_mismatch_reasons:
+        overall_mismatch_reasons.append("BACKEND_FILENAME_MISMATCH")
     report_payload = {
         "status": _output_comparison_status(
             expected_count=len(expected_outputs),
@@ -1597,12 +1637,7 @@ def _build_backend_output_comparison_report(
             unexpected_count=unexpected_output_count,
             discovered_count=len(discovered_files),
         ),
-        "mismatch_reasons": _output_comparison_mismatch_reasons(
-            expected_count=len(expected_outputs),
-            missing_count=overall_missing_count,
-            unexpected_count=unexpected_output_count,
-            discovered_count=len(discovered_files),
-        ),
+        "mismatch_reasons": overall_mismatch_reasons,
         "output_root": str(output_root),
         "output_root_exists": True,
         "expected_output_count": len(expected_outputs),

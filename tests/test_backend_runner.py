@@ -38,6 +38,14 @@ printf 'debug\n' > "${BACKEND_OUTPUT_ROOT}/extras/unexpected.log"
                 / "backend_outputs"
                 / "awsim"
                 / "sensor_exports"
+                / "camera_front"
+                / "camera_projection.json"
+            )
+            sensor_output_candidate_file = (
+                root
+                / "backend_outputs"
+                / "awsim"
+                / "sensor_exports"
                 / "awsim"
                 / "camera_front"
                 / "camera"
@@ -89,6 +97,14 @@ printf 'debug\n' > "${BACKEND_OUTPUT_ROOT}/extras/unexpected.log"
                                         / "backend_outputs"
                                         / "awsim"
                                         / "sensor_exports"
+                                        / "camera_front"
+                                        / "camera_projection.json"
+                                    ),
+                                    str(
+                                        root
+                                        / "backend_outputs"
+                                        / "awsim"
+                                        / "sensor_exports"
                                         / "awsim"
                                         / "camera_front"
                                         / "camera"
@@ -111,7 +127,7 @@ printf 'debug\n' > "${BACKEND_OUTPUT_ROOT}/extras/unexpected.log"
                                         / "camera"
                                         / "rgb_frame.json"
                                     ),
-                                    str(sensor_output_file),
+                                    str(sensor_output_candidate_file),
                                 ],
                                 "kind": "file",
                                 "required": False,
@@ -242,7 +258,7 @@ printf 'debug\n' > "${BACKEND_OUTPUT_ROOT}/extras/unexpected.log"
             self.assertEqual(output_comparison_report["status"], "UNEXPECTED_OUTPUTS")
             self.assertEqual(
                 output_comparison_report["mismatch_reasons"],
-                ["UNEXPECTED_OUTPUTS_PRESENT"],
+                ["UNEXPECTED_OUTPUTS_PRESENT", "BACKEND_FILENAME_MISMATCH"],
             )
             self.assertEqual(output_comparison_report["discovered_file_count"], 3)
             self.assertEqual(output_comparison_report["matched_file_count"], 2)
@@ -254,7 +270,10 @@ printf 'debug\n' > "${BACKEND_OUTPUT_ROOT}/extras/unexpected.log"
                 "extras/unexpected.log",
             )
             self.assertEqual(output_comparison_report["by_sensor"][0]["status"], "MATCHED")
-            self.assertEqual(output_comparison_report["by_sensor"][0]["mismatch_reasons"], [])
+            self.assertEqual(
+                output_comparison_report["by_sensor"][0]["mismatch_reasons"],
+                ["BACKEND_FILENAME_MISMATCH"],
+            )
             self.assertEqual(
                 output_comparison_report["by_sensor"][0]["found_output_roles"],
                 ["camera_visible"],
@@ -272,8 +291,20 @@ printf 'debug\n' > "${BACKEND_OUTPUT_ROOT}/extras/unexpected.log"
                 "MATCHED",
             )
             self.assertEqual(
+                output_comparison_report["by_sensor"][0]["role_diffs"][0]["mismatch_reasons"],
+                ["BACKEND_FILENAME_MISMATCH"],
+            )
+            self.assertEqual(
+                output_comparison_report["by_sensor"][0]["role_diffs"][0]["expected_backend_filenames"],
+                ["rgb_frame.json"],
+            )
+            self.assertEqual(
+                output_comparison_report["by_sensor"][0]["role_diffs"][0]["discovered_backend_filenames"],
+                ["camera_projection.json"],
+            )
+            self.assertEqual(
                 output_comparison_report["by_sensor"][0]["role_diffs"][0]["found_relative_paths"],
-                ["sensor_exports/awsim/camera_front/camera/rgb_frame.json"],
+                ["sensor_exports/camera_front/camera_projection.json"],
             )
             self.assertIn("runner_ok", stdout)
             self.assertIn("runner_warn", stderr)
