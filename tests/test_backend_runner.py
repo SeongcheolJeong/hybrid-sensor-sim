@@ -142,6 +142,18 @@ echo "runner_warn" >&2
             self.assertEqual(manifest["return_code"], 0)
             self.assertEqual(manifest["expected_output_summary"]["found_count"], 2)
             self.assertEqual(manifest["expected_output_summary"]["missing_count"], 0)
+            self.assertEqual(
+                manifest["expected_output_summary"]["by_output_role"][0]["output_role"],
+                "camera_visible",
+            )
+            self.assertEqual(
+                manifest["expected_output_summary"]["by_output_role"][0]["found_count"],
+                1,
+            )
+            self.assertEqual(
+                manifest["expected_output_summary"]["by_artifact_type"][0]["artifact_type"],
+                "awsim_camera_rgb_json",
+            )
             self.assertTrue(
                 any(
                     entry["artifact_key"] == "sensor_output_camera_front"
@@ -156,6 +168,14 @@ echo "runner_warn" >&2
             self.assertEqual(
                 sensor_output_summary["artifact_type_counts"]["awsim_camera_rgb_json"],
                 1,
+            )
+            self.assertEqual(
+                sensor_output_summary["output_roles"][0]["output_role"],
+                "camera_visible",
+            )
+            self.assertEqual(
+                sensor_output_summary["artifact_types"][0]["artifact_type"],
+                "awsim_camera_rgb_json",
             )
             self.assertEqual(sensor_output_summary["sensors"][0]["modality"], "camera")
             self.assertEqual(

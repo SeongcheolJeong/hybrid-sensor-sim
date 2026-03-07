@@ -352,6 +352,16 @@ class RendererRuntimeTests(unittest.TestCase):
                 outputs_by_sensor["radar_front"]["outputs"][0]["backend_filename"],
                 "tracks.json",
             )
+            role_groups = {
+                entry["output_role"]: entry for entry in output_spec["expected_outputs_by_role"]
+            }
+            self.assertIn("radar_tracks", role_groups)
+            self.assertEqual(role_groups["radar_tracks"]["expected_count"], 1)
+            artifact_groups = {
+                entry["artifact_type"]: entry
+                for entry in output_spec["expected_outputs_by_artifact_type"]
+            }
+            self.assertIn("carla_radar_tracks_json", artifact_groups)
 
     def test_renderer_runtime_can_disable_frame_manifest_arg_injection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1005,6 +1015,14 @@ printf "%s\\n" "$@"
             self.assertEqual(
                 pipeline_summary["sensor_outputs"]["artifact_type_counts"]["awsim_camera_rgb_json"],
                 1,
+            )
+            self.assertEqual(
+                pipeline_summary["expected_outputs"]["by_output_role"][0]["output_role"],
+                "camera_visible",
+            )
+            self.assertEqual(
+                pipeline_summary["sensor_outputs"]["output_roles"][0]["output_role"],
+                "camera_visible",
             )
             self.assertIn(
                 "awsim_runtime_state_json",

@@ -235,6 +235,7 @@ Primary code references:
   - backend-namespaced sensor export candidate paths and sensor output summary generation
   - backend-specific sensor export filename conventions (for example AWSIM vs CARLA camera outputs)
   - sensor output classification via `output_role` and `artifact_type`
+  - grouped output summaries by role and artifact type across output spec, runner execution, and pipeline summary
   - backend run manifest generation
   - renderer pipeline summary generation from plan/run/runner artifacts
   - backend runner request and direct command generation

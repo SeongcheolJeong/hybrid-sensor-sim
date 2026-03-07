@@ -297,6 +297,42 @@ def _sanitize_artifact_key(text: str) -> str:
     return "".join(ch if ch.isalnum() else "_" for ch in text).strip("_") or "artifact"
 
 
+def _group_expected_outputs(
+    *,
+    expected_outputs: list[dict[str, Any]],
+    field: str,
+    group_key_name: str,
+) -> list[dict[str, Any]]:
+    groups: dict[str, dict[str, Any]] = {}
+    for entry in expected_outputs:
+        group_value = str(entry.get(field, "")).strip()
+        if not group_value:
+            continue
+        summary = groups.setdefault(
+            group_value,
+            {
+                group_key_name: group_value,
+                "expected_count": 0,
+                "found_count": 0,
+                "missing_count": 0,
+                "artifact_keys": [],
+                "sensor_ids": [],
+            },
+        )
+        summary["expected_count"] += 1
+        artifact_key = str(entry.get("artifact_key", "")).strip()
+        sensor_id = str(entry.get("sensor_id", "")).strip()
+        if artifact_key and artifact_key not in summary["artifact_keys"]:
+            summary["artifact_keys"].append(artifact_key)
+        if sensor_id and sensor_id not in summary["sensor_ids"]:
+            summary["sensor_ids"].append(sensor_id)
+        if bool(entry.get("exists", False)):
+            summary["found_count"] += 1
+        else:
+            summary["missing_count"] += 1
+    return [groups[key] for key in sorted(groups)]
+
+
 def _sensor_export_filename(data_format: str) -> str:
     mapping = {
         "camera_projection_json": "camera_projection.json",
@@ -485,6 +521,16 @@ def _build_backend_output_spec(
                 else [],
             }
         )
+    expected_outputs_by_role = _group_expected_outputs(
+        expected_outputs=expected_outputs,
+        field="output_role",
+        group_key_name="output_role",
+    )
+    expected_outputs_by_artifact_type = _group_expected_outputs(
+        expected_outputs=expected_outputs,
+        field="artifact_type",
+        group_key_name="artifact_type",
+    )
 
     spec_payload = {
         "backend": backend,
@@ -492,6 +538,8 @@ def _build_backend_output_spec(
         "expected_output_count": len(expected_outputs),
         "expected_outputs": expected_outputs,
         "expected_sensor_output_count": len(expected_outputs_by_sensor),
+        "expected_output_role_count": len(expected_outputs_by_role),
+        "expected_artifact_type_count": len(expected_outputs_by_artifact_type),
         "expected_outputs_by_sensor": [
             {
                 "sensor_id": sensor_id,
@@ -500,6 +548,8 @@ def _build_backend_output_spec(
             }
             for sensor_id, outputs in sorted(expected_outputs_by_sensor.items())
         ],
+        "expected_outputs_by_role": expected_outputs_by_role,
+        "expected_outputs_by_artifact_type": expected_outputs_by_artifact_type,
     }
     spec_path = runtime_dir / "backend_output_spec.json"
     spec_path.write_text(json.dumps(spec_payload, indent=2), encoding="utf-8")
@@ -636,6 +686,7 @@ def _write_execution_manifest(
     stdout_path: Path | None,
     stderr_path: Path | None,
 ) -> None:
+    outputs = expected_outputs if isinstance(expected_outputs, list) else []
     manifest = {
         "request_path": str(request_path),
         "backend": str(payload.get("backend", "")) if isinstance(payload, dict) else "",
@@ -648,8 +699,18 @@ def _write_execution_manifest(
         "expected_output_summary": {
             "found_count": found_expected_outputs,
             "missing_count": missing_expected_outputs,
+            "by_output_role": _group_expected_outputs(
+                expected_outputs=outputs,
+                field="output_role",
+                group_key_name="output_role",
+            ),
+            "by_artifact_type": _group_expected_outputs(
+                expected_outputs=outputs,
+                field="artifact_type",
+                group_key_name="artifact_type",
+            ),
         },
-        "expected_outputs": expected_outputs if isinstance(expected_outputs, list) else [],
+        "expected_outputs": outputs,
         "artifacts": {
             "backend_sensor_output_summary": (
                 str(sensor_output_summary_path) if sensor_output_summary_path else None
@@ -815,19 +876,20 @@ def _build_sensor_output_summary(
             }
         )
 
-    output_role_counts: dict[str, int] = {}
-    artifact_type_counts: dict[str, int] = {}
     for sensor_summary in sensors.values():
         if bool(sensor_summary.get("available")):
             found_sensor_count += 1
         else:
             missing_sensor_count += 1
-        for output_role, count in dict(sensor_summary.get("output_role_counts", {})).items():
-            output_role_counts[str(output_role)] = int(output_role_counts.get(str(output_role), 0)) + int(count)
-        for artifact_type, count in dict(sensor_summary.get("artifact_type_counts", {})).items():
-            artifact_type_counts[str(artifact_type)] = int(
-                artifact_type_counts.get(str(artifact_type), 0)
-            ) + int(count)
+    output_role_counts: dict[str, int] = {}
+    artifact_type_counts: dict[str, int] = {}
+    for entry in sensor_entries:
+        output_role = str(entry.get("output_role", "")).strip()
+        artifact_type = str(entry.get("artifact_type", "")).strip()
+        if output_role:
+            output_role_counts[output_role] = int(output_role_counts.get(output_role, 0)) + 1
+        if artifact_type:
+            artifact_type_counts[artifact_type] = int(artifact_type_counts.get(artifact_type, 0)) + 1
 
     summary_payload = {
         "sensor_count": len(sensors),
@@ -835,6 +897,16 @@ def _build_sensor_output_summary(
         "missing_sensor_count": missing_sensor_count,
         "output_role_counts": output_role_counts,
         "artifact_type_counts": artifact_type_counts,
+        "output_roles": _group_expected_outputs(
+            expected_outputs=sensor_entries,
+            field="output_role",
+            group_key_name="output_role",
+        ),
+        "artifact_types": _group_expected_outputs(
+            expected_outputs=sensor_entries,
+            field="artifact_type",
+            group_key_name="artifact_type",
+        ),
         "sensors": [sensors[key] for key in sorted(sensors)],
     }
     summary_path = output_dir / "backend_sensor_output_summary.json"
