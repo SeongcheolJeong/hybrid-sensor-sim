@@ -265,6 +265,12 @@ Primary code references:
     - multipath ghost detections with bounce metadata
   - micro-doppler velocity hook:
     - `enable_micro_doppler`
+  - directivity/adaptive sampling surface:
+    - `antenna_definitions[].directivity_az_el_cuts`
+    - `fidelity.raytracing.mode`
+    - `adaptive_sampling_params.default_min_rays_per_wavelength`
+    - `adaptive_sampling_params.targets[].actor_id`
+    - target-level sampling/direction metadata in preview artifacts
   - trajectory sweep preview
   - ego-velocity-based radial velocity estimation
 
@@ -294,11 +300,11 @@ Primary code references:
   - multi-return and multipath
   - raw packet / structured output formats
 - Radar:
-  - richer antenna/directivity tables beyond current HPBW approximation
+  - richer full directivity-table support beyond current az/el cut approximation
   - deeper datasheet calibration against real devices
   - track lifecycle/filtering beyond one-frame track projection
   - geometry-aware multipath physics beyond current synthetic stage-1 model
-  - adaptive sampling
+  - stronger adaptive sampling semantics beyond current target-density heuristic
   - richer micro-doppler beyond current velocity hook
   - hardware ray-tracing equivalent path
 
@@ -323,7 +329,7 @@ Primary code references:
 | Lidar scan generation | source angles + scan field + scan path + multi-scan path metadata/filtering implemented in local preview path | source angles + scan path + scan type engine | P1 |
 | Lidar signal/intensity | very weak | reflectivity, SNR/intensity units, returns, weather | P1 |
 | Lidar multipath/material model | missing | HELIOS-backed or local hybrid path | P2 |
-| Radar beam/detectability | typed HPBW + detectability + false alarm calibration implemented | richer antenna tables + calibration | P1 |
+| Radar beam/detectability | typed HPBW + az/el directivity cuts + detectability + false alarm calibration implemented | richer full directivity tables + calibration | P1 |
 | Radar multipath/tracking | track output + region accuracies + synthetic multipath implemented | geometry-aware multipath + stronger tracker | P2 |
 | Ground truth | partial metadata only | semantic/material/component labels in outputs | P1 |
 | Coverage metrics | missing | camera/lidar/radar target coverage stats | P1 |

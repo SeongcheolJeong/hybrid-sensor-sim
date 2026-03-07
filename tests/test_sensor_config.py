@@ -45,6 +45,8 @@ class SensorConfigTests(unittest.TestCase):
         self.assertAlmostEqual(config.radar.system.frame_rate_hz, 10.0)
         self.assertAlmostEqual(config.radar.detector.minimum_snr_db, -10.0)
         self.assertFalse(config.radar.tracking.output_tracks)
+        self.assertEqual(config.radar.system.antenna_model.model_type, "PARAMETRIC_BEAM")
+        self.assertEqual(config.radar.fidelity.raytracing.mode, "DEFAULT")
 
     def test_build_sensor_sim_config_translates_legacy_options_and_behaviors(self) -> None:
         config = build_sensor_sim_config(
@@ -257,10 +259,32 @@ class SensorConfigTests(unittest.TestCase):
                     "velocity_quantization": 0.05,
                 },
                 "radar_antenna_params": {
-                    "beam_params": {
-                        "hpbw_az": 18.0,
-                        "hpbw_el": 12.0,
-                    }
+                    "antenna_definitions": [
+                        {
+                            "type": "FROM_DIRECTIVITY_AZ_EL_CUTS",
+                            "beam_params": {
+                                "hpbw_az": 18.0,
+                                "hpbw_el": 12.0,
+                            },
+                            "directivity_az_el_cuts": {
+                                "az": {
+                                    "type": "FROM_DIRECTIVITY_TABLE_CUT",
+                                    "directivity_table_cut": {
+                                        "angles": [-0.2, 0.0, 0.2],
+                                        "amplitudes": [0.1, 0.3, 1.0],
+                                    },
+                                },
+                                "el": {
+                                    "type": "FROM_DIRECTIVITY_TABLE_CUT",
+                                    "directivity_table_cut": {
+                                        "angles": [-0.1, 0.0, 0.1],
+                                        "amplitudes": [0.4, 1.0, 0.4],
+                                        "do_not_normalize": True,
+                                    },
+                                },
+                            },
+                        }
+                    ]
                 },
                 "radar_detector_params": {
                     "noise_variance_dbw": -82.0,
@@ -297,6 +321,18 @@ class SensorConfigTests(unittest.TestCase):
                     "enable_micro_doppler": True,
                     "near_clipping_distance": 1.2,
                     "sub_ray_angular_resolution": 0.01,
+                    "raytracing": {
+                        "mode": "hardware",
+                        "enable_cavity_model": True,
+                        "adaptive_sampling_params": {
+                            "default_min_rays_per_wavelength": 0.2,
+                            "max_subdivision_level": 4,
+                            "targets": [
+                                {"actor_id": 1, "min_rays_per_wavelength": 0.5},
+                                {"actor_id": "bike_7", "min_rays_per_wavelength": 0.8},
+                            ],
+                        },
+                    },
                 },
                 "sensor_behaviors": {
                     "radar": [{"point_at": {"id": "ped_1"}}],
@@ -442,6 +478,10 @@ class SensorConfigTests(unittest.TestCase):
         self.assertAlmostEqual(config.radar.system.velocity_min_mps, -90.0)
         self.assertAlmostEqual(config.radar.system.velocity_max_mps, 55.0)
         self.assertAlmostEqual(config.radar.system.antenna_hpbw.az_deg, 18.0)
+        self.assertEqual(config.radar.system.antenna_model.model_type, "FROM_DIRECTIVITY_AZ_EL_CUTS")
+        self.assertEqual(len(config.radar.system.antenna_model.az_cut.angles_deg), 3)
+        self.assertAlmostEqual(config.radar.system.antenna_model.az_cut.angles_deg[0], -0.2 * 180.0 / 3.141592653589793)
+        self.assertTrue(config.radar.system.antenna_model.el_cut.do_not_normalize)
         self.assertAlmostEqual(config.radar.detector.noise_variance_dbw, -82.0)
         self.assertAlmostEqual(config.radar.detector.minimum_snr_db, 4.0)
         self.assertEqual(config.radar.detector.max_detections, 32)
@@ -463,6 +503,13 @@ class SensorConfigTests(unittest.TestCase):
         self.assertTrue(config.radar.fidelity.enable_micro_doppler)
         self.assertAlmostEqual(config.radar.fidelity.near_clipping_distance_m, 1.2)
         self.assertAlmostEqual(config.radar.fidelity.sub_ray_angular_resolution_deg, 0.01 * 180.0 / 3.141592653589793)
+        self.assertEqual(config.radar.fidelity.raytracing.mode, "HARDWARE")
+        self.assertTrue(config.radar.fidelity.raytracing.enable_cavity_model)
+        self.assertAlmostEqual(config.radar.fidelity.raytracing.default_min_rays_per_wavelength, 0.2)
+        self.assertEqual(config.radar.fidelity.raytracing.max_subdivision_level, 4)
+        self.assertEqual(len(config.radar.fidelity.raytracing.adaptive_targets), 2)
+        self.assertEqual(config.radar.fidelity.raytracing.adaptive_targets[0].actor_id, "1")
+        self.assertAlmostEqual(config.radar.fidelity.raytracing.adaptive_targets[1].min_rays_per_wavelength, 0.8)
         self.assertEqual(config.radar.behaviors[0].target_actor_id, "ped_1")
 
     def test_renderer_playback_contract_uses_typed_sensor_config(self) -> None:
@@ -568,6 +615,12 @@ class SensorConfigTests(unittest.TestCase):
                     "multipath_bounces": 3,
                     "coherence_factor": 0.2,
                     "enable_micro_doppler": True,
+                    "raytracing": {
+                        "mode": "hardware",
+                        "adaptive_sampling_params": {
+                            "default_min_rays_per_wavelength": 0.3,
+                        },
+                    },
                 },
                 "sensor_behaviors": {
                     "radar": [{"point_at": {"id": "vehicle_9"}}],
@@ -687,6 +740,14 @@ class SensorConfigTests(unittest.TestCase):
         self.assertTrue(contract["sensor_setup"]["radar"]["fidelity"]["multipath"])
         self.assertEqual(contract["sensor_setup"]["radar"]["fidelity"]["multipath_bounces"], 3)
         self.assertTrue(contract["sensor_setup"]["radar"]["fidelity"]["enable_micro_doppler"])
+        self.assertEqual(
+            contract["sensor_setup"]["radar"]["fidelity"]["raytracing"]["mode"],
+            "HARDWARE",
+        )
+        self.assertAlmostEqual(
+            contract["sensor_setup"]["radar"]["fidelity"]["raytracing"]["adaptive_sampling_params"]["default_min_rays_per_wavelength"],
+            0.3,
+        )
         self.assertEqual(
             contract["sensor_setup"]["radar"]["behaviors"][0]["point_at"]["id"],
             "vehicle_9",

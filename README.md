@@ -290,6 +290,8 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `radar_system_params.velocity_resolution`
     - `radar_system_params.velocity_quantization`
     - `radar_antenna_params.beam_params.{hpbw_az,hpbw_el}`
+    - `radar_antenna_params.antenna_definitions[].type`
+    - `radar_antenna_params.antenna_definitions[].directivity_az_el_cuts.{az,el}.directivity_table_cut.{angles,amplitudes,do_not_normalize}`
   - detector params:
     - `radar_detector_params.noise_variance_dbw`
     - `radar_detector_params.minimum_snr_db`
@@ -312,6 +314,11 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `radar_fidelity.enable_micro_doppler`
     - `radar_fidelity.near_clipping_distance`
     - `radar_fidelity.sub_ray_angular_resolution`
+    - `radar_fidelity.raytracing.mode`
+    - `radar_fidelity.raytracing.enable_cavity_model`
+    - `radar_fidelity.raytracing.adaptive_sampling_params.default_min_rays_per_wavelength`
+    - `radar_fidelity.raytracing.adaptive_sampling_params.max_subdivision_level`
+    - `radar_fidelity.raytracing.adaptive_sampling_params.targets[].{actor_id,min_rays_per_wavelength}`
   - ego-motion velocity source: `radar_use_ego_velocity_from_trajectory`
   - emits `radar_targets_preview.json`.
   - preview includes `snr_db`, `detection_probability`, `antenna_gain_db`, accuracy-region indices, optional `tracks`, and stage-1 synthetic radar multipath metadata:
@@ -324,6 +331,13 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `multipath_bounce_count`
     - `coherence_factor`
     - `micro_doppler_velocity_offset_mps`
+    - directivity/adaptive sampling metadata:
+      - `sampling_gain_db`
+      - `adaptive_sampling_density`
+      - `adaptive_sampling_actor_id`
+      - `adaptive_sampling_target_override`
+      - `raytracing_subdivision_level`
+      - `raytracing_mode`
 - Radar trajectory sweep preview:
   - enable `radar_trajectory_sweep_enabled=true`
   - set `radar_trajectory_sweep_frames` and `radar_preview_targets_per_frame`

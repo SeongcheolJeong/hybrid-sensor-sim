@@ -863,6 +863,68 @@ class RadarTrackingConfig:
 
 
 @dataclass(frozen=True)
+class RadarDirectivityTableCutConfig:
+    angles_deg: list[float] = field(default_factory=list)
+    amplitudes: list[float] = field(default_factory=list)
+    do_not_normalize: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "angles_deg": list(self.angles_deg),
+            "amplitudes": list(self.amplitudes),
+            "do_not_normalize": self.do_not_normalize,
+        }
+
+
+@dataclass(frozen=True)
+class RadarAntennaModelConfig:
+    model_type: str = "PARAMETRIC_BEAM"
+    az_cut: RadarDirectivityTableCutConfig = field(default_factory=RadarDirectivityTableCutConfig)
+    el_cut: RadarDirectivityTableCutConfig = field(default_factory=RadarDirectivityTableCutConfig)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "type": self.model_type,
+            "directivity_az_el_cuts": {
+                "az": self.az_cut.to_dict(),
+                "el": self.el_cut.to_dict(),
+            },
+        }
+
+
+@dataclass(frozen=True)
+class RadarAdaptiveSamplingTargetConfig:
+    actor_id: str = ""
+    min_rays_per_wavelength: float = 0.0
+
+    def to_dict(self) -> dict[str, str | float]:
+        return {
+            "actor_id": self.actor_id,
+            "min_rays_per_wavelength": self.min_rays_per_wavelength,
+        }
+
+
+@dataclass(frozen=True)
+class RadarRaytracingConfig:
+    mode: str = "DEFAULT"
+    enable_cavity_model: bool = False
+    default_min_rays_per_wavelength: float = 0.0
+    max_subdivision_level: int = 0
+    adaptive_targets: list[RadarAdaptiveSamplingTargetConfig] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "mode": self.mode,
+            "enable_cavity_model": self.enable_cavity_model,
+            "adaptive_sampling_params": {
+                "default_min_rays_per_wavelength": self.default_min_rays_per_wavelength,
+                "max_subdivision_level": self.max_subdivision_level,
+                "targets": [target.to_dict() for target in self.adaptive_targets],
+            },
+        }
+
+
+@dataclass(frozen=True)
 class RadarFidelityConfig:
     level: str = "LOW"
     multipath_enabled: bool = False
@@ -871,6 +933,7 @@ class RadarFidelityConfig:
     enable_micro_doppler: bool = False
     near_clipping_distance_m: float = 0.0
     sub_ray_angular_resolution_deg: float = 0.0
+    raytracing: RadarRaytracingConfig = field(default_factory=RadarRaytracingConfig)
 
     def to_dict(self) -> dict[str, float | int | bool | str]:
         return {
@@ -881,6 +944,7 @@ class RadarFidelityConfig:
             "enable_micro_doppler": self.enable_micro_doppler,
             "near_clipping_distance": self.near_clipping_distance_m,
             "sub_ray_angular_resolution_deg": self.sub_ray_angular_resolution_deg,
+            "raytracing": self.raytracing.to_dict(),
         }
 
 
@@ -903,6 +967,7 @@ class RadarSystemConfig:
     antenna_hpbw: RadarAngularConfig = field(
         default_factory=lambda: RadarAngularConfig(az_deg=18.0, el_deg=14.0)
     )
+    antenna_model: RadarAntennaModelConfig = field(default_factory=RadarAntennaModelConfig)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -919,6 +984,7 @@ class RadarSystemConfig:
             "angular_resolution_deg": self.angular_resolution.to_dict(),
             "angular_quantization_deg": self.angular_quantization.to_dict(),
             "antenna_hpbw_deg": self.antenna_hpbw.to_dict(),
+            "antenna_model": self.antenna_model.to_dict(),
         }
 
 
@@ -1637,10 +1703,14 @@ def _radar_model_sections(options: Mapping[str, Any]) -> dict[str, dict[str, Any
     estimator = _as_dict(post.get("estimator_params"))
     tracking = _as_dict(post.get("tracking_params", post.get("track_params")))
     format_raw = _as_dict(radar_model.get("format"))
+    fidelity = _as_dict(radar_model.get("fidelity"))
+    raytracing = _as_dict(fidelity.get("raytracing"))
+    adaptive_sampling = _as_dict(raytracing.get("adaptive_sampling_params"))
     antenna_params = _as_dict(system.get("antenna_params"))
     antenna_definitions = _as_list(antenna_params.get("antenna_definitions"))
     antenna_definition = _as_dict(antenna_definitions[0]) if antenna_definitions else {}
     beam_params = _as_dict(antenna_definition.get("beam_params"))
+    directivity_az_el_cuts = _as_dict(antenna_definition.get("directivity_az_el_cuts"))
     return {
         "standard": standard,
         "field_of_view": _as_dict(standard.get("field_of_view")),
@@ -1655,7 +1725,12 @@ def _radar_model_sections(options: Mapping[str, Any]) -> dict[str, dict[str, Any
         "estimator": estimator,
         "tracking": tracking,
         "format": format_raw,
+        "fidelity": fidelity,
+        "raytracing": raytracing,
+        "adaptive_sampling": adaptive_sampling,
+        "antenna_definition": antenna_definition,
         "beam_params": beam_params,
+        "directivity_az_el_cuts": directivity_az_el_cuts,
     }
 
 
@@ -1688,6 +1763,102 @@ def _parse_radar_accuracy_regions(raw: Any) -> list[RadarAccuracyRegionConfig]:
             )
         )
     return regions
+
+
+def _parse_radar_directivity_table_cut(
+    raw: Mapping[str, Any],
+) -> RadarDirectivityTableCutConfig:
+    angles_deg = [
+        _as_radians_to_deg(angle, 0.0)
+        for angle in _as_list(raw.get("angles"))
+    ]
+    amplitudes = [
+        max(_as_float(amplitude, 0.0), 0.0)
+        for amplitude in _as_list(raw.get("amplitudes"))
+    ]
+    if len(amplitudes) < len(angles_deg):
+        amplitudes.extend([0.0] * (len(angles_deg) - len(amplitudes)))
+    if len(angles_deg) < len(amplitudes):
+        amplitudes = amplitudes[: len(angles_deg)]
+    return RadarDirectivityTableCutConfig(
+        angles_deg=angles_deg,
+        amplitudes=amplitudes,
+        do_not_normalize=_as_bool(raw.get("do_not_normalize"), False),
+    )
+
+
+def _parse_radar_antenna_model(options: Mapping[str, Any]) -> RadarAntennaModelConfig:
+    sections = _radar_model_sections(options)
+    raw = _as_dict(options.get("radar_antenna_params"))
+    antenna_definitions = _as_list(raw.get("antenna_definitions"))
+    antenna_definition = _as_dict(antenna_definitions[0]) if antenna_definitions else raw
+    if not antenna_definition:
+        antenna_definition = sections["antenna_definition"]
+    directivity_cuts = _as_dict(antenna_definition.get("directivity_az_el_cuts"))
+    az_cut_raw = _as_dict(_as_dict(directivity_cuts.get("az")).get("directivity_table_cut"))
+    el_cut_raw = _as_dict(_as_dict(directivity_cuts.get("el")).get("directivity_table_cut"))
+    return RadarAntennaModelConfig(
+        model_type=_as_str(
+            antenna_definition.get("type", options.get("radar_antenna_model_type")),
+            "PARAMETRIC_BEAM",
+        ).upper(),
+        az_cut=_parse_radar_directivity_table_cut(az_cut_raw),
+        el_cut=_parse_radar_directivity_table_cut(el_cut_raw),
+    )
+
+
+def _parse_radar_raytracing(options: Mapping[str, Any]) -> RadarRaytracingConfig:
+    sections = _radar_model_sections(options)
+    raw = _as_dict(_as_dict(options.get("radar_fidelity")).get("raytracing"))
+    if not raw:
+        raw = sections["raytracing"]
+    adaptive_sampling = _as_dict(raw.get("adaptive_sampling_params"))
+    if not adaptive_sampling:
+        adaptive_sampling = sections["adaptive_sampling"]
+    targets_raw = adaptive_sampling.get("targets", options.get("radar_adaptive_sampling_targets"))
+    targets: list[RadarAdaptiveSamplingTargetConfig] = []
+    for item in _as_list(targets_raw):
+        item_raw = _as_dict(item)
+        actor_id = _as_str(item_raw.get("actor_id"), "")
+        if not actor_id:
+            continue
+        targets.append(
+            RadarAdaptiveSamplingTargetConfig(
+                actor_id=actor_id,
+                min_rays_per_wavelength=max(
+                    _as_float(item_raw.get("min_rays_per_wavelength"), 0.0),
+                    0.0,
+                ),
+            )
+        )
+    return RadarRaytracingConfig(
+        mode=_as_str(raw.get("mode", options.get("radar_raytracing_mode")), "DEFAULT").upper(),
+        enable_cavity_model=_as_bool(
+            raw.get("enable_cavity_model", options.get("radar_enable_cavity_model")),
+            False,
+        ),
+        default_min_rays_per_wavelength=max(
+            _as_float(
+                adaptive_sampling.get(
+                    "default_min_rays_per_wavelength",
+                    options.get("radar_default_min_rays_per_wavelength"),
+                ),
+                0.0,
+            ),
+            0.0,
+        ),
+        max_subdivision_level=max(
+            0,
+            _as_int(
+                adaptive_sampling.get(
+                    "max_subdivision_level",
+                    options.get("radar_max_subdivision_level"),
+                ),
+                0,
+            ),
+        ),
+        adaptive_targets=targets,
+    )
 
 
 def _parse_radar_system(options: Mapping[str, Any]) -> RadarSystemConfig:
@@ -1780,6 +1951,7 @@ def _parse_radar_system(options: Mapping[str, Any]) -> RadarSystemConfig:
                 14.0,
             ),
         ),
+        antenna_model=_parse_radar_antenna_model(options),
     )
 
 
@@ -1955,6 +2127,7 @@ def _parse_radar_fidelity(options: Mapping[str, Any]) -> RadarFidelityConfig:
                 0.0,
             ),
         ),
+        raytracing=_parse_radar_raytracing(options),
     )
 
 

@@ -1090,6 +1090,132 @@ EOF
             self.assertEqual(result.metrics.get("radar_micro_doppler_enabled"), 1.0)
             self.assertGreater(result.metrics.get("radar_micro_doppler_target_count"), 0.0)
 
+    def test_radar_preview_applies_directivity_and_adaptive_sampling(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+20.0 0.0 0.0
+19.7 3.5 0.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "lidar_postprocess_enabled": False,
+                    "radar_postprocess_enabled": True,
+                    "radar_clutter": "none",
+                    "radar_false_target_count": 0,
+                    "radar_max_targets": 8,
+                    "radar_point_rcs_dbsm": [10.0, 10.0],
+                    "radar_point_actor_ids": ["1", "bike_7"],
+                    "radar_detector_params": {
+                        "minimum_snr_db": -40.0,
+                        "noise_variance_dbw": -95.0,
+                        "noise_performance": {
+                            "target_detectability": {
+                                "probability_detection": 0.95,
+                                "target": {
+                                    "range": 80.0,
+                                    "radar_cross_section": 10.0,
+                                },
+                            },
+                        },
+                    },
+                    "radar_antenna_params": {
+                        "antenna_definitions": [
+                            {
+                                "type": "FROM_DIRECTIVITY_AZ_EL_CUTS",
+                                "directivity_az_el_cuts": {
+                                    "az": {
+                                        "type": "FROM_DIRECTIVITY_TABLE_CUT",
+                                        "directivity_table_cut": {
+                                            "angles": [-0.2, 0.0, 0.2],
+                                            "amplitudes": [0.1, 0.3, 1.0],
+                                        },
+                                    },
+                                    "el": {
+                                        "type": "FROM_DIRECTIVITY_TABLE_CUT",
+                                        "directivity_table_cut": {
+                                            "angles": [-0.2, 0.0, 0.2],
+                                            "amplitudes": [1.0, 1.0, 1.0],
+                                        },
+                                    },
+                                },
+                            }
+                        ]
+                    },
+                    "radar_fidelity": {
+                        "raytracing": {
+                            "mode": "hardware",
+                            "adaptive_sampling_params": {
+                                "default_min_rays_per_wavelength": 0.1,
+                                "max_subdivision_level": 4,
+                                "targets": [
+                                    {"actor_id": "bike_7", "min_rays_per_wavelength": 0.8},
+                                ],
+                            },
+                        },
+                    },
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+            self.assertTrue(result.success)
+
+            preview = json.loads(
+                result.artifacts["radar_targets_preview"].read_text(encoding="utf-8")
+            )
+            targets_by_actor = {
+                target["adaptive_sampling_actor_id"]: target for target in preview["targets"]
+            }
+            self.assertIn("1", targets_by_actor)
+            self.assertIn("bike_7", targets_by_actor)
+            base_target = targets_by_actor["1"]
+            boosted_target = targets_by_actor["bike_7"]
+            self.assertGreater(boosted_target["antenna_gain_db"], base_target["antenna_gain_db"])
+            self.assertGreater(
+                boosted_target["adaptive_sampling_density"],
+                base_target["adaptive_sampling_density"],
+            )
+            self.assertTrue(boosted_target["adaptive_sampling_target_override"])
+            self.assertGreater(boosted_target["sampling_gain_db"], base_target["sampling_gain_db"])
+            self.assertGreater(boosted_target["detection_probability"], base_target["detection_probability"])
+            self.assertGreaterEqual(boosted_target["raytracing_subdivision_level"], 1)
+            self.assertEqual(boosted_target["raytracing_mode"], "HARDWARE")
+            self.assertEqual(result.metrics.get("radar_directivity_model_applied"), 1.0)
+            self.assertEqual(result.metrics.get("radar_adaptive_sampling_enabled"), 1.0)
+            self.assertGreater(result.metrics.get("radar_adaptive_sampling_target_count"), 0.0)
+
     def test_lidar_trajectory_sweep_applies_motion_compensation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

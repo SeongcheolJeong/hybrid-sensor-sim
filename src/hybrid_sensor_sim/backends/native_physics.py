@@ -4066,6 +4066,11 @@ class NativePhysicsBackend(SensorBackend):
             for target in selected
             if str(target.get("measurement_source", "")).upper() == "MULTIPATH"
         )
+        adaptive_sampling_target_count = sum(
+            1
+            for target in selected
+            if float(target.get("adaptive_sampling_density", 0.0)) > 0.0
+        )
         micro_doppler_target_count = sum(
             1
             for target in selected
@@ -4078,6 +4083,7 @@ class NativePhysicsBackend(SensorBackend):
             "target_count": len(selected),
             "track_count": len(tracks),
             "multipath_target_count": multipath_target_count,
+            "adaptive_sampling_target_count": adaptive_sampling_target_count,
             "output_mode": "TRACKS" if radar_config.tracking.output_tracks else "POINTS",
             "ego_velocity_mps": {
                 "vx": ego_vx,
@@ -4109,6 +4115,14 @@ class NativePhysicsBackend(SensorBackend):
         metrics["radar_multipath_target_count"] = float(multipath_target_count)
         metrics["radar_micro_doppler_enabled"] = 1.0 if radar_config.fidelity.enable_micro_doppler else 0.0
         metrics["radar_micro_doppler_target_count"] = float(micro_doppler_target_count)
+        metrics["radar_directivity_model_applied"] = 1.0 if (
+            str(radar_config.system.antenna_model.model_type).upper() == "FROM_DIRECTIVITY_AZ_EL_CUTS"
+        ) else 0.0
+        metrics["radar_adaptive_sampling_enabled"] = 1.0 if (
+            float(radar_config.fidelity.raytracing.default_min_rays_per_wavelength) > 0.0
+            or bool(radar_config.fidelity.raytracing.adaptive_targets)
+        ) else 0.0
+        metrics["radar_adaptive_sampling_target_count"] = float(adaptive_sampling_target_count)
         return output_path
 
     def _generate_radar_targets_trajectory_sweep_if_available(
@@ -4160,6 +4174,7 @@ class NativePhysicsBackend(SensorBackend):
         total_targets = 0
         total_tracks = 0
         total_multipath_targets = 0
+        total_adaptive_sampling_targets = 0
         for frame_id, (pose_index, pose) in enumerate(selected_poses):
             effective_extrinsics = self._build_radar_extrinsics_from_pose(
                 request=request,
@@ -4188,7 +4203,13 @@ class NativePhysicsBackend(SensorBackend):
                 for target in targets
                 if str(target.get("measurement_source", "")).upper() == "MULTIPATH"
             )
+            frame_adaptive_sampling_target_count = sum(
+                1
+                for target in targets
+                if float(target.get("adaptive_sampling_density", 0.0)) > 0.0
+            )
             total_multipath_targets += frame_multipath_target_count
+            total_adaptive_sampling_targets += frame_adaptive_sampling_target_count
             frames.append(
                 {
                     "frame_id": frame_id,
@@ -4214,6 +4235,7 @@ class NativePhysicsBackend(SensorBackend):
                     "target_count": len(targets),
                     "track_count": len(tracks),
                     "multipath_target_count": frame_multipath_target_count,
+                    "adaptive_sampling_target_count": frame_adaptive_sampling_target_count,
                     "false_target_count": false_added,
                     "output_mode": "TRACKS" if radar_config.tracking.output_tracks else "POINTS",
                     "targets_preview": targets[:preview_targets_per_frame],
@@ -4226,6 +4248,9 @@ class NativePhysicsBackend(SensorBackend):
         metrics["radar_trajectory_sweep_total_track_count"] = float(total_tracks)
         metrics["radar_trajectory_sweep_total_multipath_target_count"] = float(
             total_multipath_targets
+        )
+        metrics["radar_trajectory_sweep_total_adaptive_sampling_target_count"] = float(
+            total_adaptive_sampling_targets
         )
         payload = {
             "input_point_cloud": str(point_cloud),
@@ -4284,12 +4309,18 @@ class NativePhysicsBackend(SensorBackend):
             intrinsic_rcs_dbsm = rcs_base_dbsm
             if isinstance(rcs_defaults, list) and 0 <= point_index < len(rcs_defaults):
                 intrinsic_rcs_dbsm = float(rcs_defaults[point_index])
+            sampling_profile = self._radar_adaptive_sampling_profile(
+                request=request,
+                radar_config=radar_config,
+                point_index=point_index,
+            )
             detection_metrics = self._radar_detection_metrics(
                 radar_config=radar_config,
                 range_m=range_m,
                 azimuth_deg=azimuth_deg,
                 elevation_deg=elevation_deg,
                 intrinsic_rcs_dbsm=intrinsic_rcs_dbsm,
+                sampling_density=float(sampling_profile["density"]),
             )
             if not bool(detection_metrics["detected"]):
                 continue
@@ -4380,6 +4411,7 @@ class NativePhysicsBackend(SensorBackend):
                         "snr_db": float(detection_metrics["snr_db"]),
                         "detection_probability": float(detection_metrics["detection_probability"]),
                         "antenna_gain_db": float(detection_metrics["antenna_gain_db"]),
+                        "sampling_gain_db": float(detection_metrics["sampling_gain_db"]),
                         "range_resolution_m": float(radar_config.system.range_resolution_m),
                         "velocity_resolution_mps": float(radar_config.system.velocity_resolution_mps),
                         "angular_resolution_deg": {
@@ -4396,6 +4428,11 @@ class NativePhysicsBackend(SensorBackend):
                         "ground_truth_last_bounce_index": 0,
                         "path_length_offset_m": 0.0,
                         "micro_doppler_velocity_offset_mps": micro_doppler_offset_mps,
+                        "adaptive_sampling_density": float(sampling_profile["density"]),
+                        "adaptive_sampling_actor_id": sampling_profile["actor_id"],
+                        "adaptive_sampling_target_override": bool(sampling_profile["target_override"]),
+                        "raytracing_subdivision_level": int(sampling_profile["subdivision_level"]),
+                        "raytracing_mode": str(radar_config.fidelity.raytracing.mode).upper(),
                         "is_false_alarm": False,
                     },
                 )
@@ -4410,6 +4447,7 @@ class NativePhysicsBackend(SensorBackend):
                     base_radial_velocity_mps=radial_velocity,
                     intrinsic_rcs_dbsm=intrinsic_rcs_dbsm,
                     base_detection_metrics=detection_metrics,
+                    sampling_profile=sampling_profile,
                     rng=rng,
                     min_range=min_range,
                     max_range=max_range,
@@ -4448,6 +4486,7 @@ class NativePhysicsBackend(SensorBackend):
                     "snr_db": false_signal_power_dbw - float(radar_config.detector.noise_variance_dbw),
                     "detection_probability": pfa,
                     "antenna_gain_db": 0.0,
+                    "sampling_gain_db": 0.0,
                     "range_resolution_m": float(radar_config.system.range_resolution_m),
                     "velocity_resolution_mps": float(radar_config.system.velocity_resolution_mps),
                     "angular_resolution_deg": {
@@ -4464,6 +4503,11 @@ class NativePhysicsBackend(SensorBackend):
                     "ground_truth_last_bounce_index": None,
                     "path_length_offset_m": 0.0,
                     "micro_doppler_velocity_offset_mps": 0.0,
+                    "adaptive_sampling_density": 0.0,
+                    "adaptive_sampling_actor_id": None,
+                    "adaptive_sampling_target_override": False,
+                    "raytracing_subdivision_level": 0,
+                    "raytracing_mode": str(radar_config.fidelity.raytracing.mode).upper(),
                     "is_false_alarm": True,
                 }
             )
@@ -4485,6 +4529,7 @@ class NativePhysicsBackend(SensorBackend):
         base_radial_velocity_mps: float,
         intrinsic_rcs_dbsm: float,
         base_detection_metrics: dict[str, float | bool],
+        sampling_profile: dict[str, object],
         rng: random.Random,
         min_range: float,
         max_range: float,
@@ -4633,6 +4678,7 @@ class NativePhysicsBackend(SensorBackend):
                         "snr_db": snr_db,
                         "detection_probability": detection_probability,
                         "antenna_gain_db": antenna_gain_db,
+                        "sampling_gain_db": float(base_detection_metrics.get("sampling_gain_db", 0.0)),
                         "range_resolution_m": float(radar_config.system.range_resolution_m),
                         "velocity_resolution_mps": float(radar_config.system.velocity_resolution_mps),
                         "angular_resolution_deg": {
@@ -4652,6 +4698,11 @@ class NativePhysicsBackend(SensorBackend):
                         "multipath_bounce_count": bounce_index,
                         "coherence_factor": coherence_factor,
                         "micro_doppler_velocity_offset_mps": micro_doppler_offset_mps,
+                        "adaptive_sampling_density": float(sampling_profile["density"]),
+                        "adaptive_sampling_actor_id": sampling_profile["actor_id"],
+                        "adaptive_sampling_target_override": bool(sampling_profile["target_override"]),
+                        "raytracing_subdivision_level": int(sampling_profile["subdivision_level"]),
+                        "raytracing_mode": str(radar_config.fidelity.raytracing.mode).upper(),
                         "is_false_alarm": False,
                     },
                 )
@@ -4686,18 +4737,21 @@ class NativePhysicsBackend(SensorBackend):
         azimuth_deg: float,
         elevation_deg: float,
         intrinsic_rcs_dbsm: float,
+        sampling_density: float,
     ) -> dict[str, float | bool]:
         antenna_gain_db = self._radar_antenna_gain_db(
             radar_config=radar_config,
             azimuth_deg=azimuth_deg,
             elevation_deg=elevation_deg,
         )
+        sampling_gain_db = 10.0 * log10(max(1.0 + 8.0 * max(sampling_density, 0.0), 1e-9))
         signal_power_dbw = (
             float(radar_config.system.transmit_power_dbm)
             - 30.0
             + float(radar_config.system.radiometric_calibration_factor_db)
             + intrinsic_rcs_dbsm
             + antenna_gain_db
+            + sampling_gain_db
             - 40.0 * log10(max(range_m, 1e-3))
         )
         noise_power_dbw = float(radar_config.detector.noise_variance_dbw)
@@ -4727,6 +4781,7 @@ class NativePhysicsBackend(SensorBackend):
             "snr_db": snr_db,
             "detection_probability": detection_probability,
             "antenna_gain_db": antenna_gain_db,
+            "sampling_gain_db": sampling_gain_db,
         }
 
     def _radar_antenna_gain_db(
@@ -4736,11 +4791,96 @@ class NativePhysicsBackend(SensorBackend):
         azimuth_deg: float,
         elevation_deg: float,
     ) -> float:
+        antenna_model = getattr(radar_config.system, "antenna_model", None)
+        if antenna_model is not None and str(getattr(antenna_model, "model_type", "")).upper() == "FROM_DIRECTIVITY_AZ_EL_CUTS":
+            az_gain_db = self._radar_directivity_cut_gain_db(
+                cut=getattr(antenna_model, "az_cut", None),
+                angle_deg=azimuth_deg,
+            )
+            el_gain_db = self._radar_directivity_cut_gain_db(
+                cut=getattr(antenna_model, "el_cut", None),
+                angle_deg=elevation_deg,
+            )
+            return max(-40.0, az_gain_db + el_gain_db)
         hpbw_az = max(abs(float(radar_config.system.antenna_hpbw.az_deg)), 1e-6)
         hpbw_el = max(abs(float(radar_config.system.antenna_hpbw.el_deg)), 1e-6)
         normalized_az = azimuth_deg / hpbw_az
         normalized_el = elevation_deg / hpbw_el
         return max(-40.0, -3.0 * (normalized_az * normalized_az + normalized_el * normalized_el))
+
+    def _radar_directivity_cut_gain_db(self, *, cut: Any, angle_deg: float) -> float:
+        if cut is None:
+            return 0.0
+        angles_deg = [float(angle) for angle in getattr(cut, "angles_deg", [])]
+        amplitudes = [max(float(amplitude), 0.0) for amplitude in getattr(cut, "amplitudes", [])]
+        if not angles_deg or not amplitudes:
+            return 0.0
+        limit = min(len(angles_deg), len(amplitudes))
+        pairs = sorted(zip(angles_deg[:limit], amplitudes[:limit]), key=lambda item: item[0])
+        normalized_amplitudes = [pair[1] for pair in pairs]
+        if not bool(getattr(cut, "do_not_normalize", False)):
+            peak = max(normalized_amplitudes)
+            if peak > 1e-9:
+                normalized_amplitudes = [value / peak for value in normalized_amplitudes]
+        sample_amplitude = self._interpolate_scalar_series(
+            xs=[pair[0] for pair in pairs],
+            ys=normalized_amplitudes,
+            x=angle_deg,
+        )
+        return 20.0 * log10(max(sample_amplitude, 1e-6))
+
+    def _interpolate_scalar_series(self, *, xs: list[float], ys: list[float], x: float) -> float:
+        if not xs or not ys:
+            return 0.0
+        if len(xs) == 1 or len(ys) == 1:
+            return float(ys[0])
+        if x <= xs[0]:
+            return float(ys[0])
+        if x >= xs[-1]:
+            return float(ys[-1])
+        for index in range(1, min(len(xs), len(ys))):
+            left_x = xs[index - 1]
+            right_x = xs[index]
+            if x > right_x:
+                continue
+            delta = right_x - left_x
+            if abs(delta) <= 1e-9:
+                return float(ys[index])
+            alpha = (x - left_x) / delta
+            return float(ys[index - 1]) + (float(ys[index]) - float(ys[index - 1])) * alpha
+        return float(ys[-1])
+
+    def _radar_adaptive_sampling_profile(
+        self,
+        *,
+        request: SensorSimRequest,
+        radar_config: Any,
+        point_index: int,
+    ) -> dict[str, object]:
+        actor_id = None
+        raw_actor_ids = request.options.get("radar_point_actor_ids")
+        if isinstance(raw_actor_ids, list) and 0 <= point_index < len(raw_actor_ids):
+            actor_id = str(raw_actor_ids[point_index])
+        density = max(float(radar_config.fidelity.raytracing.default_min_rays_per_wavelength), 0.0)
+        target_override = False
+        for target in getattr(radar_config.fidelity.raytracing, "adaptive_targets", []):
+            if actor_id is None or str(getattr(target, "actor_id", "")) != actor_id:
+                continue
+            density = max(density, float(getattr(target, "min_rays_per_wavelength", 0.0)))
+            target_override = True
+        subdivision_level = 0
+        if density > 0.0:
+            base_density = 0.2
+            subdivision_level = max(1, int((density / base_density) + 0.999999))
+            max_subdivision_level = int(getattr(radar_config.fidelity.raytracing, "max_subdivision_level", 0))
+            if max_subdivision_level > 0:
+                subdivision_level = min(subdivision_level, max_subdivision_level)
+        return {
+            "actor_id": actor_id,
+            "density": density,
+            "target_override": target_override,
+            "subdivision_level": subdivision_level,
+        }
 
     def _radar_accuracy_sigma(
         self,
