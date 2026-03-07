@@ -107,6 +107,110 @@ def _load_artifact_payload(path: Path | None) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
+def _build_comparison_table(
+    output_comparison_report: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not isinstance(output_comparison_report, dict):
+        return None
+    raw_by_sensor = output_comparison_report.get("by_sensor")
+    if not isinstance(raw_by_sensor, list):
+        return None
+
+    sensor_rows: list[dict[str, Any]] = []
+    role_rows: list[dict[str, Any]] = []
+    sensor_status_counts: dict[str, int] = {}
+    role_status_counts: dict[str, int] = {}
+    mismatch_reason_counts: dict[str, int] = {}
+    for sensor_entry in raw_by_sensor:
+        if not isinstance(sensor_entry, dict):
+            continue
+        sensor_status = str(sensor_entry.get("status", "")).strip()
+        if sensor_status:
+            sensor_status_counts[sensor_status] = sensor_status_counts.get(sensor_status, 0) + 1
+        sensor_mismatch_reasons = [
+            str(item).strip()
+            for item in sensor_entry.get("mismatch_reasons", [])
+            if str(item).strip()
+        ]
+        for reason in sensor_mismatch_reasons:
+            mismatch_reason_counts[reason] = mismatch_reason_counts.get(reason, 0) + 1
+        sensor_rows.append(
+            {
+                "sensor_id": str(sensor_entry.get("sensor_id", "")).strip(),
+                "sensor_name": str(sensor_entry.get("sensor_name", "")).strip(),
+                "status": sensor_status,
+                "mismatch_reasons": sensor_mismatch_reasons,
+                "found_output_roles": [
+                    str(item).strip()
+                    for item in sensor_entry.get("found_output_roles", [])
+                    if str(item).strip()
+                ],
+                "missing_output_roles": [
+                    str(item).strip()
+                    for item in sensor_entry.get("missing_output_roles", [])
+                    if str(item).strip()
+                ],
+                "found_output_count": sensor_entry.get("found_output_count"),
+                "missing_output_count": sensor_entry.get("missing_output_count"),
+                "unexpected_output_count": sensor_entry.get("unexpected_output_count"),
+            }
+        )
+        raw_role_diffs = sensor_entry.get("role_diffs")
+        if not isinstance(raw_role_diffs, list):
+            continue
+        sensor_id = str(sensor_entry.get("sensor_id", "")).strip()
+        for role_entry in raw_role_diffs:
+            if not isinstance(role_entry, dict):
+                continue
+            role_status = str(role_entry.get("status", "")).strip()
+            if role_status:
+                role_status_counts[role_status] = role_status_counts.get(role_status, 0) + 1
+            role_mismatch_reasons = [
+                str(item).strip()
+                for item in role_entry.get("mismatch_reasons", [])
+                if str(item).strip()
+            ]
+            for reason in role_mismatch_reasons:
+                mismatch_reason_counts[reason] = mismatch_reason_counts.get(reason, 0) + 1
+            role_rows.append(
+                {
+                    "sensor_id": sensor_id,
+                    "output_role": str(role_entry.get("output_role", "")).strip(),
+                    "status": role_status,
+                    "mismatch_reasons": role_mismatch_reasons,
+                    "found_output_count": role_entry.get("found_output_count"),
+                    "missing_output_count": role_entry.get("missing_output_count"),
+                    "expected_backend_filenames": [
+                        str(item).strip()
+                        for item in role_entry.get("expected_backend_filenames", [])
+                        if str(item).strip()
+                    ],
+                    "discovered_backend_filenames": [
+                        str(item).strip()
+                        for item in role_entry.get("discovered_backend_filenames", [])
+                        if str(item).strip()
+                    ],
+                    "found_relative_paths": [
+                        str(item).strip()
+                        for item in role_entry.get("found_relative_paths", [])
+                        if str(item).strip()
+                    ],
+                    "missing_relative_paths": [
+                        str(item).strip()
+                        for item in role_entry.get("missing_relative_paths", [])
+                        if str(item).strip()
+                    ],
+                }
+            )
+    return {
+        "sensor_rows": sensor_rows,
+        "role_rows": role_rows,
+        "sensor_status_counts": sensor_status_counts,
+        "role_status_counts": role_status_counts,
+        "mismatch_reason_counts": mismatch_reason_counts,
+    }
+
+
 def _build_effective_config(
     *,
     base_config: dict[str, Any],
@@ -172,6 +276,7 @@ def build_renderer_backend_smoke_summary(
     output_comparison_report = _load_artifact_payload(
         result.artifacts.get("backend_output_comparison_report")
     )
+    comparison_table = _build_comparison_table(output_comparison_report)
 
     summary = {
         "config_path": str(config_path),
@@ -239,6 +344,7 @@ def build_renderer_backend_smoke_summary(
             if isinstance(output_comparison_report, dict)
             else None
         ),
+        "comparison_table": comparison_table,
     }
     return summary
 

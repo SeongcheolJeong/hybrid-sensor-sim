@@ -151,6 +151,11 @@ PY
             self.assertEqual(summary["output_inspection"]["status"], "MATCHED")
             self.assertEqual(summary["runner_smoke"]["status"], "SMOKE_SUCCEEDED")
             self.assertEqual(summary["output_comparison"]["status"], "MATCHED")
+            self.assertIsNotNone(summary["comparison_table"])
+            self.assertEqual(summary["comparison_table"]["sensor_status_counts"]["MATCHED"], 1)
+            self.assertEqual(summary["comparison_table"]["role_status_counts"]["MATCHED"], 1)
+            self.assertEqual(summary["comparison_table"]["role_rows"][0]["output_role"], "camera_visible")
+            self.assertEqual(summary["comparison_table"]["role_rows"][0]["status"], "MATCHED")
             self.assertEqual(summary["forced_options"]["renderer_backend"], "awsim")
             self.assertEqual(
                 effective_config["options"]["renderer_execute_and_inspect_via_runner"],
@@ -217,6 +222,27 @@ printf '{"status":"ok"}\n' > "${BACKEND_OUTPUT_ROOT}/carla_runtime_state.json"
             self.assertEqual(summary["output_inspection"]["status"], "MISSING_EXPECTED")
             self.assertEqual(summary["runner_smoke"]["status"], "INSPECTION_FAILED")
             self.assertEqual(summary["output_comparison"]["status"], "MISSING_EXPECTED")
+            self.assertIsNotNone(summary["comparison_table"])
+            self.assertEqual(
+                summary["comparison_table"]["sensor_status_counts"]["MISSING_EXPECTED"],
+                1,
+            )
+            self.assertEqual(
+                summary["comparison_table"]["role_status_counts"]["MISSING_EXPECTED"],
+                1,
+            )
+            self.assertEqual(
+                summary["comparison_table"]["mismatch_reason_counts"]["MISSING_EXPECTED_OUTPUTS"],
+                2,
+            )
+            self.assertEqual(
+                summary["comparison_table"]["role_rows"][0]["output_role"],
+                "camera_visible",
+            )
+            self.assertEqual(
+                summary["comparison_table"]["role_rows"][0]["status"],
+                "MISSING_EXPECTED",
+            )
 
 
 if __name__ == "__main__":

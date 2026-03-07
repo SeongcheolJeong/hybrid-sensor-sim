@@ -499,6 +499,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
       - `renderer_backend_smoke_config.json`
       - `renderer_backend_smoke_summary.json`
       - runtime artifacts under the chosen `output_dir`
+      - `comparison_table.sensor_rows` and `comparison_table.role_rows` for quick mismatch triage
   - contract argument controls:
     - `renderer_contract_flag` (default `--contract`)
     - `renderer_inject_contract_arg` / `renderer_contract_positional`
@@ -516,6 +517,8 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - [configs/hybrid_sensor_sim.helios_demo.json](/Users/seongcheoljeong/Documents/Test/configs/hybrid_sensor_sim.helios_demo.json): HELIOS demo survey config (requires built `HELIOS_BIN`).
 - [configs/hybrid_sensor_sim.helios_docker.json](/Users/seongcheoljeong/Documents/Test/configs/hybrid_sensor_sim.helios_docker.json): docker runtime demo config.
 - [configs/hybrid_sensor_sim.helios_docker.auto_extrinsics.json](/Users/seongcheoljeong/Documents/Test/configs/hybrid_sensor_sim.helios_docker.auto_extrinsics.json): docker demo with trajectory-based auto extrinsics.
+- [configs/renderer_backend_smoke.awsim.example.json](/Users/seongcheoljeong/Documents/Test/configs/renderer_backend_smoke.awsim.example.json): AWSIM smoke preset with camera/lidar/radar contract coverage enabled.
+- [configs/renderer_backend_smoke.carla.example.json](/Users/seongcheoljeong/Documents/Test/configs/renderer_backend_smoke.carla.example.json): CARLA smoke preset with the same sensor contract surface.
 
 ## Next implementation target
 
