@@ -24,6 +24,7 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `scripts/setup_helios.sh`: bootstrap helper for cloning/building HELIOS.
 - `scripts/run_renderer_backend_smoke.py`: AWSIM/CARLA smoke launcher that forces direct backend execution plus output-contract inspection.
 - `scripts/discover_renderer_backend_local_env.py`: discovers local HELIOS/AWSIM/CARLA runtime candidates and writes a reusable env file plus readiness summary.
+- `scripts/stage_renderer_backend_package.py`: extracts packaged AWSIM/CARLA archives into `third_party/runtime_backends/<backend>` and writes a staging env file for smoke runs.
 
 ## Quick start
 
@@ -549,6 +550,25 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - when `heliosplusplus:cli` is present in Docker Desktop, discovery can mark HELIOS as docker-ready even if `HELIOS_BIN` is unset.
 - `--probe-helios-docker-demo` runs the configured docker demo and records actual HELIOS execution success/failure in `probes.helios_docker_demo`.
 - use `--no-default-search-roots` when you want discovery to only scan explicit `--search-root` inputs plus the repo root.
+
+### Local backend package staging
+
+- `python3 scripts/stage_renderer_backend_package.py --backend awsim --archive ~/Downloads/AWSIM-Demo.zip`
+- `python3 scripts/stage_renderer_backend_package.py --backend carla --archive ~/Downloads/CARLA_UE5_Latest.tar.gz`
+- if `renderer_backend_local_setup.json` already exists and has `acquisition_hints.<backend>.local_download_candidates`, `--archive` can be omitted:
+  - `python3 scripts/stage_renderer_backend_package.py --backend awsim --setup-summary artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json`
+- the staging tool writes:
+  - `third_party/runtime_backends/<backend>/renderer_backend_package_stage.json`
+  - `third_party/runtime_backends/<backend>/renderer_backend_package_stage.env.sh`
+- the summary reports:
+  - selected archive path/source
+  - extracted runtime directory
+  - selected backend executable path/name
+  - merged env selection for `HELIOS_*` plus staged `AWSIM_BIN` or `CARLA_BIN`
+  - `smoke_ready_binary` / `smoke_ready_docker`
+- the env file is meant to be sourced directly before smoke runs:
+  - `source third_party/runtime_backends/awsim/renderer_backend_package_stage.env.sh`
+  - `python3 scripts/run_renderer_backend_smoke.py --config configs/renderer_backend_smoke.awsim.local.docker.example.json --backend awsim`
 
 ## Next implementation target
 

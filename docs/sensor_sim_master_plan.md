@@ -248,6 +248,7 @@ Primary code references:
   - local runtime discovery now separates `HELIOS binary ready` from `HELIOS docker ready`, and provides docker-local smoke presets for AWSIM/CARLA
   - local runtime discovery can now optionally run a real HELIOS docker demo probe and persist the result for readiness triage
   - local runtime discovery also emits backend acquisition hints so source-only AWSIM/CARLA states map directly to concrete download/build next steps
+  - packaged backend staging tool now extracts `AWSIM-Demo.zip` / `CARLA_UE5*.tar.gz`, finds the runtime launcher, and emits a reusable env file for smoke execution
   - sensor-specific expected export paths derived from runtime ingestion data
   - backend-namespaced sensor export candidate paths and sensor output summary generation
   - backend-specific sensor export filename conventions (for example AWSIM vs CARLA camera outputs)
