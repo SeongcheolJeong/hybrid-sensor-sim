@@ -169,6 +169,11 @@ def _candidate_paths_for_repo(repo_root: Path) -> dict[str, list[Path]]:
             repo_root / "third_party/awsim/AWSIM.x86_64",
             repo_root / "third_party/awsim/AWSIM-Demo.x86_64",
             repo_root / "third_party/awsim/AWSIM-Demo-Lightweight.x86_64",
+            repo_root / "third_party/runtime_backends/awsim/expanded/AWSIM.x86_64",
+            repo_root / "third_party/runtime_backends/awsim/expanded/AWSIM-Demo.x86_64",
+            repo_root / "third_party/runtime_backends/awsim/expanded/AWSIM-Demo-Lightweight.x86_64",
+            repo_root / "third_party/runtime_backends/awsim/expanded/AWSIM-Demo/AWSIM-Demo.x86_64",
+            repo_root / "third_party/runtime_backends/awsim/expanded/AWSIM-Demo-Lightweight/AWSIM-Demo-Lightweight.x86_64",
         ],
         "carla": [
             repo_root / "third_party/carla/CarlaUE4.sh",
@@ -177,8 +182,31 @@ def _candidate_paths_for_repo(repo_root: Path) -> dict[str, list[Path]]:
             repo_root / "third_party/carla/CarlaUE5.app/Contents/MacOS/CarlaUE5",
             repo_root / "third_party/carla/CarlaUnreal.sh",
             repo_root / "third_party/carla/CarlaUnreal.exe",
+            repo_root / "third_party/runtime_backends/carla/expanded/CarlaUE4.sh",
+            repo_root / "third_party/runtime_backends/carla/expanded/CarlaUE5.sh",
+            repo_root / "third_party/runtime_backends/carla/expanded/CarlaUnreal.sh",
+            repo_root / "third_party/runtime_backends/carla/expanded/CARLA_UE5/CarlaUnreal.sh",
+            repo_root / "third_party/runtime_backends/carla/expanded/CARLA_UE5/CarlaUE5.sh",
         ],
     }
+
+
+def _load_stage_selected_candidate(repo_root: Path, backend: str) -> Path | None:
+    summary_path = repo_root / "third_party" / "runtime_backends" / backend / "renderer_backend_package_stage.json"
+    if not summary_path.exists():
+        return None
+    try:
+        payload = _load_json(summary_path)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+    staging = payload.get("staging", {})
+    if not isinstance(staging, dict):
+        return None
+    selected_path = staging.get("selected_executable_path")
+    if not isinstance(selected_path, str) or not selected_path.strip():
+        return None
+    candidate = _resolve_runtime_path(selected_path)
+    return candidate if candidate.exists() else None
 
 
 def _iter_with_depth(root: Path, max_depth: int) -> list[Path]:
@@ -343,6 +371,14 @@ def _discover_backend_candidates(
     if env_value:
         candidates.append(
             _path_record(_resolve_runtime_path(env_value), origin=f"env:{env_var}", kind="env")
+        )
+    stage_candidate = _load_stage_selected_candidate(
+        repo_root,
+        "awsim" if env_var == "AWSIM_BIN" else "carla" if env_var == "CARLA_BIN" else "helios",
+    )
+    if stage_candidate is not None:
+        candidates.append(
+            _path_record(stage_candidate, origin="stage-summary", kind="candidate")
         )
     for path in repo_candidates:
         candidates.append(_path_record(path.resolve(), origin="repo-default", kind="candidate"))

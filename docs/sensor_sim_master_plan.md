@@ -250,6 +250,7 @@ Primary code references:
   - local runtime discovery also emits backend acquisition hints so source-only AWSIM/CARLA states map directly to concrete download/build next steps
   - backend package acquire tool now resolves official package URLs from local setup summary, downloads archives, and chains directly into staging
   - packaged backend staging tool now extracts `AWSIM-Demo.zip` / `CARLA_UE5*.tar.gz`, finds the runtime launcher, and emits a reusable env file for smoke execution
+  - local discovery now reuses staged runtime metadata under `third_party/runtime_backends/<backend>` so staged AWSIM/CARLA packages are rediscovered automatically
   - backend workflow tool now chains `load/generate setup -> optional acquire -> smoke` into one execution path with a single workflow summary artifact
   - sensor-specific expected export paths derived from runtime ingestion data
   - backend-namespaced sensor export candidate paths and sensor output summary generation

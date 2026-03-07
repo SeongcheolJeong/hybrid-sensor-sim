@@ -549,6 +549,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - reference repo roots versus executable runtime candidates
   - `acquisition_hints` with backend-specific download/build guidance and platform constraints
   - package executable names such as `AWSIM-Demo.x86_64` and `CarlaUnreal.sh`, plus locally downloaded archives like `AWSIM-Demo.zip` and `CARLA_UE5_Latest.tar.gz`
+  - staged runtime metadata under `third_party/runtime_backends/<backend>/renderer_backend_package_stage.json` is also reused, so a previously staged backend is rediscovered without re-entering the path manually
 - when `heliosplusplus:cli` is present in Docker Desktop, discovery can mark HELIOS as docker-ready even if `HELIOS_BIN` is unset.
 - `--probe-helios-docker-demo` runs the configured docker demo and records actual HELIOS execution success/failure in `probes.helios_docker_demo`.
 - use `--no-default-search-roots` when you want discovery to only scan explicit `--search-root` inputs plus the repo root.

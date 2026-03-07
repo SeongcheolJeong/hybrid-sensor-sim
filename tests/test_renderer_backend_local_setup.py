@@ -215,6 +215,47 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertEqual(summary["selection"]["AWSIM_BIN"], str(awsim_bin.resolve()))
             self.assertEqual(summary["selection"]["CARLA_BIN"], str(carla_bin.resolve()))
 
+    def test_build_renderer_backend_local_setup_prefers_staged_runtime_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            staged_root = repo_root / "third_party" / "runtime_backends" / "awsim"
+            expanded_root = staged_root / "expanded" / "AWSIM-Demo"
+            expanded_root.mkdir(parents=True, exist_ok=True)
+            awsim_bin = expanded_root / "AWSIM-Demo.x86_64"
+            awsim_bin.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            awsim_bin.chmod(0o755)
+            (staged_root / "renderer_backend_package_stage.json").write_text(
+                json.dumps(
+                    {
+                        "staging": {
+                            "selected_executable_path": str(awsim_bin.resolve()),
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch(
+                "hybrid_sensor_sim.tools.renderer_backend_local_setup._inspect_helios_docker_runtime",
+                return_value=_ready_docker_runtime(),
+            ):
+                summary = build_renderer_backend_local_setup(
+                    repo_root=repo_root,
+                    search_roots=[],
+                    output_dir=root / "artifacts",
+                    include_default_search_roots=False,
+                )
+
+            self.assertEqual(summary["selection"]["AWSIM_BIN"], str(awsim_bin.resolve()))
+            origins = {
+                candidate["origin"]
+                for candidate in summary["backends"]["awsim"]["candidates"]
+                if candidate["path"] == str(awsim_bin.resolve())
+            }
+            self.assertIn("stage-summary", origins)
+            self.assertTrue(summary["readiness"]["awsim_ready"])
+
     def test_build_renderer_backend_local_setup_uses_docker_when_binary_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
