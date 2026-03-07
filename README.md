@@ -279,8 +279,34 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - enable `radar_postprocess_enabled=true`
   - core controls: `radar_max_targets`, `radar_range_min_m`, `radar_range_max_m`
   - clutter/false alarms: `radar_clutter`, `radar_false_target_count`
+  - system params:
+    - `radar_system_params.frame_rate`
+    - `radar_system_params.transmit_power`
+    - `radar_system_params.radiometric_calibration_factor`
+    - `radar_system_params.center_frequency`
+    - `radar_system_params.range_resolution`
+    - `radar_system_params.range_quantization`
+    - `radar_system_params.velocity.{min,max}`
+    - `radar_system_params.velocity_resolution`
+    - `radar_system_params.velocity_quantization`
+    - `radar_antenna_params.beam_params.{hpbw_az,hpbw_el}`
+  - detector params:
+    - `radar_detector_params.noise_variance_dbw`
+    - `radar_detector_params.minimum_snr_db`
+    - `radar_detector_params.no_additive_noise`
+    - `radar_detector_params.max_detections`
+    - `radar_detector_params.noise_performance.probability_false_alarm`
+    - `radar_detector_params.noise_performance.target_detectability.target.{range,radar_cross_section}`
+    - `radar_detector_params.noise_performance.target_detectability.probability_detection`
+  - estimator params:
+    - `radar_estimator_params.{range,velocity,azimuth,elevation}_accuracy.max_deviation`
+    - `radar_estimator_params.*_accuracy_regions`
+  - tracking params:
+    - `radar_tracking_params.tracks`
+    - `radar_tracking_params.max_tracks`
   - ego-motion velocity source: `radar_use_ego_velocity_from_trajectory`
   - emits `radar_targets_preview.json`.
+  - preview includes `snr_db`, `detection_probability`, `antenna_gain_db`, accuracy-region indices, and optional `tracks`.
 - Radar trajectory sweep preview:
   - enable `radar_trajectory_sweep_enabled=true`
   - set `radar_trajectory_sweep_frames` and `radar_preview_targets_per_frame`
@@ -288,7 +314,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `radar_extrinsics_auto_use_position=none|xy|xyz`
     - `radar_extrinsics_auto_use_orientation=true|false`
     - `radar_extrinsics_auto_offsets`
-  - emits `radar_targets_trajectory_sweep.json`.
+  - emits `radar_targets_trajectory_sweep.json` with per-frame `targets_preview` and optional `tracks_preview`.
 
 ## Renderer bridge notes
 

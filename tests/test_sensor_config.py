@@ -42,6 +42,9 @@ class SensorConfigTests(unittest.TestCase):
         self.assertEqual(config.lidar.multipath_model.mode, "HYBRID")
         self.assertEqual(config.radar.clutter_model, "basic")
         self.assertEqual(config.radar.range_min_m, 0.5)
+        self.assertAlmostEqual(config.radar.system.frame_rate_hz, 10.0)
+        self.assertAlmostEqual(config.radar.detector.minimum_snr_db, -10.0)
+        self.assertFalse(config.radar.tracking.output_tracks)
 
     def test_build_sensor_sim_config_translates_legacy_options_and_behaviors(self) -> None:
         config = build_sensor_sim_config(
@@ -242,6 +245,50 @@ class SensorConfigTests(unittest.TestCase):
                 "radar_range_min_m": "1.5",
                 "radar_range_max_m": "250.0",
                 "radar_false_target_count": "0",
+                "radar_system_params": {
+                    "frame_rate": 15.0,
+                    "transmit_power": 48.0,
+                    "radiometric_calibration_factor": 2.5,
+                    "center_frequency": 76.5e9,
+                    "range_resolution": 0.4,
+                    "range_quantization": 0.2,
+                    "velocity": {"min": -90.0, "max": 55.0},
+                    "velocity_resolution": 0.15,
+                    "velocity_quantization": 0.05,
+                },
+                "radar_antenna_params": {
+                    "beam_params": {
+                        "hpbw_az": 18.0,
+                        "hpbw_el": 12.0,
+                    }
+                },
+                "radar_detector_params": {
+                    "noise_variance_dbw": -82.0,
+                    "minimum_snr_db": 4.0,
+                    "max_detections": 32,
+                    "noise_performance": {
+                        "probability_false_alarm": 1e-4,
+                        "target_detectability": {
+                            "probability_detection": 0.97,
+                            "target": {
+                                "range": 180.0,
+                                "radar_cross_section": 8.0,
+                            },
+                        },
+                    },
+                },
+                "radar_estimator_params": {
+                    "range_accuracy": {"max_deviation": 0.15},
+                    "velocity_accuracy": {"max_deviation": 0.08},
+                    "azimuth_accuracy": {"max_deviation": 0.12},
+                    "range_accuracy_regions": [
+                        {"range": {"min": 50.0, "max": 250.0}, "max_deviation": 0.9}
+                    ],
+                },
+                "radar_tracking_params": {
+                    "tracks": True,
+                    "max_tracks": 12,
+                },
                 "sensor_behaviors": {
                     "radar": [{"point_at": {"id": "ped_1"}}],
                 },
@@ -378,6 +425,28 @@ class SensorConfigTests(unittest.TestCase):
         self.assertEqual(config.radar.sensor_id, "radar_bumper")
         self.assertEqual(config.radar.clutter_model, "none")
         self.assertEqual(config.radar.false_target_count, 0)
+        self.assertAlmostEqual(config.radar.system.frame_rate_hz, 15.0)
+        self.assertAlmostEqual(config.radar.system.transmit_power_dbm, 48.0)
+        self.assertAlmostEqual(config.radar.system.center_frequency_hz, 76.5e9)
+        self.assertAlmostEqual(config.radar.system.range_resolution_m, 0.4)
+        self.assertAlmostEqual(config.radar.system.range_quantization_m, 0.2)
+        self.assertAlmostEqual(config.radar.system.velocity_min_mps, -90.0)
+        self.assertAlmostEqual(config.radar.system.velocity_max_mps, 55.0)
+        self.assertAlmostEqual(config.radar.system.antenna_hpbw.az_deg, 18.0)
+        self.assertAlmostEqual(config.radar.detector.noise_variance_dbw, -82.0)
+        self.assertAlmostEqual(config.radar.detector.minimum_snr_db, 4.0)
+        self.assertEqual(config.radar.detector.max_detections, 32)
+        self.assertAlmostEqual(config.radar.detector.probability_false_alarm, 1e-4)
+        self.assertAlmostEqual(config.radar.detector.target_detectability.probability_detection, 0.97)
+        self.assertAlmostEqual(config.radar.detector.target_detectability.calibration_target_range_m, 180.0)
+        self.assertAlmostEqual(config.radar.detector.target_detectability.calibration_target_rcs_dbsm, 8.0)
+        self.assertAlmostEqual(config.radar.estimator.range_accuracy.max_deviation, 0.15)
+        self.assertAlmostEqual(config.radar.estimator.velocity_accuracy.max_deviation, 0.08)
+        self.assertAlmostEqual(config.radar.estimator.azimuth_accuracy.max_deviation, 0.12)
+        self.assertEqual(len(config.radar.estimator.range_accuracy_regions), 1)
+        self.assertAlmostEqual(config.radar.estimator.range_accuracy_regions[0].range_min_m, 50.0)
+        self.assertTrue(config.radar.tracking.output_tracks)
+        self.assertEqual(config.radar.tracking.max_tracks, 12)
         self.assertEqual(config.radar.behaviors[0].target_actor_id, "ped_1")
 
     def test_renderer_playback_contract_uses_typed_sensor_config(self) -> None:
@@ -462,6 +531,22 @@ class SensorConfigTests(unittest.TestCase):
                 },
                 "lidar_behaviors": [{"continuous_motion": {"tx": 0.1}}],
                 "radar_clutter": "none",
+                "radar_detector_params": {
+                    "minimum_snr_db": 3.0,
+                    "noise_performance": {
+                        "target_detectability": {
+                            "probability_detection": 0.95,
+                            "target": {
+                                "range": 150.0,
+                                "radar_cross_section": 10.0,
+                            },
+                        },
+                    },
+                },
+                "radar_tracking_params": {
+                    "tracks": True,
+                    "max_tracks": 6,
+                },
                 "sensor_behaviors": {
                     "radar": [{"point_at": {"id": "vehicle_9"}}],
                 },
@@ -570,6 +655,13 @@ class SensorConfigTests(unittest.TestCase):
             contract["sensor_setup"]["lidar"]["multipath_model"]["ground_plane_height_m"],
             -1.8,
         )
+        self.assertEqual(contract["sensor_setup"]["radar"]["detector_params"]["minimum_snr_db"], 3.0)
+        self.assertAlmostEqual(
+            contract["sensor_setup"]["radar"]["detector_params"]["noise_performance"]["target_detectability"]["target"]["radar_cross_section"],
+            10.0,
+        )
+        self.assertTrue(contract["sensor_setup"]["radar"]["tracking_params"]["tracks"])
+        self.assertEqual(contract["sensor_setup"]["radar"]["tracking_params"]["max_tracks"], 6)
         self.assertEqual(
             contract["sensor_setup"]["radar"]["behaviors"][0]["point_at"]["id"],
             "vehicle_9",

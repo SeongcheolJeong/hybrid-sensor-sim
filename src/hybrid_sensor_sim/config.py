@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from math import pi
 from typing import Any, Mapping
 
 from hybrid_sensor_sim.physics.camera import (
@@ -744,6 +745,162 @@ class LidarSensorConfig:
 
 
 @dataclass(frozen=True)
+class RadarAngularConfig:
+    az_deg: float = 0.0
+    el_deg: float = 0.0
+
+    def to_dict(self) -> dict[str, float]:
+        return {"az": self.az_deg, "el": self.el_deg}
+
+
+@dataclass(frozen=True)
+class RadarTargetDetectabilityConfig:
+    probability_detection: float = 0.99
+    calibration_target_range_m: float = 100.0
+    calibration_target_rcs_dbsm: float = 0.0
+
+    def to_dict(self) -> dict[str, float | dict[str, float]]:
+        return {
+            "probability_detection": self.probability_detection,
+            "target": {
+                "range": self.calibration_target_range_m,
+                "radar_cross_section": self.calibration_target_rcs_dbsm,
+            },
+        }
+
+
+@dataclass(frozen=True)
+class RadarDetectorConfig:
+    noise_variance_dbw: float = -90.0
+    minimum_snr_db: float = -10.0
+    no_additive_noise: bool = False
+    max_detections: int = 0
+    probability_false_alarm: float = 0.0
+    target_detectability: RadarTargetDetectabilityConfig = field(
+        default_factory=RadarTargetDetectabilityConfig
+    )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "noise_variance_dbw": self.noise_variance_dbw,
+            "minimum_snr_db": self.minimum_snr_db,
+            "no_additive_noise": self.no_additive_noise,
+            "max_detections": self.max_detections,
+            "noise_performance": {
+                "probability_false_alarm": self.probability_false_alarm,
+                "target_detectability": self.target_detectability.to_dict(),
+            },
+        }
+
+
+@dataclass(frozen=True)
+class RadarAccuracyConfig:
+    max_deviation: float = 0.0
+    num_sigma: float = 1.0
+
+    def to_dict(self) -> dict[str, float]:
+        return {
+            "max_deviation": self.max_deviation,
+            "num_sigma": self.num_sigma,
+        }
+
+
+@dataclass(frozen=True)
+class RadarAccuracyRegionConfig:
+    range_min_m: float = 0.0
+    range_max_m: float = 1.0e9
+    azimuth_min_deg: float = -180.0
+    azimuth_max_deg: float = 180.0
+    elevation_min_deg: float = -180.0
+    elevation_max_deg: float = 180.0
+    max_deviation: float = 0.0
+    num_sigma: float = 1.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "range": {"min": self.range_min_m, "max": self.range_max_m},
+            "azimuth_deg": {"min": self.azimuth_min_deg, "max": self.azimuth_max_deg},
+            "elevation_deg": {"min": self.elevation_min_deg, "max": self.elevation_max_deg},
+            "max_deviation": self.max_deviation,
+            "num_sigma": self.num_sigma,
+        }
+
+
+@dataclass(frozen=True)
+class RadarEstimatorConfig:
+    range_accuracy: RadarAccuracyConfig = field(default_factory=RadarAccuracyConfig)
+    velocity_accuracy: RadarAccuracyConfig = field(default_factory=RadarAccuracyConfig)
+    azimuth_accuracy: RadarAccuracyConfig = field(default_factory=RadarAccuracyConfig)
+    elevation_accuracy: RadarAccuracyConfig = field(default_factory=RadarAccuracyConfig)
+    range_accuracy_regions: list[RadarAccuracyRegionConfig] = field(default_factory=list)
+    velocity_accuracy_regions: list[RadarAccuracyRegionConfig] = field(default_factory=list)
+    azimuth_accuracy_regions: list[RadarAccuracyRegionConfig] = field(default_factory=list)
+    elevation_accuracy_regions: list[RadarAccuracyRegionConfig] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "range_accuracy": self.range_accuracy.to_dict(),
+            "velocity_accuracy": self.velocity_accuracy.to_dict(),
+            "azimuth_accuracy": self.azimuth_accuracy.to_dict(),
+            "elevation_accuracy": self.elevation_accuracy.to_dict(),
+            "range_accuracy_regions": [region.to_dict() for region in self.range_accuracy_regions],
+            "velocity_accuracy_regions": [region.to_dict() for region in self.velocity_accuracy_regions],
+            "azimuth_accuracy_regions": [region.to_dict() for region in self.azimuth_accuracy_regions],
+            "elevation_accuracy_regions": [region.to_dict() for region in self.elevation_accuracy_regions],
+        }
+
+
+@dataclass(frozen=True)
+class RadarTrackingConfig:
+    output_tracks: bool = False
+    max_tracks: int = 0
+
+    def to_dict(self) -> dict[str, int | bool]:
+        return {
+            "tracks": self.output_tracks,
+            "max_tracks": self.max_tracks,
+        }
+
+
+@dataclass(frozen=True)
+class RadarSystemConfig:
+    frame_rate_hz: float = 10.0
+    transmit_power_dbm: float = 55.0
+    radiometric_calibration_factor_db: float = 0.0
+    center_frequency_hz: float = 77.0e9
+    range_resolution_m: float = 0.5
+    range_quantization_m: float = 0.0
+    velocity_min_mps: float = -20.0
+    velocity_max_mps: float = 20.0
+    velocity_resolution_mps: float = 0.2
+    velocity_quantization_mps: float = 0.0
+    angular_resolution: RadarAngularConfig = field(
+        default_factory=lambda: RadarAngularConfig(az_deg=3.44, el_deg=180.0)
+    )
+    angular_quantization: RadarAngularConfig = field(default_factory=RadarAngularConfig)
+    antenna_hpbw: RadarAngularConfig = field(
+        default_factory=lambda: RadarAngularConfig(az_deg=18.0, el_deg=14.0)
+    )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "frame_rate_hz": self.frame_rate_hz,
+            "transmit_power_dbm": self.transmit_power_dbm,
+            "radiometric_calibration_factor_db": self.radiometric_calibration_factor_db,
+            "center_frequency_hz": self.center_frequency_hz,
+            "range_resolution_m": self.range_resolution_m,
+            "range_quantization_m": self.range_quantization_m,
+            "velocity_min_mps": self.velocity_min_mps,
+            "velocity_max_mps": self.velocity_max_mps,
+            "velocity_resolution_mps": self.velocity_resolution_mps,
+            "velocity_quantization_mps": self.velocity_quantization_mps,
+            "angular_resolution_deg": self.angular_resolution.to_dict(),
+            "angular_quantization_deg": self.angular_quantization.to_dict(),
+            "antenna_hpbw_deg": self.antenna_hpbw.to_dict(),
+        }
+
+
+@dataclass(frozen=True)
 class RadarSensorConfig:
     sensor_id: str = "radar_front"
     attach_to_actor_id: str = "ego"
@@ -759,6 +916,10 @@ class RadarSensorConfig:
     range_noise_stddev_m: float = 0.05
     velocity_noise_stddev_mps: float = 0.1
     false_target_count: int = 2
+    system: RadarSystemConfig = field(default_factory=RadarSystemConfig)
+    detector: RadarDetectorConfig = field(default_factory=RadarDetectorConfig)
+    estimator: RadarEstimatorConfig = field(default_factory=RadarEstimatorConfig)
+    tracking: RadarTrackingConfig = field(default_factory=RadarTrackingConfig)
     extrinsics: SensorExtrinsicsConfig = field(default_factory=SensorExtrinsicsConfig)
     behaviors: list[SensorBehaviorConfig] = field(default_factory=list)
 
@@ -784,6 +945,10 @@ class RadarSensorConfig:
                 "velocity_stddev_mps": self.velocity_noise_stddev_mps,
             },
             "false_target_count": self.false_target_count,
+            "system_params": self.system.to_dict(),
+            "detector_params": self.detector.to_dict(),
+            "estimator_params": self.estimator.to_dict(),
+            "tracking_params": self.tracking.to_dict(),
             "extrinsics": self.extrinsics.to_dict(),
             "behaviors": [behavior.to_dict() for behavior in self.behaviors],
         }
@@ -1430,6 +1595,302 @@ def _parse_nested_float_lists(raw: Any) -> list[list[float]]:
     return [entry for entry in values if entry]
 
 
+def _as_radians_to_deg(raw: Any, default_deg: float) -> float:
+    if raw is None:
+        return default_deg
+    return _as_float(raw, default_deg * pi / 180.0) * 180.0 / pi
+
+
+def _radar_model_sections(options: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    radar_model = _as_dict(options.get("radar_model"))
+    standard = _as_dict(radar_model.get("standard_params"))
+    system = _as_dict(standard.get("system_params"))
+    post = _as_dict(standard.get("post_processing_params"))
+    detector = _as_dict(post.get("detector_params"))
+    detector_noise = _as_dict(detector.get("noise_performance"))
+    detector_detectability = _as_dict(detector_noise.get("target_detectability"))
+    detector_target = _as_dict(detector_detectability.get("target"))
+    estimator = _as_dict(post.get("estimator_params"))
+    tracking = _as_dict(post.get("tracking_params", post.get("track_params")))
+    format_raw = _as_dict(radar_model.get("format"))
+    antenna_params = _as_dict(system.get("antenna_params"))
+    antenna_definitions = _as_list(antenna_params.get("antenna_definitions"))
+    antenna_definition = _as_dict(antenna_definitions[0]) if antenna_definitions else {}
+    beam_params = _as_dict(antenna_definition.get("beam_params"))
+    return {
+        "standard": standard,
+        "field_of_view": _as_dict(standard.get("field_of_view")),
+        "angular_resolution": _as_dict(standard.get("angular_resolution")),
+        "angular_quantization": _as_dict(standard.get("angular_quantization")),
+        "system": system,
+        "post": post,
+        "detector": detector,
+        "detector_noise": detector_noise,
+        "detector_detectability": detector_detectability,
+        "detector_target": detector_target,
+        "estimator": estimator,
+        "tracking": tracking,
+        "format": format_raw,
+        "beam_params": beam_params,
+    }
+
+
+def _parse_radar_accuracy(raw: Mapping[str, Any], *, default_max_deviation: float = 0.0) -> RadarAccuracyConfig:
+    return RadarAccuracyConfig(
+        max_deviation=_as_float(raw.get("max_deviation"), default_max_deviation),
+        num_sigma=max(_as_float(raw.get("num_sigma"), 1.0), 1e-6),
+    )
+
+
+def _parse_radar_accuracy_regions(raw: Any) -> list[RadarAccuracyRegionConfig]:
+    regions: list[RadarAccuracyRegionConfig] = []
+    for item in _as_list(raw):
+        item_raw = _as_dict(item)
+        if not item_raw:
+            continue
+        range_raw = _as_dict(item_raw.get("range"))
+        azimuth_raw = _as_dict(item_raw.get("azimuth_deg", item_raw.get("azimuth")))
+        elevation_raw = _as_dict(item_raw.get("elevation_deg", item_raw.get("elevation")))
+        regions.append(
+            RadarAccuracyRegionConfig(
+                range_min_m=_as_float(range_raw.get("min"), 0.0),
+                range_max_m=_as_float(range_raw.get("max"), 1.0e9),
+                azimuth_min_deg=_as_float(azimuth_raw.get("min"), -180.0),
+                azimuth_max_deg=_as_float(azimuth_raw.get("max"), 180.0),
+                elevation_min_deg=_as_float(elevation_raw.get("min"), -180.0),
+                elevation_max_deg=_as_float(elevation_raw.get("max"), 180.0),
+                max_deviation=_as_float(item_raw.get("max_deviation"), 0.0),
+                num_sigma=max(_as_float(item_raw.get("num_sigma"), 1.0), 1e-6),
+            )
+        )
+    return regions
+
+
+def _parse_radar_system(options: Mapping[str, Any]) -> RadarSystemConfig:
+    sections = _radar_model_sections(options)
+    raw = _as_dict(options.get("radar_system_params"))
+    system = raw if raw else sections["system"]
+    beam_params = _as_dict(_as_dict(options.get("radar_antenna_params")).get("beam_params"))
+    if not beam_params:
+        beam_params = sections["beam_params"]
+    field_of_view = sections["field_of_view"]
+    angular_resolution = sections["angular_resolution"]
+    angular_quantization = sections["angular_quantization"]
+    return RadarSystemConfig(
+        frame_rate_hz=_as_float(
+            system.get("frame_rate", sections["standard"].get("frame_rate", options.get("radar_frame_rate_hz"))),
+            10.0,
+        ),
+        transmit_power_dbm=_as_float(
+            system.get("transmit_power", options.get("radar_transmit_power_dbm")),
+            55.0,
+        ),
+        radiometric_calibration_factor_db=_as_float(
+            system.get(
+                "radiometric_calibration_factor",
+                options.get("radar_radiometric_calibration_factor_db"),
+            ),
+            0.0,
+        ),
+        center_frequency_hz=_as_float(
+            system.get("center_frequency", options.get("radar_center_frequency_hz")),
+            77.0e9,
+        ),
+        range_resolution_m=_as_float(
+            system.get("range_resolution", options.get("radar_range_resolution_m")),
+            0.5,
+        ),
+        range_quantization_m=_as_float(
+            system.get("range_quantization", options.get("radar_range_quantization_m")),
+            0.0,
+        ),
+        velocity_min_mps=_as_float(
+            _as_dict(system.get("velocity")).get("min", options.get("radar_velocity_min_mps")),
+            -20.0,
+        ),
+        velocity_max_mps=_as_float(
+            _as_dict(system.get("velocity")).get("max", options.get("radar_velocity_max_mps")),
+            20.0,
+        ),
+        velocity_resolution_mps=_as_float(
+            system.get("velocity_resolution", options.get("radar_velocity_resolution_mps")),
+            0.2,
+        ),
+        velocity_quantization_mps=_as_float(
+            system.get("velocity_quantization", options.get("radar_velocity_quantization_mps")),
+            0.0,
+        ),
+        angular_resolution=RadarAngularConfig(
+            az_deg=_as_float(
+                options.get("radar_angular_resolution_az_deg"),
+                _as_radians_to_deg(angular_resolution.get("az"), 3.44),
+            ),
+            el_deg=_as_float(
+                options.get("radar_angular_resolution_el_deg"),
+                _as_radians_to_deg(angular_resolution.get("el"), 180.0),
+            ),
+        ),
+        angular_quantization=RadarAngularConfig(
+            az_deg=_as_float(
+                options.get("radar_angular_quantization_az_deg"),
+                _as_radians_to_deg(angular_quantization.get("az"), 0.0),
+            ),
+            el_deg=_as_float(
+                options.get("radar_angular_quantization_el_deg"),
+                _as_radians_to_deg(angular_quantization.get("el"), 0.0),
+            ),
+        ),
+        antenna_hpbw=RadarAngularConfig(
+            az_deg=_as_float(
+                _as_dict(options.get("radar_antenna_hpbw_deg")).get(
+                    "az",
+                    beam_params.get("hpbw_az", options.get("radar_antenna_hpbw_az_deg")),
+                ),
+                18.0,
+            ),
+            el_deg=_as_float(
+                _as_dict(options.get("radar_antenna_hpbw_deg")).get(
+                    "el",
+                    beam_params.get("hpbw_el", options.get("radar_antenna_hpbw_el_deg")),
+                ),
+                14.0,
+            ),
+        ),
+    )
+
+
+def _parse_radar_detector(options: Mapping[str, Any]) -> RadarDetectorConfig:
+    sections = _radar_model_sections(options)
+    raw = _as_dict(options.get("radar_detector_params"))
+    detector = raw if raw else sections["detector"]
+    detector_noise = _as_dict(detector.get("noise_performance"))
+    if not detector_noise:
+        detector_noise = sections["detector_noise"]
+    detectability = _as_dict(detector_noise.get("target_detectability"))
+    if not detectability:
+        detectability = sections["detector_detectability"]
+    target = _as_dict(detectability.get("target"))
+    if not target:
+        target = sections["detector_target"]
+    return RadarDetectorConfig(
+        noise_variance_dbw=_as_float(
+            detector.get("noise_variance_dbw", options.get("radar_noise_variance_dbw")),
+            -90.0,
+        ),
+        minimum_snr_db=_as_float(
+            detector.get("minimum_snr_db", options.get("radar_minimum_snr_db")),
+            -10.0,
+        ),
+        no_additive_noise=_as_bool(
+            detector.get("no_additive_noise", options.get("radar_no_additive_noise")),
+            False,
+        ),
+        max_detections=max(
+            0,
+            _as_int(detector.get("max_detections", options.get("radar_max_detections")), 0),
+        ),
+        probability_false_alarm=_as_float(
+            detector_noise.get("probability_false_alarm", options.get("radar_probability_false_alarm")),
+            0.0,
+        ),
+        target_detectability=RadarTargetDetectabilityConfig(
+            probability_detection=_as_float(
+                detectability.get("probability_detection", options.get("radar_probability_detection")),
+                0.99,
+            ),
+            calibration_target_range_m=_as_float(
+                target.get("range", options.get("radar_calibration_target_range_m")),
+                100.0,
+            ),
+            calibration_target_rcs_dbsm=_as_float(
+                target.get(
+                    "radar_cross_section",
+                    options.get("radar_calibration_target_rcs_dbsm"),
+                ),
+                0.0,
+            ),
+        ),
+    )
+
+
+def _parse_radar_estimator(options: Mapping[str, Any]) -> RadarEstimatorConfig:
+    sections = _radar_model_sections(options)
+    raw = _as_dict(options.get("radar_estimator_params"))
+    estimator = raw if raw else sections["estimator"]
+    return RadarEstimatorConfig(
+        range_accuracy=_parse_radar_accuracy(
+            _as_dict(estimator.get("range_accuracy", {})),
+            default_max_deviation=_as_float(options.get("radar_range_accuracy_m"), 0.0),
+        ),
+        velocity_accuracy=_parse_radar_accuracy(
+            _as_dict(estimator.get("velocity_accuracy", {})),
+            default_max_deviation=_as_float(options.get("radar_velocity_accuracy_mps"), 0.0),
+        ),
+        azimuth_accuracy=_parse_radar_accuracy(
+            {
+                "max_deviation": _as_float(
+                    _as_dict(estimator.get("azimuth_accuracy", {})).get("max_deviation"),
+                    _as_float(options.get("radar_azimuth_accuracy_deg"), 0.0),
+                ),
+                "num_sigma": _as_float(
+                    _as_dict(estimator.get("azimuth_accuracy", {})).get("num_sigma"),
+                    1.0,
+                ),
+            }
+        ),
+        elevation_accuracy=_parse_radar_accuracy(
+            {
+                "max_deviation": _as_float(
+                    _as_dict(estimator.get("elevation_accuracy", {})).get("max_deviation"),
+                    _as_float(options.get("radar_elevation_accuracy_deg"), 0.0),
+                ),
+                "num_sigma": _as_float(
+                    _as_dict(estimator.get("elevation_accuracy", {})).get("num_sigma"),
+                    1.0,
+                ),
+            }
+        ),
+        range_accuracy_regions=_parse_radar_accuracy_regions(
+            estimator.get("range_accuracy_regions", options.get("radar_range_accuracy_regions"))
+        ),
+        velocity_accuracy_regions=_parse_radar_accuracy_regions(
+            estimator.get(
+                "velocity_accuracy_regions",
+                options.get("radar_velocity_accuracy_regions"),
+            )
+        ),
+        azimuth_accuracy_regions=_parse_radar_accuracy_regions(
+            estimator.get(
+                "azimuth_accuracy_regions",
+                options.get("radar_azimuth_accuracy_regions"),
+            )
+        ),
+        elevation_accuracy_regions=_parse_radar_accuracy_regions(
+            estimator.get(
+                "elevation_accuracy_regions",
+                options.get("radar_elevation_accuracy_regions"),
+            )
+        ),
+    )
+
+
+def _parse_radar_tracking(options: Mapping[str, Any]) -> RadarTrackingConfig:
+    sections = _radar_model_sections(options)
+    raw = _as_dict(options.get("radar_tracking_params"))
+    tracking = raw if raw else sections["tracking"]
+    format_raw = sections["format"]
+    return RadarTrackingConfig(
+        output_tracks=_as_bool(
+            tracking.get("tracks", format_raw.get("tracks", options.get("radar_output_tracks"))),
+            False,
+        ),
+        max_tracks=max(
+            0,
+            _as_int(tracking.get("max_tracks", options.get("radar_max_tracks")), 0),
+        ),
+    )
+
+
 def build_sensor_sim_config(
     *,
     sensor_profile: str = "default",
@@ -1437,6 +1898,12 @@ def build_sensor_sim_config(
 ) -> SensorSimConfig:
     data = options if options is not None else {}
     ego_actor_id = _as_str(data.get("renderer_ego_actor_id"), "ego")
+    radar_sections = _radar_model_sections(data)
+    radar_system = _parse_radar_system(data)
+    radar_detector = _parse_radar_detector(data)
+    radar_estimator = _parse_radar_estimator(data)
+    radar_tracking = _parse_radar_tracking(data)
+    radar_field_of_view = radar_sections["field_of_view"]
 
     return SensorSimConfig(
         sensor_profile=sensor_profile,
@@ -1557,10 +2024,28 @@ def build_sensor_sim_config(
             ),
             clutter_model=_as_str(data.get("radar_clutter"), "basic"),
             max_targets=_as_int(data.get("radar_max_targets"), 64),
-            range_min_m=_as_float(data.get("radar_range_min_m"), 0.5),
-            range_max_m=_as_float(data.get("radar_range_max_m"), 200.0),
-            horizontal_fov_deg=_as_float(data.get("radar_horizontal_fov_deg"), 120.0),
-            vertical_fov_deg=_as_float(data.get("radar_vertical_fov_deg"), 30.0),
+            range_min_m=_as_float(
+                data.get(
+                    "radar_range_min_m",
+                    _as_dict(radar_sections["system"].get("range")).get("min"),
+                ),
+                0.5,
+            ),
+            range_max_m=_as_float(
+                data.get(
+                    "radar_range_max_m",
+                    _as_dict(radar_sections["system"].get("range")).get("max"),
+                ),
+                200.0,
+            ),
+            horizontal_fov_deg=_as_float(
+                data.get("radar_horizontal_fov_deg"),
+                _as_radians_to_deg(radar_field_of_view.get("az"), 120.0),
+            ),
+            vertical_fov_deg=_as_float(
+                data.get("radar_vertical_fov_deg"),
+                _as_radians_to_deg(radar_field_of_view.get("el"), 30.0),
+            ),
             angle_noise_stddev_deg=_as_float(
                 data.get("radar_angle_noise_stddev_deg"),
                 0.1,
@@ -1571,6 +2056,10 @@ def build_sensor_sim_config(
                 0.1,
             ),
             false_target_count=_as_int(data.get("radar_false_target_count"), 2),
+            system=radar_system,
+            detector=radar_detector,
+            estimator=radar_estimator,
+            tracking=radar_tracking,
             extrinsics=_parse_extrinsics(_as_dict(data.get("radar_extrinsics"))),
             behaviors=_parse_behaviors(data, "radar"),
         ),

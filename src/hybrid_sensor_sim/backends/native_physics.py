@@ -4034,7 +4034,8 @@ class NativePhysicsBackend(SensorBackend):
         enhanced_output: Path,
         metrics: dict[str, float],
     ) -> Path | None:
-        if not bool(request.options.get("radar_postprocess_enabled", True)):
+        radar_config = self._sensor_config_from_request(request).radar
+        if not bool(radar_config.postprocess_enabled):
             return None
 
         point_cloud = artifacts.get("point_cloud_primary")
@@ -4051,30 +4052,28 @@ class NativePhysicsBackend(SensorBackend):
         extrinsics = self._radar_extrinsics_from_options(request)
         points_radar = transform_points_world_to_camera(points_xyz=points_xyz, extrinsics=extrinsics)
         rng = random.Random(int(request.seed) + 137)
-        clutter_model = str(request.options.get("radar_clutter", "basic")).lower().strip()
         ego_vx, ego_vy, ego_vz = self._estimate_ego_velocity_from_trajectory(request, artifacts)
-        selected, false_added = self._build_radar_targets_from_points(
+        selected, false_added, tracks = self._build_radar_targets_from_points(
             request=request,
+            radar_config=radar_config,
             points_radar=points_radar,
             ego_velocity=(ego_vx, ego_vy, ego_vz),
             rng=rng,
-            false_target_count=int(
-                request.options.get(
-                    "radar_false_target_count",
-                    2 if clutter_model == "basic" else 0,
-                )
-            ),
+            false_target_count=int(radar_config.false_target_count),
         )
 
         preview = {
             "input_point_cloud": str(point_cloud),
             "input_count": len(points_xyz),
             "target_count": len(selected),
+            "track_count": len(tracks),
+            "output_mode": "TRACKS" if radar_config.tracking.output_tracks else "POINTS",
             "ego_velocity_mps": {
                 "vx": ego_vx,
                 "vy": ego_vy,
                 "vz": ego_vz,
             },
+            "radar_config": radar_config.to_dict(),
             "radar_extrinsics": {
                 "enabled": extrinsics.enabled,
                 "tx": extrinsics.tx,
@@ -4085,12 +4084,16 @@ class NativePhysicsBackend(SensorBackend):
                 "yaw_deg": extrinsics.yaw_deg,
             },
             "targets": selected,
+            "tracks": tracks,
         }
         output_path = enhanced_output / "radar_targets_preview.json"
         output_path.write_text(json.dumps(preview, indent=2), encoding="utf-8")
         metrics["radar_input_count"] = float(len(points_xyz))
         metrics["radar_target_count"] = float(len(selected))
+        metrics["radar_track_count"] = float(len(tracks))
+        metrics["radar_track_output_enabled"] = 1.0 if radar_config.tracking.output_tracks else 0.0
         metrics["radar_false_target_count"] = float(false_added)
+        metrics["radar_false_alarm_probability"] = float(radar_config.detector.probability_false_alarm)
         return output_path
 
     def _generate_radar_targets_trajectory_sweep_if_available(
@@ -4100,9 +4103,10 @@ class NativePhysicsBackend(SensorBackend):
         enhanced_output: Path,
         metrics: dict[str, float],
     ) -> Path | None:
-        if not bool(request.options.get("radar_postprocess_enabled", True)):
+        radar_config = self._sensor_config_from_request(request).radar
+        if not bool(radar_config.postprocess_enabled):
             return None
-        if not bool(request.options.get("radar_trajectory_sweep_enabled", False)):
+        if not bool(radar_config.trajectory_sweep_enabled):
             return None
 
         point_cloud = artifacts.get("point_cloud_primary")
@@ -4134,15 +4138,12 @@ class NativePhysicsBackend(SensorBackend):
 
         frame_count = int(request.options.get("radar_trajectory_sweep_frames", 3))
         selected_poses = self._sample_trajectory_poses(poses=poses, frame_count=frame_count)
-        clutter_model = str(request.options.get("radar_clutter", "basic")).lower().strip()
-        default_false_target_count = 2 if clutter_model == "basic" else 0
-        false_target_count = int(
-            request.options.get("radar_false_target_count", default_false_target_count)
-        )
+        false_target_count = int(radar_config.false_target_count)
         preview_targets_per_frame = int(request.options.get("radar_preview_targets_per_frame", 16))
         base_extrinsics = self._radar_extrinsics_from_options(request)
         frames: list[dict[str, object]] = []
         total_targets = 0
+        total_tracks = 0
         for frame_id, (pose_index, pose) in enumerate(selected_poses):
             effective_extrinsics = self._build_radar_extrinsics_from_pose(
                 request=request,
@@ -4156,14 +4157,16 @@ class NativePhysicsBackend(SensorBackend):
             )
             ego_velocity = self._estimate_ego_velocity_for_pose_index(poses=poses, pose_index=pose_index)
             rng = random.Random(int(request.seed) + 537 + frame_id)
-            targets, false_added = self._build_radar_targets_from_points(
+            targets, false_added, tracks = self._build_radar_targets_from_points(
                 request=request,
+                radar_config=radar_config,
                 points_radar=points_radar,
                 ego_velocity=ego_velocity,
                 rng=rng,
                 false_target_count=false_target_count,
             )
             total_targets += len(targets)
+            total_tracks += len(tracks)
             frames.append(
                 {
                     "frame_id": frame_id,
@@ -4187,18 +4190,24 @@ class NativePhysicsBackend(SensorBackend):
                         "yaw_deg": effective_extrinsics.yaw_deg,
                     },
                     "target_count": len(targets),
+                    "track_count": len(tracks),
                     "false_target_count": false_added,
+                    "output_mode": "TRACKS" if radar_config.tracking.output_tracks else "POINTS",
                     "targets_preview": targets[:preview_targets_per_frame],
+                    "tracks_preview": tracks[:preview_targets_per_frame],
                 }
             )
 
         metrics["radar_trajectory_sweep_frame_count"] = float(len(frames))
         metrics["radar_trajectory_sweep_total_target_count"] = float(total_targets)
+        metrics["radar_trajectory_sweep_total_track_count"] = float(total_tracks)
         payload = {
             "input_point_cloud": str(point_cloud),
             "trajectory_path": str(trajectory_path),
             "input_count": len(points_xyz),
             "frame_count": len(frames),
+            "output_mode": "TRACKS" if radar_config.tracking.output_tracks else "POINTS",
+            "radar_config": radar_config.to_dict(),
             "frames": frames,
         }
         output_path = enhanced_output / "radar_targets_trajectory_sweep.json"
@@ -4208,25 +4217,27 @@ class NativePhysicsBackend(SensorBackend):
     def _build_radar_targets_from_points(
         self,
         request: SensorSimRequest,
+        radar_config: Any,
         points_radar: list[tuple[float, float, float]],
         ego_velocity: tuple[float, float, float],
         rng: random.Random,
         false_target_count: int,
-    ) -> tuple[list[dict[str, object]], int]:
-        clutter_model = str(request.options.get("radar_clutter", "basic")).lower().strip()
-        max_targets = int(request.options.get("radar_max_targets", 64))
-        min_range = float(request.options.get("radar_range_min_m", 0.5))
-        max_range = float(request.options.get("radar_range_max_m", 200.0))
-        horiz_fov_rad = float(request.options.get("radar_horizontal_fov_deg", 120.0)) * pi / 180.0
-        vert_fov_rad = float(request.options.get("radar_vertical_fov_deg", 30.0)) * pi / 180.0
-        angle_noise_deg = float(request.options.get("radar_angle_noise_stddev_deg", 0.1))
-        range_noise_m = float(request.options.get("radar_range_noise_stddev_m", 0.05))
-        velocity_noise_mps = float(request.options.get("radar_velocity_noise_stddev_mps", 0.1))
+    ) -> tuple[list[dict[str, object]], int, list[dict[str, object]]]:
+        clutter_model = str(radar_config.clutter_model).lower().strip()
+        max_targets = int(radar_config.detector.max_detections) if int(radar_config.detector.max_detections) > 0 else int(radar_config.max_targets)
+        min_range = float(radar_config.range_min_m)
+        max_range = float(radar_config.range_max_m)
+        horiz_fov_rad = float(radar_config.horizontal_fov_deg) * pi / 180.0
+        vert_fov_rad = float(radar_config.vertical_fov_deg) * pi / 180.0
+        angle_noise_deg = float(radar_config.angle_noise_stddev_deg) if clutter_model == "basic" else 0.0
+        range_noise_m = float(radar_config.range_noise_stddev_m) if clutter_model == "basic" else 0.0
+        velocity_noise_mps = float(radar_config.velocity_noise_stddev_mps) if clutter_model == "basic" else 0.0
+        rcs_defaults = request.options.get("radar_point_rcs_dbsm")
         rcs_base_dbsm = float(request.options.get("radar_rcs_base_dbsm", 12.0))
         ego_vx, ego_vy, ego_vz = ego_velocity
 
-        candidates: list[tuple[float, dict[str, object]]] = []
-        for x, y, z in points_radar:
+        candidates: list[tuple[float, float, dict[str, object]]] = []
+        for point_index, (x, y, z) in enumerate(points_radar):
             range_m = sqrt(x * x + y * y + z * z)
             if range_m < min_range or range_m > max_range:
                 continue
@@ -4239,49 +4250,155 @@ class NativePhysicsBackend(SensorBackend):
             if abs(elevation_rad) > vert_fov_rad * 0.5:
                 continue
 
-            radial_velocity = -(ego_vx * x + ego_vy * y + ego_vz * z) / max(range_m, 1e-9)
-            noisy_range = range_m
-            noisy_azimuth = azimuth_rad
-            noisy_elevation = elevation_rad
-            noisy_radial_velocity = radial_velocity
-            if clutter_model == "basic":
-                noisy_range = max(min_range, noisy_range + rng.gauss(0.0, range_noise_m))
-                noisy_azimuth += rng.gauss(0.0, angle_noise_deg) * pi / 180.0
-                noisy_elevation += rng.gauss(0.0, angle_noise_deg) * pi / 180.0
-                noisy_radial_velocity += rng.gauss(0.0, velocity_noise_mps)
+            azimuth_deg = azimuth_rad * 180.0 / pi
+            elevation_deg = elevation_rad * 180.0 / pi
+            intrinsic_rcs_dbsm = rcs_base_dbsm
+            if isinstance(rcs_defaults, list) and 0 <= point_index < len(rcs_defaults):
+                intrinsic_rcs_dbsm = float(rcs_defaults[point_index])
+            detection_metrics = self._radar_detection_metrics(
+                radar_config=radar_config,
+                range_m=range_m,
+                azimuth_deg=azimuth_deg,
+                elevation_deg=elevation_deg,
+                intrinsic_rcs_dbsm=intrinsic_rcs_dbsm,
+            )
+            if not bool(detection_metrics["detected"]):
+                continue
 
-            rcs = rcs_base_dbsm - 20.0 * log10(max(noisy_range, 1e-3))
+            radial_velocity = -(ego_vx * x + ego_vy * y + ego_vz * z) / max(range_m, 1e-9)
+            range_sigma_m, range_region_index = self._radar_accuracy_sigma(
+                accuracy_config=radar_config.estimator.range_accuracy,
+                regions=radar_config.estimator.range_accuracy_regions,
+                range_m=range_m,
+                azimuth_deg=azimuth_deg,
+                elevation_deg=elevation_deg,
+            )
+            velocity_sigma_mps, velocity_region_index = self._radar_accuracy_sigma(
+                accuracy_config=radar_config.estimator.velocity_accuracy,
+                regions=radar_config.estimator.velocity_accuracy_regions,
+                range_m=range_m,
+                azimuth_deg=azimuth_deg,
+                elevation_deg=elevation_deg,
+            )
+            azimuth_sigma_deg, azimuth_region_index = self._radar_accuracy_sigma(
+                accuracy_config=radar_config.estimator.azimuth_accuracy,
+                regions=radar_config.estimator.azimuth_accuracy_regions,
+                range_m=range_m,
+                azimuth_deg=azimuth_deg,
+                elevation_deg=elevation_deg,
+            )
+            elevation_sigma_deg, elevation_region_index = self._radar_accuracy_sigma(
+                accuracy_config=radar_config.estimator.elevation_accuracy,
+                regions=radar_config.estimator.elevation_accuracy_regions,
+                range_m=range_m,
+                azimuth_deg=azimuth_deg,
+                elevation_deg=elevation_deg,
+            )
+            apply_additive_noise = not bool(radar_config.detector.no_additive_noise)
+            total_range_sigma = sqrt(range_sigma_m * range_sigma_m + (range_noise_m if apply_additive_noise else 0.0) ** 2)
+            total_velocity_sigma = sqrt(velocity_sigma_mps * velocity_sigma_mps + (velocity_noise_mps if apply_additive_noise else 0.0) ** 2)
+            total_azimuth_sigma = sqrt(azimuth_sigma_deg * azimuth_sigma_deg + (angle_noise_deg if apply_additive_noise else 0.0) ** 2)
+            total_elevation_sigma = sqrt(elevation_sigma_deg * elevation_sigma_deg + (angle_noise_deg if apply_additive_noise else 0.0) ** 2)
+
+            noisy_range = max(min_range, range_m + (rng.gauss(0.0, total_range_sigma) if total_range_sigma > 0.0 else 0.0))
+            noisy_azimuth_deg = azimuth_deg + (rng.gauss(0.0, total_azimuth_sigma) if total_azimuth_sigma > 0.0 else 0.0)
+            noisy_elevation_deg = elevation_deg + (rng.gauss(0.0, total_elevation_sigma) if total_elevation_sigma > 0.0 else 0.0)
+            noisy_radial_velocity = radial_velocity + (rng.gauss(0.0, total_velocity_sigma) if total_velocity_sigma > 0.0 else 0.0)
+            noisy_radial_velocity = min(
+                max(noisy_radial_velocity, float(radar_config.system.velocity_min_mps)),
+                float(radar_config.system.velocity_max_mps),
+            )
+
+            noisy_range = self._radar_quantize_value(
+                value=noisy_range,
+                quantization_step=radar_config.system.range_quantization_m,
+            )
+            noisy_radial_velocity = self._radar_quantize_value(
+                value=noisy_radial_velocity,
+                quantization_step=radar_config.system.velocity_quantization_mps,
+            )
+            noisy_azimuth_deg = self._radar_quantize_value(
+                value=noisy_azimuth_deg,
+                quantization_step=radar_config.system.angular_quantization.az_deg,
+            )
+            noisy_elevation_deg = self._radar_quantize_value(
+                value=noisy_elevation_deg,
+                quantization_step=radar_config.system.angular_quantization.el_deg,
+            )
             candidates.append(
                 (
+                    -float(detection_metrics["signal_power_dbw"]),
                     noisy_range,
                     {
                         "range_m": noisy_range,
-                        "azimuth_deg": noisy_azimuth * 180.0 / pi,
-                        "elevation_deg": noisy_elevation * 180.0 / pi,
+                        "azimuth_deg": noisy_azimuth_deg,
+                        "elevation_deg": noisy_elevation_deg,
                         "radial_velocity_mps": noisy_radial_velocity,
-                        "rcs_dbsm": rcs,
+                        "rcs_dbsm": intrinsic_rcs_dbsm,
+                        "signal_power_dbw": float(detection_metrics["signal_power_dbw"]),
+                        "noise_power_dbw": float(detection_metrics["noise_power_dbw"]),
+                        "snr_db": float(detection_metrics["snr_db"]),
+                        "detection_probability": float(detection_metrics["detection_probability"]),
+                        "antenna_gain_db": float(detection_metrics["antenna_gain_db"]),
+                        "range_resolution_m": float(radar_config.system.range_resolution_m),
+                        "velocity_resolution_mps": float(radar_config.system.velocity_resolution_mps),
+                        "angular_resolution_deg": {
+                            "az": float(radar_config.system.angular_resolution.az_deg),
+                            "el": float(radar_config.system.angular_resolution.el_deg),
+                        },
+                        "range_accuracy_region_index": range_region_index,
+                        "velocity_accuracy_region_index": velocity_region_index,
+                        "azimuth_accuracy_region_index": azimuth_region_index,
+                        "elevation_accuracy_region_index": elevation_region_index,
+                        "measurement_source": "DETECTION",
                         "is_false_alarm": False,
                     },
                 )
             )
 
-        candidates.sort(key=lambda item: item[0])
-        selected = [item[1] for item in candidates[:max_targets]]
+        candidates.sort(key=lambda item: (item[0], item[1]))
+        selected = [item[2] for item in candidates[:max_targets]]
 
         false_added = 0
-        for _ in range(false_target_count):
+        pfa = min(max(float(radar_config.detector.probability_false_alarm), 0.0), 1.0)
+        expected_pfa_false_count = pfa * max(len(candidates), 1) * max(max_targets, 1) * 4.0
+        pfa_false_count = int(expected_pfa_false_count)
+        if rng.random() < (expected_pfa_false_count - pfa_false_count):
+            pfa_false_count += 1
+        total_false_target_count = max(0, int(false_target_count)) + pfa_false_count
+        for _ in range(total_false_target_count):
             if len(selected) >= max_targets:
                 break
             false_range = rng.uniform(min_range, max_range)
             false_azimuth = rng.uniform(-0.5 * horiz_fov_rad, 0.5 * horiz_fov_rad)
             false_elevation = rng.uniform(-0.5 * vert_fov_rad, 0.5 * vert_fov_rad)
+            false_signal_power_dbw = float(radar_config.detector.noise_variance_dbw) + rng.uniform(
+                0.0,
+                max(3.0, abs(float(radar_config.detector.minimum_snr_db))),
+            )
             selected.append(
                 {
                     "range_m": false_range,
                     "azimuth_deg": false_azimuth * 180.0 / pi,
                     "elevation_deg": false_elevation * 180.0 / pi,
                     "radial_velocity_mps": rng.gauss(0.0, 0.2),
-                    "rcs_dbsm": rcs_base_dbsm - 20.0 * log10(max(false_range, 1e-3)) + rng.gauss(0.0, 2.0),
+                    "rcs_dbsm": rcs_base_dbsm + rng.gauss(0.0, 2.0),
+                    "signal_power_dbw": false_signal_power_dbw,
+                    "noise_power_dbw": float(radar_config.detector.noise_variance_dbw),
+                    "snr_db": false_signal_power_dbw - float(radar_config.detector.noise_variance_dbw),
+                    "detection_probability": pfa,
+                    "antenna_gain_db": 0.0,
+                    "range_resolution_m": float(radar_config.system.range_resolution_m),
+                    "velocity_resolution_mps": float(radar_config.system.velocity_resolution_mps),
+                    "angular_resolution_deg": {
+                        "az": float(radar_config.system.angular_resolution.az_deg),
+                        "el": float(radar_config.system.angular_resolution.el_deg),
+                    },
+                    "range_accuracy_region_index": None,
+                    "velocity_accuracy_region_index": None,
+                    "azimuth_accuracy_region_index": None,
+                    "elevation_accuracy_region_index": None,
+                    "measurement_source": "FALSE_ALARM",
                     "is_false_alarm": True,
                 }
             )
@@ -4289,7 +4406,136 @@ class NativePhysicsBackend(SensorBackend):
 
         for idx, target in enumerate(selected):
             target["id"] = idx
-        return selected, false_added
+        tracks = self._build_radar_tracks(radar_config=radar_config, detections=selected)
+        return selected, false_added, tracks
+
+    def _radar_detection_metrics(
+        self,
+        *,
+        radar_config: Any,
+        range_m: float,
+        azimuth_deg: float,
+        elevation_deg: float,
+        intrinsic_rcs_dbsm: float,
+    ) -> dict[str, float | bool]:
+        antenna_gain_db = self._radar_antenna_gain_db(
+            radar_config=radar_config,
+            azimuth_deg=azimuth_deg,
+            elevation_deg=elevation_deg,
+        )
+        signal_power_dbw = (
+            float(radar_config.system.transmit_power_dbm)
+            - 30.0
+            + float(radar_config.system.radiometric_calibration_factor_db)
+            + intrinsic_rcs_dbsm
+            + antenna_gain_db
+            - 40.0 * log10(max(range_m, 1e-3))
+        )
+        noise_power_dbw = float(radar_config.detector.noise_variance_dbw)
+        snr_db = signal_power_dbw - noise_power_dbw
+        target_detectability = radar_config.detector.target_detectability
+        reference_probability = min(
+            max(float(target_detectability.probability_detection), 1e-6),
+            1.0 - 1e-6,
+        )
+        calibration_logit = log(reference_probability / (1.0 - reference_probability))
+        relative_budget_db = (
+            intrinsic_rcs_dbsm
+            - float(target_detectability.calibration_target_rcs_dbsm)
+            - 40.0
+            * log10(
+                max(range_m, 1e-3)
+                / max(float(target_detectability.calibration_target_range_m), 1e-3)
+            )
+            + antenna_gain_db
+        )
+        detection_probability = 1.0 / (1.0 + exp(-(relative_budget_db / 6.0 + calibration_logit)))
+        detected = bool(snr_db >= float(radar_config.detector.minimum_snr_db)) and detection_probability >= 0.5
+        return {
+            "detected": detected,
+            "signal_power_dbw": signal_power_dbw,
+            "noise_power_dbw": noise_power_dbw,
+            "snr_db": snr_db,
+            "detection_probability": detection_probability,
+            "antenna_gain_db": antenna_gain_db,
+        }
+
+    def _radar_antenna_gain_db(
+        self,
+        *,
+        radar_config: Any,
+        azimuth_deg: float,
+        elevation_deg: float,
+    ) -> float:
+        hpbw_az = max(abs(float(radar_config.system.antenna_hpbw.az_deg)), 1e-6)
+        hpbw_el = max(abs(float(radar_config.system.antenna_hpbw.el_deg)), 1e-6)
+        normalized_az = azimuth_deg / hpbw_az
+        normalized_el = elevation_deg / hpbw_el
+        return max(-40.0, -3.0 * (normalized_az * normalized_az + normalized_el * normalized_el))
+
+    def _radar_accuracy_sigma(
+        self,
+        *,
+        accuracy_config: Any,
+        regions: list[Any],
+        range_m: float,
+        azimuth_deg: float,
+        elevation_deg: float,
+    ) -> tuple[float, int | None]:
+        for index, region in enumerate(regions):
+            if (
+                range_m < float(region.range_min_m)
+                or range_m > float(region.range_max_m)
+                or azimuth_deg < float(region.azimuth_min_deg)
+                or azimuth_deg > float(region.azimuth_max_deg)
+                or elevation_deg < float(region.elevation_min_deg)
+                or elevation_deg > float(region.elevation_max_deg)
+            ):
+                continue
+            sigma = float(region.max_deviation) / max(float(region.num_sigma), 1e-6)
+            return max(sigma, 0.0), index
+        sigma = float(accuracy_config.max_deviation) / max(float(accuracy_config.num_sigma), 1e-6)
+        return max(sigma, 0.0), None
+
+    def _radar_quantize_value(self, *, value: float, quantization_step: float) -> float:
+        step = abs(float(quantization_step))
+        if step <= 1e-12:
+            return value
+        return round(value / step) * step
+
+    def _build_radar_tracks(
+        self,
+        *,
+        radar_config: Any,
+        detections: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        if not bool(radar_config.tracking.output_tracks):
+            return []
+        limit = int(radar_config.tracking.max_tracks)
+        if limit <= 0:
+            limit = len(detections)
+        tracks: list[dict[str, object]] = []
+        for detection in detections:
+            if bool(detection.get("is_false_alarm")):
+                continue
+            if len(tracks) >= limit:
+                break
+            track_id = len(tracks)
+            detection["track_id"] = track_id
+            tracks.append(
+                {
+                    "id": track_id,
+                    "source_target_id": detection.get("id"),
+                    "range_m": detection.get("range_m"),
+                    "azimuth_deg": detection.get("azimuth_deg"),
+                    "elevation_deg": detection.get("elevation_deg"),
+                    "radial_velocity_mps": detection.get("radial_velocity_mps"),
+                    "rcs_dbsm": detection.get("rcs_dbsm"),
+                    "confidence": detection.get("detection_probability"),
+                    "age_s": 1.0 / max(float(radar_config.system.frame_rate_hz), 1e-6),
+                }
+            )
+        return tracks
 
     def _radar_extrinsics_from_options(self, request: SensorSimRequest) -> CameraExtrinsics:
         return self._sensor_config_from_request(request).radar.extrinsics.to_camera_extrinsics()

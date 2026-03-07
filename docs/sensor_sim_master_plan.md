@@ -249,7 +249,15 @@ Primary code references:
   - range / FoV filtering
   - angle / range / velocity noise
   - simple clutter / false alarms
-  - simple RCS heuristic
+  - typed detector/system/estimator/tracking schema
+  - antenna HPBW gain model
+  - datasheet-style detectability model:
+    - `target_detectability.target.{range,radar_cross_section}`
+    - `probability_detection`
+    - `minimum_snr_db`
+    - `probability_false_alarm`
+  - global/per-region accuracy surface
+  - optional track output mode
   - trajectory sweep preview
   - ego-velocity-based radial velocity estimation
 
@@ -279,10 +287,9 @@ Primary code references:
   - multi-return and multipath
   - raw packet / structured output formats
 - Radar:
-  - antenna beam model
-  - datasheet-driven detectability model
-  - accuracy regions
-  - point-vs-track model split
+  - richer antenna/directivity tables beyond current HPBW approximation
+  - deeper datasheet calibration against real devices
+  - track lifecycle/filtering beyond one-frame track projection
   - multipath physics
   - adaptive sampling
   - micro-doppler
@@ -309,8 +316,8 @@ Primary code references:
 | Lidar scan generation | source angles + scan field + scan path + multi-scan path metadata/filtering implemented in local preview path | source angles + scan path + scan type engine | P1 |
 | Lidar signal/intensity | very weak | reflectivity, SNR/intensity units, returns, weather | P1 |
 | Lidar multipath/material model | missing | HELIOS-backed or local hybrid path | P2 |
-| Radar beam/detectability | weak heuristic | antenna + detectability + false alarm calibration | P1 |
-| Radar multipath/tracking | missing | multipath + track output + region accuracies | P2 |
+| Radar beam/detectability | typed HPBW + detectability + false alarm calibration implemented | richer antenna tables + calibration | P1 |
+| Radar multipath/tracking | track output + region accuracies implemented, multipath still missing | multipath + stronger tracker | P2 |
 | Ground truth | partial metadata only | semantic/material/component labels in outputs | P1 |
 | Coverage metrics | missing | camera/lidar/radar target coverage stats | P1 |
 | Runtime integration | strong | keep extending, do not make this the primary bottleneck | P2 |

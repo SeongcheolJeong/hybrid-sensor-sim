@@ -898,6 +898,107 @@ EOF
             self.assertNotEqual(radar_payload["targets"][0]["radial_velocity_mps"], 0.0)
             self.assertEqual(result.metrics.get("radar_target_count"), float(radar_payload["target_count"]))
 
+    def test_radar_preview_reports_detectability_accuracy_and_tracks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+20.3 0.0 0.0
+80.7 0.2 0.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "lidar_postprocess_enabled": False,
+                    "radar_postprocess_enabled": True,
+                    "radar_clutter": "none",
+                    "radar_false_target_count": 0,
+                    "radar_max_targets": 8,
+                    "radar_point_rcs_dbsm": [12.0, 12.0],
+                    "radar_system_params": {
+                        "range_quantization": 0.5,
+                        "velocity_quantization": 0.1,
+                        "range_resolution": 0.4,
+                        "velocity_resolution": 0.2,
+                    },
+                    "radar_detector_params": {
+                        "minimum_snr_db": -30.0,
+                        "noise_variance_dbw": -95.0,
+                        "noise_performance": {
+                            "target_detectability": {
+                                "probability_detection": 0.95,
+                                "target": {
+                                    "range": 120.0,
+                                    "radar_cross_section": 10.0,
+                                },
+                            },
+                        },
+                    },
+                    "radar_estimator_params": {
+                        "range_accuracy_regions": [
+                            {"range": {"min": 50.0, "max": 120.0}, "max_deviation": 1.2}
+                        ]
+                    },
+                    "radar_tracking_params": {
+                        "tracks": True,
+                        "max_tracks": 4,
+                    },
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+            self.assertTrue(result.success)
+            self.assertIn("radar_targets_preview", result.artifacts)
+
+            preview = json.loads(
+                result.artifacts["radar_targets_preview"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(preview["output_mode"], "TRACKS")
+            self.assertGreaterEqual(preview["track_count"], 1)
+            self.assertEqual(result.metrics.get("radar_track_output_enabled"), 1.0)
+            self.assertEqual(result.metrics.get("radar_track_count"), float(preview["track_count"]))
+
+            self.assertGreaterEqual(preview["target_count"], 2)
+            targets = preview["targets"]
+            self.assertIn("snr_db", targets[0])
+            self.assertIn("detection_probability", targets[0])
+            self.assertIn("antenna_gain_db", targets[0])
+            self.assertTrue(any(target["range_accuracy_region_index"] == 0 for target in targets))
+            self.assertTrue(all(abs(target["range_m"] * 2.0 - round(target["range_m"] * 2.0)) < 1e-6 for target in targets))
+            self.assertGreater(targets[0]["detection_probability"], targets[-1]["detection_probability"])
+            self.assertIn("confidence", preview["tracks"][0])
+            self.assertIn("source_target_id", preview["tracks"][0])
+
     def test_lidar_trajectory_sweep_applies_motion_compensation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
