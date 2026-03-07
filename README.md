@@ -26,6 +26,7 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `scripts/discover_renderer_backend_local_env.py`: discovers local HELIOS/AWSIM/CARLA runtime candidates and writes a reusable env file plus readiness summary.
 - `scripts/acquire_renderer_backend_package.py`: resolves an official AWSIM/CARLA package URL from `renderer_backend_local_setup.json`, downloads it, and optionally stages it into a runnable backend directory.
 - `scripts/stage_renderer_backend_package.py`: extracts packaged AWSIM/CARLA archives into `third_party/runtime_backends/<backend>` and writes a staging env file for smoke runs.
+- `scripts/run_renderer_backend_workflow.py`: runs `discover/load setup -> optional acquire -> smoke` as one workflow and writes a single workflow summary.
 
 ## Quick start
 
@@ -583,6 +584,19 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - emits:
   - `third_party/runtime_backends/<backend>/renderer_backend_package_acquire.json`
   - plus the staging artifacts from `stage_renderer_backend_package.py` when staging is enabled
+
+### Local backend workflow
+
+- `python3 scripts/run_renderer_backend_workflow.py --backend awsim --setup-summary artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json --auto-acquire`
+- `python3 scripts/run_renderer_backend_workflow.py --backend carla --setup-summary artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json --dry-run`
+- behavior:
+  - loads or generates local setup summary
+  - reuses resolved `HELIOS_*`, backend binary, and renderer map selections
+  - if backend runtime is missing and `--auto-acquire` is set, runs acquire+stage automatically
+  - runs `renderer_backend_smoke.py` when all prerequisites are ready
+- emits:
+  - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_summary.json`
+  - plus smoke artifacts/reports when smoke executes
 
 ## Next implementation target
 

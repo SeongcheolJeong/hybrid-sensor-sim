@@ -11,11 +11,15 @@ from hybrid_sensor_sim.tools.renderer_backend_package_acquire import (
 from hybrid_sensor_sim.tools.renderer_backend_package_stage import (
     build_renderer_backend_package_stage,
 )
+from hybrid_sensor_sim.tools.renderer_backend_workflow import (
+    build_renderer_backend_workflow,
+)
 
 __all__ = [
     "build_renderer_backend_local_setup",
     "build_renderer_backend_package_acquire",
     "build_renderer_backend_package_stage",
+    "build_renderer_backend_workflow",
     "build_renderer_backend_smoke_summary",
     "main",
 ]

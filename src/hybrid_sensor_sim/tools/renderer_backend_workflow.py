@@ -1,0 +1,393 @@
+from __future__ import annotations
+
+import argparse
+import contextlib
+import io
+import json
+from pathlib import Path
+from typing import Any
+
+from hybrid_sensor_sim.tools.renderer_backend_local_setup import (
+    _render_env_file as _render_local_setup_env_file,
+)
+from hybrid_sensor_sim.tools.renderer_backend_local_setup import (
+    build_renderer_backend_local_setup,
+)
+from hybrid_sensor_sim.tools.renderer_backend_package_acquire import (
+    build_renderer_backend_package_acquire,
+)
+from hybrid_sensor_sim.tools.renderer_backend_smoke import main as smoke_main
+
+
+_DEFAULT_SMOKE_PRESETS = {
+    "awsim": {
+        "binary": "configs/renderer_backend_smoke.awsim.local.example.json",
+        "docker": "configs/renderer_backend_smoke.awsim.local.docker.example.json",
+    },
+    "carla": {
+        "binary": "configs/renderer_backend_smoke.carla.local.example.json",
+        "docker": "configs/renderer_backend_smoke.carla.local.docker.example.json",
+    },
+}
+_BACKEND_ENV_VARS = {
+    "awsim": ("AWSIM_BIN", "AWSIM_RENDERER_MAP"),
+    "carla": ("CARLA_BIN", "CARLA_RENDERER_MAP"),
+}
+
+
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Run local backend discovery/acquire/smoke as a single workflow."
+    )
+    parser.add_argument(
+        "--backend",
+        choices=("awsim", "carla"),
+        required=True,
+        help="Backend workflow to execute.",
+    )
+    parser.add_argument(
+        "--setup-summary",
+        type=Path,
+        help="Existing renderer_backend_local_setup.json. If omitted, discovery is run automatically.",
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        help="Optional smoke base config. If omitted, the backend local preset is selected automatically.",
+    )
+    parser.add_argument(
+        "--output-root",
+        type=Path,
+        help="Directory for workflow artifacts. Defaults to artifacts/renderer_backend_workflow/<backend>.",
+    )
+    parser.add_argument(
+        "--backend-bin",
+        help="Explicit backend runtime path override.",
+    )
+    parser.add_argument(
+        "--renderer-map",
+        help="Explicit renderer map/town override.",
+    )
+    parser.add_argument(
+        "--auto-acquire",
+        action="store_true",
+        help="If the backend runtime is missing, try package acquire+stage automatically before smoke.",
+    )
+    parser.add_argument(
+        "--download-url",
+        help="Explicit package URL passed through to acquire when --auto-acquire is enabled.",
+    )
+    parser.add_argument(
+        "--download-name",
+        help="Explicit local archive filename passed through to acquire.",
+    )
+    parser.add_argument(
+        "--download-dir",
+        type=Path,
+        help="Download target directory for acquire. Defaults to ~/Downloads.",
+    )
+    parser.add_argument(
+        "--overwrite-download",
+        action="store_true",
+        help="Force re-download during acquire.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Resolve setup/acquire/smoke decisions without executing smoke.",
+    )
+    parser.add_argument(
+        "--set-option",
+        action="append",
+        default=[],
+        help="Forwarded to renderer_backend_smoke.py when smoke runs.",
+    )
+    return parser.parse_args(argv)
+
+
+def _write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _write_text(path: Path, payload: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(payload, encoding="utf-8")
+
+
+def _load_json(path: Path) -> dict[str, Any]:
+    with path.open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    if not isinstance(payload, dict):
+        raise ValueError(f"JSON payload at {path} must be an object.")
+    return payload
+
+
+def _resolve_path(raw: str | Path) -> Path:
+    path = Path(raw).expanduser()
+    if path.is_absolute():
+        return path.resolve()
+    return (Path.cwd() / path).resolve()
+
+
+def _selection_value(selection: dict[str, Any], key: str) -> str | None:
+    value = selection.get(key)
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text if text else None
+
+
+def _build_or_load_setup_summary(
+    *,
+    repo_root: Path,
+    workflow_root: Path,
+    setup_summary_path: Path | None,
+) -> tuple[dict[str, Any], Path, bool]:
+    if setup_summary_path is not None:
+        resolved = _resolve_path(setup_summary_path)
+        return _load_json(resolved), resolved, False
+
+    local_setup_root = workflow_root / "local_setup"
+    summary = build_renderer_backend_local_setup(
+        repo_root=repo_root,
+        output_dir=local_setup_root,
+    )
+    summary_path = Path(summary["artifacts"]["summary_path"])
+    env_path = Path(summary["artifacts"]["env_path"])
+    _write_json(summary_path, summary)
+    _write_text(env_path, _render_local_setup_env_file(summary))
+    return summary, summary_path, True
+
+
+def _determine_smoke_config(
+    *,
+    backend: str,
+    repo_root: Path,
+    explicit_config: Path | None,
+    selection: dict[str, Any],
+) -> tuple[Path, str]:
+    if explicit_config is not None:
+        return _resolve_path(explicit_config), "explicit"
+    helios_bin = _selection_value(selection, "HELIOS_BIN")
+    use_docker = not helios_bin and bool(
+        _selection_value(selection, "HELIOS_DOCKER_IMAGE")
+        and _selection_value(selection, "HELIOS_DOCKER_BINARY")
+    )
+    mode = "docker" if use_docker else "binary"
+    return (repo_root / _DEFAULT_SMOKE_PRESETS[backend][mode]).resolve(), f"default_{mode}_preset"
+
+
+def build_renderer_backend_workflow(
+    *,
+    backend: str,
+    repo_root: Path,
+    workflow_root: Path,
+    setup_summary_path: Path | None = None,
+    config_path: Path | None = None,
+    backend_bin_override: str | None = None,
+    renderer_map_override: str | None = None,
+    auto_acquire: bool = False,
+    download_url: str | None = None,
+    download_name: str | None = None,
+    download_dir: Path | None = None,
+    overwrite_download: bool = False,
+    dry_run: bool = False,
+    option_overrides: list[str] | None = None,
+) -> dict[str, Any]:
+    backend = backend.strip().lower()
+    if backend not in _BACKEND_ENV_VARS:
+        raise ValueError(f"Unsupported backend: {backend}")
+    repo_root = repo_root.resolve()
+    workflow_root = workflow_root.resolve()
+    workflow_root.mkdir(parents=True, exist_ok=True)
+    issues: list[str] = []
+    option_overrides = list(option_overrides or [])
+
+    setup_summary, resolved_setup_summary_path, generated_setup = _build_or_load_setup_summary(
+        repo_root=repo_root,
+        workflow_root=workflow_root,
+        setup_summary_path=setup_summary_path,
+    )
+    setup_readiness = setup_summary.get("readiness", {})
+    setup_selection = dict(setup_summary.get("selection", {}))
+    backend_env_var, map_env_var = _BACKEND_ENV_VARS[backend]
+
+    acquire_summary: dict[str, Any] | None = None
+    selected_backend_bin = (
+        str(_resolve_path(backend_bin_override))
+        if backend_bin_override
+        else _selection_value(setup_selection, backend_env_var)
+    )
+    selected_renderer_map = renderer_map_override or _selection_value(setup_selection, map_env_var)
+
+    if selected_backend_bin is None and auto_acquire:
+        acquire_output_root = repo_root / "third_party" / "runtime_backends" / backend
+        acquire_summary = build_renderer_backend_package_acquire(
+            backend=backend,
+            repo_root=repo_root,
+            setup_summary_path=resolved_setup_summary_path,
+            download_url=download_url,
+            download_name=download_name,
+            download_dir=download_dir,
+            output_root=acquire_output_root,
+            dry_run=dry_run,
+            overwrite_download=overwrite_download,
+        )
+        issues.extend(str(item) for item in acquire_summary.get("issues", []) if str(item).strip())
+        stage_summary = acquire_summary.get("stage")
+        if isinstance(stage_summary, dict):
+            stage_selection = stage_summary.get("selection", {})
+            if isinstance(stage_selection, dict):
+                if selected_backend_bin is None:
+                    selected_backend_bin = _selection_value(stage_selection, backend_env_var)
+                if selected_renderer_map is None:
+                    selected_renderer_map = _selection_value(stage_selection, map_env_var)
+
+    smoke_config_path, smoke_config_source = _determine_smoke_config(
+        backend=backend,
+        repo_root=repo_root,
+        explicit_config=config_path,
+        selection=setup_selection,
+    )
+    helios_ready = bool(
+        setup_readiness.get("helios_ready")
+        or _selection_value(setup_selection, "HELIOS_BIN")
+        or (
+            _selection_value(setup_selection, "HELIOS_DOCKER_IMAGE")
+            and _selection_value(setup_selection, "HELIOS_DOCKER_BINARY")
+        )
+    )
+    smoke_output_dir = workflow_root / "smoke_run"
+    smoke_summary_path = smoke_output_dir / "renderer_backend_smoke_summary.json"
+    smoke_markdown_path = smoke_output_dir / "renderer_backend_smoke_report.md"
+    smoke_html_path = smoke_output_dir / "renderer_backend_smoke_report.html"
+
+    smoke_args: list[str] = [
+        "--config",
+        str(smoke_config_path),
+        "--backend",
+        backend,
+        "--output-dir",
+        str(smoke_output_dir),
+        "--summary-path",
+        str(smoke_summary_path),
+        "--markdown-report-path",
+        str(smoke_markdown_path),
+        "--html-report-path",
+        str(smoke_html_path),
+    ]
+    if selected_backend_bin is not None:
+        smoke_args.extend(["--backend-bin", selected_backend_bin])
+    if selected_renderer_map is not None:
+        smoke_args.extend(["--renderer-map", selected_renderer_map])
+    for raw in option_overrides:
+        smoke_args.extend(["--set-option", raw])
+
+    smoke_executed = False
+    smoke_exit_code: int | None = None
+    smoke_summary: dict[str, Any] | None = None
+    smoke_stdout = ""
+    smoke_ready = helios_ready and selected_backend_bin is not None
+    if not helios_ready:
+        issues.append("HELIOS runtime is not ready for backend smoke.")
+    if selected_backend_bin is None:
+        issues.append(f"{backend_env_var} is not resolved for backend smoke.")
+
+    if smoke_ready and not dry_run:
+        smoke_executed = True
+        with contextlib.redirect_stdout(io.StringIO()) as stdout:
+            smoke_exit_code = smoke_main(smoke_args)
+            smoke_stdout = stdout.getvalue()
+        if smoke_summary_path.exists():
+            smoke_summary = _load_json(smoke_summary_path)
+    elif dry_run and not smoke_ready:
+        smoke_exit_code = 1
+
+    if dry_run:
+        status = "DRY_RUN_READY" if smoke_ready else "DRY_RUN_BLOCKED"
+    elif smoke_executed and smoke_exit_code == 0:
+        status = "SMOKE_SUCCEEDED"
+    elif smoke_executed:
+        status = "SMOKE_FAILED"
+    elif selected_backend_bin is None and acquire_summary is not None and acquire_summary.get("readiness", {}).get("download_url_resolved"):
+        status = "ACQUIRE_BLOCKED"
+    else:
+        status = "BLOCKED"
+
+    summary_path = workflow_root / "renderer_backend_workflow_summary.json"
+    return {
+        "backend": backend,
+        "status": status,
+        "success": status in {"SMOKE_SUCCEEDED", "DRY_RUN_READY"},
+        "dry_run": dry_run,
+        "generated_setup": generated_setup,
+        "issues": issues,
+        "setup": {
+            "summary_path": str(resolved_setup_summary_path),
+            "readiness": setup_readiness,
+            "selection": setup_selection,
+            "commands": setup_summary.get("commands"),
+        },
+        "acquire": acquire_summary,
+        "smoke": {
+            "ready": smoke_ready,
+            "executed": smoke_executed,
+            "exit_code": smoke_exit_code,
+            "config_path": str(smoke_config_path),
+            "config_source": smoke_config_source,
+            "output_dir": str(smoke_output_dir),
+            "summary_path": str(smoke_summary_path),
+            "stdout": smoke_stdout,
+            "backend_bin": selected_backend_bin,
+            "renderer_map": selected_renderer_map,
+            "args": smoke_args,
+            "summary": smoke_summary,
+        },
+        "commands": {
+            "smoke": "python3 scripts/run_renderer_backend_smoke.py " + " ".join(
+                f"\"{arg}\"" if " " in arg else arg for arg in smoke_args
+            ),
+            "acquire": (
+                "python3 scripts/acquire_renderer_backend_package.py "
+                f"--backend {backend} --setup-summary {resolved_setup_summary_path}"
+            ),
+        },
+        "artifacts": {
+            "summary_path": str(summary_path),
+        },
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv)
+    repo_root = Path(__file__).resolve().parents[3]
+    workflow_root = (
+        _resolve_path(args.output_root)
+        if args.output_root is not None
+        else (repo_root / "artifacts" / "renderer_backend_workflow" / args.backend).resolve()
+    )
+    summary = build_renderer_backend_workflow(
+        backend=args.backend,
+        repo_root=repo_root,
+        workflow_root=workflow_root,
+        setup_summary_path=_resolve_path(args.setup_summary) if args.setup_summary is not None else None,
+        config_path=_resolve_path(args.config) if args.config is not None else None,
+        backend_bin_override=args.backend_bin,
+        renderer_map_override=args.renderer_map,
+        auto_acquire=args.auto_acquire,
+        download_url=args.download_url,
+        download_name=args.download_name,
+        download_dir=_resolve_path(args.download_dir) if args.download_dir is not None else None,
+        overwrite_download=args.overwrite_download,
+        dry_run=args.dry_run,
+        option_overrides=list(args.set_option),
+    )
+    summary_path = Path(summary["artifacts"]["summary_path"])
+    _write_json(summary_path, summary)
+    print(json.dumps(summary, indent=2))
+    return 0 if summary["success"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
