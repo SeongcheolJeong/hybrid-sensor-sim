@@ -134,6 +134,8 @@ class RendererBackendWorkflowTests(unittest.TestCase):
             self.assertEqual(summary["status"], "DRY_RUN_BLOCKED")
             self.assertFalse(summary["success"])
             self.assertIn("AWSIM_BIN is not resolved", "\n".join(summary["issues"]))
+            self.assertEqual(summary["recommended_next_command"], summary["commands"]["acquire"])
+            self.assertEqual(summary["final_selection"]["AWSIM_BIN"], None)
 
     def test_workflow_can_auto_acquire_and_run_smoke(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -193,6 +195,8 @@ class RendererBackendWorkflowTests(unittest.TestCase):
             self.assertTrue(summary["smoke"]["executed"])
             self.assertEqual(summary["smoke"]["summary"]["backend"], "awsim")
             self.assertEqual(summary["smoke"]["summary"]["output_comparison"]["status"], "MATCHED")
+            self.assertTrue(summary["final_selection"]["AWSIM_BIN"])
+            self.assertEqual(summary["final_selection"]["AWSIM_RENDERER_MAP"], "Town12")
 
     def test_workflow_can_stage_existing_local_archive_without_download(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -247,6 +251,7 @@ class RendererBackendWorkflowTests(unittest.TestCase):
                 str(local_archive.resolve()),
             )
             self.assertTrue(summary["smoke"]["executed"])
+            self.assertEqual(summary["final_selection"]["AWSIM_RENDERER_MAP"], "Town13")
 
     def test_workflow_main_writes_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -284,9 +289,17 @@ class RendererBackendWorkflowTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 1)
             summary_path = output_root / "renderer_backend_workflow_summary.json"
+            env_path = output_root / "renderer_backend_workflow.env.sh"
+            report_path = output_root / "renderer_backend_workflow_report.md"
             self.assertTrue(summary_path.exists())
+            self.assertTrue(env_path.exists())
+            self.assertTrue(report_path.exists())
             payload = json.loads(summary_path.read_text(encoding="utf-8"))
+            env_text = env_path.read_text(encoding="utf-8")
+            report_text = report_path.read_text(encoding="utf-8")
             self.assertEqual(payload["status"], "DRY_RUN_BLOCKED")
+            self.assertIn("AWSIM_BIN", env_text)
+            self.assertIn("Renderer Backend Workflow Report", report_text)
             self.assertIn("renderer_backend_workflow_summary.json", stdout.getvalue())
 
 

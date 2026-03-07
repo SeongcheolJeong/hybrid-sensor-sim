@@ -597,6 +597,8 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - runs `renderer_backend_smoke.py` when all prerequisites are ready
 - emits:
   - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_summary.json`
+  - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow.env.sh`
+  - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_report.md`
   - plus smoke artifacts/reports when smoke executes
 
 ## Next implementation target
