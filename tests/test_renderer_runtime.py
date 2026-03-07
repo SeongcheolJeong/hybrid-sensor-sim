@@ -117,6 +117,7 @@ class RendererRuntimeTests(unittest.TestCase):
             self.assertFalse(pipeline_summary["expected_outputs"]["inspection_available"])
             self.assertFalse(pipeline_summary["output_smoke_report"]["available"])
             self.assertFalse(pipeline_summary["output_comparison"]["available"])
+            self.assertEqual(pipeline_summary["output_comparison"]["mismatch_reasons"], [])
             self.assertEqual(
                 pipeline_summary["artifacts"]["backend_run_manifest"],
                 str(result.artifacts["backend_run_manifest"]),
@@ -1036,6 +1037,10 @@ printf "%s\\n" "$@"
             self.assertEqual(runner_execution_manifest["status"], "EXECUTION_SUCCEEDED")
             self.assertEqual(runner_execution_manifest["output_smoke_report"]["status"], "PARTIAL")
             self.assertEqual(runner_execution_manifest["output_comparison_report"]["status"], "MIXED")
+            self.assertEqual(
+                runner_execution_manifest["output_comparison_report"]["mismatch_reasons"],
+                ["MISSING_EXPECTED_OUTPUTS", "UNEXPECTED_OUTPUTS_PRESENT"],
+            )
             self.assertGreaterEqual(
                 runner_execution_manifest["expected_output_summary"]["found_count"],
                 1,
@@ -1069,12 +1074,25 @@ printf "%s\\n" "$@"
             self.assertEqual(output_smoke_report["sensor_status_counts"]["COMPLETE"], 1)
             self.assertEqual(output_smoke_report["sensor_status_counts"]["MISSING"], 2)
             self.assertEqual(output_comparison_report["status"], "MIXED")
+            self.assertEqual(
+                output_comparison_report["mismatch_reasons"],
+                ["MISSING_EXPECTED_OUTPUTS", "UNEXPECTED_OUTPUTS_PRESENT"],
+            )
             self.assertEqual(output_comparison_report["unexpected_output_count"], 1)
             self.assertEqual(
                 output_comparison_report["unexpected_outputs"][0]["relative_path"],
                 "extras/debug_extra.json",
             )
             self.assertEqual(output_comparison_report["by_sensor"][0]["status"], "MATCHED")
+            self.assertEqual(output_comparison_report["by_sensor"][0]["mismatch_reasons"], [])
+            self.assertEqual(
+                output_comparison_report["by_sensor"][1]["mismatch_reasons"],
+                ["NO_DISCOVERED_FILES", "MISSING_EXPECTED_OUTPUTS"],
+            )
+            self.assertEqual(
+                output_comparison_report["by_sensor"][2]["missing_output_roles"],
+                ["radar_detections"],
+            )
             smoke_roles = {
                 entry["output_role"]: entry for entry in output_smoke_report["by_output_role"]
             }
@@ -1101,6 +1119,10 @@ printf "%s\\n" "$@"
             self.assertTrue(pipeline_summary["output_comparison"]["available"])
             self.assertEqual(pipeline_summary["output_smoke_report"]["status"], "PARTIAL")
             self.assertEqual(pipeline_summary["output_comparison"]["status"], "MIXED")
+            self.assertEqual(
+                pipeline_summary["output_comparison"]["mismatch_reasons"],
+                ["MISSING_EXPECTED_OUTPUTS", "UNEXPECTED_OUTPUTS_PRESENT"],
+            )
             self.assertEqual(pipeline_summary["sensor_outputs"]["found_sensor_count"], 1)
             self.assertEqual(
                 pipeline_summary["sensor_outputs"]["output_role_counts"]["camera_visible"],

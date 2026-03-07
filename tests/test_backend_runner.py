@@ -240,6 +240,10 @@ printf 'debug\n' > "${BACKEND_OUTPUT_ROOT}/extras/unexpected.log"
                 "COMPLETE",
             )
             self.assertEqual(output_comparison_report["status"], "UNEXPECTED_OUTPUTS")
+            self.assertEqual(
+                output_comparison_report["mismatch_reasons"],
+                ["UNEXPECTED_OUTPUTS_PRESENT"],
+            )
             self.assertEqual(output_comparison_report["discovered_file_count"], 3)
             self.assertEqual(output_comparison_report["matched_file_count"], 2)
             self.assertEqual(output_comparison_report["unexpected_output_count"], 1)
@@ -248,6 +252,16 @@ printf 'debug\n' > "${BACKEND_OUTPUT_ROOT}/extras/unexpected.log"
             self.assertEqual(
                 output_comparison_report["unexpected_outputs"][0]["relative_path"],
                 "extras/unexpected.log",
+            )
+            self.assertEqual(output_comparison_report["by_sensor"][0]["status"], "MATCHED")
+            self.assertEqual(output_comparison_report["by_sensor"][0]["mismatch_reasons"], [])
+            self.assertEqual(
+                output_comparison_report["by_sensor"][0]["found_output_roles"],
+                ["camera_visible"],
+            )
+            self.assertEqual(
+                output_comparison_report["by_sensor"][0]["missing_output_roles"],
+                [],
             )
             self.assertIn("runner_ok", stdout)
             self.assertIn("runner_warn", stderr)

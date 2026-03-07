@@ -750,6 +750,8 @@ def _write_renderer_pipeline_summary(
 
     output_comparison_available = False
     output_comparison_status: str | None = None
+    output_comparison_mismatch_reasons: list[str] = []
+    output_comparison_output_root_exists: bool | None = None
     output_comparison_discovered_file_count = 0
     output_comparison_matched_file_count = 0
     output_comparison_unexpected_output_count = 0
@@ -767,6 +769,14 @@ def _write_renderer_pipeline_summary(
         output_comparison_available = True
         raw_status = output_comparison_payload.get("status")
         output_comparison_status = str(raw_status).strip() if raw_status is not None else None
+        raw_mismatch_reasons = output_comparison_payload.get("mismatch_reasons")
+        if isinstance(raw_mismatch_reasons, list):
+            output_comparison_mismatch_reasons = [
+                str(item).strip() for item in raw_mismatch_reasons if str(item).strip()
+            ]
+        raw_output_root_exists = output_comparison_payload.get("output_root_exists")
+        if isinstance(raw_output_root_exists, bool):
+            output_comparison_output_root_exists = raw_output_root_exists
         output_comparison_discovered_file_count = _coerce_int(
             output_comparison_payload.get("discovered_file_count"),
             default=0,
@@ -872,6 +882,8 @@ def _write_renderer_pipeline_summary(
         "output_comparison": {
             "available": output_comparison_available,
             "status": output_comparison_status,
+            "mismatch_reasons": output_comparison_mismatch_reasons,
+            "output_root_exists": output_comparison_output_root_exists,
             "discovered_file_count": output_comparison_discovered_file_count,
             "matched_file_count": output_comparison_matched_file_count,
             "unexpected_output_count": output_comparison_unexpected_output_count,

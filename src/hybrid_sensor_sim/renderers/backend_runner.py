@@ -394,6 +394,28 @@ def _output_comparison_status(
     return "MIXED"
 
 
+def _output_comparison_mismatch_reasons(
+    *,
+    expected_count: int,
+    missing_count: int,
+    unexpected_count: int,
+    discovered_count: int,
+    output_root_exists: bool = True,
+) -> list[str]:
+    reasons: list[str] = []
+    if not output_root_exists:
+        reasons.append("OUTPUT_ROOT_MISSING")
+    if expected_count > 0 and discovered_count <= 0:
+        reasons.append("NO_DISCOVERED_FILES")
+    if expected_count > 0 and missing_count > 0:
+        reasons.append("MISSING_EXPECTED_OUTPUTS")
+    if unexpected_count > 0:
+        reasons.append("UNEXPECTED_OUTPUTS_PRESENT")
+    if expected_count <= 0 and discovered_count > 0:
+        reasons.append("UNEXPECTED_DISCOVERED_WITHOUT_CONTRACT")
+    return reasons
+
+
 def _sensor_export_filename(data_format: str) -> str:
     mapping = {
         "camera_projection_json": "camera_projection.json",
@@ -1237,6 +1259,13 @@ def _build_backend_output_comparison_report(
     if not output_root.exists():
         report_payload = {
             "status": "UNOBSERVED",
+            "mismatch_reasons": _output_comparison_mismatch_reasons(
+                expected_count=len(expected_outputs),
+                missing_count=len(expected_outputs),
+                unexpected_count=0,
+                discovered_count=0,
+                output_root_exists=False,
+            ),
             "output_root": str(output_root),
             "output_root_exists": False,
             "expected_output_count": len(expected_outputs),
@@ -1289,6 +1318,7 @@ def _build_backend_output_comparison_report(
     embedded_match_count = 0
     sensor_discovery_counts: dict[str, int] = {}
     sensor_unexpected_counts: dict[str, int] = {}
+    sensor_unexpected_relative_paths: dict[str, list[str]] = {}
     for discovered_file in discovered_files:
         key = str(discovered_file.resolve())
         matching_entries = path_index.get(key, [])
@@ -1317,6 +1347,7 @@ def _build_backend_output_comparison_report(
                 sensor_unexpected_counts[sensor_guess] = (
                     int(sensor_unexpected_counts.get(sensor_guess, 0)) + 1
                 )
+                sensor_unexpected_relative_paths.setdefault(sensor_guess, []).append(relative_path)
             continue
 
         matched_file_count += 1
@@ -1387,6 +1418,30 @@ def _build_backend_output_comparison_report(
         found_count = sum(1 for entry in sensor_entries if bool(entry.get("exists", False)))
         discovered_count = int(sensor_discovery_counts.get(sensor_id, 0))
         unexpected_count = int(sensor_unexpected_counts.get(sensor_id, 0))
+        found_output_roles = sorted(
+            {
+                str(entry.get("output_role", "")).strip()
+                for entry in sensor_entries
+                if bool(entry.get("exists", False)) and str(entry.get("output_role", "")).strip()
+            }
+        )
+        missing_output_roles = sorted(
+            {
+                str(entry.get("output_role", "")).strip()
+                for entry in sensor_entries
+                if not bool(entry.get("exists", False)) and str(entry.get("output_role", "")).strip()
+            }
+        )
+        matched_relative_paths = sorted(
+            {
+                str(entry.get("relative_path", "")).strip()
+                for entry in sensor_entries
+                if bool(entry.get("exists", False)) and str(entry.get("relative_path", "")).strip()
+            }
+        )
+        unexpected_relative_paths = sorted(
+            sensor_unexpected_relative_paths.get(sensor_id, [])
+        )
         by_sensor.append(
             {
                 "sensor_id": sensor_id,
@@ -1402,6 +1457,12 @@ def _build_backend_output_comparison_report(
                     unexpected_count=unexpected_count,
                     discovered_count=discovered_count,
                 ),
+                "mismatch_reasons": _output_comparison_mismatch_reasons(
+                    expected_count=expected_count,
+                    missing_count=missing_count,
+                    unexpected_count=unexpected_count,
+                    discovered_count=discovered_count,
+                ),
                 "output_roles": sorted(
                     {
                         str(entry.get("output_role", "")).strip()
@@ -1409,6 +1470,8 @@ def _build_backend_output_comparison_report(
                         if str(entry.get("output_role", "")).strip()
                     }
                 ),
+                "found_output_roles": found_output_roles,
+                "missing_output_roles": missing_output_roles,
                 "artifact_types": sorted(
                     {
                         str(entry.get("artifact_type", "")).strip()
@@ -1416,13 +1479,22 @@ def _build_backend_output_comparison_report(
                         if str(entry.get("artifact_type", "")).strip()
                     }
                 ),
+                "matched_relative_paths": matched_relative_paths,
+                "unexpected_relative_paths": unexpected_relative_paths,
             }
         )
 
+    overall_missing_count = sum(1 for entry in expected_outputs if not bool(entry.get("exists", False)))
     report_payload = {
         "status": _output_comparison_status(
             expected_count=len(expected_outputs),
-            missing_count=sum(1 for entry in expected_outputs if not bool(entry.get("exists", False))),
+            missing_count=overall_missing_count,
+            unexpected_count=unexpected_output_count,
+            discovered_count=len(discovered_files),
+        ),
+        "mismatch_reasons": _output_comparison_mismatch_reasons(
+            expected_count=len(expected_outputs),
+            missing_count=overall_missing_count,
             unexpected_count=unexpected_output_count,
             discovered_count=len(discovered_files),
         ),
