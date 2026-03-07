@@ -575,10 +575,15 @@ Current status:
     - `SINGLE`, `DUAL`, `MULTI` return modes
     - `max_returns`, `range_separation_m`, `signal_decay`, `minimum_secondary_snr_db`
     - per-return `ground_truth_hit_index` and `ground_truth_last_bounce_index` preview metadata
+  - environment/weather surface:
+    - fog attenuation with `fog_density * extinction_coefficient_scale`
+    - backscatter/noise returns using `backscatter_scale`
+    - synthetic precipitation/noise detections
+    - detector `probability_false_alarm` surface
 - next missing items:
   - per-channel divergence/loss calibration
-  - weather attenuation / backscatter / false detections
   - geometry-aware multipath and non-synthetic return selection
+  - richer rain/snow particle field calibration beyond current preview heuristic
 
 ### Phase 3: Radar Core Feature Expansion
 

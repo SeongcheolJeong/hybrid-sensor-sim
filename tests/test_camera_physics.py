@@ -1312,6 +1312,112 @@ EOF
             self.assertEqual(secondary_point["ground_truth_detection_type"], "RETROREFLECTION")
             self.assertLess(secondary_point["snr_db"], primary_point["snr_db"])
 
+    def test_lidar_weather_model_reduces_snr_and_adds_noise_points(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+20.0 0.0 0.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            base_options = {
+                "execute_helios": True,
+                "camera_projection_enabled": False,
+                "radar_postprocess_enabled": False,
+                "lidar_postprocess_enabled": True,
+                "lidar_noise": "none",
+                "lidar_dropout_probability": 0.0,
+                "lidar_ground_truth_reflectivity": 1.0,
+                "lidar_physics_model": {
+                    "reflectivity_coefficient": 1.0,
+                    "ambient_power_dbw": -30.0,
+                    "signal_photon_scale": 10000.0,
+                    "ambient_photon_scale": 1000.0,
+                    "minimum_detection_snr_db": -20.0,
+                },
+            }
+            clear_request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "clear_out",
+                options=base_options,
+            )
+            weather_request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "weather_out",
+                options={
+                    **base_options,
+                    "lidar_environment_model": {
+                        "fog_density": 1.0,
+                        "extinction_coefficient_scale": 0.1,
+                        "backscatter_scale": 0.8,
+                        "precipitation_rate": 60.0,
+                    },
+                    "lidar_noise_performance": {
+                        "probability_false_alarm": 0.2,
+                    },
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            clear_result = orchestrator.run(clear_request, BackendMode.HYBRID_AUTO)
+            weather_result = orchestrator.run(weather_request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(clear_result.success)
+            self.assertTrue(weather_result.success)
+            clear_preview = json.loads(
+                clear_result.artifacts["lidar_noisy_preview_json"].read_text(encoding="utf-8")
+            )
+            weather_preview = json.loads(
+                weather_result.artifacts["lidar_noisy_preview_json"].read_text(encoding="utf-8")
+            )
+            clear_target = clear_preview["preview_points"][0]
+            weather_targets = [
+                point
+                for point in weather_preview["preview_points"]
+                if point["ground_truth_detection_type"] == "TARGET"
+            ]
+            weather_noise = [
+                point
+                for point in weather_preview["preview_points"]
+                if point["ground_truth_detection_type"] == "NOISE"
+            ]
+            self.assertTrue(weather_targets)
+            self.assertTrue(weather_noise)
+            self.assertLess(weather_targets[0]["snr_db"], clear_target["snr_db"])
+            self.assertLess(
+                weather_targets[0]["weather_extinction_factor"],
+                clear_target["weather_extinction_factor"],
+            )
+            self.assertGreater(weather_result.metrics.get("lidar_backscatter_or_noise_count"), 0.0)
+            self.assertEqual(weather_result.metrics.get("lidar_weather_model_applied"), 1.0)
+            self.assertGreater(weather_result.metrics.get("lidar_false_alarm_probability"), 0.0)
+            self.assertGreater(weather_preview["output_count"], clear_preview["output_count"])
+
     def test_radar_trajectory_sweep_uses_local_velocity_per_frame(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

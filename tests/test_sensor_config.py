@@ -33,6 +33,9 @@ class SensorConfigTests(unittest.TestCase):
         self.assertAlmostEqual(config.lidar.physics_model.reflectivity_coefficient, 1.0)
         self.assertEqual(config.lidar.return_model.mode, "SINGLE")
         self.assertEqual(config.lidar.return_model.max_returns, 1)
+        self.assertTrue(config.lidar.environment_model.enable_ambient)
+        self.assertAlmostEqual(config.lidar.environment_model.extinction_coefficient_scale, 0.05)
+        self.assertAlmostEqual(config.lidar.noise_performance.probability_false_alarm, 0.0)
         self.assertEqual(config.radar.clutter_model, "basic")
         self.assertEqual(config.radar.range_min_m, 0.5)
 
@@ -170,6 +173,24 @@ class SensorConfigTests(unittest.TestCase):
                     "signal_decay": 0.45,
                     "minimum_secondary_snr_db": -4.0,
                 },
+                "lidar_environment_model": {
+                    "enable_ambient": False,
+                    "fog_density": 0.7,
+                    "extinction_coefficient_scale": 0.08,
+                    "backscatter_scale": 0.6,
+                    "disable_backscatter": False,
+                    "precipitation_rate": 35.0,
+                },
+                "lidar_noise_performance": {
+                    "probability_false_alarm": 0.02,
+                    "target_detectability": {
+                        "probability_detection": 0.85,
+                        "target": {
+                            "range": 180.0,
+                            "reflectivity": 0.65,
+                        },
+                    },
+                },
                 "lidar_behaviors": [{"continuous_motion": {"tx": 0.2, "rz": 0.1}}],
                 "radar_clutter": "none",
                 "radar_range_min_m": "1.5",
@@ -260,6 +281,16 @@ class SensorConfigTests(unittest.TestCase):
         self.assertAlmostEqual(config.lidar.return_model.range_separation_m, 0.8)
         self.assertAlmostEqual(config.lidar.return_model.signal_decay, 0.45)
         self.assertAlmostEqual(config.lidar.return_model.minimum_secondary_snr_db, -4.0)
+        self.assertFalse(config.lidar.environment_model.enable_ambient)
+        self.assertAlmostEqual(config.lidar.environment_model.fog_density, 0.7)
+        self.assertAlmostEqual(config.lidar.environment_model.extinction_coefficient_scale, 0.08)
+        self.assertAlmostEqual(config.lidar.environment_model.backscatter_scale, 0.6)
+        self.assertFalse(config.lidar.environment_model.disable_backscatter)
+        self.assertAlmostEqual(config.lidar.environment_model.precipitation_rate, 35.0)
+        self.assertAlmostEqual(config.lidar.noise_performance.probability_false_alarm, 0.02)
+        self.assertAlmostEqual(config.lidar.noise_performance.probability_detection, 0.85)
+        self.assertAlmostEqual(config.lidar.noise_performance.calibration_target_range_m, 180.0)
+        self.assertAlmostEqual(config.lidar.noise_performance.calibration_target_reflectivity, 0.65)
         self.assertEqual(config.radar.sensor_id, "radar_bumper")
         self.assertEqual(config.radar.clutter_model, "none")
         self.assertEqual(config.radar.false_target_count, 0)
@@ -309,6 +340,14 @@ class SensorConfigTests(unittest.TestCase):
                     "mode": "multi",
                     "max_returns": 3,
                     "range_separation_m": 0.6,
+                },
+                "lidar_environment_model": {
+                    "fog_density": 0.4,
+                    "backscatter_scale": 0.3,
+                    "precipitation_rate": 12.0,
+                },
+                "lidar_noise_performance": {
+                    "probability_false_alarm": 0.01,
                 },
                 "lidar_behaviors": [{"continuous_motion": {"tx": 0.1}}],
                 "radar_clutter": "none",
@@ -361,6 +400,14 @@ class SensorConfigTests(unittest.TestCase):
         )
         self.assertEqual(contract["sensor_setup"]["lidar"]["return_model"]["mode"], "MULTI")
         self.assertEqual(contract["sensor_setup"]["lidar"]["return_model"]["max_returns"], 3)
+        self.assertAlmostEqual(
+            contract["sensor_setup"]["lidar"]["environment_model"]["fog_density"],
+            0.4,
+        )
+        self.assertAlmostEqual(
+            contract["sensor_setup"]["lidar"]["noise_performance"]["probability_false_alarm"],
+            0.01,
+        )
         self.assertEqual(
             contract["sensor_setup"]["radar"]["behaviors"][0]["point_at"]["id"],
             "vehicle_9",

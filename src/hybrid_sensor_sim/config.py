@@ -411,6 +411,47 @@ class LidarReturnModelConfig:
 
 
 @dataclass(frozen=True)
+class LidarEnvironmentConfig:
+    enable_ambient: bool = True
+    fog_density: float = 0.0
+    extinction_coefficient_scale: float = 0.05
+    backscatter_scale: float = 0.0
+    disable_backscatter: bool = False
+    precipitation_rate: float = 0.0
+
+    def to_dict(self) -> dict[str, float | bool]:
+        return {
+            "enable_ambient": self.enable_ambient,
+            "fog_density": self.fog_density,
+            "extinction_coefficient_scale": self.extinction_coefficient_scale,
+            "backscatter_scale": self.backscatter_scale,
+            "disable_backscatter": self.disable_backscatter,
+            "precipitation_rate": self.precipitation_rate,
+        }
+
+
+@dataclass(frozen=True)
+class LidarNoisePerformanceConfig:
+    probability_false_alarm: float = 0.0
+    probability_detection: float = 0.9
+    calibration_target_range_m: float = 210.0
+    calibration_target_reflectivity: float = 0.8
+
+    def to_dict(self) -> dict[str, float]:
+        return {
+            "probability_false_alarm": self.probability_false_alarm,
+            "probability_detection": self.probability_detection,
+            "target_detectability": {
+                "probability_detection": self.probability_detection,
+                "target": {
+                    "range": self.calibration_target_range_m,
+                    "reflectivity": self.calibration_target_reflectivity,
+                },
+            },
+        }
+
+
+@dataclass(frozen=True)
 class CameraRollingShutterConfig:
     enabled: bool = False
     col_delay_ns: float = 0.0
@@ -526,6 +567,8 @@ class LidarSensorConfig:
     intensity: LidarIntensityConfig = field(default_factory=LidarIntensityConfig)
     physics_model: LidarPhysicsModelConfig = field(default_factory=LidarPhysicsModelConfig)
     return_model: LidarReturnModelConfig = field(default_factory=LidarReturnModelConfig)
+    environment_model: LidarEnvironmentConfig = field(default_factory=LidarEnvironmentConfig)
+    noise_performance: LidarNoisePerformanceConfig = field(default_factory=LidarNoisePerformanceConfig)
     extrinsics: SensorExtrinsicsConfig = field(default_factory=SensorExtrinsicsConfig)
     behaviors: list[SensorBehaviorConfig] = field(default_factory=list)
 
@@ -565,6 +608,8 @@ class LidarSensorConfig:
             "intensity": self.intensity.to_dict(),
             "physics_model": self.physics_model.to_dict(),
             "return_model": self.return_model.to_dict(),
+            "environment_model": self.environment_model.to_dict(),
+            "noise_performance": self.noise_performance.to_dict(),
             "extrinsics": self.extrinsics.to_dict(),
             "behaviors": [behavior.to_dict() for behavior in self.behaviors],
         }
@@ -915,6 +960,63 @@ def _parse_lidar_return_model(options: Mapping[str, Any]) -> LidarReturnModelCon
     )
 
 
+def _parse_lidar_environment_model(options: Mapping[str, Any]) -> LidarEnvironmentConfig:
+    raw = _as_dict(options.get("lidar_environment_model"))
+    return LidarEnvironmentConfig(
+        enable_ambient=_as_bool(
+            raw.get("enable_ambient", options.get("lidar_enable_ambient")),
+            True,
+        ),
+        fog_density=_as_float(raw.get("fog_density", options.get("lidar_fog_density")), 0.0),
+        extinction_coefficient_scale=_as_float(
+            raw.get(
+                "extinction_coefficient_scale",
+                options.get("lidar_extinction_coefficient_scale"),
+            ),
+            0.05,
+        ),
+        backscatter_scale=_as_float(
+            raw.get("backscatter_scale", options.get("lidar_backscatter_scale")),
+            0.0,
+        ),
+        disable_backscatter=_as_bool(
+            raw.get("disable_backscatter", options.get("lidar_disable_backscatter")),
+            False,
+        ),
+        precipitation_rate=_as_float(
+            raw.get("precipitation_rate", options.get("lidar_precipitation_rate")),
+            0.0,
+        ),
+    )
+
+
+def _parse_lidar_noise_performance(options: Mapping[str, Any]) -> LidarNoisePerformanceConfig:
+    raw = _as_dict(options.get("lidar_noise_performance"))
+    raw_target = _as_dict(raw.get("target_detectability"))
+    raw_target_target = _as_dict(raw_target.get("target"))
+    return LidarNoisePerformanceConfig(
+        probability_false_alarm=_as_float(
+            raw.get("probability_false_alarm", options.get("lidar_probability_false_alarm")),
+            0.0,
+        ),
+        probability_detection=_as_float(
+            raw_target.get("probability_detection", options.get("lidar_probability_detection")),
+            0.9,
+        ),
+        calibration_target_range_m=_as_float(
+            raw_target_target.get("range", options.get("lidar_calibration_target_range_m")),
+            210.0,
+        ),
+        calibration_target_reflectivity=_as_float(
+            raw_target_target.get(
+                "reflectivity",
+                options.get("lidar_calibration_target_reflectivity"),
+            ),
+            0.8,
+        ),
+    )
+
+
 def _parse_behaviors(options: Mapping[str, Any], sensor_name: str) -> list[SensorBehaviorConfig]:
     nested = _as_dict(options.get("sensor_behaviors")).get(sensor_name)
     raw_behaviors = options.get(f"{sensor_name}_behaviors", nested)
@@ -1086,6 +1188,8 @@ def build_sensor_sim_config(
             intensity=_parse_lidar_intensity(data),
             physics_model=_parse_lidar_physics_model(data),
             return_model=_parse_lidar_return_model(data),
+            environment_model=_parse_lidar_environment_model(data),
+            noise_performance=_parse_lidar_noise_performance(data),
             extrinsics=_parse_extrinsics(_as_dict(data.get("lidar_extrinsics"))),
             behaviors=_parse_behaviors(data, "lidar"),
         ),

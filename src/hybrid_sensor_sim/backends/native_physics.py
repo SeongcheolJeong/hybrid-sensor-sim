@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import random
-from math import atan2, exp, log, log10, pi, sqrt
+from math import atan2, cos, exp, log, log10, pi, sin, sqrt
 from pathlib import Path
 from typing import Any
 
@@ -1535,6 +1535,8 @@ class NativePhysicsBackend(SensorBackend):
                     "intensity": lidar_config.intensity.to_dict(),
                     "physics_model": lidar_config.physics_model.to_dict(),
                     "return_model": lidar_config.return_model.to_dict(),
+                    "environment_model": lidar_config.environment_model.to_dict(),
+                    "noise_performance": lidar_config.noise_performance.to_dict(),
                     "preview_points": preview_points,
                 },
                 indent=2,
@@ -1718,6 +1720,8 @@ class NativePhysicsBackend(SensorBackend):
             "intensity": lidar_config.intensity.to_dict(),
             "physics_model": lidar_config.physics_model.to_dict(),
             "return_model": lidar_config.return_model.to_dict(),
+            "environment_model": lidar_config.environment_model.to_dict(),
+            "noise_performance": lidar_config.noise_performance.to_dict(),
             "frames": frames,
         }
         output_path = enhanced_output / "lidar_trajectory_sweep.json"
@@ -1808,6 +1812,25 @@ class NativePhysicsBackend(SensorBackend):
                 payload.update(signal_metadata)
                 payload.pop("detected", None)
                 noisy_metadata.append(payload)
+        false_alarm_points, false_alarm_metadata = self._generate_lidar_false_alarm_points(
+            request=request,
+            lidar_config=lidar_config,
+            source_point_count=len(points_xyz),
+            rng=rng,
+        )
+        for index, false_point in enumerate(false_alarm_points):
+            fx, fy, fz = false_point
+            if noise_model == "gaussian":
+                noisy_points.append(
+                    (
+                        fx + rng.gauss(0.0, noise_stddev),
+                        fy + rng.gauss(0.0, noise_stddev),
+                        fz + rng.gauss(0.0, noise_stddev),
+                    )
+                )
+            else:
+                noisy_points.append(false_point)
+            noisy_metadata.append(false_alarm_metadata[index])
         return noisy_points, noisy_metadata
 
     def _apply_lidar_scan_model(
@@ -2057,6 +2080,7 @@ class NativePhysicsBackend(SensorBackend):
                     "path_length_offset_m": base.get("path_length_offset_m"),
                     "ground_truth_hit_index": base.get("ground_truth_hit_index"),
                     "ground_truth_last_bounce_index": base.get("ground_truth_last_bounce_index"),
+                    "weather_extinction_factor": base.get("weather_extinction_factor"),
                     "ground_truth_detection_type": base.get("ground_truth_detection_type"),
                 }
             )
@@ -2079,6 +2103,15 @@ class NativePhysicsBackend(SensorBackend):
         return_series: list[tuple[tuple[float, float, float], dict[str, object]]] = [
             (point_xyz, primary_metadata)
         ]
+        return_series.extend(
+            self._lidar_environment_backscatter_returns(
+                request=request,
+                lidar_config=lidar_config,
+                point_xyz=point_xyz,
+                primary_metadata=primary_metadata,
+                base_metadata=base_metadata,
+            )
+        )
         max_returns = max(1, int(getattr(lidar_config.return_model, "max_returns", 1)))
         return_mode = str(getattr(lidar_config.return_model, "mode", "SINGLE")).upper()
         if max_returns <= 1 or return_mode == "SINGLE":
@@ -2158,6 +2191,7 @@ class NativePhysicsBackend(SensorBackend):
     ) -> dict[str, object]:
         x, y, z = point_xyz
         range_m = float(base_metadata.get("range_m", sqrt(x * x + y * y + z * z)))
+        environment_model = lidar_config.environment_model
         ground_truth_reflectivity = self._lidar_ground_truth_reflectivity(
             request=request,
             base_metadata=base_metadata,
@@ -2167,8 +2201,19 @@ class NativePhysicsBackend(SensorBackend):
             ground_truth_reflectivity * float(lidar_config.physics_model.reflectivity_coefficient),
         )
         attenuation_rate = max(0.0, float(lidar_config.physics_model.atmospheric_attenuation_rate))
-        signal_power_linear = reflectivity * exp(-attenuation_rate * range_m) / max(range_m * range_m, 1.0)
+        weather_extinction = self._lidar_weather_extinction_factor(
+            lidar_config=lidar_config,
+            range_m=range_m,
+        )
+        signal_power_linear = (
+            reflectivity
+            * exp(-attenuation_rate * range_m)
+            * weather_extinction
+            / max(range_m * range_m, 1.0)
+        )
         ambient_power_dbw = float(lidar_config.physics_model.ambient_power_dbw)
+        if not bool(environment_model.enable_ambient):
+            ambient_power_dbw = -120.0
         ambient_power_linear = pow(10.0, ambient_power_dbw / 10.0)
         signal_photons = signal_power_linear * max(float(lidar_config.physics_model.signal_photon_scale), 0.0)
         ambient_photons = ambient_power_linear * max(float(lidar_config.physics_model.ambient_photon_scale), 0.0)
@@ -2204,6 +2249,7 @@ class NativePhysicsBackend(SensorBackend):
             "path_length_offset_m": 0.0,
             "ground_truth_hit_index": 0,
             "ground_truth_last_bounce_index": 0,
+            "weather_extinction_factor": weather_extinction,
             "ground_truth_detection_type": "TARGET",
         }
 
@@ -2226,6 +2272,181 @@ class NativePhysicsBackend(SensorBackend):
         ):
             return min(max(float(channel_reflectivities[channel_id]), 0.0), 1.0)
         return min(max(float(request.options.get("lidar_ground_truth_reflectivity", 0.35)), 0.0), 1.0)
+
+    def _lidar_weather_extinction_factor(self, *, lidar_config: Any, range_m: float) -> float:
+        fog_density = min(max(float(lidar_config.environment_model.fog_density), 0.0), 1.0)
+        extinction_scale = max(float(lidar_config.environment_model.extinction_coefficient_scale), 0.0)
+        alpha = fog_density * extinction_scale
+        return exp(-2.0 * alpha * max(range_m, 0.0))
+
+    def _lidar_environment_backscatter_returns(
+        self,
+        *,
+        request: SensorSimRequest,
+        lidar_config: Any,
+        point_xyz: tuple[float, float, float],
+        primary_metadata: dict[str, object],
+        base_metadata: dict[str, object],
+    ) -> list[tuple[tuple[float, float, float], dict[str, object]]]:
+        if bool(lidar_config.environment_model.disable_backscatter):
+            return []
+        fog_density = min(max(float(lidar_config.environment_model.fog_density), 0.0), 1.0)
+        precipitation_rate = max(float(lidar_config.environment_model.precipitation_rate), 0.0)
+        backscatter_scale = max(float(lidar_config.environment_model.backscatter_scale), 0.0)
+        environment_strength = (fog_density + min(precipitation_rate / 100.0, 1.0)) * backscatter_scale
+        if environment_strength <= 1e-9:
+            return []
+
+        range_m = float(primary_metadata.get("range_m", 0.0))
+        if range_m <= max(lidar_config.range_min_m + 0.5, 1.0):
+            return []
+
+        backscatter_fraction = min(max(0.15 + 0.35 * environment_strength, 0.1), 0.85)
+        backscatter_range = max(lidar_config.range_min_m + 0.25, range_m * backscatter_fraction)
+        backscatter_point = self._lidar_offset_point_along_ray(
+            point_xyz=point_xyz,
+            range_offset_m=backscatter_range - range_m,
+        )
+        ambient_photons = float(primary_metadata.get("ambient_photons", 0.0))
+        signal_power_linear = pow(
+            10.0,
+            float(primary_metadata.get("signal_power_dbw", -120.0)) / 10.0,
+        ) * min(max(environment_strength * 0.6, 0.02), 0.8)
+        signal_photons = signal_power_linear * max(float(lidar_config.physics_model.signal_photon_scale), 0.0)
+        snr = signal_photons / max(ambient_photons, 1e-9)
+        snr_db = 10.0 * log10(max(snr, 1e-9))
+        min_backscatter_snr_db = max(
+            float(lidar_config.return_model.minimum_secondary_snr_db),
+            float(lidar_config.physics_model.minimum_detection_snr_db),
+        )
+        detected = bool(lidar_config.physics_model.return_all_hits) or snr_db >= min_backscatter_snr_db
+        if not detected:
+            return []
+        reflectivity = min(float(primary_metadata.get("reflectivity", 0.0)) * environment_strength, 1.0)
+        intensity_value = self._lidar_intensity_value(
+            intensity_config=lidar_config.intensity,
+            signal_power_linear=signal_power_linear,
+            reflectivity=reflectivity,
+            ground_truth_reflectivity=reflectivity,
+            laser_cross_section=reflectivity,
+            snr=snr,
+        )
+        metadata = dict(base_metadata)
+        metadata.update(
+            {
+                "detected": True,
+                "range_m": backscatter_range,
+                "intensity": intensity_value,
+                "intensity_units": lidar_config.intensity.units,
+                "reflectivity": reflectivity,
+                "ground_truth_reflectivity": reflectivity,
+                "laser_cross_section": reflectivity,
+                "signal_power_dbw": 10.0 * log10(max(signal_power_linear, 1e-9)),
+                "ambient_power_dbw": float(primary_metadata.get("ambient_power_dbw", -30.0)),
+                "signal_photons": signal_photons,
+                "ambient_photons": ambient_photons,
+                "snr": snr,
+                "snr_db": snr_db,
+                "return_id": max(int(primary_metadata.get("return_id", 0)) + 1, 1),
+                "path_length_offset_m": backscatter_range - range_m,
+                "ground_truth_hit_index": 0,
+                "ground_truth_last_bounce_index": 0,
+                "weather_extinction_factor": self._lidar_weather_extinction_factor(
+                    lidar_config=lidar_config,
+                    range_m=backscatter_range,
+                ),
+                "ground_truth_detection_type": "NOISE",
+            }
+        )
+        return [(backscatter_point, metadata)]
+
+    def _generate_lidar_false_alarm_points(
+        self,
+        *,
+        request: SensorSimRequest,
+        lidar_config: Any,
+        source_point_count: int,
+        rng: random.Random,
+    ) -> tuple[list[tuple[float, float, float]], list[dict[str, object]]]:
+        pfa = min(max(float(lidar_config.noise_performance.probability_false_alarm), 0.0), 1.0)
+        if pfa <= 1e-12:
+            return [], []
+        expected_false_count = pfa * max(source_point_count, 1) * 32.0
+        false_count = int(expected_false_count)
+        if rng.random() < (expected_false_count - false_count):
+            false_count += 1
+        if false_count <= 0:
+            return [], []
+
+        az_min = float(lidar_config.scan_field_azimuth_min_deg)
+        az_max = float(lidar_config.scan_field_azimuth_max_deg)
+        el_min = float(lidar_config.scan_field_elevation_min_deg)
+        el_max = float(lidar_config.scan_field_elevation_max_deg)
+        min_range = max(float(lidar_config.range_min_m), 0.5)
+        max_range = max(min(float(lidar_config.range_max_m), 40.0), min_range + 0.5)
+        points: list[tuple[float, float, float]] = []
+        metadata_points: list[dict[str, object]] = []
+        for index in range(false_count):
+            azimuth_deg = rng.uniform(az_min, az_max)
+            elevation_deg = rng.uniform(el_min, el_max)
+            range_m = rng.uniform(min_range, max_range)
+            azimuth_rad = azimuth_deg * pi / 180.0
+            elevation_rad = elevation_deg * pi / 180.0
+            xy = range_m * cos(elevation_rad)
+            point = (
+                xy * cos(azimuth_rad),
+                xy * sin(azimuth_rad),
+                range_m * sin(elevation_rad),
+            )
+            signal_power_linear = pow(
+                10.0,
+                float(lidar_config.physics_model.ambient_power_dbw) / 10.0,
+            ) * rng.uniform(0.5, 1.2)
+            ambient_photons = pow(10.0, float(lidar_config.physics_model.ambient_power_dbw) / 10.0) * max(
+                float(lidar_config.physics_model.ambient_photon_scale),
+                0.0,
+            )
+            signal_photons = signal_power_linear * max(float(lidar_config.physics_model.signal_photon_scale), 0.0)
+            snr = signal_photons / max(ambient_photons, 1e-9)
+            snr_db = 10.0 * log10(max(snr, 1e-9))
+            intensity_value = self._lidar_intensity_value(
+                intensity_config=lidar_config.intensity,
+                signal_power_linear=signal_power_linear,
+                reflectivity=0.0,
+                ground_truth_reflectivity=0.0,
+                laser_cross_section=0.0,
+                snr=snr,
+            )
+            points.append(point)
+            metadata_points.append(
+                {
+                    "point_index": source_point_count + index,
+                    "range_m": range_m,
+                    "azimuth_deg": azimuth_deg,
+                    "elevation_deg": elevation_deg,
+                    "channel_id": None,
+                    "source_angle_deg": None,
+                    "scan_path_index": None,
+                    "intensity": intensity_value,
+                    "intensity_units": lidar_config.intensity.units,
+                    "reflectivity": 0.0,
+                    "ground_truth_reflectivity": 0.0,
+                    "laser_cross_section": 0.0,
+                    "signal_power_dbw": 10.0 * log10(max(signal_power_linear, 1e-9)),
+                    "ambient_power_dbw": float(lidar_config.physics_model.ambient_power_dbw),
+                    "signal_photons": signal_photons,
+                    "ambient_photons": ambient_photons,
+                    "snr": snr,
+                    "snr_db": snr_db,
+                    "return_id": 0,
+                    "path_length_offset_m": 0.0,
+                    "ground_truth_hit_index": 0,
+                    "ground_truth_last_bounce_index": 0,
+                    "weather_extinction_factor": 1.0,
+                    "ground_truth_detection_type": "NOISE",
+                }
+            )
+        return points, metadata_points
 
     def _lidar_intensity_value(
         self,
@@ -2317,11 +2538,24 @@ class NativePhysicsBackend(SensorBackend):
             for point in preview_points
             if isinstance(point, dict) and point.get("return_id") is not None
         ]
+        noise_points = [
+            point
+            for point in preview_points
+            if isinstance(point, dict) and str(point.get("ground_truth_detection_type", "")).upper() == "NOISE"
+        ]
         metrics["lidar_secondary_return_count"] = float(
             sum(1 for return_id in return_ids if return_id > 0)
         )
         metrics["lidar_multi_return_applied"] = 1.0 if any(return_id > 0 for return_id in return_ids) else 0.0
         metrics["lidar_max_return_id"] = float(max(return_ids)) if return_ids else 0.0
+        metrics["lidar_backscatter_or_noise_count"] = float(len(noise_points))
+        metrics["lidar_weather_model_applied"] = 1.0 if (
+            float(lidar_config.environment_model.fog_density) > 0.0
+            or float(lidar_config.environment_model.precipitation_rate) > 0.0
+        ) else 0.0
+        metrics["lidar_false_alarm_probability"] = float(
+            lidar_config.noise_performance.probability_false_alarm
+        )
         if snr_db_values:
             metrics["lidar_min_snr_db"] = float(min(snr_db_values))
             metrics["lidar_max_snr_db"] = float(max(snr_db_values))
