@@ -444,9 +444,20 @@ def _infer_sensor_payload_format(
     *,
     sensor_name: str,
     payload_artifact: str,
+    contract_payload: dict[str, Any] | None,
 ) -> str:
     suffix = Path(payload_artifact).suffix.lower()
     if sensor_name == "camera":
+        if isinstance(contract_payload, dict):
+            sensor_setup = contract_payload.get("sensor_setup")
+            if isinstance(sensor_setup, dict):
+                camera_setup = sensor_setup.get("camera")
+                if isinstance(camera_setup, dict):
+                    camera_type = str(camera_setup.get("sensor_type", "VISIBLE")).strip().upper()
+                    if camera_type == "DEPTH":
+                        return "camera_depth_json"
+                    if camera_type == "SEMANTIC_SEGMENTATION":
+                        return "camera_semantic_json"
         return "camera_projection_json"
     if sensor_name == "lidar":
         if suffix == ".xyz":
@@ -464,6 +475,7 @@ def _enrich_resolved_sensor_source(
     sensor_name: str,
     resolved_source: dict[str, Any],
     mount_index: dict[str, dict[str, Any]],
+    contract_payload: dict[str, Any] | None,
 ) -> None:
     mount = mount_index.get(sensor_name, {})
     sensor_id = str(mount.get("sensor_id", "")).strip() if isinstance(mount, dict) else ""
@@ -478,6 +490,7 @@ def _enrich_resolved_sensor_source(
     data_format = _infer_sensor_payload_format(
         sensor_name=sensor_name,
         payload_artifact=payload_artifact,
+        contract_payload=contract_payload,
     )
     resolved_source["sensor_name"] = sensor_name
     resolved_source["sensor_type"] = sensor_name
@@ -545,6 +558,7 @@ def _build_backend_frame_inputs_manifest(
                 sensor_name=sensor_name,
                 resolved_source=resolved_source,
                 mount_index=mount_index,
+                contract_payload=contract_payload,
             )
             frame_manifest[sensor_name] = resolved_source
             if resolved_source.get("available") is True:

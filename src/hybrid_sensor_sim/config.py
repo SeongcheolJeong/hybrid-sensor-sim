@@ -211,6 +211,46 @@ class CameraDistortionConfig:
 
 
 @dataclass(frozen=True)
+class CameraDepthConfig:
+    min_m: float = 0.0
+    max_m: float = 1000.0
+    log_base: float = 10.0
+    encoding_type: str = "LINEAR"
+    bit_depth: int = 16
+
+    def to_dict(self) -> dict[str, float | int | str]:
+        return {
+            "min": self.min_m,
+            "max": self.max_m,
+            "log_base": self.log_base,
+            "type": self.encoding_type,
+            "bit_depth": self.bit_depth,
+        }
+
+
+@dataclass(frozen=True)
+class CameraRollingShutterConfig:
+    enabled: bool = False
+    col_delay_ns: float = 0.0
+    col_readout_direction: str = "LEFT_TO_RIGHT"
+    row_delay_ns: float = 0.0
+    row_readout_direction: str = "TOP_TO_BOTTOM"
+    num_time_steps: int = 1
+    num_exposure_samples_per_pixel: int = 1
+
+    def to_dict(self) -> dict[str, float | int | str | bool]:
+        return {
+            "enabled": self.enabled,
+            "col_delay_ns": self.col_delay_ns,
+            "col_readout_direction": self.col_readout_direction,
+            "row_delay_ns": self.row_delay_ns,
+            "row_readout_direction": self.row_readout_direction,
+            "num_time_steps": self.num_time_steps,
+            "num_exposure_samples_per_pixel": self.num_exposure_samples_per_pixel,
+        }
+
+
+@dataclass(frozen=True)
 class RendererConfig:
     bridge_enabled: bool = False
     backend: str = "none"
@@ -236,6 +276,7 @@ class RendererConfig:
 class CameraSensorConfig:
     sensor_id: str = "camera_front"
     attach_to_actor_id: str = "ego"
+    sensor_type: str = "VISIBLE"
     geometry_model: str = "pinhole"
     distortion_model: str = "brown-conrady"
     projection_enabled: bool = True
@@ -243,6 +284,8 @@ class CameraSensorConfig:
     projection_clamp_to_image: bool = True
     intrinsics: CameraIntrinsicsConfig = field(default_factory=CameraIntrinsicsConfig)
     distortion_coeffs: CameraDistortionConfig = field(default_factory=CameraDistortionConfig)
+    depth_params: CameraDepthConfig = field(default_factory=CameraDepthConfig)
+    rolling_shutter: CameraRollingShutterConfig = field(default_factory=CameraRollingShutterConfig)
     extrinsics: SensorExtrinsicsConfig = field(default_factory=SensorExtrinsicsConfig)
     behaviors: list[SensorBehaviorConfig] = field(default_factory=list)
 
@@ -250,6 +293,7 @@ class CameraSensorConfig:
         return {
             "sensor_id": self.sensor_id,
             "attach_to_actor_id": self.attach_to_actor_id,
+            "sensor_type": self.sensor_type,
             "geometry_model": self.geometry_model,
             "distortion_model": self.distortion_model,
             "projection_enabled": self.projection_enabled,
@@ -257,6 +301,8 @@ class CameraSensorConfig:
             "projection_clamp_to_image": self.projection_clamp_to_image,
             "intrinsics": self.intrinsics.to_dict(),
             "distortion_coeffs": self.distortion_coeffs.to_dict(),
+            "depth_params": self.depth_params.to_dict(),
+            "rolling_shutter": self.rolling_shutter.to_dict(),
             "extrinsics": self.extrinsics.to_dict(),
             "behaviors": [behavior.to_dict() for behavior in self.behaviors],
         }
@@ -403,6 +449,48 @@ def _parse_camera_distortion(raw: Mapping[str, Any]) -> CameraDistortionConfig:
     )
 
 
+def _parse_camera_depth(options: Mapping[str, Any]) -> CameraDepthConfig:
+    raw = _as_dict(options.get("camera_depth_params"))
+    return CameraDepthConfig(
+        min_m=_as_float(raw.get("min", options.get("camera_depth_min_m")), 0.0),
+        max_m=_as_float(raw.get("max", options.get("camera_depth_max_m")), 1000.0),
+        log_base=_as_float(raw.get("log_base", options.get("camera_depth_log_base")), 10.0),
+        encoding_type=_as_str(raw.get("type", options.get("camera_depth_type")), "LINEAR").upper(),
+        bit_depth=_as_int(raw.get("bit_depth", options.get("camera_depth_bit_depth")), 16),
+    )
+
+
+def _parse_camera_rolling_shutter(options: Mapping[str, Any]) -> CameraRollingShutterConfig:
+    raw = _as_dict(options.get("camera_rolling_shutter"))
+    col_delay_ns = _as_float(raw.get("col_delay_ns", options.get("camera_col_delay_ns")), 0.0)
+    row_delay_ns = _as_float(raw.get("row_delay_ns", options.get("camera_row_delay_ns")), 0.0)
+    enabled_default = col_delay_ns > 0.0 or row_delay_ns > 0.0
+    return CameraRollingShutterConfig(
+        enabled=_as_bool(raw.get("enabled", options.get("camera_rolling_shutter_enabled")), enabled_default),
+        col_delay_ns=col_delay_ns,
+        col_readout_direction=_as_str(
+            raw.get("col_readout_direction", options.get("camera_col_readout_direction")),
+            "LEFT_TO_RIGHT",
+        ).upper(),
+        row_delay_ns=row_delay_ns,
+        row_readout_direction=_as_str(
+            raw.get("row_readout_direction", options.get("camera_row_readout_direction")),
+            "TOP_TO_BOTTOM",
+        ).upper(),
+        num_time_steps=_as_int(
+            raw.get("num_time_steps", options.get("camera_num_time_steps")),
+            1,
+        ),
+        num_exposure_samples_per_pixel=_as_int(
+            raw.get(
+                "num_exposure_samples_per_pixel",
+                options.get("camera_num_exposure_samples_per_pixel"),
+            ),
+            1,
+        ),
+    )
+
+
 def _parse_behaviors(options: Mapping[str, Any], sensor_name: str) -> list[SensorBehaviorConfig]:
     nested = _as_dict(options.get("sensor_behaviors")).get(sensor_name)
     raw_behaviors = options.get(f"{sensor_name}_behaviors", nested)
@@ -470,6 +558,7 @@ def build_sensor_sim_config(
         camera=CameraSensorConfig(
             sensor_id=_as_str(data.get("renderer_camera_sensor_id"), "camera_front"),
             attach_to_actor_id=ego_actor_id,
+            sensor_type=_as_str(data.get("camera_sensor_type"), "VISIBLE").upper(),
             geometry_model=_as_str(data.get("camera_geometry"), "pinhole"),
             distortion_model=_as_str(data.get("camera_distortion"), "brown-conrady"),
             projection_enabled=_as_bool(data.get("camera_projection_enabled"), True),
@@ -485,6 +574,8 @@ def build_sensor_sim_config(
             distortion_coeffs=_parse_camera_distortion(
                 _as_dict(data.get("camera_distortion_coeffs"))
             ),
+            depth_params=_parse_camera_depth(data),
+            rolling_shutter=_parse_camera_rolling_shutter(data),
             extrinsics=_parse_extrinsics(_as_dict(data.get("camera_extrinsics"))),
             behaviors=_parse_behaviors(data, "camera"),
         ),

@@ -310,10 +310,13 @@ def build_renderer_playback_contract(
         },
         "sensor_setup": {
             "camera": {
+                "sensor_type": config.camera.sensor_type,
                 "geometry_model": config.camera.geometry_model,
                 "distortion_model": config.camera.distortion_model,
                 "intrinsics": config.camera.intrinsics.to_dict(),
                 "distortion_coeffs": config.camera.distortion_coeffs.to_dict(),
+                "depth_params": config.camera.depth_params.to_dict(),
+                "rolling_shutter": config.camera.rolling_shutter.to_dict(),
                 "extrinsics": camera_extrinsics,
                 "extrinsics_source": camera_extrinsics_source,
                 "behaviors": [behavior.to_dict() for behavior in config.camera.behaviors],

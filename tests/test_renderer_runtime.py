@@ -139,6 +139,48 @@ class RendererRuntimeTests(unittest.TestCase):
                 0.0,
             )
 
+    def test_renderer_runtime_uses_depth_camera_payload_format(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "renderer_bridge_enabled": True,
+                    "renderer_backend": "carla",
+                    "renderer_execute": False,
+                    "renderer_command": ["echo", "renderer_plan", "{contract}"],
+                    "camera_projection_enabled": True,
+                    "camera_projection_trajectory_sweep_enabled": True,
+                    "camera_projection_trajectory_sweep_frames": 2,
+                    "camera_sensor_type": "DEPTH",
+                    "camera_depth_params": {"min": 1.0, "max": 60.0, "type": "LINEAR"},
+                    "lidar_postprocess_enabled": False,
+                    "radar_postprocess_enabled": False,
+                },
+            )
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            contract = json.loads(
+                result.artifacts["renderer_playback_contract"].read_text(encoding="utf-8")
+            )
+            manifest = json.loads(
+                result.artifacts["backend_frame_inputs_manifest"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(contract["sensor_setup"]["camera"]["sensor_type"], "DEPTH")
+            self.assertEqual(manifest["frames"][0]["camera"]["data_format"], "camera_depth_json")
+
     def test_renderer_runtime_can_disable_frame_manifest_arg_injection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

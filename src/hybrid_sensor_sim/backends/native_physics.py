@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import json
 import random
-from math import atan2, log10, pi, sqrt
+from math import atan2, log, log10, pi, sqrt
 from pathlib import Path
 
 from hybrid_sensor_sim.backends.base import SensorBackend
-from hybrid_sensor_sim.config import SensorSimConfig, build_sensor_sim_config
+from hybrid_sensor_sim.config import CameraSensorConfig, SensorSimConfig, build_sensor_sim_config
 from hybrid_sensor_sim.io.pointcloud_xyz import read_xyz_points, write_xyz_points
 from hybrid_sensor_sim.io.trajectory_txt import TrajectoryPose, read_trajectory_poses
 from hybrid_sensor_sim.physics.camera import (
@@ -103,9 +103,9 @@ class NativePhysicsBackend(SensorBackend):
             request=request,
             artifacts=artifacts,
             enhanced_output=enhanced_output,
+            camera_config=config.camera,
             intrinsics=intrinsics,
             distortion=distortion,
-            geometry_model=config.camera.geometry_model,
             extrinsics=extrinsics,
             metrics=metrics,
         )
@@ -115,9 +115,9 @@ class NativePhysicsBackend(SensorBackend):
             request=request,
             artifacts=artifacts,
             enhanced_output=enhanced_output,
+            camera_config=config.camera,
             intrinsics=intrinsics,
             distortion=distortion,
-            geometry_model=config.camera.geometry_model,
             extrinsics=extrinsics,
             metrics=metrics,
         )
@@ -267,13 +267,13 @@ class NativePhysicsBackend(SensorBackend):
         request: SensorSimRequest,
         artifacts: dict[str, Path],
         enhanced_output: Path,
+        camera_config: CameraSensorConfig,
         intrinsics: CameraIntrinsics,
         distortion: BrownConradyDistortion,
-        geometry_model: str,
         extrinsics: CameraExtrinsics,
         metrics: dict[str, float],
     ) -> Path | None:
-        if not bool(request.options.get("camera_projection_enabled", True)):
+        if not camera_config.projection_enabled:
             return None
 
         point_cloud = artifacts.get("point_cloud_primary")
@@ -306,8 +306,8 @@ class NativePhysicsBackend(SensorBackend):
             points_xyz=camera_points,
             intrinsics=intrinsics,
             distortion=distortion,
-            geometry_model=geometry_model,
-            clamp_to_image=bool(request.options.get("camera_projection_clamp_to_image", True)),
+            geometry_model=camera_config.geometry_model,
+            clamp_to_image=camera_config.projection_clamp_to_image,
         )
 
         metrics["camera_projection_input_count"] = float(len(points_xyz))
@@ -315,10 +315,23 @@ class NativePhysicsBackend(SensorBackend):
         metrics["camera_extrinsics_auto_applied"] = (
             1.0 if extrinsics_meta.get("source") == "trajectory_auto" else 0.0
         )
+        metrics["camera_rolling_shutter_enabled"] = (
+            1.0 if camera_config.rolling_shutter.enabled else 0.0
+        )
+        metrics["camera_depth_output_count"] = (
+            float(len(projected)) if camera_config.sensor_type.upper() == "DEPTH" else 0.0
+        )
         preview_count = int(request.options.get("camera_projection_preview_count", 20))
+        preview_payload = self._camera_preview_payload(
+            projected=projected,
+            camera_config=camera_config,
+            intrinsics=intrinsics,
+            preview_count=preview_count,
+        )
         preview = {
             "input_point_cloud": str(point_cloud),
-            "geometry_model": geometry_model,
+            "sensor_type": camera_config.sensor_type,
+            "geometry_model": camera_config.geometry_model,
             "input_count": len(points_xyz),
             "output_count": len(projected),
             "reference_point_xyz": {
@@ -339,9 +352,12 @@ class NativePhysicsBackend(SensorBackend):
             },
             "camera_extrinsics_source": extrinsics_meta.get("source", "manual"),
             "camera_extrinsics_trajectory_pose": extrinsics_meta.get("trajectory_pose"),
-            "preview_points_uvz": [
-                {"u": u, "v": v, "z": z} for u, v, z in projected[:preview_count]
-            ],
+            "rolling_shutter": self._camera_rolling_shutter_payload(
+                camera_config=camera_config,
+                intrinsics=intrinsics,
+            ),
+            "depth_params": camera_config.depth_params.to_dict(),
+            **preview_payload,
         }
         output_path = enhanced_output / "camera_projection_preview.json"
         output_path.write_text(json.dumps(preview, indent=2), encoding="utf-8")
@@ -352,15 +368,15 @@ class NativePhysicsBackend(SensorBackend):
         request: SensorSimRequest,
         artifacts: dict[str, Path],
         enhanced_output: Path,
+        camera_config: CameraSensorConfig,
         intrinsics: CameraIntrinsics,
         distortion: BrownConradyDistortion,
-        geometry_model: str,
         extrinsics: CameraExtrinsics,
         metrics: dict[str, float],
     ) -> Path | None:
-        if not bool(request.options.get("camera_projection_enabled", True)):
+        if not camera_config.projection_enabled:
             return None
-        if not bool(request.options.get("camera_projection_trajectory_sweep_enabled", False)):
+        if not camera_config.trajectory_sweep_enabled:
             return None
 
         point_cloud = artifacts.get("point_cloud_primary")
@@ -396,7 +412,7 @@ class NativePhysicsBackend(SensorBackend):
 
         frame_count = int(request.options.get("camera_projection_trajectory_sweep_frames", 3))
         selected_poses = self._sample_trajectory_poses(poses=poses, frame_count=frame_count)
-        clamp_to_image = bool(request.options.get("camera_projection_clamp_to_image", True))
+        clamp_to_image = camera_config.projection_clamp_to_image
         preview_count = int(request.options.get("camera_projection_preview_count", 20))
         frames: list[dict[str, object]] = []
         total_output_count = 0
@@ -416,10 +432,16 @@ class NativePhysicsBackend(SensorBackend):
                 points_xyz=camera_points,
                 intrinsics=intrinsics,
                 distortion=distortion,
-                geometry_model=geometry_model,
+                geometry_model=camera_config.geometry_model,
                 clamp_to_image=clamp_to_image,
             )
             total_output_count += len(projected)
+            frame_preview_payload = self._camera_preview_payload(
+                projected=projected,
+                camera_config=camera_config,
+                intrinsics=intrinsics,
+                preview_count=preview_count,
+            )
             frames.append(
                 {
                     "pose_index": pose_index,
@@ -436,20 +458,35 @@ class NativePhysicsBackend(SensorBackend):
                         "pitch_deg": effective.pitch_deg,
                         "yaw_deg": effective.yaw_deg,
                     },
-                    "geometry_model": geometry_model,
+                    "sensor_type": camera_config.sensor_type,
+                    "geometry_model": camera_config.geometry_model,
+                    "rolling_shutter": self._camera_rolling_shutter_payload(
+                        camera_config=camera_config,
+                        intrinsics=intrinsics,
+                    ),
                     "output_count": len(projected),
-                    "preview_points_uvz": [
-                        {"u": u, "v": v, "z": z} for u, v, z in projected[:preview_count]
-                    ],
+                    **frame_preview_payload,
                 }
             )
 
         metrics["camera_projection_trajectory_sweep_frame_count"] = float(len(frames))
         metrics["camera_projection_trajectory_sweep_total_output_count"] = float(total_output_count)
+        metrics["camera_rolling_shutter_enabled"] = (
+            1.0 if camera_config.rolling_shutter.enabled else 0.0
+        )
+        metrics["camera_depth_trajectory_sweep_total_output_count"] = (
+            float(total_output_count) if camera_config.sensor_type.upper() == "DEPTH" else 0.0
+        )
         preview = {
             "input_point_cloud": str(point_cloud),
             "trajectory_path": str(trajectory_path),
-            "geometry_model": geometry_model,
+            "sensor_type": camera_config.sensor_type,
+            "geometry_model": camera_config.geometry_model,
+            "rolling_shutter": self._camera_rolling_shutter_payload(
+                camera_config=camera_config,
+                intrinsics=intrinsics,
+            ),
+            "depth_params": camera_config.depth_params.to_dict(),
             "input_count": len(points_xyz),
             "frame_count": len(frames),
             "reference_point_xyz": {
@@ -464,6 +501,152 @@ class NativePhysicsBackend(SensorBackend):
         output_path = enhanced_output / "camera_projection_trajectory_sweep.json"
         output_path.write_text(json.dumps(preview, indent=2), encoding="utf-8")
         return output_path
+
+    def _camera_preview_payload(
+        self,
+        *,
+        projected: list[tuple[float, float, float]],
+        camera_config: CameraSensorConfig,
+        intrinsics: CameraIntrinsics,
+        preview_count: int,
+    ) -> dict[str, object]:
+        preview_points = projected[:preview_count]
+        payload: dict[str, object] = {
+            "output_mode": camera_config.sensor_type,
+            "preview_points_uvz": [
+                {"u": u, "v": v, "z": z}
+                for u, v, z in preview_points
+            ],
+            "preview_depth_samples": [],
+        }
+        if camera_config.sensor_type.upper() == "DEPTH":
+            payload["preview_depth_samples"] = [
+                {
+                    "u": u,
+                    "v": v,
+                    "z_m": z,
+                    "depth_value": self._encode_camera_depth_value(
+                        depth_m=z,
+                        camera_config=camera_config,
+                    ),
+                    "depth_encoding": camera_config.depth_params.encoding_type,
+                }
+                for u, v, z in preview_points
+            ]
+        if camera_config.rolling_shutter.enabled:
+            payload["preview_readout_samples"] = [
+                self._camera_rolling_shutter_sample(
+                    u=u,
+                    v=v,
+                    camera_config=camera_config,
+                    intrinsics=intrinsics,
+                )
+                for u, v, _ in preview_points
+            ]
+        else:
+            payload["preview_readout_samples"] = []
+        return payload
+
+    def _encode_camera_depth_value(
+        self,
+        *,
+        depth_m: float,
+        camera_config: CameraSensorConfig,
+    ) -> float:
+        params = camera_config.depth_params
+        clamped = min(max(depth_m, params.min_m), params.max_m)
+        encoding = params.encoding_type.upper()
+        if encoding == "LOG":
+            base = max(params.log_base, 1.000001)
+            return log(max(clamped, max(params.min_m, 1e-6)), base)
+        return clamped
+
+    def _camera_rolling_shutter_payload(
+        self,
+        *,
+        camera_config: CameraSensorConfig,
+        intrinsics: CameraIntrinsics,
+    ) -> dict[str, object]:
+        config = camera_config.rolling_shutter
+        row_delay_s = max(config.row_delay_ns, 0.0) / 1_000_000_000.0
+        col_delay_s = max(config.col_delay_ns, 0.0) / 1_000_000_000.0
+        total_readout_s = (
+            row_delay_s * max(intrinsics.height - 1, 0)
+            + col_delay_s * max(intrinsics.width - 1, 0)
+        )
+        exposure_duration_s = total_readout_s / float(max(config.num_time_steps, 1))
+        return {
+            "enabled": config.enabled,
+            "row_delay_ns": config.row_delay_ns,
+            "col_delay_ns": config.col_delay_ns,
+            "row_readout_direction": config.row_readout_direction,
+            "col_readout_direction": config.col_readout_direction,
+            "num_time_steps": config.num_time_steps,
+            "num_exposure_samples_per_pixel": config.num_exposure_samples_per_pixel,
+            "total_readout_s": total_readout_s,
+            "exposure_duration_s": exposure_duration_s,
+        }
+
+    def _camera_rolling_shutter_sample(
+        self,
+        *,
+        u: float,
+        v: float,
+        camera_config: CameraSensorConfig,
+        intrinsics: CameraIntrinsics,
+    ) -> dict[str, object]:
+        config = camera_config.rolling_shutter
+        row_delay_s = max(config.row_delay_ns, 0.0) / 1_000_000_000.0
+        col_delay_s = max(config.col_delay_ns, 0.0) / 1_000_000_000.0
+        row_index = self._camera_readout_index(
+            coord=v,
+            size=intrinsics.height,
+            direction=config.row_readout_direction,
+        )
+        col_index = self._camera_readout_index(
+            coord=u,
+            size=intrinsics.width,
+            direction=config.col_readout_direction,
+        )
+        readout_offset_s = row_index * row_delay_s + col_index * col_delay_s
+        exposure_duration_s = (
+            row_delay_s * max(intrinsics.height - 1, 0)
+            + col_delay_s * max(intrinsics.width - 1, 0)
+        ) / float(max(config.num_time_steps, 1))
+        sample_count = max(config.num_exposure_samples_per_pixel, 1)
+        sample_times_s = [
+            readout_offset_s + exposure_duration_s * ((sample_idx + 0.5) / float(sample_count))
+            for sample_idx in range(sample_count)
+        ]
+        return {
+            "u": u,
+            "v": v,
+            "row_index": row_index,
+            "col_index": col_index,
+            "readout_offset_s": readout_offset_s,
+            "exposure_start_s": readout_offset_s,
+            "exposure_end_s": readout_offset_s + exposure_duration_s,
+            "sample_times_s": sample_times_s,
+        }
+
+    def _camera_readout_index(
+        self,
+        *,
+        coord: float,
+        size: int,
+        direction: str,
+    ) -> int:
+        if size <= 0:
+            return 0
+        index = int(round(coord))
+        if index < 0:
+            index = 0
+        if index >= size:
+            index = size - 1
+        normalized = direction.upper().strip()
+        if normalized in {"BOTTOM_TO_TOP", "RIGHT_TO_LEFT"}:
+            return (size - 1) - index
+        return index
 
     def _generate_lidar_noisy_pointcloud_if_available(
         self,

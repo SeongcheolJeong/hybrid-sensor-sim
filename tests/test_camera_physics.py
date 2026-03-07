@@ -175,6 +175,89 @@ EOF
             self.assertEqual(preview["geometry_model"], "pinhole")
             self.assertIn("camera_projection_output_count", result.metrics)
 
+    def test_hybrid_generates_depth_preview_with_rolling_shutter_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+1.0 0.0 10.0
+2.0 1.0 12.0
+-1.0 1.0 5.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": True,
+                    "camera_sensor_type": "DEPTH",
+                    "camera_depth_params": {
+                        "min": 1.0,
+                        "max": 50.0,
+                        "type": "LOG",
+                        "log_base": 10.0,
+                    },
+                    "camera_rolling_shutter": {
+                        "enabled": True,
+                        "row_delay_ns": 1000,
+                        "col_delay_ns": 500,
+                        "num_time_steps": 10,
+                        "num_exposure_samples_per_pixel": 3,
+                    },
+                    "camera_intrinsics": {
+                        "fx": 1000.0,
+                        "fy": 1000.0,
+                        "cx": 960.0,
+                        "cy": 540.0,
+                        "width": 1920,
+                        "height": 1080,
+                    },
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            preview = json.loads(
+                result.artifacts["camera_projection_preview"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(preview["sensor_type"], "DEPTH")
+            self.assertEqual(preview["output_mode"], "DEPTH")
+            self.assertTrue(preview["rolling_shutter"]["enabled"])
+            self.assertGreater(preview["rolling_shutter"]["total_readout_s"], 0.0)
+            self.assertGreater(len(preview["preview_depth_samples"]), 0)
+            self.assertGreater(len(preview["preview_readout_samples"]), 0)
+            self.assertEqual(preview["preview_depth_samples"][0]["depth_encoding"], "LOG")
+            self.assertIn("camera_depth_output_count", result.metrics)
+            self.assertEqual(result.metrics.get("camera_rolling_shutter_enabled"), 1.0)
+
     def test_projection_reference_mode_first_point(self) -> None:
         backend = NativePhysicsBackend()
         request = SensorSimRequest(
