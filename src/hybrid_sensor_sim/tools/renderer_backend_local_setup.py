@@ -23,6 +23,20 @@ _DEFAULT_BACKEND_MAPS = {
 _DEFAULT_HELIOS_DOCKER_IMAGE = "heliosplusplus:cli"
 _DEFAULT_HELIOS_DOCKER_BINARY = "/home/jovyan/helios/build/helios++"
 _DEFAULT_HELIOS_DOCKER_MOUNT_POINT = "/workspace"
+_AWSIM_EXECUTABLE_NAMES = {
+    "awsim",
+    "awsim.x86_64",
+    "awsim-demo.x86_64",
+    "awsim-demo-lightweight.x86_64",
+}
+_CARLA_EXECUTABLE_NAMES = {
+    "carlaue4.sh",
+    "carlaue4",
+    "carlaue5.sh",
+    "carlaue5",
+    "carlaunreal.sh",
+    "carlaunreal.exe",
+}
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -153,12 +167,16 @@ def _candidate_paths_for_repo(repo_root: Path) -> dict[str, list[Path]]:
         "awsim": [
             repo_root / "third_party/awsim/AWSIM.app/Contents/MacOS/AWSIM",
             repo_root / "third_party/awsim/AWSIM.x86_64",
+            repo_root / "third_party/awsim/AWSIM-Demo.x86_64",
+            repo_root / "third_party/awsim/AWSIM-Demo-Lightweight.x86_64",
         ],
         "carla": [
             repo_root / "third_party/carla/CarlaUE4.sh",
             repo_root / "third_party/carla/CarlaUE4.app/Contents/MacOS/CarlaUE4",
             repo_root / "third_party/carla/CarlaUE5.sh",
             repo_root / "third_party/carla/CarlaUE5.app/Contents/MacOS/CarlaUE5",
+            repo_root / "third_party/carla/CarlaUnreal.sh",
+            repo_root / "third_party/carla/CarlaUnreal.exe",
         ],
     }
 
@@ -193,6 +211,36 @@ def _scan_named_candidates(
     for root in search_roots:
         for path in _iter_with_depth(root, max_depth=max_depth):
             if path.is_file() and path.name.lower() in lowered:
+                matches.append(path.resolve())
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for path in matches:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(path)
+    return unique
+
+
+def _scan_archive_candidates(
+    *,
+    search_roots: list[Path],
+    tokens: set[str],
+    suffixes: tuple[str, ...] = (".zip", ".tar.gz", ".tgz"),
+    max_depth: int = 4,
+) -> list[Path]:
+    matches: list[Path] = []
+    lowered_tokens = {token.lower() for token in tokens}
+    lowered_suffixes = tuple(suffix.lower() for suffix in suffixes)
+    for root in search_roots:
+        for path in _iter_with_depth(root, max_depth=max_depth):
+            if not path.is_file():
+                continue
+            name = path.name.lower()
+            if not name.endswith(lowered_suffixes):
+                continue
+            if any(token in name for token in lowered_tokens):
                 matches.append(path.resolve())
     unique: list[Path] = []
     seen: set[str] = set()
@@ -406,6 +454,7 @@ def _host_platform_summary() -> dict[str, str]:
 def _build_acquisition_hints(
     *,
     repo_root: Path,
+    search_roots: list[Path],
     backends: dict[str, Any],
     runtimes: dict[str, Any],
     readiness: dict[str, Any],
@@ -416,6 +465,21 @@ def _build_acquisition_hints(
     awsim = backends["awsim"]
     carla = backends["carla"]
     helios_docker = runtimes["helios_docker"]
+    awsim_download_candidates = [
+        str(path)
+        for path in _scan_archive_candidates(
+            search_roots=search_roots,
+            tokens={"awsim-demo", "awsim-demo-lightweight", "awsim-demo-openscenario"},
+        )
+    ]
+    carla_download_candidates = [
+        str(path)
+        for path in _scan_archive_candidates(
+            search_roots=search_roots,
+            tokens={"carla_ue5", "carla-0.", "carla_0.", "carla"},
+            suffixes=(".tar.gz", ".tgz", ".zip"),
+        )
+    ]
 
     helios_hints = {
         "status": (
@@ -492,6 +556,7 @@ def _build_acquisition_hints(
                 Path("/Users/seongcheoljeong/Documents/Autonomy-E2E/_reference_repos/awsim/docs/GettingStarted/QuickStartDemo/index.md")
             ),
         ],
+        "local_download_candidates": awsim_download_candidates,
     }
 
     carla_hints = {
@@ -532,6 +597,7 @@ def _build_acquisition_hints(
                 Path("/Users/seongcheoljeong/Documents/Autonomy-E2E/_reference_repos/carla/Docs/build_docker.md")
             ),
         ],
+        "local_download_candidates": carla_download_candidates,
     }
 
     return {
@@ -589,7 +655,7 @@ def build_renderer_backend_local_setup(
         search_roots=all_search_roots,
         env_var="AWSIM_BIN",
         repo_candidates=repo_candidates["awsim"],
-        scanned_names={"awsim", "awsim.x86_64", "AWSIM.x86_64", "AWSIM"},
+        scanned_names=_AWSIM_EXECUTABLE_NAMES,
         reference_roots=reference_roots["awsim"],
     )
     carla = _discover_backend_candidates(
@@ -597,7 +663,7 @@ def build_renderer_backend_local_setup(
         search_roots=all_search_roots,
         env_var="CARLA_BIN",
         repo_candidates=repo_candidates["carla"],
-        scanned_names={"CarlaUE4.sh", "CarlaUE4", "CarlaUE5.sh", "CarlaUE5"},
+        scanned_names=_CARLA_EXECUTABLE_NAMES,
         reference_roots=reference_roots["carla"],
     )
 
@@ -718,6 +784,7 @@ def build_renderer_backend_local_setup(
         probes["helios_docker_demo"] = probe_summary
     acquisition_hints = _build_acquisition_hints(
         repo_root=repo_root,
+        search_roots=all_search_roots,
         backends={
             "helios": helios,
             "awsim": awsim,

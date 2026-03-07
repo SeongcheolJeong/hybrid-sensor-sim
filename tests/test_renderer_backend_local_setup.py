@@ -175,6 +175,34 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertEqual(summary["selection"]["CARLA_RENDERER_MAP"], "EnvTown05")
             self.assertEqual(summary["acquisition_hints"]["helios"]["status"], "docker_ready")
 
+    def test_build_renderer_backend_local_setup_discovers_packaged_runtime_names(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            repo_root.mkdir(parents=True, exist_ok=True)
+            search_root = root / "search"
+            search_root.mkdir(parents=True, exist_ok=True)
+            awsim_bin = search_root / "AWSIM-Demo.x86_64"
+            awsim_bin.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            awsim_bin.chmod(0o755)
+            carla_bin = search_root / "CarlaUnreal.sh"
+            carla_bin.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            carla_bin.chmod(0o755)
+
+            with patch(
+                "hybrid_sensor_sim.tools.renderer_backend_local_setup._inspect_helios_docker_runtime",
+                return_value=_ready_docker_runtime(),
+            ):
+                summary = build_renderer_backend_local_setup(
+                    repo_root=repo_root,
+                    search_roots=[search_root],
+                    output_dir=root / "artifacts",
+                    include_default_search_roots=False,
+                )
+
+            self.assertEqual(summary["selection"]["AWSIM_BIN"], str(awsim_bin.resolve()))
+            self.assertEqual(summary["selection"]["CARLA_BIN"], str(carla_bin.resolve()))
+
     def test_build_renderer_backend_local_setup_uses_docker_when_binary_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -205,6 +233,38 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertTrue(summary["readiness"]["awsim_smoke_ready"])
             self.assertEqual(summary["commands"]["awsim_smoke"], summary["commands"]["awsim_smoke_docker"])
             self.assertEqual(summary["acquisition_hints"]["helios"]["recommended_runtime"], "docker")
+
+    def test_build_renderer_backend_local_setup_detects_local_download_archives(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            repo_root.mkdir(parents=True, exist_ok=True)
+            downloads_root = root / "Downloads"
+            downloads_root.mkdir(parents=True, exist_ok=True)
+            awsim_archive = downloads_root / "AWSIM-Demo.zip"
+            awsim_archive.write_text("archive", encoding="utf-8")
+            carla_archive = downloads_root / "CARLA_UE5_Latest.tar.gz"
+            carla_archive.write_text("archive", encoding="utf-8")
+
+            with patch(
+                "hybrid_sensor_sim.tools.renderer_backend_local_setup._inspect_helios_docker_runtime",
+                return_value=_unavailable_docker_runtime(),
+            ):
+                summary = build_renderer_backend_local_setup(
+                    repo_root=repo_root,
+                    search_roots=[downloads_root],
+                    output_dir=root / "artifacts",
+                    include_default_search_roots=False,
+                )
+
+            self.assertIn(
+                str(awsim_archive.resolve()),
+                summary["acquisition_hints"]["awsim"]["local_download_candidates"],
+            )
+            self.assertIn(
+                str(carla_archive.resolve()),
+                summary["acquisition_hints"]["carla"]["local_download_candidates"],
+            )
 
     def test_build_renderer_backend_local_setup_writes_probe_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
