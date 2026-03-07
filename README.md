@@ -329,6 +329,15 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - tracking params:
     - `radar_tracking_params.tracks`
     - `radar_tracking_params.max_tracks`
+  - track mode combines detections with the same `ground_truth_actor_id`:
+    - `rcs_dbsm` is an incoherent sum across grouped detections
+    - `range_m`, `azimuth_deg`, `elevation_deg` are the geometric center of grouped detections
+    - tracks expose:
+      - `source_target_ids`
+      - `source_target_count`
+      - `source_measurement_source_counts`
+      - `source_multipath_target_count`
+      - `source_multipath_path_type_counts`
   - fidelity params:
     - `radar_fidelity.level`
     - `radar_fidelity.multipath`

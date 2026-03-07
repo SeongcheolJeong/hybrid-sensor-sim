@@ -257,7 +257,11 @@ Primary code references:
     - `minimum_snr_db`
     - `probability_false_alarm`
   - global/per-region accuracy surface
-  - optional track output mode
+  - track output mode:
+    - same-actor detection grouping
+    - incoherent RCS sum
+    - geometric-center range/angle track state
+    - multipath source summary on tracks
   - path-type-aware multipath approximation:
     - `fidelity.multipath`
     - `fidelity.multipath_bounces`

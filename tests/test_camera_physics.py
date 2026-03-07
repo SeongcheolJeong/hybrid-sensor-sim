@@ -998,6 +998,191 @@ EOF
             self.assertGreater(targets[0]["detection_probability"], targets[-1]["detection_probability"])
             self.assertIn("confidence", preview["tracks"][0])
             self.assertIn("source_target_id", preview["tracks"][0])
+            self.assertIn("source_target_ids", preview["tracks"][0])
+
+    def test_radar_tracks_merge_same_actor_and_sum_rcs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+20.0 0.0 0.0
+20.0 2.0 0.0
+30.0 0.0 0.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "lidar_postprocess_enabled": False,
+                    "radar_postprocess_enabled": True,
+                    "radar_clutter": "none",
+                    "radar_false_target_count": 0,
+                    "radar_max_targets": 8,
+                    "radar_point_rcs_dbsm": [10.0, 10.0, 5.0],
+                    "radar_point_actor_ids": [101, 101, 202],
+                    "radar_tracking_params": {
+                        "tracks": True,
+                        "max_tracks": 4,
+                    },
+                    "radar_detector_params": {
+                        "minimum_snr_db": -30.0,
+                        "noise_variance_dbw": -95.0,
+                        "noise_performance": {
+                            "target_detectability": {
+                                "probability_detection": 0.95,
+                                "target": {
+                                    "range": 120.0,
+                                    "radar_cross_section": 10.0,
+                                },
+                            },
+                        },
+                    },
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+            self.assertTrue(result.success)
+
+            preview = json.loads(
+                result.artifacts["radar_targets_preview"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(preview["track_count"], 2)
+            merged_track = next(
+                track for track in preview["tracks"] if track["ground_truth_actor_id"] == "101"
+            )
+            self.assertEqual(preview["tracks"][0]["ground_truth_actor_id"], "101")
+            self.assertEqual(merged_track["source_target_count"], 2)
+            self.assertEqual(len(merged_track["source_target_ids"]), 2)
+            self.assertEqual(
+                merged_track["source_measurement_source_counts"]["DETECTION"],
+                2,
+            )
+            self.assertEqual(merged_track["source_multipath_target_count"], 0)
+            self.assertAlmostEqual(merged_track["rcs_dbsm"], 13.0103, places=3)
+            self.assertAlmostEqual(merged_track["range_m"], 20.02498, places=3)
+            self.assertAlmostEqual(merged_track["azimuth_deg"], 2.8624, places=3)
+            self.assertGreater(merged_track["confidence"], 0.99)
+
+    def test_radar_tracks_preserve_multipath_source_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+35.0 0.0 0.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": False,
+                    "lidar_postprocess_enabled": False,
+                    "radar_postprocess_enabled": True,
+                    "radar_clutter": "none",
+                    "radar_false_target_count": 0,
+                    "radar_max_targets": 12,
+                    "radar_point_rcs_dbsm": [16.0],
+                    "radar_point_actor_ids": [303],
+                    "radar_tracking_params": {
+                        "tracks": True,
+                        "max_tracks": 4,
+                    },
+                    "radar_detector_params": {
+                        "minimum_snr_db": -40.0,
+                        "noise_variance_dbw": -95.0,
+                        "noise_performance": {
+                            "target_detectability": {
+                                "probability_detection": 0.99,
+                                "target": {
+                                    "range": 200.0,
+                                    "radar_cross_section": 10.0,
+                                },
+                            },
+                        },
+                    },
+                    "radar_fidelity": {
+                        "multipath": True,
+                        "multipath_bounces": 2,
+                        "coherence_factor": 0.15,
+                    },
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+            self.assertTrue(result.success)
+
+            preview = json.loads(
+                result.artifacts["radar_targets_preview"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(preview["track_count"], 1)
+            track = preview["tracks"][0]
+            self.assertEqual(track["ground_truth_actor_id"], "303")
+            self.assertGreater(track["source_target_count"], 1)
+            self.assertEqual(track["source_measurement_source_counts"]["DETECTION"], 1)
+            self.assertGreater(track["source_measurement_source_counts"]["MULTIPATH"], 0)
+            self.assertEqual(
+                track["source_multipath_target_count"],
+                track["source_measurement_source_counts"]["MULTIPATH"],
+            )
+            self.assertGreater(track["source_multipath_path_type_counts"]["FORWARD"], 0)
+            self.assertGreater(track["source_multipath_path_type_counts"]["REVERSE"], 0)
+            self.assertGreater(track["source_multipath_path_type_counts"]["RETROREFLECTION"], 0)
 
     def test_radar_preview_reports_multipath_and_micro_doppler(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

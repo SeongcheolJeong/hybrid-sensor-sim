@@ -6473,6 +6473,30 @@ class NativePhysicsBackend(SensorBackend):
             return value
         return round(value / step) * step
 
+    def _radar_rcs_dbsm_to_linear(self, rcs_dbsm: object) -> float:
+        return 10.0 ** (float(rcs_dbsm) / 10.0)
+
+    def _radar_rcs_linear_to_dbsm(self, rcs_linear_m2: float) -> float:
+        return 10.0 * log10(max(float(rcs_linear_m2), 1e-12))
+
+    def _radar_track_group_key(self, detection: dict[str, object]) -> str:
+        actor_id = detection.get("ground_truth_actor_id")
+        if actor_id is not None:
+            return f"actor:{actor_id}"
+        return f"detection:{detection.get('id')}"
+
+    def _radar_measurement_source_counts(
+        self,
+        detections: list[dict[str, object]],
+    ) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for detection in detections:
+            source = str(detection.get("measurement_source", "")).upper().strip()
+            if not source:
+                continue
+            counts[source] = counts.get(source, 0) + 1
+        return counts
+
     def _build_radar_tracks(
         self,
         *,
@@ -6482,29 +6506,92 @@ class NativePhysicsBackend(SensorBackend):
         if not bool(radar_config.tracking.output_tracks):
             return []
         limit = int(radar_config.tracking.max_tracks)
-        if limit <= 0:
-            limit = len(detections)
-        tracks: list[dict[str, object]] = []
+        grouped_detections: dict[str, list[dict[str, object]]] = {}
         for detection in detections:
             if bool(detection.get("is_false_alarm")):
                 continue
-            if len(tracks) >= limit:
-                break
-            track_id = len(tracks)
-            detection["track_id"] = track_id
-            tracks.append(
-                {
-                    "id": track_id,
-                    "source_target_id": detection.get("id"),
-                    "range_m": detection.get("range_m"),
-                    "azimuth_deg": detection.get("azimuth_deg"),
-                    "elevation_deg": detection.get("elevation_deg"),
-                    "radial_velocity_mps": detection.get("radial_velocity_mps"),
-                    "rcs_dbsm": detection.get("rcs_dbsm"),
-                    "confidence": detection.get("detection_probability"),
-                    "age_s": 1.0 / max(float(radar_config.system.frame_rate_hz), 1e-6),
-                }
+            group_key = self._radar_track_group_key(detection)
+            grouped_detections.setdefault(group_key, []).append(detection)
+        aggregated_tracks: list[tuple[float, float, dict[str, object], list[dict[str, object]]]] = []
+        for group_key, group in grouped_detections.items():
+            if not group:
+                continue
+            cartesian_points = [
+                self._radar_cartesian_from_spherical(
+                    range_m=float(detection.get("range_m", 0.0)),
+                    azimuth_deg=float(detection.get("azimuth_deg", 0.0)),
+                    elevation_deg=float(detection.get("elevation_deg", 0.0)),
+                )
+                for detection in group
+            ]
+            center_x = sum(point[0] for point in cartesian_points) / len(cartesian_points)
+            center_y = sum(point[1] for point in cartesian_points) / len(cartesian_points)
+            center_z = sum(point[2] for point in cartesian_points) / len(cartesian_points)
+            center_range_m = sqrt(center_x * center_x + center_y * center_y + center_z * center_z)
+            horizontal_norm = sqrt(center_x * center_x + center_y * center_y)
+            source_target_ids = [
+                int(detection["id"])
+                for detection in group
+                if detection.get("id") is not None
+            ]
+            linear_signal_weights = [
+                max(10.0 ** (float(detection.get("signal_power_dbw", -120.0)) / 10.0), 1e-12)
+                for detection in group
+            ]
+            weight_sum = sum(linear_signal_weights)
+            combined_rcs_linear_m2 = sum(
+                self._radar_rcs_dbsm_to_linear(detection.get("rcs_dbsm", 0.0))
+                for detection in group
             )
+            confidence_miss_probability = 1.0
+            for detection in group:
+                confidence_miss_probability *= 1.0 - min(
+                    max(float(detection.get("detection_probability", 0.0)), 0.0),
+                    1.0,
+                )
+            measurement_source_counts = self._radar_measurement_source_counts(group)
+            multipath_path_type_counts = self._radar_multipath_path_type_counts(group)
+            aggregated_tracks.append(
+                (
+                    -combined_rcs_linear_m2,
+                    center_range_m,
+                    {
+                        "id": -1,
+                        "group_key": group_key,
+                        "source_target_id": source_target_ids[0] if source_target_ids else None,
+                        "source_target_ids": source_target_ids,
+                        "source_target_count": len(group),
+                        "source_measurement_source_counts": measurement_source_counts,
+                        "source_multipath_target_count": measurement_source_counts.get("MULTIPATH", 0),
+                        "source_multipath_path_type_counts": multipath_path_type_counts,
+                        "range_m": center_range_m,
+                        "azimuth_deg": atan2(center_y, center_x) * 180.0 / pi,
+                        "elevation_deg": atan2(center_z, max(horizontal_norm, 1e-9)) * 180.0 / pi,
+                        "radial_velocity_mps": sum(
+                            float(detection.get("radial_velocity_mps", 0.0)) * weight
+                            for detection, weight in zip(group, linear_signal_weights)
+                        ) / max(weight_sum, 1e-12),
+                        "rcs_dbsm": self._radar_rcs_linear_to_dbsm(combined_rcs_linear_m2),
+                        "rcs_linear_m2": combined_rcs_linear_m2,
+                        "confidence": 1.0 - confidence_miss_probability,
+                        "ground_truth_actor_id": group[0].get("ground_truth_actor_id"),
+                        "ground_truth_semantic_class": group[0].get("ground_truth_semantic_class"),
+                        "ground_truth_semantic_class_name": group[0].get("ground_truth_semantic_class_name"),
+                        "measurement_source": "TRACK",
+                        "age_s": 1.0 / max(float(radar_config.system.frame_rate_hz), 1e-6),
+                    },
+                    group,
+                )
+            )
+        aggregated_tracks.sort(key=lambda item: (item[0], item[1]))
+        if limit <= 0:
+            limit = len(aggregated_tracks)
+        tracks: list[dict[str, object]] = []
+        for track_id, (_, _, track, group) in enumerate(aggregated_tracks[:limit]):
+            track["id"] = track_id
+            for detection in group:
+                detection["track_id"] = track_id
+            tracks.append(track)
         return tracks
 
     def _radar_extrinsics_from_options(self, request: SensorSimRequest) -> CameraExtrinsics:
