@@ -232,6 +232,7 @@ Primary code references:
   - backend sensor bundle summary generation
   - backend output spec generation and expected-output inspection
   - sensor-specific expected export paths derived from runtime ingestion data
+  - backend-namespaced sensor export candidate paths and sensor output summary generation
   - backend run manifest generation
   - renderer pipeline summary generation from plan/run/runner artifacts
   - backend runner request and direct command generation

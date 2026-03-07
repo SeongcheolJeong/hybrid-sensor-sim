@@ -207,8 +207,27 @@ def _sensor_export_filename(data_format: str) -> str:
     return mapping.get(data_format, f"{_sanitize_artifact_key(data_format)}.dat")
 
 
+def _sensor_export_relative_paths(
+    *,
+    backend: str,
+    sensor_id: str,
+    data_format: str,
+) -> tuple[str, list[str]]:
+    export_filename = _sensor_export_filename(data_format)
+    canonical = f"sensor_exports/{sensor_id}/{export_filename}"
+    candidates = [canonical]
+    backend_namespaced = f"sensor_exports/{backend}/{sensor_id}/{export_filename}"
+    if backend_namespaced not in candidates:
+        candidates.append(backend_namespaced)
+    sensor_prefixed = f"sensor_exports/{sensor_id}/{sensor_id}_{export_filename}"
+    if sensor_prefixed not in candidates:
+        candidates.append(sensor_prefixed)
+    return canonical, candidates
+
+
 def _build_sensor_expected_output_entries(
     *,
+    backend: str,
     output_root: Path,
     ingestion_profile_path: Path | None,
 ) -> list[dict[str, Any]]:
@@ -237,16 +256,27 @@ def _build_sensor_expected_output_entries(
         if artifact_key in seen_keys:
             continue
         seen_keys.add(artifact_key)
-        export_filename = _sensor_export_filename(data_format)
+        sensor_name = str(entry.get("sensor_name", "")).strip() or sensor_id
+        relative_path, candidate_relative_paths = _sensor_export_relative_paths(
+            backend=backend,
+            sensor_id=sensor_id,
+            data_format=data_format,
+        )
         expected_outputs.append(
             {
                 "artifact_key": artifact_key,
+                "backend": backend,
+                "sensor_name": sensor_name,
                 "sensor_id": sensor_id,
                 "data_format": data_format,
                 "kind": "file",
                 "required": False,
                 "description": f"Expected exported payload for sensor {sensor_id} ({data_format}).",
-                "path": str((output_root / "sensor_exports" / sensor_id / export_filename).resolve()),
+                "relative_path": relative_path,
+                "path": str((output_root / relative_path).resolve()),
+                "path_candidates": [
+                    str((output_root / candidate).resolve()) for candidate in candidate_relative_paths
+                ],
             }
         )
     return expected_outputs
@@ -281,16 +311,42 @@ def _build_backend_output_spec(
         )
     expected_outputs.extend(
         _build_sensor_expected_output_entries(
+            backend=backend,
             output_root=output_root,
             ingestion_profile_path=ingestion_profile_path,
         )
     )
+    expected_outputs_by_sensor: dict[str, list[dict[str, Any]]] = {}
+    for entry in expected_outputs:
+        sensor_id = str(entry.get("sensor_id", "")).strip()
+        if not sensor_id:
+            continue
+        expected_outputs_by_sensor.setdefault(sensor_id, []).append(
+            {
+                "artifact_key": str(entry.get("artifact_key", "")).strip(),
+                "sensor_name": str(entry.get("sensor_name", "")).strip() or sensor_id,
+                "data_format": str(entry.get("data_format", "")).strip(),
+                "relative_path": str(entry.get("relative_path", "")).strip(),
+                "path_candidates": list(entry.get("path_candidates", []))
+                if isinstance(entry.get("path_candidates"), list)
+                else [],
+            }
+        )
 
     spec_payload = {
         "backend": backend,
         "output_root": str(output_root),
         "expected_output_count": len(expected_outputs),
         "expected_outputs": expected_outputs,
+        "expected_sensor_output_count": len(expected_outputs_by_sensor),
+        "expected_outputs_by_sensor": [
+            {
+                "sensor_id": sensor_id,
+                "output_count": len(outputs),
+                "outputs": outputs,
+            }
+            for sensor_id, outputs in sorted(expected_outputs_by_sensor.items())
+        ],
     }
     spec_path = runtime_dir / "backend_output_spec.json"
     spec_path.write_text(json.dumps(spec_payload, indent=2), encoding="utf-8")
@@ -423,6 +479,7 @@ def _write_execution_manifest(
     expected_outputs: list[dict[str, Any]] | None,
     found_expected_outputs: int = 0,
     missing_expected_outputs: int = 0,
+    sensor_output_summary_path: Path | None,
     stdout_path: Path | None,
     stderr_path: Path | None,
 ) -> None:
@@ -441,6 +498,9 @@ def _write_execution_manifest(
         },
         "expected_outputs": expected_outputs if isinstance(expected_outputs, list) else [],
         "artifacts": {
+            "backend_sensor_output_summary": (
+                str(sensor_output_summary_path) if sensor_output_summary_path else None
+            ),
             "backend_runner_stdout": str(stdout_path) if stdout_path else None,
             "backend_runner_stderr": str(stderr_path) if stderr_path else None,
         },
@@ -466,19 +526,45 @@ def _normalize_expected_outputs(raw: Any) -> list[dict[str, Any]]:
                 "kind": str(entry.get("kind", "file")).strip() or "file",
                 "required": bool(entry.get("required", False)),
                 "description": str(entry.get("description", "")).strip(),
+                "backend": str(entry.get("backend", "")).strip(),
+                "sensor_name": str(entry.get("sensor_name", "")).strip(),
+                "sensor_id": str(entry.get("sensor_id", "")).strip(),
+                "data_format": str(entry.get("data_format", "")).strip(),
+                "relative_path": str(entry.get("relative_path", "")).strip(),
+                "path_candidates": [
+                    str(item).strip()
+                    for item in entry.get("path_candidates", [])
+                    if str(item).strip()
+                ]
+                if isinstance(entry.get("path_candidates"), list)
+                else [],
             }
         )
     return outputs
 
 
-def _inspect_expected_outputs(expected_outputs: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Path], int, int]:
+def _inspect_expected_outputs(
+    expected_outputs: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], dict[str, Path], int, int]:
     inspected: list[dict[str, Any]] = []
     artifacts: dict[str, Path] = {}
     found_count = 0
     missing_count = 0
     for entry in expected_outputs:
-        path = Path(str(entry.get("path", ""))).expanduser()
-        exists = path.exists()
+        candidate_values = [str(entry.get("path", "")).strip()]
+        raw_candidates = entry.get("path_candidates")
+        if isinstance(raw_candidates, list):
+            candidate_values.extend(str(item).strip() for item in raw_candidates)
+        candidate_paths: list[Path] = []
+        seen_candidates: set[str] = set()
+        for value in candidate_values:
+            if not value or value in seen_candidates:
+                continue
+            seen_candidates.add(value)
+            candidate_paths.append(Path(value).expanduser())
+        resolved_path = next((candidate for candidate in candidate_paths if candidate.exists()), None)
+        path = resolved_path or (candidate_paths[0] if candidate_paths else Path(""))
+        exists = resolved_path is not None
         if exists:
             found_count += 1
         else:
@@ -487,6 +573,8 @@ def _inspect_expected_outputs(expected_outputs: list[dict[str, Any]]) -> tuple[l
             **entry,
             "exists": exists,
             "is_dir": path.is_dir() if exists else False,
+            "resolved_path": str(path) if exists else None,
+            "inspected_paths": [str(candidate) for candidate in candidate_paths],
         }
         if exists and path.is_file():
             record["size_bytes"] = path.stat().st_size
@@ -494,6 +582,73 @@ def _inspect_expected_outputs(expected_outputs: list[dict[str, Any]]) -> tuple[l
         if exists:
             artifacts[str(entry.get("artifact_key"))] = path
     return inspected, artifacts, found_count, missing_count
+
+
+def _build_sensor_output_summary(
+    *,
+    expected_outputs: list[dict[str, Any]],
+    output_dir: Path,
+) -> tuple[Path | None, dict[str, Path]]:
+    sensor_entries = [
+        entry
+        for entry in expected_outputs
+        if str(entry.get("sensor_id", "")).strip()
+    ]
+    if not sensor_entries:
+        return None, {}
+
+    sensors: dict[str, dict[str, Any]] = {}
+    found_sensor_count = 0
+    missing_sensor_count = 0
+    for entry in sensor_entries:
+        sensor_id = str(entry.get("sensor_id", "")).strip()
+        if not sensor_id:
+            continue
+        sensor_summary = sensors.setdefault(
+            sensor_id,
+            {
+                "sensor_id": sensor_id,
+                "sensor_name": str(entry.get("sensor_name", "")).strip() or sensor_id,
+                "backend": str(entry.get("backend", "")).strip(),
+                "available": False,
+                "output_count": 0,
+                "found_output_count": 0,
+                "missing_output_count": 0,
+                "outputs": [],
+            },
+        )
+        exists = bool(entry.get("exists", False))
+        sensor_summary["output_count"] += 1
+        if exists:
+            sensor_summary["found_output_count"] += 1
+            sensor_summary["available"] = True
+        else:
+            sensor_summary["missing_output_count"] += 1
+        sensor_summary["outputs"].append(
+            {
+                "artifact_key": str(entry.get("artifact_key", "")).strip(),
+                "data_format": str(entry.get("data_format", "")).strip(),
+                "relative_path": str(entry.get("relative_path", "")).strip(),
+                "resolved_path": str(entry.get("resolved_path", "")).strip() or None,
+                "exists": exists,
+            }
+        )
+
+    for sensor_summary in sensors.values():
+        if bool(sensor_summary.get("available")):
+            found_sensor_count += 1
+        else:
+            missing_sensor_count += 1
+
+    summary_payload = {
+        "sensor_count": len(sensors),
+        "found_sensor_count": found_sensor_count,
+        "missing_sensor_count": missing_sensor_count,
+        "sensors": [sensors[key] for key in sorted(sensors)],
+    }
+    summary_path = output_dir / "backend_sensor_output_summary.json"
+    summary_path.write_text(json.dumps(summary_payload, indent=2), encoding="utf-8")
+    return summary_path, {"backend_sensor_output_summary": summary_path}
 
 
 def execute_backend_runner_request(
@@ -531,6 +686,7 @@ def execute_backend_runner_request(
             expected_outputs=None,
             found_expected_outputs=0,
             missing_expected_outputs=0,
+            sensor_output_summary_path=None,
             stdout_path=None,
             stderr_path=stderr_path,
         )
@@ -552,6 +708,7 @@ def execute_backend_runner_request(
             expected_outputs=None,
             found_expected_outputs=0,
             missing_expected_outputs=0,
+            sensor_output_summary_path=None,
             stdout_path=None,
             stderr_path=stderr_path,
         )
@@ -574,6 +731,7 @@ def execute_backend_runner_request(
             expected_outputs=None,
             found_expected_outputs=0,
             missing_expected_outputs=0,
+            sensor_output_summary_path=None,
             stdout_path=None,
             stderr_path=stderr_path,
         )
@@ -597,6 +755,7 @@ def execute_backend_runner_request(
             expected_outputs=None,
             found_expected_outputs=0,
             missing_expected_outputs=0,
+            sensor_output_summary_path=None,
             stdout_path=None,
             stderr_path=stderr_path,
         )
@@ -646,6 +805,7 @@ def execute_backend_runner_request(
             expected_outputs=expected_outputs,
             found_expected_outputs=0,
             missing_expected_outputs=len(expected_outputs),
+            sensor_output_summary_path=None,
             stdout_path=None,
             stderr_path=stderr_path,
         )
@@ -662,6 +822,11 @@ def execute_backend_runner_request(
         expected_outputs
     )
     artifacts.update(discovered_artifacts)
+    sensor_output_summary_path, sensor_output_summary_artifacts = _build_sensor_output_summary(
+        expected_outputs=inspected_outputs,
+        output_dir=runner_output_dir,
+    )
+    artifacts.update(sensor_output_summary_artifacts)
     success = proc.returncode == 0
     status = "EXECUTION_SUCCEEDED" if success else "EXECUTION_FAILED"
     message = (
@@ -679,6 +844,7 @@ def execute_backend_runner_request(
         expected_outputs=inspected_outputs,
         found_expected_outputs=found_count,
         missing_expected_outputs=missing_count,
+        sensor_output_summary_path=sensor_output_summary_path,
         stdout_path=stdout_path,
         stderr_path=stderr_path,
     )

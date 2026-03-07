@@ -775,7 +775,8 @@ for entry in payload.get("expected_outputs", []):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text('{"backend":"awsim"}', encoding="utf-8")
     if entry.get("artifact_key") == "sensor_output_camera_front":
-        target = pathlib.Path(entry["path"])
+        candidates = entry.get("path_candidates", [])
+        target = pathlib.Path(candidates[1] if len(candidates) > 1 else entry["path"])
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text('{"sensor":"camera_front"}', encoding="utf-8")
 PY
@@ -827,6 +828,7 @@ printf "%s\\n" "$@"
             self.assertIn("awsim_runtime_state_json", result.artifacts)
             self.assertIn("sensor_output_camera_front", result.artifacts)
             self.assertIn("renderer_pipeline_summary", result.artifacts)
+            self.assertIn("backend_sensor_output_summary", result.artifacts)
             self.assertEqual(result.metrics.get("renderer_execute_via_runner_requested"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_runner_execution_used"), 1.0)
             self.assertEqual(result.metrics.get("renderer_backend_execution_wrapper_used"), 0.0)
@@ -851,6 +853,9 @@ printf "%s\\n" "$@"
                 result.artifacts["backend_runner_execution_manifest"].read_text(
                     encoding="utf-8"
                 )
+            )
+            sensor_output_summary = json.loads(
+                result.artifacts["backend_sensor_output_summary"].read_text(encoding="utf-8")
             )
             output_spec = json.loads(
                 result.artifacts["backend_output_spec"].read_text(encoding="utf-8")
@@ -879,6 +884,10 @@ printf "%s\\n" "$@"
                 str(result.artifacts["backend_runner_execution_manifest"]),
             )
             self.assertEqual(
+                run_manifest["artifacts"]["backend_sensor_output_summary"],
+                str(result.artifacts["backend_sensor_output_summary"]),
+            )
+            self.assertEqual(
                 run_manifest["artifacts"]["backend_runner_stdout"],
                 str(result.artifacts["backend_runner_stdout"]),
             )
@@ -896,10 +905,24 @@ printf "%s\\n" "$@"
             self.assertTrue(
                 any(
                     entry.get("artifact_key") == "sensor_output_camera_front" and entry.get("exists")
+                    and "/sensor_exports/awsim/camera_front/camera_projection.json"
+                    in str(entry.get("resolved_path", ""))
                     for entry in runner_execution_manifest["expected_outputs"]
                 )
             )
             self.assertEqual(output_spec["backend"], "awsim")
+            self.assertEqual(sensor_output_summary["sensor_count"], 3)
+            self.assertEqual(sensor_output_summary["found_sensor_count"], 1)
+            self.assertTrue(
+                any(
+                    sensor["sensor_id"] == "camera_front"
+                    and sensor["available"]
+                    and sensor["outputs"][0]["resolved_path"]
+                    and "/sensor_exports/awsim/camera_front/camera_projection.json"
+                    in sensor["outputs"][0]["resolved_path"]
+                    for sensor in sensor_output_summary["sensors"]
+                )
+            )
             self.assertEqual(pipeline_summary["status"], "EXECUTION_SUCCEEDED")
             self.assertTrue(pipeline_summary["expected_outputs"]["inspection_available"])
             self.assertIn(
@@ -913,6 +936,10 @@ printf "%s\\n" "$@"
             self.assertEqual(
                 pipeline_summary["artifacts"]["backend_runner_execution_manifest"],
                 str(result.artifacts["backend_runner_execution_manifest"]),
+            )
+            self.assertEqual(
+                pipeline_summary["artifacts"]["backend_sensor_output_summary"],
+                str(result.artifacts["backend_sensor_output_summary"]),
             )
 
     def test_renderer_runtime_carla_wrapper_execution_transforms_sensor_mount_json(self) -> None:
@@ -1481,6 +1508,21 @@ echo "carla_backend_ok"
             self.assertIn("sensor_output_camera_front", expected_output_keys)
             self.assertIn("sensor_output_lidar_top", expected_output_keys)
             self.assertIn("sensor_output_radar_front", expected_output_keys)
+            self.assertEqual(output_spec["expected_sensor_output_count"], 3)
+            outputs_by_sensor = {
+                entry["sensor_id"]: entry for entry in output_spec["expected_outputs_by_sensor"]
+            }
+            self.assertIn("camera_front", outputs_by_sensor)
+            self.assertIn("lidar_top", outputs_by_sensor)
+            self.assertIn("radar_front", outputs_by_sensor)
+            self.assertEqual(
+                outputs_by_sensor["camera_front"]["outputs"][0]["relative_path"],
+                "sensor_exports/camera_front/camera_projection.json",
+            )
+            self.assertIn(
+                "/sensor_exports/carla/camera_front/camera_projection.json",
+                outputs_by_sensor["camera_front"]["outputs"][0]["path_candidates"][1],
+            )
             self.assertEqual(
                 runner_request["artifacts"]["backend_output_spec"],
                 str(result.artifacts["backend_output_spec"]),

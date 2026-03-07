@@ -21,6 +21,8 @@ class BackendRunnerTests(unittest.TestCase):
 set -euo pipefail
 mkdir -p "$(dirname "${BACKEND_OUTPUT_FILE}")"
 printf '{"status":"ok"}\n' > "${BACKEND_OUTPUT_FILE}"
+mkdir -p "$(dirname "${BACKEND_SENSOR_OUTPUT_FILE}")"
+printf '{"sensor":"camera_front"}\n' > "${BACKEND_SENSOR_OUTPUT_FILE}"
 echo "runner_ok"
 echo "runner_warn" >&2
 """,
@@ -29,6 +31,15 @@ echo "runner_warn" >&2
             fake_backend.chmod(0o755)
 
             output_file = root / "backend_outputs" / "awsim" / "awsim_runtime_state.json"
+            sensor_output_file = (
+                root
+                / "backend_outputs"
+                / "awsim"
+                / "sensor_exports"
+                / "awsim"
+                / "camera_front"
+                / "camera_projection.json"
+            )
             request_path = root / "backend_runner_request.json"
             request_path.write_text(
                 json.dumps(
@@ -39,6 +50,7 @@ echo "runner_warn" >&2
                         "command": [str(fake_backend), "--demo"],
                         "env": {
                             "BACKEND_OUTPUT_FILE": str(output_file),
+                            "BACKEND_SENSOR_OUTPUT_FILE": str(sensor_output_file),
                         },
                         "expected_outputs": [
                             {
@@ -47,6 +59,36 @@ echo "runner_warn" >&2
                                 "kind": "file",
                                 "required": False,
                                 "description": "AWSIM runtime state summary.",
+                            },
+                            {
+                                "artifact_key": "sensor_output_camera_front",
+                                "backend": "awsim",
+                                "sensor_name": "camera",
+                                "sensor_id": "camera_front",
+                                "data_format": "camera_projection_json",
+                                "relative_path": "sensor_exports/camera_front/camera_projection.json",
+                                "path": str(
+                                    root
+                                    / "backend_outputs"
+                                    / "awsim"
+                                    / "sensor_exports"
+                                    / "camera_front"
+                                    / "camera_projection.json"
+                                ),
+                                "path_candidates": [
+                                    str(
+                                        root
+                                        / "backend_outputs"
+                                        / "awsim"
+                                        / "sensor_exports"
+                                        / "camera_front"
+                                        / "camera_projection.json"
+                                    ),
+                                    str(sensor_output_file),
+                                ],
+                                "kind": "file",
+                                "required": False,
+                                "description": "Expected exported payload for sensor camera_front.",
                             }
                         ],
                     }
@@ -62,16 +104,34 @@ echo "runner_warn" >&2
             self.assertIn("backend_runner_stdout", result.artifacts)
             self.assertIn("backend_runner_stderr", result.artifacts)
             self.assertIn("awsim_runtime_state_json", result.artifacts)
+            self.assertIn("sensor_output_camera_front", result.artifacts)
+            self.assertIn("backend_sensor_output_summary", result.artifacts)
             manifest = json.loads(
                 result.artifacts["backend_runner_execution_manifest"].read_text(encoding="utf-8")
+            )
+            sensor_output_summary = json.loads(
+                result.artifacts["backend_sensor_output_summary"].read_text(encoding="utf-8")
             )
             stdout = result.artifacts["backend_runner_stdout"].read_text(encoding="utf-8")
             stderr = result.artifacts["backend_runner_stderr"].read_text(encoding="utf-8")
             self.assertEqual(manifest["status"], "EXECUTION_SUCCEEDED")
             self.assertEqual(manifest["return_code"], 0)
-            self.assertEqual(manifest["expected_output_summary"]["found_count"], 1)
+            self.assertEqual(manifest["expected_output_summary"]["found_count"], 2)
             self.assertEqual(manifest["expected_output_summary"]["missing_count"], 0)
-            self.assertTrue(manifest["expected_outputs"][0]["exists"])
+            self.assertTrue(
+                any(
+                    entry["artifact_key"] == "sensor_output_camera_front"
+                    and entry["exists"]
+                    and entry["resolved_path"] == str(sensor_output_file)
+                    for entry in manifest["expected_outputs"]
+                )
+            )
+            self.assertEqual(sensor_output_summary["sensor_count"], 1)
+            self.assertEqual(sensor_output_summary["found_sensor_count"], 1)
+            self.assertEqual(
+                sensor_output_summary["sensors"][0]["outputs"][0]["resolved_path"],
+                str(sensor_output_file),
+            )
             self.assertIn("runner_ok", stdout)
             self.assertIn("runner_warn", stderr)
 

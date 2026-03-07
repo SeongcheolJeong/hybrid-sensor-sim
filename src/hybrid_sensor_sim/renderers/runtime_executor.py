@@ -404,6 +404,7 @@ def _write_backend_run_manifest(
     complete_frame_count: int,
     ingestion_entry_count: int,
     launcher_arg_count: int,
+    sensor_output_summary_path: Path | None = None,
 ) -> None:
     payload = {
         "backend": backend,
@@ -435,6 +436,9 @@ def _write_backend_run_manifest(
             "backend_direct_run_command": str(direct_run_command_path) if direct_run_command_path else None,
             "backend_runner_execution_manifest": (
                 str(runner_execution_manifest_path) if runner_execution_manifest_path else None
+            ),
+            "backend_sensor_output_summary": (
+                str(sensor_output_summary_path) if sensor_output_summary_path else None
             ),
             "backend_wrapper_invocation": str(wrapper_dump_path) if wrapper_dump_path else None,
             "renderer_stdout": str(stdout_path) if stdout_path else None,
@@ -527,6 +531,7 @@ def _write_renderer_pipeline_summary(
     runner_request_path: Path | None,
     direct_run_command_path: Path | None,
     runner_execution_manifest_path: Path | None,
+    sensor_output_summary_path: Path | None,
     wrapper_dump_path: Path | None,
     stdout_path: Path | None,
     stderr_path: Path | None,
@@ -673,6 +678,9 @@ def _write_renderer_pipeline_summary(
             "backend_direct_run_command": str(direct_run_command_path) if direct_run_command_path else None,
             "backend_runner_execution_manifest": (
                 str(runner_execution_manifest_path) if runner_execution_manifest_path else None
+            ),
+            "backend_sensor_output_summary": (
+                str(sensor_output_summary_path) if sensor_output_summary_path else None
             ),
             "backend_wrapper_invocation": str(wrapper_dump_path) if wrapper_dump_path else None,
             "renderer_stdout": str(stdout_path) if stdout_path else None,
@@ -1648,6 +1656,7 @@ def execute_renderer_runtime(
     backend_run_manifest_path = runtime_dir / "backend_run_manifest.json"
     pipeline_summary_path = runtime_dir / "renderer_pipeline_summary.json"
     runner_execution_manifest_path: Path | None = None
+    sensor_output_summary_path: Path | None = None
     runner_stdout_path: Path | None = None
     runner_stderr_path: Path | None = None
     artifacts: dict[str, Path] = {
@@ -1698,6 +1707,7 @@ def execute_renderer_runtime(
         stdout_path_for_summary: Path | None,
         stderr_path_for_summary: Path | None,
         runner_execution_manifest_path_for_summary: Path | None,
+        sensor_output_summary_path_for_summary: Path | None,
         runner_stdout_path_for_summary: Path | None,
         runner_stderr_path_for_summary: Path | None,
     ) -> None:
@@ -1734,6 +1744,7 @@ def execute_renderer_runtime(
                 runner_request_path=runner_request_path,
                 direct_run_command_path=direct_run_command_path,
                 runner_execution_manifest_path=runner_execution_manifest_path_for_summary,
+                sensor_output_summary_path=sensor_output_summary_path_for_summary,
                 wrapper_dump_path=wrapper_dump_path_for_summary,
                 stdout_path=stdout_path_for_summary,
                 stderr_path=stderr_path_for_summary,
@@ -1765,6 +1776,7 @@ def execute_renderer_runtime(
             runner_request_path=runner_request_path,
             direct_run_command_path=direct_run_command_path,
             runner_execution_manifest_path=None,
+            sensor_output_summary_path=None,
             wrapper_dump_path=wrapper_dump_path if execution_backend_wrapper_used else None,
             stdout_path=None,
             stderr_path=None,
@@ -1788,6 +1800,7 @@ def execute_renderer_runtime(
             stdout_path_for_summary=None,
             stderr_path_for_summary=None,
             runner_execution_manifest_path_for_summary=None,
+            sensor_output_summary_path_for_summary=None,
             runner_stdout_path_for_summary=None,
             runner_stderr_path_for_summary=None,
         )
@@ -1821,6 +1834,7 @@ def execute_renderer_runtime(
             runner_request_path=runner_request_path,
             direct_run_command_path=direct_run_command_path,
             runner_execution_manifest_path=None,
+            sensor_output_summary_path=None,
             wrapper_dump_path=wrapper_dump_path if execution_backend_wrapper_used else None,
             stdout_path=None,
             stderr_path=None,
@@ -1844,6 +1858,7 @@ def execute_renderer_runtime(
             stdout_path_for_summary=None,
             stderr_path_for_summary=None,
             runner_execution_manifest_path_for_summary=None,
+            sensor_output_summary_path_for_summary=None,
             runner_stdout_path_for_summary=None,
             runner_stderr_path_for_summary=None,
         )
@@ -1877,6 +1892,7 @@ def execute_renderer_runtime(
             runner_request_path=runner_request_path,
             direct_run_command_path=direct_run_command_path,
             runner_execution_manifest_path=None,
+            sensor_output_summary_path=None,
             wrapper_dump_path=wrapper_dump_path if execution_backend_wrapper_used else None,
             stdout_path=None,
             stderr_path=None,
@@ -1900,6 +1916,7 @@ def execute_renderer_runtime(
             stdout_path_for_summary=None,
             stderr_path_for_summary=None,
             runner_execution_manifest_path_for_summary=None,
+            sensor_output_summary_path_for_summary=None,
             runner_stdout_path_for_summary=None,
             runner_stderr_path_for_summary=None,
         )
@@ -1921,6 +1938,7 @@ def execute_renderer_runtime(
         runner_execution_manifest_path = runner_result.artifacts.get(
             "backend_runner_execution_manifest"
         )
+        sensor_output_summary_path = runner_result.artifacts.get("backend_sensor_output_summary")
         runner_stdout_path = runner_result.artifacts.get("backend_runner_stdout")
         runner_stderr_path = runner_result.artifacts.get("backend_runner_stderr")
         artifacts.update(runner_result.artifacts)
@@ -1957,6 +1975,7 @@ def execute_renderer_runtime(
                 runner_request_path=runner_request_path,
                 direct_run_command_path=direct_run_command_path,
                 runner_execution_manifest_path=runner_execution_manifest_path,
+                sensor_output_summary_path=sensor_output_summary_path,
                 wrapper_dump_path=None,
                 stdout_path=stdout_path if runner_stdout_path is not None else None,
                 stderr_path=stderr_path if runner_stderr_path is not None else None,
@@ -1978,6 +1997,7 @@ def execute_renderer_runtime(
                 stdout_path_for_summary=stdout_path if runner_stdout_path is not None else None,
                 stderr_path_for_summary=stderr_path if runner_stderr_path is not None else None,
                 runner_execution_manifest_path_for_summary=runner_execution_manifest_path,
+                sensor_output_summary_path_for_summary=sensor_output_summary_path,
                 runner_stdout_path_for_summary=runner_stdout_path,
                 runner_stderr_path_for_summary=runner_stderr_path,
             )
@@ -2011,6 +2031,7 @@ def execute_renderer_runtime(
             runner_request_path=runner_request_path,
             direct_run_command_path=direct_run_command_path,
             runner_execution_manifest_path=runner_execution_manifest_path,
+            sensor_output_summary_path=sensor_output_summary_path,
             wrapper_dump_path=None,
             stdout_path=stdout_path if runner_stdout_path is not None else None,
             stderr_path=stderr_path if runner_stderr_path is not None else None,
@@ -2032,6 +2053,7 @@ def execute_renderer_runtime(
             stdout_path_for_summary=stdout_path if runner_stdout_path is not None else None,
             stderr_path_for_summary=stderr_path if runner_stderr_path is not None else None,
             runner_execution_manifest_path_for_summary=runner_execution_manifest_path,
+            sensor_output_summary_path_for_summary=sensor_output_summary_path,
             runner_stdout_path_for_summary=runner_stdout_path,
             runner_stderr_path_for_summary=runner_stderr_path,
         )
@@ -2086,6 +2108,7 @@ def execute_renderer_runtime(
                 runner_request_path=runner_request_path,
                 direct_run_command_path=direct_run_command_path,
                 runner_execution_manifest_path=None,
+                sensor_output_summary_path=None,
                 wrapper_dump_path=(
                     wrapper_dump_path
                     if execution_backend_wrapper_used and wrapper_dump_path.exists()
@@ -2115,6 +2138,7 @@ def execute_renderer_runtime(
                 stdout_path_for_summary=stdout_path,
                 stderr_path_for_summary=stderr_path,
                 runner_execution_manifest_path_for_summary=None,
+                sensor_output_summary_path_for_summary=None,
                 runner_stdout_path_for_summary=None,
                 runner_stderr_path_for_summary=None,
             )
@@ -2153,6 +2177,7 @@ def execute_renderer_runtime(
             runner_request_path=runner_request_path,
             direct_run_command_path=direct_run_command_path,
             runner_execution_manifest_path=None,
+            sensor_output_summary_path=None,
             wrapper_dump_path=(
                 wrapper_dump_path
                 if execution_backend_wrapper_used and wrapper_dump_path.exists()
@@ -2182,6 +2207,7 @@ def execute_renderer_runtime(
             stdout_path_for_summary=None,
             stderr_path_for_summary=stderr_path,
             runner_execution_manifest_path_for_summary=None,
+            sensor_output_summary_path_for_summary=None,
             runner_stdout_path_for_summary=None,
             runner_stderr_path_for_summary=None,
         )
@@ -2215,6 +2241,7 @@ def execute_renderer_runtime(
         runner_request_path=runner_request_path,
         direct_run_command_path=direct_run_command_path,
         runner_execution_manifest_path=None,
+        sensor_output_summary_path=None,
         wrapper_dump_path=(
             wrapper_dump_path if execution_backend_wrapper_used and wrapper_dump_path.exists() else None
         ),
@@ -2240,6 +2267,7 @@ def execute_renderer_runtime(
         stdout_path_for_summary=stdout_path,
         stderr_path_for_summary=stderr_path,
         runner_execution_manifest_path_for_summary=None,
+        sensor_output_summary_path_for_summary=None,
         runner_stdout_path_for_summary=None,
         runner_stderr_path_for_summary=None,
     )
