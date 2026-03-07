@@ -596,6 +596,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - loads or generates local setup summary
   - reuses resolved `HELIOS_*`, backend binary, and renderer map selections
   - blocks smoke when the selected backend binary exists but is not executable on the current host
+  - when the runtime is host-incompatible, materializes a Linux-runner handoff config/env/script instead of stopping at a blocker message
   - if backend runtime is missing and `--auto-acquire` is set, runs acquire+stage automatically
   - runs `renderer_backend_smoke.py` when all prerequisites are ready
 - emits:
@@ -605,10 +606,13 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_next_step.sh`
   - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_smoke_config.json`
   - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_rerun_smoke.sh`
+  - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_linux_handoff_config.json`
+  - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_linux_handoff.env.sh`
+  - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_linux_handoff.sh`
   - `artifacts/renderer_backend_workflow/<backend>/local_setup_refreshed/renderer_backend_local_setup.json`
   - `artifacts/renderer_backend_workflow/<backend>/local_setup_refreshed/renderer_backend_local.env.sh`
   - plus smoke artifacts/reports when smoke executes
-- the workflow summary/report now includes structured blocker codes and a recommended next command
+- the workflow summary/report now includes structured blocker codes, a recommended next command, and Linux handoff transfer/env requirements when the selected runtime must move to a Linux runner
 
 ## Next implementation target
 
