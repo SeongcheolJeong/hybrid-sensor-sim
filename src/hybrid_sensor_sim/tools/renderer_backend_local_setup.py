@@ -113,13 +113,122 @@ def _is_executable_file(path: Path) -> bool:
     return path.is_file() and os.access(path, os.X_OK)
 
 
+def _inspect_executable_host_compatibility(path: Path) -> dict[str, Any]:
+    host = _host_platform_summary()
+    system = host["system"]
+    path = path.resolve()
+    if not path.exists():
+        return {
+            "host_compatible": False,
+            "host_compatibility_reason": "file does not exist",
+            "binary_format": "missing",
+            "file_description": "",
+        }
+    if not _is_executable_file(path):
+        return {
+            "host_compatible": False,
+            "host_compatibility_reason": "file is not executable",
+            "binary_format": "non_executable",
+            "file_description": "",
+        }
+
+    description = ""
+    try:
+        proc = subprocess.run(
+            ["file", "-b", str(path)],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if proc.returncode == 0:
+            description = proc.stdout.strip()
+    except FileNotFoundError:
+        description = ""
+
+    lowered = description.lower()
+    if not lowered:
+        try:
+            with path.open("rb") as handle:
+                prefix = handle.read(4)
+        except OSError:
+            prefix = b""
+        if prefix.startswith(b"#!"):
+            return {
+                "host_compatible": True,
+                "host_compatibility_reason": "",
+                "binary_format": "script",
+                "file_description": "script (shebang detected)",
+            }
+        if path.suffix.lower() == ".exe":
+            return {
+                "host_compatible": system == "Windows",
+                "host_compatibility_reason": (
+                    "" if system == "Windows" else f"Windows executable is not supported on {system}"
+                ),
+                "binary_format": "pe",
+                "file_description": "",
+            }
+        return {
+            "host_compatible": True,
+            "host_compatibility_reason": "",
+            "binary_format": "unknown",
+            "file_description": "",
+        }
+
+    if "script" in lowered or "text executable" in lowered:
+        return {
+            "host_compatible": True,
+            "host_compatibility_reason": "",
+            "binary_format": "script",
+            "file_description": description,
+        }
+    if "mach-o" in lowered:
+        return {
+            "host_compatible": system == "Darwin",
+            "host_compatibility_reason": (
+                "" if system == "Darwin" else f"Mach-O binary is not supported on {system}"
+            ),
+            "binary_format": "mach-o",
+            "file_description": description,
+        }
+    if "elf" in lowered:
+        return {
+            "host_compatible": system == "Linux",
+            "host_compatibility_reason": (
+                "" if system == "Linux" else f"ELF binary is not supported on {system}"
+            ),
+            "binary_format": "elf",
+            "file_description": description,
+        }
+    if "pe32" in lowered or "ms-dos executable" in lowered or "windows" in lowered:
+        return {
+            "host_compatible": system == "Windows",
+            "host_compatibility_reason": (
+                "" if system == "Windows" else f"Windows executable is not supported on {system}"
+            ),
+            "binary_format": "pe",
+            "file_description": description,
+        }
+    return {
+        "host_compatible": True,
+        "host_compatibility_reason": "",
+        "binary_format": "unknown",
+        "file_description": description,
+    }
+
+
 def _path_record(path: Path, *, origin: str, kind: str) -> dict[str, Any]:
+    compatibility = _inspect_executable_host_compatibility(path)
     return {
         "path": str(path.resolve()),
         "origin": origin,
         "kind": kind,
         "exists": path.exists(),
         "executable": _is_executable_file(path),
+        "host_compatible": compatibility["host_compatible"],
+        "host_compatibility_reason": compatibility["host_compatibility_reason"],
+        "binary_format": compatibility["binary_format"],
+        "file_description": compatibility["file_description"],
     }
 
 
@@ -283,6 +392,13 @@ def _scan_archive_candidates(
 
 def _select_preferred_candidate(candidates: list[dict[str, Any]]) -> dict[str, Any] | None:
     for candidate in candidates:
+        if (
+            candidate.get("exists")
+            and candidate.get("executable")
+            and candidate.get("host_compatible")
+        ):
+            return candidate
+    for candidate in candidates:
         if candidate.get("exists") and candidate.get("executable"):
             return candidate
     for candidate in candidates:
@@ -359,6 +475,7 @@ def _inspect_helios_docker_runtime() -> dict[str, Any]:
 
 def _discover_backend_candidates(
     *,
+    backend: str,
     repo_root: Path,
     search_roots: list[Path],
     env_var: str,
@@ -374,7 +491,7 @@ def _discover_backend_candidates(
         )
     stage_candidate = _load_stage_selected_candidate(
         repo_root,
-        "awsim" if env_var == "AWSIM_BIN" else "carla" if env_var == "CARLA_BIN" else "helios",
+        backend,
     )
     if stage_candidate is not None:
         candidates.append(
@@ -398,6 +515,7 @@ def _discover_backend_candidates(
         "selected_path": selected.get("path") if selected else None,
         "selected_origin": selected.get("origin") if selected else None,
         "ready": bool(selected and selected.get("executable")),
+        "host_compatible_ready": bool(selected and selected.get("host_compatible")),
         "source_only": bool(reference_roots) and not bool(selected and selected.get("executable")),
         "reference_roots": list(reference_roots),
         "candidates": deduped,
@@ -431,8 +549,11 @@ def _render_env_file(summary: dict[str, Any]) -> str:
         [
             "",
             f"# helios_binary_ready={readiness.get('helios_binary_ready', False)}",
+            f"# helios_binary_host_compatible={readiness.get('helios_binary_host_compatible', False)}",
             f"# helios_docker_ready={readiness.get('helios_docker_ready', False)}",
+            f"# awsim_host_compatible={readiness.get('awsim_host_compatible', False)}",
             f"# awsim_smoke_ready={readiness.get('awsim_smoke_ready', False)}",
+            f"# carla_host_compatible={readiness.get('carla_host_compatible', False)}",
             f"# carla_smoke_ready={readiness.get('carla_smoke_ready', False)}",
             "#",
             "# Example:",
@@ -521,6 +642,8 @@ def _build_acquisition_hints(
         "status": (
             "docker_ready"
             if readiness.get("helios_docker_ready")
+            else "binary_incompatible_host"
+            if helios.get("ready") and not helios.get("host_compatible_ready")
             else "binary_ready"
             if readiness.get("helios_binary_ready")
             else "missing_runtime"
@@ -561,7 +684,15 @@ def _build_acquisition_hints(
     }
 
     awsim_hints = {
-        "status": "runtime_available" if awsim.get("ready") else "source_only" if awsim.get("source_only") else "missing_runtime",
+        "status": (
+            "runtime_incompatible_host"
+            if awsim.get("ready") and not awsim.get("host_compatible_ready")
+            else "runtime_available"
+            if awsim.get("ready")
+            else "source_only"
+            if awsim.get("source_only")
+            else "missing_runtime"
+        ),
         "platform_supported": system == "Linux",
         "platform_note": (
             "AWSIM quick-start docs assume Ubuntu 22.04 with NVIDIA RTX and driver 570+."
@@ -597,7 +728,15 @@ def _build_acquisition_hints(
     }
 
     carla_hints = {
-        "status": "runtime_available" if carla.get("ready") else "source_only" if carla.get("source_only") else "missing_runtime",
+        "status": (
+            "runtime_incompatible_host"
+            if carla.get("ready") and not carla.get("host_compatible_ready")
+            else "runtime_available"
+            if carla.get("ready")
+            else "source_only"
+            if carla.get("source_only")
+            else "missing_runtime"
+        ),
         "platform_supported": system in {"Linux", "Windows"},
         "platform_note": (
             "CARLA UE5 package docs target Ubuntu 22.04 or Windows 11. On this host, use a Linux or Windows runner."
@@ -681,6 +820,7 @@ def build_renderer_backend_local_setup(
     repo_candidates = _candidate_paths_for_repo(repo_root)
     helios_docker = _inspect_helios_docker_runtime()
     helios = _discover_backend_candidates(
+        backend="helios",
         repo_root=repo_root,
         search_roots=all_search_roots,
         env_var="HELIOS_BIN",
@@ -689,6 +829,7 @@ def build_renderer_backend_local_setup(
         reference_roots=reference_roots["helios"],
     )
     awsim = _discover_backend_candidates(
+        backend="awsim",
         repo_root=repo_root,
         search_roots=all_search_roots,
         env_var="AWSIM_BIN",
@@ -697,6 +838,7 @@ def build_renderer_backend_local_setup(
         reference_roots=reference_roots["awsim"],
     )
     carla = _discover_backend_candidates(
+        backend="carla",
         repo_root=repo_root,
         search_roots=all_search_roots,
         env_var="CARLA_BIN",
@@ -716,15 +858,18 @@ def build_renderer_backend_local_setup(
     }
     readiness = {
         "helios_binary_ready": bool(helios.get("ready")),
+        "helios_binary_host_compatible": bool(helios.get("host_compatible_ready")),
         "helios_docker_ready": bool(helios_docker.get("ready")),
         "awsim_ready": bool(awsim.get("ready")),
+        "awsim_host_compatible": bool(awsim.get("host_compatible_ready")),
         "carla_ready": bool(carla.get("ready")),
+        "carla_host_compatible": bool(carla.get("host_compatible_ready")),
     }
-    readiness["helios_ready"] = readiness["helios_binary_ready"] or readiness["helios_docker_ready"]
-    readiness["awsim_smoke_ready_binary"] = readiness["helios_binary_ready"] and readiness["awsim_ready"]
-    readiness["awsim_smoke_ready_docker"] = readiness["helios_docker_ready"] and readiness["awsim_ready"]
-    readiness["carla_smoke_ready_binary"] = readiness["helios_binary_ready"] and readiness["carla_ready"]
-    readiness["carla_smoke_ready_docker"] = readiness["helios_docker_ready"] and readiness["carla_ready"]
+    readiness["helios_ready"] = readiness["helios_binary_host_compatible"] or readiness["helios_docker_ready"]
+    readiness["awsim_smoke_ready_binary"] = readiness["helios_binary_host_compatible"] and readiness["awsim_host_compatible"]
+    readiness["awsim_smoke_ready_docker"] = readiness["helios_docker_ready"] and readiness["awsim_host_compatible"]
+    readiness["carla_smoke_ready_binary"] = readiness["helios_binary_host_compatible"] and readiness["carla_host_compatible"]
+    readiness["carla_smoke_ready_docker"] = readiness["helios_docker_ready"] and readiness["carla_host_compatible"]
     readiness["awsim_smoke_ready"] = (
         readiness["awsim_smoke_ready_binary"] or readiness["awsim_smoke_ready_docker"]
     )
@@ -739,10 +884,16 @@ def build_renderer_backend_local_setup(
             issues.append(f"HELIOS docker runtime unavailable: {helios_docker['daemon_message']}")
         elif not helios_docker["image_ready"]:
             issues.append(f"HELIOS docker image unavailable: {helios_docker['image_message']}")
+    elif readiness["helios_binary_ready"] and not readiness["helios_binary_host_compatible"]:
+        issues.append("HELIOS binary is resolved but incompatible with the current host.")
     if not readiness["awsim_ready"]:
         issues.append("AWSIM runtime binary is not resolved.")
+    elif not readiness["awsim_host_compatible"]:
+        issues.append("AWSIM runtime binary is resolved but incompatible with the current host.")
     if not readiness["carla_ready"]:
         issues.append("CARLA runtime binary is not resolved.")
+    elif not readiness["carla_host_compatible"]:
+        issues.append("CARLA runtime binary is resolved but incompatible with the current host.")
 
     output_root = (
         _resolve_runtime_path(output_dir)

@@ -13,6 +13,9 @@ from hybrid_sensor_sim.tools.renderer_backend_local_setup import (
     _render_env_file as _render_local_setup_env_file,
 )
 from hybrid_sensor_sim.tools.renderer_backend_local_setup import (
+    _inspect_executable_host_compatibility,
+)
+from hybrid_sensor_sim.tools.renderer_backend_local_setup import (
     build_renderer_backend_local_setup,
 )
 from hybrid_sensor_sim.tools.renderer_backend_package_acquire import (
@@ -353,6 +356,8 @@ def _build_blockers(
     setup_summary: dict[str, Any],
     helios_ready: bool,
     backend_bin: str | None,
+    backend_host_compatible: bool,
+    backend_host_compatibility_reason: str | None,
     auto_acquire: bool,
     acquire_summary: dict[str, Any] | None,
     smoke_executed: bool,
@@ -400,6 +405,18 @@ def _build_blockers(
                     "recommended_command": recommended_next_command,
                 }
             )
+    elif not backend_host_compatible:
+        blockers.append(
+            {
+                "code": "BACKEND_HOST_INCOMPATIBLE",
+                "severity": "blocking",
+                "message": (
+                    backend_host_compatibility_reason
+                    or f"{backend.upper()} runtime binary is not executable on the current host."
+                ),
+                "recommended_command": None,
+            }
+        )
     if auto_acquire and isinstance(acquire_summary, dict):
         acquire_readiness = acquire_summary.get("readiness", {})
         if acquire_readiness.get("download_url_resolved") is False:
@@ -581,6 +598,20 @@ def build_renderer_backend_workflow(
         explicit_config=config_path,
         selection=active_setup_selection,
     )
+    backend_compatibility = (
+        _inspect_executable_host_compatibility(_resolve_path(selected_backend_bin))
+        if selected_backend_bin is not None
+        else {
+            "host_compatible": False,
+            "host_compatibility_reason": "backend runtime binary is not resolved",
+            "binary_format": "missing",
+            "file_description": "",
+        }
+    )
+    backend_host_compatible = bool(backend_compatibility.get("host_compatible"))
+    backend_host_compatibility_reason = str(
+        backend_compatibility.get("host_compatibility_reason") or ""
+    ).strip() or None
     helios_ready = bool(
         active_setup_readiness.get("helios_ready")
         or _selection_value(active_setup_selection, "HELIOS_BIN")
@@ -644,11 +675,16 @@ def build_renderer_backend_workflow(
     smoke_exit_code: int | None = None
     smoke_summary: dict[str, Any] | None = None
     smoke_stdout = ""
-    smoke_ready = helios_ready and selected_backend_bin is not None
+    smoke_ready = helios_ready and selected_backend_bin is not None and backend_host_compatible
     if not helios_ready:
         issues.append("HELIOS runtime is not ready for backend smoke.")
     if selected_backend_bin is None:
         issues.append(f"{backend_env_var} is not resolved for backend smoke.")
+    elif not backend_host_compatible:
+        issues.append(
+            backend_host_compatibility_reason
+            or f"{backend_env_var} is resolved but not executable on the current host."
+        )
 
     if smoke_ready and not dry_run:
         smoke_executed = True
@@ -693,6 +729,8 @@ def build_renderer_backend_workflow(
         setup_summary=setup_summary,
         helios_ready=helios_ready,
         backend_bin=selected_backend_bin,
+        backend_host_compatible=backend_host_compatible,
+        backend_host_compatibility_reason=backend_host_compatibility_reason,
         auto_acquire=auto_acquire,
         acquire_summary=acquire_summary,
         smoke_executed=smoke_executed,
@@ -744,6 +782,10 @@ def build_renderer_backend_workflow(
             "planned_forced_options": planned_forced_options,
             "stdout": smoke_stdout,
             "backend_bin": selected_backend_bin,
+            "backend_host_compatible": backend_host_compatible,
+            "backend_host_compatibility_reason": backend_host_compatibility_reason,
+            "backend_binary_format": backend_compatibility.get("binary_format"),
+            "backend_file_description": backend_compatibility.get("file_description"),
             "renderer_map": selected_renderer_map,
             "args": smoke_args,
             "summary": smoke_summary,

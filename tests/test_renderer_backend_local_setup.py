@@ -256,6 +256,119 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertIn("stage-summary", origins)
             self.assertTrue(summary["readiness"]["awsim_ready"])
 
+    def test_build_renderer_backend_local_setup_marks_host_incompatible_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            repo_root.mkdir(parents=True, exist_ok=True)
+            search_root = root / "search"
+            search_root.mkdir(parents=True, exist_ok=True)
+            awsim_bin = search_root / "AWSIM-Demo.x86_64"
+            awsim_bin.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            awsim_bin.chmod(0o755)
+
+            def _fake_inspect(path: Path) -> dict[str, object]:
+                if path.resolve() == awsim_bin.resolve():
+                    return {
+                        "host_compatible": False,
+                        "host_compatibility_reason": "ELF binary is not supported on Darwin",
+                        "binary_format": "elf",
+                        "file_description": "ELF 64-bit LSB executable",
+                    }
+                return {
+                    "host_compatible": True,
+                    "host_compatibility_reason": "",
+                    "binary_format": "script",
+                    "file_description": "shell script text executable",
+                }
+
+            with patch(
+                "hybrid_sensor_sim.tools.renderer_backend_local_setup._inspect_helios_docker_runtime",
+                return_value=_ready_docker_runtime(),
+            ):
+                with patch(
+                    "hybrid_sensor_sim.tools.renderer_backend_local_setup._inspect_executable_host_compatibility",
+                    side_effect=_fake_inspect,
+                ):
+                    summary = build_renderer_backend_local_setup(
+                        repo_root=repo_root,
+                        search_roots=[search_root],
+                        output_dir=root / "artifacts",
+                        include_default_search_roots=False,
+                    )
+
+            self.assertEqual(summary["selection"]["AWSIM_BIN"], str(awsim_bin.resolve()))
+            self.assertTrue(summary["readiness"]["awsim_ready"])
+            self.assertFalse(summary["readiness"]["awsim_host_compatible"])
+            self.assertFalse(summary["readiness"]["awsim_smoke_ready_binary"])
+            self.assertFalse(summary["readiness"]["awsim_smoke_ready_docker"])
+            self.assertEqual(summary["acquisition_hints"]["awsim"]["status"], "runtime_incompatible_host")
+            self.assertIn(
+                "AWSIM runtime binary is resolved but incompatible with the current host.",
+                summary["issues"],
+            )
+
+    def test_build_renderer_backend_local_setup_prefers_host_compatible_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            repo_root.mkdir(parents=True, exist_ok=True)
+            search_root = root / "search"
+            search_root.mkdir(parents=True, exist_ok=True)
+            incompatible_awsim_bin = root / "env" / "AWSIM-Demo.x86_64"
+            incompatible_awsim_bin.parent.mkdir(parents=True, exist_ok=True)
+            incompatible_awsim_bin.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            incompatible_awsim_bin.chmod(0o755)
+            compatible_awsim_bin = search_root / "AWSIM-Demo-Lightweight.x86_64"
+            compatible_awsim_bin.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            compatible_awsim_bin.chmod(0o755)
+
+            def _fake_inspect(path: Path) -> dict[str, object]:
+                if path.resolve() == incompatible_awsim_bin.resolve():
+                    return {
+                        "host_compatible": False,
+                        "host_compatibility_reason": "ELF binary is not supported on Darwin",
+                        "binary_format": "elf",
+                        "file_description": "ELF 64-bit LSB executable",
+                    }
+                return {
+                    "host_compatible": True,
+                    "host_compatibility_reason": "",
+                    "binary_format": "script",
+                    "file_description": "shell script text executable",
+                }
+
+            with patch.dict(
+                "os.environ",
+                {
+                    "AWSIM_BIN": str(incompatible_awsim_bin.resolve()),
+                },
+                clear=False,
+            ):
+                with patch(
+                    "hybrid_sensor_sim.tools.renderer_backend_local_setup._inspect_helios_docker_runtime",
+                    return_value=_ready_docker_runtime(),
+                ):
+                    with patch(
+                        "hybrid_sensor_sim.tools.renderer_backend_local_setup._inspect_executable_host_compatibility",
+                        side_effect=_fake_inspect,
+                    ):
+                        summary = build_renderer_backend_local_setup(
+                            repo_root=repo_root,
+                            search_roots=[search_root],
+                            output_dir=root / "artifacts",
+                            include_default_search_roots=False,
+                        )
+
+            self.assertEqual(summary["selection"]["AWSIM_BIN"], str(compatible_awsim_bin.resolve()))
+            self.assertTrue(summary["readiness"]["awsim_host_compatible"])
+            selected_origins = {
+                candidate["origin"]
+                for candidate in summary["backends"]["awsim"]["candidates"]
+                if candidate["path"] == str(compatible_awsim_bin.resolve())
+            }
+            self.assertIn("search-root", selected_origins)
+
     def test_build_renderer_backend_local_setup_uses_docker_when_binary_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -415,6 +528,9 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertIn("export HELIOS_DOCKER_BINARY=", env_text)
             self.assertIn("export AWSIM_BIN=", env_text)
             self.assertIn("# export CARLA_BIN=<set-me>", env_text)
+            self.assertIn("# helios_binary_host_compatible=", env_text)
+            self.assertIn("# awsim_host_compatible=", env_text)
+            self.assertIn("# carla_host_compatible=", env_text)
             self.assertIn("python3 scripts/discover_renderer_backend_local_env.py --probe-helios-docker-demo", env_text)
             self.assertIn("configs/renderer_backend_smoke.awsim.local.example.json", env_text)
             self.assertIn("configs/renderer_backend_smoke.awsim.local.docker.example.json", env_text)

@@ -8,6 +8,7 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 from hybrid_sensor_sim.tools.renderer_backend_workflow import (
     build_renderer_backend_workflow,
@@ -302,6 +303,74 @@ class RendererBackendWorkflowTests(unittest.TestCase):
                 summary["recommended_next_command"],
                 None,
             )
+
+    def test_workflow_blocks_on_backend_host_incompatibility(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+            awsim_bin = root / "AWSIM-Demo.x86_64"
+            awsim_bin.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            awsim_bin.chmod(0o755)
+            setup_summary = root / "renderer_backend_local_setup.json"
+            setup_summary.write_text(
+                json.dumps(
+                    {
+                        "selection": {
+                            "HELIOS_BIN": str(fake_helios.resolve()),
+                            "AWSIM_BIN": str(awsim_bin.resolve()),
+                            "AWSIM_RENDERER_MAP": "Town07",
+                        },
+                        "readiness": {
+                            "helios_ready": True,
+                            "awsim_host_compatible": False,
+                        },
+                        "acquisition_hints": {
+                            "awsim": {
+                                "platform_supported": False,
+                                "platform_note": "AWSIM quick-start docs assume Ubuntu 22.04 with NVIDIA RTX and driver 570+.",
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            config_path = self._write_base_config(
+                root=root,
+                survey=survey,
+                helios_bin=fake_helios,
+                output_dir=root / "smoke_base_output",
+            )
+
+            with patch(
+                "hybrid_sensor_sim.tools.renderer_backend_workflow._inspect_executable_host_compatibility",
+                return_value={
+                    "host_compatible": False,
+                    "host_compatibility_reason": "ELF binary is not supported on Darwin",
+                    "binary_format": "elf",
+                    "file_description": "ELF 64-bit LSB executable",
+                },
+            ):
+                summary = build_renderer_backend_workflow(
+                    backend="awsim",
+                    repo_root=root / "repo",
+                    workflow_root=root / "workflow",
+                    setup_summary_path=setup_summary,
+                    config_path=config_path,
+                    dry_run=True,
+                )
+
+            self.assertEqual(summary["status"], "DRY_RUN_BLOCKED")
+            self.assertFalse(summary["success"])
+            self.assertFalse(summary["smoke"]["ready"])
+            self.assertFalse(summary["smoke"]["backend_host_compatible"])
+            self.assertEqual(summary["smoke"]["backend_binary_format"], "elf")
+            self.assertIn("ELF binary is not supported on Darwin", summary["issues"])
+            blocker_codes = [entry["code"] for entry in summary["blockers"]]
+            self.assertIn("BACKEND_HOST_INCOMPATIBLE", blocker_codes)
+            self.assertNotIn("BACKEND_BIN_MISSING", blocker_codes)
 
     def test_workflow_main_writes_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

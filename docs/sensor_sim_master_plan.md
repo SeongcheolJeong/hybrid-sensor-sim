@@ -246,6 +246,7 @@ Primary code references:
   - local env-driven smoke presets now exist for AWSIM/CARLA so binary/map wiring can be swapped without editing tracked JSON by hand
   - local runtime discovery tool now emits `renderer_backend_local_setup.json` and `renderer_backend_local.env.sh` so missing binaries vs source-only repos are separated explicitly
   - local runtime discovery now separates `HELIOS binary ready` from `HELIOS docker ready`, and provides docker-local smoke presets for AWSIM/CARLA
+  - local runtime discovery and workflow now distinguish `binary resolved` from `binary host-compatible`, so unsupported packaged runtimes are blocked before smoke execution
   - local runtime discovery can now optionally run a real HELIOS docker demo probe and persist the result for readiness triage
   - local runtime discovery also emits backend acquisition hints so source-only AWSIM/CARLA states map directly to concrete download/build next steps
   - backend package acquire tool now resolves official package URLs from local setup summary, downloads archives, and chains directly into staging

@@ -542,11 +542,12 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - the summary reports:
   - selected `HELIOS_BIN`, `AWSIM_BIN`, `CARLA_BIN`
   - selected `HELIOS_DOCKER_IMAGE`
-  - `helios_binary_ready`, `helios_docker_ready`, `helios_ready`
-  - `awsim_ready`, `carla_ready`
+  - `helios_binary_ready`, `helios_binary_host_compatible`, `helios_docker_ready`, `helios_ready`
+  - `awsim_ready`, `awsim_host_compatible`, `carla_ready`, `carla_host_compatible`
   - `awsim_smoke_ready_binary`, `awsim_smoke_ready_docker`, `awsim_smoke_ready`
   - `carla_smoke_ready_binary`, `carla_smoke_ready_docker`, `carla_smoke_ready`
   - reference repo roots versus executable runtime candidates
+  - candidate-level binary format and host compatibility, so Linux/Windows binaries on unsupported hosts are surfaced before smoke runs
   - `acquisition_hints` with backend-specific download/build guidance and platform constraints
   - package executable names such as `AWSIM-Demo.x86_64` and `CarlaUnreal.sh`, plus locally downloaded archives like `AWSIM-Demo.zip` and `CARLA_UE5_Latest.tar.gz`
   - staged runtime metadata under `third_party/runtime_backends/<backend>/renderer_backend_package_stage.json` is also reused, so a previously staged backend is rediscovered without re-entering the path manually
@@ -594,6 +595,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - behavior:
   - loads or generates local setup summary
   - reuses resolved `HELIOS_*`, backend binary, and renderer map selections
+  - blocks smoke when the selected backend binary exists but is not executable on the current host
   - if backend runtime is missing and `--auto-acquire` is set, runs acquire+stage automatically
   - runs `renderer_backend_smoke.py` when all prerequisites are ready
 - emits:
