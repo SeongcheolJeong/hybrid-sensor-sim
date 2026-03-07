@@ -498,8 +498,11 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
     - `python3 scripts/run_renderer_backend_smoke.py --config <config.json> --backend awsim --backend-bin <awsim_bin>` writes:
       - `renderer_backend_smoke_config.json`
       - `renderer_backend_smoke_summary.json`
+      - `renderer_backend_smoke_report.md`
+      - `renderer_backend_smoke_report.html`
       - runtime artifacts under the chosen `output_dir`
       - `comparison_table.sensor_rows` and `comparison_table.role_rows` for quick mismatch triage
+      - the Markdown/HTML reports expose the same sensor/role mismatch tables for faster human review
   - contract argument controls:
     - `renderer_contract_flag` (default `--contract`)
     - `renderer_inject_contract_arg` / `renderer_contract_positional`

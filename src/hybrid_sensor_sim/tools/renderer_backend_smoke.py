@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import html
 import json
 from pathlib import Path
 from typing import Any
@@ -41,6 +42,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Where to write renderer_backend_smoke_summary.json. Defaults under output_dir.",
     )
     parser.add_argument(
+        "--markdown-report-path",
+        type=Path,
+        help="Where to write renderer_backend_smoke_report.md. Defaults under output_dir.",
+    )
+    parser.add_argument(
+        "--html-report-path",
+        type=Path,
+        help="Where to write renderer_backend_smoke_report.html. Defaults under output_dir.",
+    )
+    parser.add_argument(
         "--set-option",
         action="append",
         default=[],
@@ -60,6 +71,11 @@ def _load_json(path: Path) -> dict[str, Any]:
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _write_text(path: Path, payload: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(payload, encoding="utf-8")
 
 
 def _resolve_runtime_path(raw: Any) -> Path:
@@ -209,6 +225,346 @@ def _build_comparison_table(
         "role_status_counts": role_status_counts,
         "mismatch_reason_counts": mismatch_reason_counts,
     }
+
+
+def _markdown_inline(value: Any) -> str:
+    if value is None:
+        return "-"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    text = str(value).strip()
+    if not text:
+        return "-"
+    return text.replace("\n", " ")
+
+
+def _markdown_list(value: Any) -> str:
+    if isinstance(value, list):
+        items = [_markdown_inline(item) for item in value if _markdown_inline(item) != "-"]
+        return ", ".join(items) if items else "-"
+    return _markdown_inline(value)
+
+
+def _markdown_table(headers: list[str], rows: list[list[Any]]) -> str:
+    table_lines = [
+        "| " + " | ".join(headers) + " |",
+        "| " + " | ".join("---" for _ in headers) + " |",
+    ]
+    for row in rows:
+        table_lines.append("| " + " | ".join(_markdown_inline(cell) for cell in row) + " |")
+    return "\n".join(table_lines)
+
+
+def _render_markdown_report(summary: dict[str, Any], summary_path: Path) -> str:
+    lines = [
+        "# Renderer Backend Smoke Report",
+        "",
+        "## Overview",
+        f"- backend: `{_markdown_inline(summary.get('backend'))}`",
+        f"- success: `{_markdown_inline(summary.get('success'))}`",
+        f"- run status: `{_markdown_inline(summary.get('run', {}).get('status') if isinstance(summary.get('run'), dict) else None)}`",
+        f"- failure reason: `{_markdown_inline(summary.get('run', {}).get('failure_reason') if isinstance(summary.get('run'), dict) else None)}`",
+        f"- run return code: `{_markdown_inline(summary.get('run', {}).get('return_code') if isinstance(summary.get('run'), dict) else None)}`",
+        f"- pipeline status: `{_markdown_inline(summary.get('pipeline', {}).get('status') if isinstance(summary.get('pipeline'), dict) else None)}`",
+        f"- output inspection: `{_markdown_inline(summary.get('output_inspection', {}).get('status') if isinstance(summary.get('output_inspection'), dict) else None)}`",
+        f"- runner smoke: `{_markdown_inline(summary.get('runner_smoke', {}).get('status') if isinstance(summary.get('runner_smoke'), dict) else None)}`",
+        f"- output comparison: `{_markdown_inline(summary.get('output_comparison', {}).get('status') if isinstance(summary.get('output_comparison'), dict) else None)}`",
+        f"- summary json: `{summary_path}`",
+        "",
+    ]
+
+    output_comparison = summary.get("output_comparison")
+    if isinstance(output_comparison, dict):
+        mismatch_reasons = output_comparison.get("mismatch_reasons", [])
+        lines.extend(
+            [
+                "## Mismatch Reasons",
+                f"- reasons: `{_markdown_list(mismatch_reasons)}`",
+                f"- unexpected output count: `{_markdown_inline(output_comparison.get('unexpected_output_count'))}`",
+                "",
+            ]
+        )
+
+    forced_options = summary.get("forced_options")
+    if isinstance(forced_options, dict) and forced_options:
+        forced_rows = [[key, forced_options[key]] for key in sorted(forced_options)]
+        lines.extend(
+            [
+                "## Forced Options",
+                _markdown_table(["Option", "Value"], forced_rows),
+                "",
+            ]
+        )
+
+    comparison_table = summary.get("comparison_table")
+    if isinstance(comparison_table, dict):
+        sensor_rows_raw = comparison_table.get("sensor_rows", [])
+        if isinstance(sensor_rows_raw, list) and sensor_rows_raw:
+            sensor_rows = [
+                [
+                    row.get("sensor_id"),
+                    row.get("sensor_name"),
+                    row.get("status"),
+                    _markdown_list(row.get("found_output_roles", [])),
+                    _markdown_list(row.get("missing_output_roles", [])),
+                    _markdown_list(row.get("mismatch_reasons", [])),
+                ]
+                for row in sensor_rows_raw
+                if isinstance(row, dict)
+            ]
+            lines.extend(
+                [
+                    "## Sensor Status",
+                    _markdown_table(
+                        [
+                            "Sensor ID",
+                            "Sensor Name",
+                            "Status",
+                            "Found Roles",
+                            "Missing Roles",
+                            "Mismatch Reasons",
+                        ],
+                        sensor_rows,
+                    ),
+                    "",
+                ]
+            )
+        role_rows_raw = comparison_table.get("role_rows", [])
+        if isinstance(role_rows_raw, list) and role_rows_raw:
+            role_rows = [
+                [
+                    row.get("sensor_id"),
+                    row.get("output_role"),
+                    row.get("status"),
+                    row.get("found_output_count"),
+                    row.get("missing_output_count"),
+                    _markdown_list(row.get("mismatch_reasons", [])),
+                    _markdown_list(row.get("expected_backend_filenames", [])),
+                    _markdown_list(row.get("discovered_backend_filenames", [])),
+                ]
+                for row in role_rows_raw
+                if isinstance(row, dict)
+            ]
+            lines.extend(
+                [
+                    "## Role Status",
+                    _markdown_table(
+                        [
+                            "Sensor ID",
+                            "Output Role",
+                            "Status",
+                            "Found Count",
+                            "Missing Count",
+                            "Mismatch Reasons",
+                            "Expected Files",
+                            "Discovered Files",
+                        ],
+                        role_rows,
+                    ),
+                    "",
+                ]
+            )
+
+    artifacts = summary.get("artifacts")
+    if isinstance(artifacts, dict) and artifacts:
+        artifact_rows = [[key, value] for key, value in sorted(artifacts.items())]
+        lines.extend(
+            [
+                "## Artifacts",
+                _markdown_table(["Artifact", "Path"], artifact_rows),
+                "",
+            ]
+        )
+    return "\n".join(lines).strip() + "\n"
+
+
+def _html_cell(value: Any) -> str:
+    if isinstance(value, list):
+        rendered = ", ".join(_markdown_inline(item) for item in value if _markdown_inline(item) != "-")
+        return html.escape(rendered or "-")
+    return html.escape(_markdown_inline(value))
+
+
+def _html_table(headers: list[str], rows: list[list[Any]]) -> str:
+    header_html = "".join(f"<th>{html.escape(header)}</th>" for header in headers)
+    row_html = []
+    for row in rows:
+        row_html.append("<tr>" + "".join(f"<td>{_html_cell(cell)}</td>" for cell in row) + "</tr>")
+    body = "".join(row_html) if row_html else "<tr><td colspan=\"{}\">-</td></tr>".format(len(headers))
+    return f"<table><thead><tr>{header_html}</tr></thead><tbody>{body}</tbody></table>"
+
+
+def _render_html_report(summary: dict[str, Any], summary_path: Path) -> str:
+    overview_rows = [
+        ["backend", summary.get("backend")],
+        ["success", summary.get("success")],
+        ["run status", summary.get("run", {}).get("status") if isinstance(summary.get("run"), dict) else None],
+        [
+            "failure reason",
+            summary.get("run", {}).get("failure_reason")
+            if isinstance(summary.get("run"), dict)
+            else None,
+        ],
+        [
+            "run return code",
+            summary.get("run", {}).get("return_code")
+            if isinstance(summary.get("run"), dict)
+            else None,
+        ],
+        ["pipeline status", summary.get("pipeline", {}).get("status") if isinstance(summary.get("pipeline"), dict) else None],
+        [
+            "output inspection",
+            summary.get("output_inspection", {}).get("status")
+            if isinstance(summary.get("output_inspection"), dict)
+            else None,
+        ],
+        [
+            "runner smoke",
+            summary.get("runner_smoke", {}).get("status")
+            if isinstance(summary.get("runner_smoke"), dict)
+            else None,
+        ],
+        [
+            "output comparison",
+            summary.get("output_comparison", {}).get("status")
+            if isinstance(summary.get("output_comparison"), dict)
+            else None,
+        ],
+        ["summary json", str(summary_path)],
+    ]
+    sections = [
+        "<h1>Renderer Backend Smoke Report</h1>",
+        "<h2>Overview</h2>",
+        _html_table(["Field", "Value"], overview_rows),
+    ]
+
+    output_comparison = summary.get("output_comparison")
+    if isinstance(output_comparison, dict):
+        sections.extend(
+            [
+                "<h2>Mismatch Reasons</h2>",
+                _html_table(
+                    ["Field", "Value"],
+                    [
+                        ["reasons", output_comparison.get("mismatch_reasons", [])],
+                        ["unexpected output count", output_comparison.get("unexpected_output_count")],
+                    ],
+                ),
+            ]
+        )
+
+    forced_options = summary.get("forced_options")
+    if isinstance(forced_options, dict) and forced_options:
+        sections.extend(
+            [
+                "<h2>Forced Options</h2>",
+                _html_table(
+                    ["Option", "Value"],
+                    [[key, forced_options[key]] for key in sorted(forced_options)],
+                ),
+            ]
+        )
+
+    comparison_table = summary.get("comparison_table")
+    if isinstance(comparison_table, dict):
+        sensor_rows_raw = comparison_table.get("sensor_rows", [])
+        if isinstance(sensor_rows_raw, list) and sensor_rows_raw:
+            sections.extend(
+                [
+                    "<h2>Sensor Status</h2>",
+                    _html_table(
+                        [
+                            "Sensor ID",
+                            "Sensor Name",
+                            "Status",
+                            "Found Roles",
+                            "Missing Roles",
+                            "Mismatch Reasons",
+                        ],
+                        [
+                            [
+                                row.get("sensor_id"),
+                                row.get("sensor_name"),
+                                row.get("status"),
+                                row.get("found_output_roles", []),
+                                row.get("missing_output_roles", []),
+                                row.get("mismatch_reasons", []),
+                            ]
+                            for row in sensor_rows_raw
+                            if isinstance(row, dict)
+                        ],
+                    ),
+                ]
+            )
+        role_rows_raw = comparison_table.get("role_rows", [])
+        if isinstance(role_rows_raw, list) and role_rows_raw:
+            sections.extend(
+                [
+                    "<h2>Role Status</h2>",
+                    _html_table(
+                        [
+                            "Sensor ID",
+                            "Output Role",
+                            "Status",
+                            "Found Count",
+                            "Missing Count",
+                            "Mismatch Reasons",
+                            "Expected Files",
+                            "Discovered Files",
+                        ],
+                        [
+                            [
+                                row.get("sensor_id"),
+                                row.get("output_role"),
+                                row.get("status"),
+                                row.get("found_output_count"),
+                                row.get("missing_output_count"),
+                                row.get("mismatch_reasons", []),
+                                row.get("expected_backend_filenames", []),
+                                row.get("discovered_backend_filenames", []),
+                            ]
+                            for row in role_rows_raw
+                            if isinstance(row, dict)
+                        ],
+                    ),
+                ]
+            )
+
+    artifacts = summary.get("artifacts")
+    if isinstance(artifacts, dict) and artifacts:
+        sections.extend(
+            [
+                "<h2>Artifacts</h2>",
+                _html_table(
+                    ["Artifact", "Path"],
+                    [[key, value] for key, value in sorted(artifacts.items())],
+                ),
+            ]
+        )
+
+    body = "\n".join(sections)
+    return (
+        "<!DOCTYPE html>\n"
+        "<html lang=\"en\">\n"
+        "<head>\n"
+        "  <meta charset=\"utf-8\" />\n"
+        "  <title>Renderer Backend Smoke Report</title>\n"
+        "  <style>\n"
+        "    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 24px; color: #111827; }\n"
+        "    h1, h2 { margin-bottom: 12px; }\n"
+        "    table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }\n"
+        "    th, td { border: 1px solid #d1d5db; padding: 8px; text-align: left; vertical-align: top; }\n"
+        "    th { background: #f3f4f6; }\n"
+        "    code { background: #f3f4f6; padding: 2px 4px; border-radius: 4px; }\n"
+        "  </style>\n"
+        "</head>\n"
+        "<body>\n"
+        f"{body}\n"
+        "</body>\n"
+        "</html>\n"
+    )
 
 
 def _build_effective_config(
@@ -402,7 +758,23 @@ def main(argv: list[str] | None = None) -> int:
         if args.summary_path is not None
         else output_dir / "renderer_backend_smoke_summary.json"
     )
+    markdown_report_path = (
+        _resolve_runtime_path(args.markdown_report_path)
+        if args.markdown_report_path is not None
+        else output_dir / "renderer_backend_smoke_report.md"
+    )
+    html_report_path = (
+        _resolve_runtime_path(args.html_report_path)
+        if args.html_report_path is not None
+        else output_dir / "renderer_backend_smoke_report.html"
+    )
+    summary["reports"] = {
+        "markdown": str(markdown_report_path),
+        "html": str(html_report_path),
+    }
     _write_json(summary_path, summary)
+    _write_text(markdown_report_path, _render_markdown_report(summary, summary_path))
+    _write_text(html_report_path, _render_html_report(summary, summary_path))
     print(json.dumps(summary, indent=2))
     return 0 if result.success else 1
 

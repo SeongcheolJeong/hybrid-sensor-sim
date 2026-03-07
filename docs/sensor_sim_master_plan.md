@@ -242,6 +242,7 @@ Primary code references:
   - runtime-native execute-plus-inspect option for direct backend runner smoke enforcement
   - generic AWSIM/CARLA smoke launcher script with merged config + summary artifact
   - smoke summary now exposes compact sensor/role diff tables for backend triage
+  - smoke launcher now also emits Markdown/HTML reports so mismatch triage does not require opening raw JSON
   - sensor-specific expected export paths derived from runtime ingestion data
   - backend-namespaced sensor export candidate paths and sensor output summary generation
   - backend-specific sensor export filename conventions (for example AWSIM vs CARLA camera outputs)

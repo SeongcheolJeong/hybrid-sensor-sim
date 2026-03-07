@@ -140,6 +140,10 @@ PY
                     encoding="utf-8"
                 )
             )
+            markdown_report = (smoke_output / "renderer_backend_smoke_report.md").resolve()
+            html_report = (smoke_output / "renderer_backend_smoke_report.html").resolve()
+            markdown_text = markdown_report.read_text(encoding="utf-8")
+            html_text = html_report.read_text(encoding="utf-8")
             effective_config = json.loads(
                 (smoke_output / "renderer_backend_smoke_config.json").read_text(
                     encoding="utf-8"
@@ -157,6 +161,14 @@ PY
             self.assertEqual(summary["comparison_table"]["role_rows"][0]["output_role"], "camera_visible")
             self.assertEqual(summary["comparison_table"]["role_rows"][0]["status"], "MATCHED")
             self.assertEqual(summary["forced_options"]["renderer_backend"], "awsim")
+            self.assertEqual(summary["reports"]["markdown"], str(markdown_report))
+            self.assertEqual(summary["reports"]["html"], str(html_report))
+            self.assertIn("# Renderer Backend Smoke Report", markdown_text)
+            self.assertIn("camera_visible", markdown_text)
+            self.assertIn("MATCHED", markdown_text)
+            self.assertIn("<h1>Renderer Backend Smoke Report</h1>", html_text)
+            self.assertIn("camera_visible", html_text)
+            self.assertIn("MATCHED", html_text)
             self.assertEqual(
                 effective_config["options"]["renderer_execute_and_inspect_via_runner"],
                 True,
@@ -215,6 +227,10 @@ printf '{"status":"ok"}\n' > "${BACKEND_OUTPUT_ROOT}/carla_runtime_state.json"
                     encoding="utf-8"
                 )
             )
+            markdown_report = (smoke_output / "renderer_backend_smoke_report.md").resolve()
+            html_report = (smoke_output / "renderer_backend_smoke_report.html").resolve()
+            markdown_text = markdown_report.read_text(encoding="utf-8")
+            html_text = html_report.read_text(encoding="utf-8")
             self.assertFalse(summary["success"])
             self.assertEqual(summary["backend"], "carla")
             self.assertEqual(summary["run"]["status"], "EXECUTION_FAILED")
@@ -243,6 +259,14 @@ printf '{"status":"ok"}\n' > "${BACKEND_OUTPUT_ROOT}/carla_runtime_state.json"
                 summary["comparison_table"]["role_rows"][0]["status"],
                 "MISSING_EXPECTED",
             )
+            self.assertEqual(summary["reports"]["markdown"], str(markdown_report))
+            self.assertEqual(summary["reports"]["html"], str(html_report))
+            self.assertIn("OUTPUT_CONTRACT_MISMATCH", markdown_text)
+            self.assertIn("MISSING_EXPECTED", markdown_text)
+            self.assertIn("camera_visible", markdown_text)
+            self.assertIn("OUTPUT_CONTRACT_MISMATCH", html_text)
+            self.assertIn("MISSING_EXPECTED", html_text)
+            self.assertIn("camera_visible", html_text)
 
 
 if __name__ == "__main__":
