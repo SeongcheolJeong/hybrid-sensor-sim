@@ -592,11 +592,14 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 
 - `python3 scripts/run_renderer_backend_workflow.py --backend awsim --setup-summary artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json --auto-acquire`
 - `python3 scripts/run_renderer_backend_workflow.py --backend carla --setup-summary artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json --dry-run`
+- `python3 scripts/run_renderer_backend_workflow.py --backend awsim --setup-summary artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json --dry-run --pack-linux-handoff --verify-linux-handoff-bundle`
 - behavior:
   - loads or generates local setup summary
   - reuses resolved `HELIOS_*`, backend binary, and renderer map selections
   - blocks smoke when the selected backend binary exists but is not executable on the current host
   - when the runtime is host-incompatible, materializes a Linux-runner handoff config/env/script instead of stopping at a blocker message
+  - `--pack-linux-handoff` also builds the handoff tarball locally
+  - `--verify-linux-handoff-bundle` unpacks that tarball into a local verification root and checks per-file checksums before any runner-side execution
   - if backend runtime is missing and `--auto-acquire` is set, runs acquire+stage automatically
   - runs `renderer_backend_smoke.py` when all prerequisites are ready
 - emits:
@@ -612,11 +615,13 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_linux_handoff_transfer_manifest.json`
   - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_linux_handoff_pack.sh`
   - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_linux_handoff_unpack.sh`
+  - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_linux_handoff_bundle_manifest.json`
+  - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_linux_handoff_verification.json`
   - `artifacts/renderer_backend_workflow/<backend>/local_setup_refreshed/renderer_backend_local_setup.json`
   - `artifacts/renderer_backend_workflow/<backend>/local_setup_refreshed/renderer_backend_local.env.sh`
   - plus smoke artifacts/reports when smoke executes
 - the workflow summary/report now includes structured blocker codes, a recommended next command, and Linux handoff transfer/env requirements when the selected runtime must move to a Linux runner
-- the Linux handoff path also emits a transfer manifest with per-file verification data, a local pack script, and a Linux unpack/verify script so the required inputs can be bundled and revalidated before smoke execution
+- the Linux handoff path also emits a transfer manifest with per-file verification data, a local pack script, a bundle manifest, and a Linux unpack/verify script so the required inputs can be bundled and revalidated before smoke execution
 
 ## Next implementation target
 

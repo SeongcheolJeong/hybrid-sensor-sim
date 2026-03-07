@@ -8,6 +8,9 @@ import io
 import json
 import os
 import shlex
+import shutil
+import tarfile
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -111,6 +114,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="append",
         default=[],
         help="Forwarded to renderer_backend_smoke.py when smoke runs.",
+    )
+    parser.add_argument(
+        "--pack-linux-handoff",
+        action="store_true",
+        help="When Linux handoff artifacts are ready, also build a tar.gz transfer bundle locally.",
+    )
+    parser.add_argument(
+        "--verify-linux-handoff-bundle",
+        action="store_true",
+        help="After generating or locating a Linux handoff bundle, unpack and verify it locally.",
     )
     return parser.parse_args(argv)
 
@@ -328,6 +341,20 @@ def _render_workflow_markdown_report(summary: dict[str, Any], summary_path: Path
                     f"- verifiable_entry_count: `{_inline(transfer_manifest.get('verifiable_entry_count'))}`",
                     f"- bundle_path: `{_inline(transfer_manifest.get('bundle_path'))}`",
                     f"- bundle_manifest_path: `{_inline(transfer_manifest.get('bundle_manifest_path'))}`",
+                    "",
+                ]
+            )
+        bundle = linux_handoff.get("bundle", {})
+        if isinstance(bundle, dict) and bundle:
+            lines.extend(
+                [
+                    "### Bundle",
+                    f"- pack_requested: `{_inline(bundle.get('pack_requested'))}`",
+                    f"- bundle_generated: `{_inline(bundle.get('bundle_generated'))}`",
+                    f"- verify_requested: `{_inline(bundle.get('verify_requested'))}`",
+                    f"- bundle_verified: `{_inline(bundle.get('bundle_verified'))}`",
+                    f"- bundle_path: `{_inline(bundle.get('bundle_path'))}`",
+                    f"- verification_manifest_path: `{_inline(bundle.get('verification_manifest_path'))}`",
                     "",
                 ]
             )
@@ -789,6 +816,114 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _pack_linux_handoff_bundle(
+    *,
+    transfer_manifest: dict[str, Any],
+    bundle_path: Path,
+    bundle_manifest_path: Path,
+) -> dict[str, Any]:
+    entries = transfer_manifest.get("packable_entries", [])
+    if not isinstance(entries, list):
+        entries = []
+    bundle_path.parent.mkdir(parents=True, exist_ok=True)
+    bundle_manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="linux_handoff_bundle_") as tmp_dir:
+        staging_root = Path(tmp_dir) / "bundle"
+        staging_root.mkdir(parents=True, exist_ok=True)
+        copied_entries = 0
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            local_path = entry.get("local_path")
+            target_relative_path = entry.get("target_relative_path")
+            if not isinstance(local_path, str) or not isinstance(target_relative_path, str):
+                continue
+            source = _resolve_path(local_path)
+            destination = staging_root / target_relative_path
+            if not source.exists():
+                continue
+            if source.is_dir():
+                shutil.copytree(source, destination, dirs_exist_ok=True)
+            else:
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, destination)
+            copied_entries += 1
+        with tarfile.open(bundle_path, "w:gz") as handle:
+            for path in sorted(staging_root.rglob("*")):
+                handle.add(path, arcname=str(path.relative_to(staging_root)))
+    bundle_sha256 = _sha256_file(bundle_path)
+    bundle_manifest = {
+        "bundle_path": str(bundle_path),
+        "bundle_sha256": bundle_sha256,
+        "transfer_manifest_path": transfer_manifest.get("artifacts", {}).get("transfer_manifest_path"),
+        "entry_count": len(entries),
+        "copied_entry_count": copied_entries,
+    }
+    _write_json(bundle_manifest_path, bundle_manifest)
+    return {
+        "bundle_path": str(bundle_path),
+        "bundle_manifest_path": str(bundle_manifest_path),
+        "bundle_sha256": bundle_sha256,
+        "copied_entry_count": copied_entries,
+    }
+
+
+def _verify_linux_handoff_bundle(
+    *,
+    transfer_manifest: dict[str, Any],
+    bundle_path: Path,
+    bundle_manifest_path: Path,
+    extract_root: Path,
+    verification_manifest_path: Path,
+) -> dict[str, Any]:
+    transfer_manifest_payload = dict(transfer_manifest)
+    verifiable_entries = transfer_manifest_payload.get("verifiable_entries", [])
+    if not isinstance(verifiable_entries, list):
+        verifiable_entries = []
+    bundle_manifest = _load_json(bundle_manifest_path) if bundle_manifest_path.exists() else {}
+    extract_root.parent.mkdir(parents=True, exist_ok=True)
+    if extract_root.exists():
+        shutil.rmtree(extract_root)
+    extract_root.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(bundle_path, "r:gz") as handle:
+        handle.extractall(extract_root)
+    verified_entries = 0
+    missing_targets: list[str] = []
+    checksum_mismatches: list[str] = []
+    for entry in verifiable_entries:
+        if not isinstance(entry, dict):
+            continue
+        target_relative_path = entry.get("target_relative_path")
+        expected_sha = entry.get("sha256")
+        if not isinstance(target_relative_path, str) or not isinstance(expected_sha, str):
+            continue
+        extracted = extract_root / target_relative_path
+        if not extracted.exists():
+            missing_targets.append(target_relative_path)
+            continue
+        actual_sha = _sha256_file(extracted)
+        if actual_sha != expected_sha:
+            checksum_mismatches.append(target_relative_path)
+            continue
+        verified_entries += 1
+    bundle_sha_matches = None
+    if bundle_manifest.get("bundle_sha256"):
+        bundle_sha_matches = _sha256_file(bundle_path) == bundle_manifest["bundle_sha256"]
+    verified = not missing_targets and not checksum_mismatches and bundle_sha_matches is not False
+    verification_payload = {
+        "bundle_path": str(bundle_path),
+        "bundle_manifest_path": str(bundle_manifest_path),
+        "extract_root": str(extract_root),
+        "verified": verified,
+        "verified_entry_count": verified_entries,
+        "missing_targets": missing_targets,
+        "checksum_mismatches": checksum_mismatches,
+        "bundle_sha_matches": bundle_sha_matches,
+    }
+    _write_json(verification_manifest_path, verification_payload)
+    return verification_payload
+
+
 def _finalize_linux_handoff_transfer_manifest(transfer_manifest: dict[str, Any]) -> dict[str, Any]:
     finalized = copy.deepcopy(transfer_manifest)
     verifiable_entries: list[dict[str, Any]] = []
@@ -1201,6 +1336,8 @@ def build_renderer_backend_workflow(
     overwrite_download: bool = False,
     dry_run: bool = False,
     option_overrides: list[str] | None = None,
+    pack_linux_handoff: bool = False,
+    verify_linux_handoff_bundle: bool = False,
 ) -> dict[str, Any]:
     backend = backend.strip().lower()
     if backend not in _BACKEND_ENV_VARS:
@@ -1512,6 +1649,20 @@ def build_renderer_backend_workflow(
         },
         "linux_handoff": {
             **linux_handoff,
+            "bundle": {
+                "pack_requested": pack_linux_handoff,
+                "verify_requested": verify_linux_handoff_bundle,
+                "bundle_generated": False,
+                "bundle_verified": False,
+                "bundle_path": linux_handoff["transfer_manifest"].get("bundle_path"),
+                "bundle_manifest_path": linux_handoff["transfer_manifest"].get("bundle_manifest_path"),
+                "verification_manifest_path": str(
+                    workflow_root / "renderer_backend_workflow_linux_handoff_verification.json"
+                ),
+                "verification_extract_root": str(
+                    workflow_root / "renderer_backend_workflow_linux_handoff_verify_extract"
+                ),
+            },
             "env_text": _render_linux_handoff_env_file(linux_handoff),
             "script_text": _render_linux_handoff_script(linux_handoff),
             "pack_script_text": _render_linux_handoff_pack_script(linux_handoff),
@@ -1552,6 +1703,12 @@ def build_renderer_backend_workflow(
             "linux_handoff_unpack_script_path": str(
                 workflow_root / "renderer_backend_workflow_linux_handoff_unpack.sh"
             ),
+            "linux_handoff_bundle_manifest_path": str(
+                workflow_root / "renderer_backend_workflow_linux_handoff_bundle_manifest.json"
+            ),
+            "linux_handoff_verification_manifest_path": str(
+                workflow_root / "renderer_backend_workflow_linux_handoff_verification.json"
+            ),
             "refreshed_setup_summary_path": (
                 str(refreshed_setup_summary_path) if refreshed_setup_summary_path is not None else None
             ),
@@ -1585,6 +1742,8 @@ def main(argv: list[str] | None = None) -> int:
         overwrite_download=args.overwrite_download,
         dry_run=args.dry_run,
         option_overrides=list(args.set_option),
+        pack_linux_handoff=args.pack_linux_handoff,
+        verify_linux_handoff_bundle=args.verify_linux_handoff_bundle,
     )
     summary_path = Path(summary["artifacts"]["summary_path"])
     env_path = Path(summary["artifacts"]["env_path"])
@@ -1598,6 +1757,8 @@ def main(argv: list[str] | None = None) -> int:
     linux_handoff_transfer_manifest_path = Path(summary["artifacts"]["linux_handoff_transfer_manifest_path"])
     linux_handoff_pack_script_path = Path(summary["artifacts"]["linux_handoff_pack_script_path"])
     linux_handoff_unpack_script_path = Path(summary["artifacts"]["linux_handoff_unpack_script_path"])
+    linux_handoff_bundle_manifest_path = Path(summary["artifacts"]["linux_handoff_bundle_manifest_path"])
+    linux_handoff_verification_manifest_path = Path(summary["artifacts"]["linux_handoff_verification_manifest_path"])
     _write_json(workflow_smoke_config_path, summary["smoke"]["planned_effective_config"])
     _write_json(linux_handoff_config_path, summary["linux_handoff"]["config"])
     _write_text(env_path, _render_workflow_env_file(summary))
@@ -1617,7 +1778,41 @@ def main(argv: list[str] | None = None) -> int:
     summary["linux_handoff"]["transfer_manifest"] = _finalize_linux_handoff_transfer_manifest(
         summary["linux_handoff"]["transfer_manifest"]
     )
+    summary["linux_handoff"]["transfer_manifest"]["artifacts"] = {
+        "transfer_manifest_path": str(linux_handoff_transfer_manifest_path),
+        "bundle_manifest_path": str(linux_handoff_bundle_manifest_path),
+    }
     _write_json(linux_handoff_transfer_manifest_path, summary["linux_handoff"]["transfer_manifest"])
+    bundle_summary = summary["linux_handoff"].get("bundle", {})
+    if isinstance(bundle_summary, dict):
+        bundle_path_value = bundle_summary.get("bundle_path")
+        if isinstance(bundle_path_value, str) and bundle_summary.get("pack_requested") and summary["linux_handoff"].get("ready"):
+            bundle_result = _pack_linux_handoff_bundle(
+                transfer_manifest=summary["linux_handoff"]["transfer_manifest"],
+                bundle_path=_resolve_path(bundle_path_value),
+                bundle_manifest_path=linux_handoff_bundle_manifest_path,
+            )
+            bundle_summary.update(bundle_result)
+            bundle_summary["bundle_generated"] = True
+        if isinstance(bundle_path_value, str) and bundle_summary.get("verify_requested"):
+            bundle_path = _resolve_path(bundle_path_value)
+            if bundle_path.exists() and linux_handoff_bundle_manifest_path.exists():
+                verification_payload = _verify_linux_handoff_bundle(
+                    transfer_manifest=summary["linux_handoff"]["transfer_manifest"],
+                    bundle_path=bundle_path,
+                    bundle_manifest_path=linux_handoff_bundle_manifest_path,
+                    extract_root=_resolve_path(bundle_summary["verification_extract_root"]),
+                    verification_manifest_path=linux_handoff_verification_manifest_path,
+                )
+                bundle_summary["bundle_verified"] = bool(verification_payload.get("verified"))
+                bundle_summary["verification"] = verification_payload
+            else:
+                verification_payload = {
+                    "verified": False,
+                    "message": "Bundle archive or bundle manifest is missing.",
+                }
+                bundle_summary["verification"] = verification_payload
+                _write_json(linux_handoff_verification_manifest_path, verification_payload)
     _write_json(summary_path, summary)
     _write_text(report_path, _render_workflow_markdown_report(summary, summary_path))
     _write_executable_text(next_step_script_path, _render_next_step_script(summary))

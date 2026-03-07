@@ -383,6 +383,91 @@ class RendererBackendWorkflowTests(unittest.TestCase):
             self.assertIn("BACKEND_HOST_INCOMPATIBLE", blocker_codes)
             self.assertNotIn("BACKEND_BIN_MISSING", blocker_codes)
 
+    def test_workflow_main_can_pack_and_verify_linux_handoff_bundle(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+            awsim_bin = root / "AWSIM-Demo.x86_64"
+            awsim_bin.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            awsim_bin.chmod(0o755)
+            setup_summary = root / "renderer_backend_local_setup.json"
+            setup_summary.write_text(
+                json.dumps(
+                    {
+                        "selection": {
+                            "HELIOS_BIN": str(fake_helios.resolve()),
+                            "AWSIM_BIN": str(awsim_bin.resolve()),
+                            "AWSIM_RENDERER_MAP": "Town09",
+                        },
+                        "readiness": {
+                            "helios_ready": True,
+                            "awsim_host_compatible": False,
+                        },
+                        "acquisition_hints": {
+                            "awsim": {
+                                "platform_supported": False,
+                                "platform_note": "AWSIM quick-start docs assume Ubuntu 22.04 with NVIDIA RTX and driver 570+.",
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            config_path = self._write_base_config(
+                root=root,
+                survey=survey,
+                helios_bin=fake_helios,
+                output_dir=root / "smoke_base_output",
+            )
+            output_root = root / "workflow"
+
+            with patch(
+                "hybrid_sensor_sim.tools.renderer_backend_workflow._inspect_executable_host_compatibility",
+                return_value={
+                    "host_compatible": False,
+                    "host_compatibility_reason": "ELF binary is not supported on Darwin",
+                    "binary_format": "elf",
+                    "file_description": "ELF 64-bit LSB executable",
+                },
+            ):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    exit_code = workflow_main(
+                        [
+                            "--backend",
+                            "awsim",
+                            "--setup-summary",
+                            str(setup_summary),
+                            "--config",
+                            str(config_path),
+                            "--dry-run",
+                            "--pack-linux-handoff",
+                            "--verify-linux-handoff-bundle",
+                            "--output-root",
+                            str(output_root),
+                        ]
+                    )
+
+            self.assertEqual(exit_code, 1)
+            summary = json.loads(
+                (output_root / "renderer_backend_workflow_summary.json").read_text(encoding="utf-8")
+            )
+            bundle_path = Path(summary["linux_handoff"]["bundle"]["bundle_path"])
+            bundle_manifest_path = Path(summary["linux_handoff"]["bundle"]["bundle_manifest_path"])
+            verification_manifest_path = Path(summary["linux_handoff"]["bundle"]["verification_manifest_path"])
+            self.assertTrue(bundle_path.exists())
+            self.assertTrue(bundle_manifest_path.exists())
+            self.assertTrue(verification_manifest_path.exists())
+            self.assertTrue(summary["linux_handoff"]["bundle"]["bundle_generated"])
+            self.assertTrue(summary["linux_handoff"]["bundle"]["bundle_verified"])
+            self.assertTrue(summary["linux_handoff"]["bundle"]["verification"]["verified"])
+            self.assertGreater(
+                summary["linux_handoff"]["transfer_manifest"]["verifiable_entry_count"],
+                0,
+            )
+
     def test_workflow_main_writes_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
