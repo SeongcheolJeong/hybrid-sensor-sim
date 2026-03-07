@@ -113,9 +113,77 @@ def _is_executable_file(path: Path) -> bool:
     return path.is_file() and os.access(path, os.X_OK)
 
 
+def _rosetta_available() -> bool:
+    if platform.system() != "Darwin" or platform.machine() != "arm64":
+        return False
+    try:
+        proc = subprocess.run(
+            ["pkgutil", "--pkg-info", "com.apple.pkg.RosettaUpdateAuto"],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return False
+    return proc.returncode == 0
+
+
+def _extract_architectures_from_file_description(description: str) -> list[str]:
+    lowered = description.lower()
+    architectures: list[str] = []
+    for token, normalized in (
+        ("arm64", "arm64"),
+        ("aarch64", "arm64"),
+        ("x86_64", "x86_64"),
+        ("x86-64", "x86_64"),
+        ("i386", "x86"),
+        ("80386", "x86"),
+    ):
+        if token in lowered and normalized not in architectures:
+            architectures.append(normalized)
+    return architectures
+
+
+def _evaluate_binary_compatibility(
+    *,
+    system: str,
+    machine: str,
+    binary_format: str,
+    architectures: list[str],
+) -> tuple[bool, str, str | None]:
+    if binary_format in {"script", "unknown"}:
+        return True, "", None
+    if binary_format == "mach-o":
+        if system != "Darwin":
+            return False, f"Mach-O binary is not supported on {system}", None
+        if not architectures:
+            return True, "", None
+        if machine in architectures:
+            return True, "", None
+        if machine == "arm64" and "x86_64" in architectures:
+            if _rosetta_available():
+                return True, "", "rosetta"
+            return False, "Mach-O x86_64 binary requires Rosetta on Darwin arm64", "rosetta"
+        return False, f"Mach-O architecture {architectures} is not supported on Darwin {machine}", None
+    if binary_format == "elf":
+        if system != "Linux":
+            return False, f"ELF binary is not supported on {system}", None
+        if not architectures or machine in architectures:
+            return True, "", None
+        return False, f"ELF architecture {architectures} is not supported on Linux {machine}", None
+    if binary_format == "pe":
+        if system != "Windows":
+            return False, f"Windows executable is not supported on {system}", None
+        if not architectures or machine in architectures:
+            return True, "", None
+        return False, f"Windows executable architecture {architectures} is not supported on Windows {machine}", None
+    return True, "", None
+
+
 def _inspect_executable_host_compatibility(path: Path) -> dict[str, Any]:
     host = _host_platform_summary()
     system = host["system"]
+    machine = host["machine"]
     path = path.resolve()
     if not path.exists():
         return {
@@ -123,6 +191,8 @@ def _inspect_executable_host_compatibility(path: Path) -> dict[str, Any]:
             "host_compatibility_reason": "file does not exist",
             "binary_format": "missing",
             "file_description": "",
+            "binary_architectures": [],
+            "translation_required": None,
         }
     if not _is_executable_file(path):
         return {
@@ -130,6 +200,8 @@ def _inspect_executable_host_compatibility(path: Path) -> dict[str, Any]:
             "host_compatibility_reason": "file is not executable",
             "binary_format": "non_executable",
             "file_description": "",
+            "binary_architectures": [],
+            "translation_required": None,
         }
 
     description = ""
@@ -158,62 +230,96 @@ def _inspect_executable_host_compatibility(path: Path) -> dict[str, Any]:
                 "host_compatibility_reason": "",
                 "binary_format": "script",
                 "file_description": "script (shebang detected)",
+                "binary_architectures": [],
+                "translation_required": None,
             }
         if path.suffix.lower() == ".exe":
+            architectures = ["x86_64"]
+            host_compatible, reason, translation_required = _evaluate_binary_compatibility(
+                system=system,
+                machine=machine,
+                binary_format="pe",
+                architectures=architectures,
+            )
             return {
-                "host_compatible": system == "Windows",
-                "host_compatibility_reason": (
-                    "" if system == "Windows" else f"Windows executable is not supported on {system}"
-                ),
+                "host_compatible": host_compatible,
+                "host_compatibility_reason": reason,
                 "binary_format": "pe",
                 "file_description": "",
+                "binary_architectures": architectures,
+                "translation_required": translation_required,
             }
         return {
             "host_compatible": True,
             "host_compatibility_reason": "",
             "binary_format": "unknown",
             "file_description": "",
+            "binary_architectures": [],
+            "translation_required": None,
         }
 
+    architectures = _extract_architectures_from_file_description(description)
     if "script" in lowered or "text executable" in lowered:
         return {
             "host_compatible": True,
             "host_compatibility_reason": "",
             "binary_format": "script",
             "file_description": description,
+            "binary_architectures": architectures,
+            "translation_required": None,
         }
     if "mach-o" in lowered:
+        host_compatible, reason, translation_required = _evaluate_binary_compatibility(
+            system=system,
+            machine=machine,
+            binary_format="mach-o",
+            architectures=architectures,
+        )
         return {
-            "host_compatible": system == "Darwin",
-            "host_compatibility_reason": (
-                "" if system == "Darwin" else f"Mach-O binary is not supported on {system}"
-            ),
+            "host_compatible": host_compatible,
+            "host_compatibility_reason": reason,
             "binary_format": "mach-o",
             "file_description": description,
+            "binary_architectures": architectures,
+            "translation_required": translation_required,
         }
     if "elf" in lowered:
+        host_compatible, reason, translation_required = _evaluate_binary_compatibility(
+            system=system,
+            machine=machine,
+            binary_format="elf",
+            architectures=architectures,
+        )
         return {
-            "host_compatible": system == "Linux",
-            "host_compatibility_reason": (
-                "" if system == "Linux" else f"ELF binary is not supported on {system}"
-            ),
+            "host_compatible": host_compatible,
+            "host_compatibility_reason": reason,
             "binary_format": "elf",
             "file_description": description,
+            "binary_architectures": architectures,
+            "translation_required": translation_required,
         }
     if "pe32" in lowered or "ms-dos executable" in lowered or "windows" in lowered:
+        host_compatible, reason, translation_required = _evaluate_binary_compatibility(
+            system=system,
+            machine=machine,
+            binary_format="pe",
+            architectures=architectures,
+        )
         return {
-            "host_compatible": system == "Windows",
-            "host_compatibility_reason": (
-                "" if system == "Windows" else f"Windows executable is not supported on {system}"
-            ),
+            "host_compatible": host_compatible,
+            "host_compatibility_reason": reason,
             "binary_format": "pe",
             "file_description": description,
+            "binary_architectures": architectures,
+            "translation_required": translation_required,
         }
     return {
         "host_compatible": True,
         "host_compatibility_reason": "",
         "binary_format": "unknown",
         "file_description": description,
+        "binary_architectures": architectures,
+        "translation_required": None,
     }
 
 
@@ -225,10 +331,12 @@ def _path_record(path: Path, *, origin: str, kind: str) -> dict[str, Any]:
         "kind": kind,
         "exists": path.exists(),
         "executable": _is_executable_file(path),
-        "host_compatible": compatibility["host_compatible"],
-        "host_compatibility_reason": compatibility["host_compatibility_reason"],
-        "binary_format": compatibility["binary_format"],
-        "file_description": compatibility["file_description"],
+        "host_compatible": compatibility.get("host_compatible", False),
+        "host_compatibility_reason": compatibility.get("host_compatibility_reason", ""),
+        "binary_format": compatibility.get("binary_format", "unknown"),
+        "file_description": compatibility.get("file_description", ""),
+        "binary_architectures": compatibility.get("binary_architectures", []),
+        "translation_required": compatibility.get("translation_required"),
     }
 
 

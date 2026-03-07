@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from hybrid_sensor_sim.tools.renderer_backend_local_setup import (
     _docker_image_present,
+    _inspect_executable_host_compatibility,
     build_renderer_backend_local_setup,
     main as local_setup_main,
 )
@@ -43,6 +44,65 @@ def _unavailable_docker_runtime() -> dict[str, object]:
 
 
 class RendererBackendLocalSetupTests(unittest.TestCase):
+    def test_inspect_executable_host_compatibility_requires_rosetta_for_macho_x86_64(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            binary = Path(tmp) / "AWSIM"
+            binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            binary.chmod(0o755)
+            with patch(
+                "hybrid_sensor_sim.tools.renderer_backend_local_setup._host_platform_summary",
+                return_value={"system": "Darwin", "machine": "arm64"},
+            ):
+                with patch(
+                    "hybrid_sensor_sim.tools.renderer_backend_local_setup._rosetta_available",
+                    return_value=False,
+                ):
+                    with patch(
+                        "hybrid_sensor_sim.tools.renderer_backend_local_setup.subprocess.run",
+                        return_value=subprocess.CompletedProcess(
+                            args=["file", "-b", str(binary)],
+                            returncode=0,
+                            stdout="Mach-O 64-bit executable x86_64\n",
+                            stderr="",
+                        ),
+                    ):
+                        compatibility = _inspect_executable_host_compatibility(binary)
+
+        self.assertFalse(compatibility["host_compatible"])
+        self.assertEqual(compatibility["binary_format"], "mach-o")
+        self.assertEqual(compatibility["binary_architectures"], ["x86_64"])
+        self.assertEqual(compatibility["translation_required"], "rosetta")
+        self.assertIn("requires Rosetta", compatibility["host_compatibility_reason"])
+
+    def test_inspect_executable_host_compatibility_accepts_rosetta_for_macho_x86_64(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            binary = Path(tmp) / "AWSIM"
+            binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            binary.chmod(0o755)
+            with patch(
+                "hybrid_sensor_sim.tools.renderer_backend_local_setup._host_platform_summary",
+                return_value={"system": "Darwin", "machine": "arm64"},
+            ):
+                with patch(
+                    "hybrid_sensor_sim.tools.renderer_backend_local_setup._rosetta_available",
+                    return_value=True,
+                ):
+                    with patch(
+                        "hybrid_sensor_sim.tools.renderer_backend_local_setup.subprocess.run",
+                        return_value=subprocess.CompletedProcess(
+                            args=["file", "-b", str(binary)],
+                            returncode=0,
+                            stdout="Mach-O 64-bit executable x86_64\n",
+                            stderr="",
+                        ),
+                    ):
+                        compatibility = _inspect_executable_host_compatibility(binary)
+
+        self.assertTrue(compatibility["host_compatible"])
+        self.assertEqual(compatibility["binary_architectures"], ["x86_64"])
+        self.assertEqual(compatibility["translation_required"], "rosetta")
+        self.assertEqual(compatibility["host_compatibility_reason"], "")
+
     def test_docker_image_present_uses_images_fallback_when_inspect_fails(self) -> None:
         with patch(
             "hybrid_sensor_sim.tools.renderer_backend_local_setup.subprocess.run",

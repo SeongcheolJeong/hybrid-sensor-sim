@@ -367,6 +367,8 @@ class RendererBackendWorkflowTests(unittest.TestCase):
             self.assertFalse(summary["smoke"]["ready"])
             self.assertFalse(summary["smoke"]["backend_host_compatible"])
             self.assertEqual(summary["smoke"]["backend_binary_format"], "elf")
+            self.assertEqual(summary["smoke"]["backend_binary_architectures"], None)
+            self.assertEqual(summary["smoke"]["backend_translation_required"], None)
             self.assertIn("ELF binary is not supported on Darwin", summary["issues"])
             blocker_codes = [entry["code"] for entry in summary["blockers"]]
             self.assertIn("BACKEND_HOST_INCOMPATIBLE", blocker_codes)

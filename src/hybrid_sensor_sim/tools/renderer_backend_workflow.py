@@ -785,6 +785,8 @@ def build_renderer_backend_workflow(
             "backend_host_compatible": backend_host_compatible,
             "backend_host_compatibility_reason": backend_host_compatibility_reason,
             "backend_binary_format": backend_compatibility.get("binary_format"),
+            "backend_binary_architectures": backend_compatibility.get("binary_architectures"),
+            "backend_translation_required": backend_compatibility.get("translation_required"),
             "backend_file_description": backend_compatibility.get("file_description"),
             "renderer_map": selected_renderer_map,
             "args": smoke_args,

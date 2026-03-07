@@ -547,7 +547,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `awsim_smoke_ready_binary`, `awsim_smoke_ready_docker`, `awsim_smoke_ready`
   - `carla_smoke_ready_binary`, `carla_smoke_ready_docker`, `carla_smoke_ready`
   - reference repo roots versus executable runtime candidates
-  - candidate-level binary format and host compatibility, so Linux/Windows binaries on unsupported hosts are surfaced before smoke runs
+  - candidate-level binary format, architecture, translation requirements, and host compatibility, so unsupported runtimes are surfaced before smoke runs
   - `acquisition_hints` with backend-specific download/build guidance and platform constraints
   - package executable names such as `AWSIM-Demo.x86_64` and `CarlaUnreal.sh`, plus locally downloaded archives like `AWSIM-Demo.zip` and `CARLA_UE5_Latest.tar.gz`
   - staged runtime metadata under `third_party/runtime_backends/<backend>/renderer_backend_package_stage.json` is also reused, so a previously staged backend is rediscovered without re-entering the path manually
