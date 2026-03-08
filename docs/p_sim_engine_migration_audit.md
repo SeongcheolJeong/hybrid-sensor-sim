@@ -169,6 +169,9 @@ Implemented in the current repository:
 41. scenario-to-runtime smoke bridge
    - `src/hybrid_sensor_sim/tools/scenario_runtime_bridge.py` now converts migrated `scenario_definition_v0` and replay-generated scenarios into smoke-ready `objects` scenarios for HELIOS survey generation and renderer smoke
    - `src/hybrid_sensor_sim/tools/scenario_backend_smoke_workflow.py` now connects variant/batch workflow outputs to `renderer_backend_smoke`, selecting a variant, materializing a translated scenario/config, and optionally running the backend smoke stack
+42. top-level scenario runtime/backend workflow
+   - `src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py` now runs `scenario_batch_workflow -> scenario_backend_smoke_workflow` as one command surface
+   - logical scenarios can now go directly from batch evaluation into smoke-ready scenario translation and backend smoke without manual report handoff
 
 Still pending from the same migration track:
 

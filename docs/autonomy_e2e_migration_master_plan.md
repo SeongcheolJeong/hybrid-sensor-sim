@@ -46,6 +46,7 @@ Implemented from the first migration wave:
 26. top-level batch gate breach summaries by metric and matrix group
 27. compact worst-case logical-scenario and matrix-group rows in top-level batch summaries
 28. scenario-to-runtime smoke bridge for selected migrated scenarios
+29. top-level scenario runtime/backend workflow for `logical_scenarios_v0 -> batch evaluation -> smoke-ready scenario -> renderer backend smoke`
 
 Current repository paths:
 
@@ -66,6 +67,7 @@ Current repository paths:
 - `src/hybrid_sensor_sim/tools/scenario_batch_workflow.py`
 - `src/hybrid_sensor_sim/tools/scenario_runtime_bridge.py`
 - `src/hybrid_sensor_sim/tools/scenario_backend_smoke_workflow.py`
+- `src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py`
 - `src/hybrid_sensor_sim/tools/sensor_rig_sweep.py`
 - `src/hybrid_sensor_sim/maps/convert.py`
 - `src/hybrid_sensor_sim/maps/validate.py`

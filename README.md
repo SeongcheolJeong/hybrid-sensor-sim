@@ -51,6 +51,7 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `scripts/run_scenario_variant_workflow.py`: generates variants and immediately executes rendered payloads, writing a workflow report plus the underlying variant/run reports.
 - `src/hybrid_sensor_sim/tools/scenario_runtime_bridge.py`: translates migrated scenarios into smoke-ready `objects` scenarios for HELIOS survey generation and renderer smoke execution.
 - `scripts/run_scenario_backend_smoke_workflow.py`: selects a variant from scenario variant/batch workflow reports, materializes a smoke-ready scenario/config, and optionally runs renderer backend smoke.
+- `scripts/run_scenario_runtime_backend_workflow.py`: runs scenario batch workflow first, then feeds the selected result into renderer backend smoke as one top-level workflow.
 - `src/hybrid_sensor_sim/tools/scenario_batch_gate_catalog.py`: reusable gate preset catalog and profile-id resolution for batch comparison/workflow tooling.
 - `scripts/run_scenario_batch_comparison.py`: compares a scenario variant workflow report against a matrix-sweep report and writes JSON plus Markdown comparison artifacts.
 - `scripts/run_scenario_batch_workflow.py`: runs variant workflow, matrix sweep, and batch comparison as one reusable workflow and writes a single top-level workflow report.
@@ -304,6 +305,31 @@ python3 scripts/run_scenario_backend_smoke_workflow.py \
 - `bridge`: lane spacing, actor IDs, lane bindings, route-lane metadata, and the translated smoke scenario artifact path
 - `artifacts`: `scenario_backend_smoke_selection.json`, `scenario_runtime_bridge_manifest.json`, translated smoke scenario JSON, and materialized smoke input config
 - `smoke`: optional downstream `renderer_backend_smoke` execution status, summary/report paths, and captured stdout/stderr logs
+
+Scenario runtime/backend workflow:
+
+```bash
+python3 scripts/run_scenario_runtime_backend_workflow.py \
+  --scenario-language-profile highway_mixed_payloads_v0 \
+  --matrix-scenario tests/fixtures/autonomy_e2e/p_sim_engine/highway_safe_following_v0.json \
+  --smoke-config configs/renderer_backend_smoke.awsim.example.json \
+  --backend awsim \
+  --out-root artifacts/scenario_runtime_backend_workflow_runs \
+  --execution-max-variants 1 \
+  --traffic-profile-ids sumo_highway_balanced_v0 \
+  --traffic-actor-pattern-ids sumo_platoon_sparse_v0 \
+  --traffic-npc-speed-scale-values 1.0 \
+  --tire-friction-coeff-values 1.0 \
+  --surface-friction-scale-values 1.0 \
+  --skip-smoke
+```
+
+`scenario_runtime_backend_workflow_report_v0.json` includes:
+
+- `batch_workflow`: embedded batch-workflow status, report paths, and worst logical scenario summary
+- `backend_smoke_workflow`: embedded backend-smoke workflow status, selected variant, bridge summary, and smoke result
+- `status_summary`: final status source, ordered decision trace, batch triage IDs, and backend smoke result summary
+- `artifacts`: top-level report paths plus generated smoke scenario/config paths
 
 Both `run_scenario_variants.py` and `run_scenario_variant_workflow.py` resolve default scenario-language profiles from:
 
