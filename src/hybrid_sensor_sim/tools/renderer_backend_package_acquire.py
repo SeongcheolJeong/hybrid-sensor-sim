@@ -11,6 +11,9 @@ from urllib.parse import urlparse
 from urllib.request import urlopen
 
 from hybrid_sensor_sim.tools.renderer_backend_package_stage import (
+    _render_env_file,
+    _write_json as _write_stage_json,
+    _write_text as _write_stage_text,
     build_renderer_backend_package_stage,
 )
 
@@ -300,6 +303,12 @@ def build_renderer_backend_package_acquire(
             output_root=output_root,
         )
         issues.extend(stage_summary.get("issues", []))
+        stage_summary_path = Path(stage_summary["artifacts"]["summary_path"]).resolve()
+        stage_env_path = Path(stage_summary["artifacts"]["env_path"]).resolve()
+        stage_summary["artifacts"]["summary_path"] = str(stage_summary_path)
+        stage_summary["artifacts"]["env_path"] = str(stage_env_path)
+        _write_stage_json(stage_summary_path, stage_summary)
+        _write_stage_text(stage_env_path, _render_env_file(stage_summary))
 
     summary_path = output_root / "renderer_backend_package_acquire.json"
     download_command = (

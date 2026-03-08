@@ -349,6 +349,20 @@ def _discover_runtime_selection_paths(
         / backend
         / "renderer_backend_workflow_summary.json"
     ).resolve()
+    canonical_package_stage_summary = (
+        repo_root
+        / "third_party"
+        / "runtime_backends"
+        / backend
+        / "renderer_backend_package_stage.json"
+    ).resolve()
+    canonical_package_acquire_summary = (
+        repo_root
+        / "third_party"
+        / "runtime_backends"
+        / backend
+        / "renderer_backend_package_acquire.json"
+    ).resolve()
     return {
         "setup_summary_path": (
             str(canonical_setup_summary) if canonical_setup_summary.exists() else None
@@ -356,6 +370,16 @@ def _discover_runtime_selection_paths(
         "backend_workflow_summary_path": (
             str(canonical_backend_workflow_summary)
             if canonical_backend_workflow_summary.exists()
+            else None
+        ),
+        "package_stage_summary_path": (
+            str(canonical_package_stage_summary)
+            if canonical_package_stage_summary.exists()
+            else None
+        ),
+        "package_acquire_summary_path": (
+            str(canonical_package_acquire_summary)
+            if canonical_package_acquire_summary.exists()
             else None
         ),
     }
@@ -378,12 +402,21 @@ def _resolve_runtime_selection(
     renderer_map_source = "explicit" if resolved_renderer_map else "unresolved"
     setup_summary_text = _optional_text(setup_summary_path)
     backend_workflow_summary_text = _optional_text(backend_workflow_summary_path)
+    package_stage_summary_text = ""
+    package_acquire_summary_text = ""
     setup_summary_path_source = "explicit" if setup_summary_text else "unresolved"
     backend_workflow_summary_path_source = (
         "explicit" if backend_workflow_summary_text else "unresolved"
     )
+    package_stage_summary_path_source = "unresolved"
+    package_acquire_summary_path_source = "unresolved"
 
-    if not setup_summary_text or not backend_workflow_summary_text:
+    if (
+        not setup_summary_text
+        or not backend_workflow_summary_text
+        or not package_stage_summary_text
+        or not package_acquire_summary_text
+    ):
         discovered_paths = _discover_runtime_selection_paths(
             backend=backend,
             repo_root=Path(__file__).resolve().parents[3],
@@ -400,6 +433,20 @@ def _resolve_runtime_selection(
             if discovered_backend_workflow_summary:
                 backend_workflow_summary_text = discovered_backend_workflow_summary
                 backend_workflow_summary_path_source = "auto"
+        if not package_stage_summary_text:
+            discovered_package_stage_summary = _optional_text(
+                discovered_paths.get("package_stage_summary_path")
+            )
+            if discovered_package_stage_summary:
+                package_stage_summary_text = discovered_package_stage_summary
+                package_stage_summary_path_source = "auto"
+        if not package_acquire_summary_text:
+            discovered_package_acquire_summary = _optional_text(
+                discovered_paths.get("package_acquire_summary_path")
+            )
+            if discovered_package_acquire_summary:
+                package_acquire_summary_text = discovered_package_acquire_summary
+                package_acquire_summary_path_source = "auto"
 
     if setup_summary_text and not resolved_backend_bin:
         setup_payload = _load_json_object(Path(setup_summary_text).resolve())
@@ -427,6 +474,42 @@ def _resolve_runtime_selection(
             resolved_renderer_map = candidate
             renderer_map_source = "backend_workflow_summary"
 
+    if package_stage_summary_text and not resolved_backend_bin:
+        package_stage_payload = _load_json_object(Path(package_stage_summary_text).resolve())
+        candidate = _selection_value(
+            dict(package_stage_payload.get("selection", {})), backend_env_var
+        )
+        if candidate:
+            resolved_backend_bin = candidate
+            backend_bin_source = "package_stage_summary"
+    if package_stage_summary_text and not resolved_renderer_map:
+        package_stage_payload = _load_json_object(Path(package_stage_summary_text).resolve())
+        candidate = _selection_value(
+            dict(package_stage_payload.get("selection", {})), map_env_var
+        )
+        if candidate:
+            resolved_renderer_map = candidate
+            renderer_map_source = "package_stage_summary"
+
+    if package_acquire_summary_text and not resolved_backend_bin:
+        package_acquire_payload = _load_json_object(Path(package_acquire_summary_text).resolve())
+        candidate = _selection_value(
+            dict(dict(package_acquire_payload.get("stage", {})).get("selection", {})),
+            backend_env_var,
+        )
+        if candidate:
+            resolved_backend_bin = candidate
+            backend_bin_source = "package_acquire_summary"
+    if package_acquire_summary_text and not resolved_renderer_map:
+        package_acquire_payload = _load_json_object(Path(package_acquire_summary_text).resolve())
+        candidate = _selection_value(
+            dict(dict(package_acquire_payload.get("stage", {})).get("selection", {})),
+            map_env_var,
+        )
+        if candidate:
+            resolved_renderer_map = candidate
+            renderer_map_source = "package_acquire_summary"
+
     return {
         "backend_env_var": backend_env_var,
         "map_env_var": map_env_var,
@@ -436,6 +519,14 @@ def _resolve_runtime_selection(
             str(Path(backend_workflow_summary_text).resolve()) if backend_workflow_summary_text else None
         ),
         "backend_workflow_summary_path_source": backend_workflow_summary_path_source,
+        "package_stage_summary_path": (
+            str(Path(package_stage_summary_text).resolve()) if package_stage_summary_text else None
+        ),
+        "package_stage_summary_path_source": package_stage_summary_path_source,
+        "package_acquire_summary_path": (
+            str(Path(package_acquire_summary_text).resolve()) if package_acquire_summary_text else None
+        ),
+        "package_acquire_summary_path_source": package_acquire_summary_path_source,
         "backend_bin": resolved_backend_bin or None,
         "renderer_map": resolved_renderer_map or None,
         "backend_bin_source": backend_bin_source,

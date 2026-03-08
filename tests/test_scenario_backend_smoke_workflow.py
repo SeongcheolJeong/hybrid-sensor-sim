@@ -565,6 +565,93 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
                 "Town22",
             )
 
+    def test_run_scenario_backend_smoke_workflow_auto_discovers_package_acquire_summary(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            variant_result = run_scenario_variant_workflow(
+                logical_scenarios_path="",
+                scenario_language_profile="highway_mixed_payloads_v0",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                out_root=root / "variant_workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=2,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+            )
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+            fake_backend = root / "fake_backend_success.sh"
+            _write_fake_backend_success(fake_backend)
+            smoke_config = _write_smoke_base_config(
+                root=root,
+                helios_bin=fake_helios,
+                output_dir=root / "smoke_placeholder",
+            )
+            acquire_summary = root / "renderer_backend_package_acquire.json"
+            acquire_summary.write_text(
+                json.dumps(
+                    {
+                        "stage": {
+                            "selection": {
+                                "AWSIM_BIN": str(fake_backend.resolve()),
+                                "AWSIM_RENDERER_MAP": "Town31",
+                            }
+                        }
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            with patch(
+                "hybrid_sensor_sim.tools.scenario_backend_smoke_workflow._discover_runtime_selection_paths",
+                return_value={
+                    "setup_summary_path": None,
+                    "backend_workflow_summary_path": None,
+                    "package_stage_summary_path": None,
+                    "package_acquire_summary_path": str(acquire_summary.resolve()),
+                },
+            ):
+                result = run_scenario_backend_smoke_workflow(
+                    variant_workflow_report_path=str(variant_result["workflow_report_path"]),
+                    batch_workflow_report_path="",
+                    smoke_config_path=smoke_config,
+                    backend="awsim",
+                    out_root=root / "backend_smoke_workflow",
+                    selection_strategy="first_successful_variant",
+                    selected_variant_id="",
+                    lane_spacing_m=4.0,
+                    smoke_output_dir="",
+                    setup_summary_path="",
+                    backend_workflow_summary_path="",
+                    backend_bin="",
+                    renderer_map="",
+                    option_overrides=[],
+                    skip_smoke=False,
+                )
+
+            workflow_report = result["workflow_report"]
+            self.assertEqual(workflow_report["status"], "SMOKE_SUCCEEDED")
+            self.assertEqual(
+                workflow_report["runtime_selection"]["backend_bin_source"],
+                "package_acquire_summary",
+            )
+            self.assertEqual(
+                workflow_report["runtime_selection"]["package_acquire_summary_path_source"],
+                "auto",
+            )
+            self.assertEqual(
+                workflow_report["runtime_selection"]["renderer_map"],
+                "Town31",
+            )
+
     def test_run_scenario_backend_smoke_workflow_can_record_history_guard_pass(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

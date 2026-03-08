@@ -73,6 +73,8 @@ class RendererBackendPackageAcquireTests(unittest.TestCase):
                 "AWSIM-Demo.x86_64",
             )
             self.assertTrue(Path(summary["download"]["target_path"]).exists())
+            self.assertTrue(Path(summary["artifacts"]["stage_summary_path"]).exists())
+            self.assertTrue(Path(summary["artifacts"]["stage_env_path"]).exists())
 
     def test_build_acquire_prefers_existing_local_archive_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -245,7 +247,11 @@ class RendererBackendPackageAcquireTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             summary_path = output_root / "renderer_backend_package_acquire.json"
+            stage_summary_path = output_root / "renderer_backend_package_stage.json"
+            stage_env_path = output_root / "renderer_backend_package_stage.env.sh"
             self.assertTrue(summary_path.exists())
+            self.assertTrue(stage_summary_path.exists())
+            self.assertTrue(stage_env_path.exists())
             payload = json.loads(summary_path.read_text(encoding="utf-8"))
             self.assertEqual(payload["download"]["source"], "explicit")
             self.assertIn("renderer_backend_package_acquire.json", stdout.getvalue())

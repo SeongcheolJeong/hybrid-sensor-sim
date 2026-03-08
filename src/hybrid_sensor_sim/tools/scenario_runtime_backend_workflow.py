@@ -652,9 +652,9 @@ def main(argv: list[str] | None = None) -> int:
         args = _parse_args(argv)
         scenario_language_dir = args.scenario_language_dir or _default_scenario_language_dir()
         gate_profile_path = resolve_scenario_batch_gate_profile_path(
-            profile_path_text=args.gate_profile,
-            profile_id_text=args.gate_profile_id,
-            profile_dir_text=args.gate_profile_dir,
+            gate_profile=args.gate_profile,
+            gate_profile_id=args.gate_profile_id,
+            gate_profile_dir=args.gate_profile_dir,
         )
         result = run_scenario_runtime_backend_workflow(
             logical_scenarios_path=args.logical_scenarios,

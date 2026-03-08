@@ -14,6 +14,7 @@ from hybrid_sensor_sim.io.autonomy_e2e_provenance import (
 
 from hybrid_sensor_sim.tools.scenario_runtime_backend_workflow import (
     SCENARIO_RUNTIME_BACKEND_WORKFLOW_REPORT_SCHEMA_VERSION_V0,
+    main as scenario_runtime_backend_workflow_main,
     run_scenario_runtime_backend_workflow,
 )
 
@@ -777,6 +778,104 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
                 "Town19",
             )
 
+    def test_run_scenario_runtime_backend_workflow_auto_discovers_package_stage_summary(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+            fake_backend = root / "fake_backend_success.sh"
+            _write_fake_backend_success(fake_backend)
+            smoke_config = _write_smoke_base_config(
+                root=root,
+                helios_bin=fake_helios,
+                output_dir=root / "smoke_placeholder",
+            )
+            package_stage_summary = root / "renderer_backend_package_stage.json"
+            package_stage_summary.write_text(
+                json.dumps(
+                    {
+                        "selection": {
+                            "CARLA_BIN": str(fake_backend.resolve()),
+                            "CARLA_RENDERER_MAP": "Town27",
+                        }
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            with patch(
+                "hybrid_sensor_sim.tools.scenario_backend_smoke_workflow._discover_runtime_selection_paths",
+                return_value={
+                    "setup_summary_path": None,
+                    "backend_workflow_summary_path": None,
+                    "package_stage_summary_path": str(package_stage_summary.resolve()),
+                    "package_acquire_summary_path": None,
+                },
+            ):
+                result = run_scenario_runtime_backend_workflow(
+                    logical_scenarios_path=str(
+                        P_VALIDATION_FIXTURE_ROOT / "highway_mixed_payloads_v0.json"
+                    ),
+                    scenario_language_profile="",
+                    scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                    matrix_scenario_path=P_SIM_ENGINE_FIXTURE_ROOT
+                    / "highway_safe_following_v0.json",
+                    smoke_config_path=smoke_config,
+                    backend="carla",
+                    out_root=root / "runtime_backend_workflow",
+                    sampling="full",
+                    sample_size=0,
+                    seed=7,
+                    max_variants_per_scenario=1000,
+                    execution_max_variants=2,
+                    sds_version="sds_test",
+                    sim_version="sim_test",
+                    fidelity_profile="dev-fast",
+                    matrix_run_id_prefix="RUN_BATCH",
+                    traffic_profile_ids=["sumo_highway_balanced_v0"],
+                    traffic_actor_pattern_ids=["sumo_platoon_sparse_v0"],
+                    traffic_npc_speed_scale_values=[1.0],
+                    tire_friction_coeff_values=[1.0],
+                    surface_friction_scale_values=[1.0],
+                    enable_ego_collision_avoidance=False,
+                    avoidance_ttc_threshold_sec=2.5,
+                    ego_max_brake_mps2=6.0,
+                    max_cases=0,
+                    selection_strategy="worst_logical_scenario",
+                    selected_variant_id="",
+                    lane_spacing_m=4.0,
+                    smoke_output_dir="",
+                    setup_summary_path="",
+                    backend_workflow_summary_path="",
+                    backend_bin="",
+                    renderer_map="",
+                    option_overrides=[],
+                    skip_smoke=False,
+                )
+
+            report = result["workflow_report"]
+            self.assertEqual(report["status"], "SUCCEEDED")
+            self.assertEqual(
+                report["backend_smoke_workflow"]["runtime_selection"][
+                    "package_stage_summary_path_source"
+                ],
+                "auto",
+            )
+            self.assertEqual(
+                report["backend_smoke_workflow"]["runtime_selection"][
+                    "backend_bin_source"
+                ],
+                "package_stage_summary",
+            )
+            self.assertEqual(
+                report["backend_smoke_workflow"]["runtime_selection"]["renderer_map"],
+                "Town27",
+            )
+
     def test_scenario_runtime_backend_workflow_script_bootstraps_src_path(self) -> None:
         script_path = (
             Path(__file__).resolve().parents[1]
@@ -791,3 +890,42 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertIn("Run scenario batch workflow", completed.stdout)
+
+    def test_scenario_runtime_backend_workflow_main_accepts_gate_profile_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            smoke_config = root / "smoke_config.json"
+            smoke_config.write_text("{}", encoding="utf-8")
+            workflow_root = root / "workflow"
+
+            with patch(
+                "hybrid_sensor_sim.tools.scenario_runtime_backend_workflow.run_scenario_runtime_backend_workflow",
+                return_value={
+                    "workflow_report": {
+                        "status": "SUCCEEDED",
+                        "batch_workflow": {"status": "SUCCEEDED"},
+                        "backend_smoke_workflow": {"status": "BRIDGED_ONLY"},
+                    },
+                    "workflow_report_path": workflow_root / "scenario_runtime_backend_workflow_report_v0.json",
+                },
+            ) as mocked_run:
+                exit_code = scenario_runtime_backend_workflow_main(
+                    [
+                        "--scenario-language-profile",
+                        "highway_mixed_payloads_v0",
+                        "--matrix-scenario",
+                        str(P_SIM_ENGINE_FIXTURE_ROOT / "highway_safe_following_v0.json"),
+                        "--smoke-config",
+                        str(smoke_config),
+                        "--backend",
+                        "awsim",
+                        "--out-root",
+                        str(workflow_root),
+                        "--gate-profile-id",
+                        "scenario_batch_gate_strict_v0",
+                        "--skip-smoke",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(mocked_run.called)

@@ -382,7 +382,7 @@ python3 scripts/run_scenario_runtime_backend_workflow.py \
 
 - `batch_workflow`: embedded batch-workflow status, report paths, and worst logical scenario summary
 - `backend_smoke_workflow`: embedded backend-smoke workflow status, selected variant, runtime selection, bridge summary, and smoke result
-- `backend_smoke_workflow.runtime_selection` also records whether staged backend selection artifacts were supplied explicitly or auto-discovered from canonical artifact locations
+- `backend_smoke_workflow.runtime_selection` also records whether backend selection came from explicit args, local setup/workflow summaries, or staged package artifacts under `third_party/runtime_backends/<backend>/renderer_backend_package_{stage,acquire}.json`
 - `history_guard`: optional provenance guard status, failure codes, and report path for publish-time validation against `origin/main`
 - `status_summary`: final status source, ordered decision trace, batch triage IDs, backend smoke result summary, backend output smoke/comparison mismatch details, Autoware readiness, and optional history-guard status
 - `artifacts`: top-level report paths plus generated smoke scenario/config paths, Autoware bundle artifact paths, and optional history-guard report
@@ -1098,6 +1098,10 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - emits:
   - `third_party/runtime_backends/<backend>/renderer_backend_package_acquire.json`
   - plus the staging artifacts from `stage_renderer_backend_package.py` when staging is enabled
+- when staging is enabled, the acquire command now materializes:
+  - `third_party/runtime_backends/<backend>/renderer_backend_package_stage.json`
+  - `third_party/runtime_backends/<backend>/renderer_backend_package_stage.env.sh`
+- scenario smoke workflows can auto-discover those staged package artifacts directly, even when `renderer_backend_local_setup.json` or `renderer_backend_workflow_summary.json` was not refreshed yet
 
 ### Local backend workflow
 

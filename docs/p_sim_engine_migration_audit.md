@@ -183,9 +183,9 @@ Implemented in the current repository:
    - `src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py` now runs `scenario_batch_workflow -> scenario_backend_smoke_workflow` as one command surface
    - logical scenarios can now go directly from batch evaluation into smoke-ready scenario translation and backend smoke without manual report handoff
 43. staged-backend selection reuse in scenario smoke workflows
-   - `src/hybrid_sensor_sim/tools/scenario_backend_smoke_workflow.py` and `src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py` can now resolve `backend_bin` and renderer map from `renderer_backend_local_setup.json` or `renderer_backend_workflow_summary.json`
+   - `src/hybrid_sensor_sim/tools/scenario_backend_smoke_workflow.py` and `src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py` can now resolve `backend_bin` and renderer map from `renderer_backend_local_setup.json`, `renderer_backend_workflow_summary.json`, or staged package artifacts under `third_party/runtime_backends/<backend>/renderer_backend_package_{stage,acquire}.json`
    - this lets migrated scenario smoke reuse staged/runtime-discovered backend selections without repeating manual path wiring
-   - if explicit summary paths are omitted, both workflows now auto-discover the canonical checked-in artifact locations under `artifacts/renderer_backend_local_setup/` and `artifacts/renderer_backend_workflow/<backend>/`
+   - if explicit summary paths are omitted, both workflows now auto-discover the canonical checked-in artifact locations under `artifacts/renderer_backend_local_setup/`, `artifacts/renderer_backend_workflow/<backend>/`, and `third_party/runtime_backends/<backend>/`
 44. provenance-aware runtime smoke governance
    - `src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py` can now optionally run the checked-in Autonomy-E2E history guard as part of the top-level runtime/backend workflow
    - this makes publish-time scenario smoke runs report whether migrated result paths were changed without refreshing `metadata/autonomy_e2e`
