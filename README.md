@@ -22,6 +22,9 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `src/hybrid_sensor_sim/scenarios/replay.py`: `log_scene_v0` to `scenario_definition_v0` conversion helpers.
 - `src/hybrid_sensor_sim/scenarios/variants.py`: migrated `logical_scenarios_v0` variant generation with deterministic `full` and `random` sampling.
 - `src/hybrid_sensor_sim/scenarios/matrix_sweep.py`: migrated object-sim matrix sweep with traffic actor-pattern synthesis and per-case report aggregation.
+- `src/hybrid_sensor_sim/maps/convert.py`: migrated `simple_map_v0 <-> canonical_lane_graph_v0` conversion helpers.
+- `src/hybrid_sensor_sim/maps/validate.py`: canonical lane graph semantic validation and report generation.
+- `src/hybrid_sensor_sim/maps/route.py`: canonical lane graph route computation for `hops` and `length` cost modes.
 - `src/hybrid_sensor_sim/config.py`: typed Sensor Sim config translation layer for camera/lidar/radar/renderer blocks.
 - `src/hybrid_sensor_sim/io/survey_mapping.py`: scenario JSON to HELIOS survey XML mapper.
 - `src/hybrid_sensor_sim/renderers/playback_contract.py`: renderer playback contract builder for CARLA/AWSIM bridge.
@@ -43,6 +46,9 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `scripts/run_scenario_variants.py`: expands `logical_scenarios_v0` inputs into concrete parameter combinations.
 - `scripts/run_scenario_matrix_sweep.py`: runs object-sim over traffic/friction parameter grids and writes a sweep report.
 - `scripts/run_sensor_rig_sweep.py`: evaluates rig candidates against current native preview and coverage outputs.
+- `scripts/run_map_convert.py`: converts `simple_map_v0` and `canonical_lane_graph_v0`.
+- `scripts/run_map_validate.py`: validates canonical lane graph semantics and writes a validation report.
+- `scripts/run_map_route.py`: computes canonical lane routes with optional via-lane constraints.
 
 ## Quick start
 
@@ -126,6 +132,26 @@ python3 scripts/run_sensor_rig_sweep.py \
   --out artifacts/sensor_rig_sweep
 ```
 
+Map convert / validate / route:
+
+```bash
+python3 scripts/run_map_convert.py \
+  --input tests/fixtures/autonomy_e2e/p_map_toolset/simple_map_v0.json \
+  --out artifacts/canonical_lane_graph_v0.json \
+  --to-format canonical
+
+python3 scripts/run_map_validate.py \
+  --map tests/fixtures/autonomy_e2e/p_map_toolset/canonical_lane_graph_v0.json \
+  --report-out artifacts/canonical_map_validation_report_v0.json
+
+python3 scripts/run_map_route.py \
+  --map tests/fixtures/autonomy_e2e/p_map_toolset/canonical_lane_graph_v0.json \
+  --entry-lane-id lane_a \
+  --exit-lane-id lane_c \
+  --via-lane-id lane_b \
+  --report-out artifacts/canonical_map_route_report_v0.json
+```
+
 Autonomy-E2E fixtures currently mirrored into this repo:
 
 - `tests/fixtures/autonomy_e2e/p_sim_engine/vehicle_profile_v0.json`
@@ -136,6 +162,8 @@ Autonomy-E2E fixtures currently mirrored into this repo:
 - `tests/fixtures/autonomy_e2e/p_sim_engine/rig_sweep_base_config.json`
 - `tests/fixtures/autonomy_e2e/p_sim_engine/rig_sweep_candidates_v1.json`
 - `tests/fixtures/autonomy_e2e/p_validation/highway_cut_in_v0.json`
+- `tests/fixtures/autonomy_e2e/p_map_toolset/simple_map_v0.json`
+- `tests/fixtures/autonomy_e2e/p_map_toolset/canonical_lane_graph_v0.json`
 
 Survey mapping dry-run demo (no HELIOS execution, plan+mapping artifacts only):
 
@@ -767,5 +795,5 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 
 ## Next implementation target
 
-- Migrate `P_Map-Toolset-MVP` convert/validate/route utilities for map-aware scenario tooling.
 - Add optional `vehicle_dynamics` coupling into the current object-sim ego longitudinal update.
+- Deepen map-aware scenario/object-sim consumption on top of the new canonical map utilities.

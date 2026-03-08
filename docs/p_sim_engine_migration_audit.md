@@ -179,8 +179,8 @@ Porting them would add duplication, not capability.
 
 The highest-value next migration from `Autonomy-E2E` is now:
 
-1. port `P_Map-Toolset-MVP` convert / validate / route helpers
-2. keep the map layer standalone before connecting it into object-sim
-3. only then consider a second-wave `vehicle_dynamics` coupling into object-sim
+1. add second-wave `vehicle_dynamics` coupling into object-sim ego longitudinal update
+2. keep the new map layer standalone until scenario/object-sim can consume it coherently
+3. only then deepen map-aware scenario generation and validation
 
 That order increases current feature coverage without destabilizing the newly migrated scenario and rig-sweep blocks.

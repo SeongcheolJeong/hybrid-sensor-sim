@@ -1,0 +1,30 @@
+{
+  "map_schema_version": "simple_map_v0",
+  "map_id": "demo_map_v0",
+  "roads": [
+    {
+      "road_id": "lane_a",
+      "lane_type": "driving",
+      "speed_limit_kph": 50.0,
+      "centerline": [[0.0, 0.0], [10.0, 0.0]],
+      "predecessor_lane_ids": [],
+      "successor_lane_ids": ["lane_b"]
+    },
+    {
+      "road_id": "lane_b",
+      "lane_type": "driving",
+      "speed_limit_kph": 50.0,
+      "centerline": [[10.0, 0.0], [20.0, 0.0]],
+      "predecessor_lane_ids": ["lane_a"],
+      "successor_lane_ids": ["lane_c"]
+    },
+    {
+      "road_id": "lane_c",
+      "lane_type": "driving",
+      "speed_limit_kph": 40.0,
+      "centerline": [[20.0, 0.0], [30.0, 5.0]],
+      "predecessor_lane_ids": ["lane_b"],
+      "successor_lane_ids": []
+    }
+  ]
+}

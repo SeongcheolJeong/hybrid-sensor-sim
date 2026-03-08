@@ -25,6 +25,7 @@ Implemented from the first migration wave:
 5. `logical_scenarios_v0` variant generation
 6. object-sim matrix sweep runner
 7. sensor rig sweep on current native preview/coverage outputs
+8. map convert / validate / route layer
 
 Current repository paths:
 
@@ -41,10 +42,13 @@ Current repository paths:
 - `src/hybrid_sensor_sim/tools/scenario_variants.py`
 - `src/hybrid_sensor_sim/tools/scenario_matrix_sweep.py`
 - `src/hybrid_sensor_sim/tools/sensor_rig_sweep.py`
+- `src/hybrid_sensor_sim/maps/convert.py`
+- `src/hybrid_sensor_sim/maps/validate.py`
+- `src/hybrid_sensor_sim/maps/route.py`
 
 Still pending from this master plan:
 
-1. map convert / validate / route layer
+1. object-sim `vehicle_dynamics` coupling
 
 ## Boundary
 
@@ -126,16 +130,16 @@ Primary source:
 ### Migrate later
 
 1. `convert_map_format.py`
-   - useful when current repo starts to consume map abstractions instead of raw runtime scene strings
+   - now migrated as `simple_map_v0 <-> canonical_lane_graph_v0` conversion helpers
 2. `validate_canonical_map.py`
-   - useful for map-ground-truth validation
+   - now migrated as canonical lane graph semantic validation
 3. `compute_canonical_route.py`
-   - useful for route-aware scenario generation and lane-aware validation
+   - now migrated as standalone route computation for `hops` and `length`
 
-### Preconditions
+### Current status
 
-1. current repo needs a map abstraction layer first
-2. object-sim/scenario tooling has to consume lane/map structure
+1. standalone map utilities are now present
+2. object-sim/scenario tooling does not yet consume the canonical map layer directly
 
 ## 3. P_Validation-Tooling-MVP
 
@@ -327,15 +331,15 @@ Avoid these migration mistakes:
 
 ## Current Recommended Execution Order
 
-1. add map conversion/validation from `P_Map-Toolset-MVP`
-2. deepen object-sim with optional `vehicle_dynamics` coupling after the baseline stays stable
+1. deepen object-sim with optional `vehicle_dynamics` coupling after the baseline stays stable
+2. connect scenario/object-sim tooling to the new canonical map layer
 3. only then extend batch/orchestration patterns from `P_Cloud-Engine`
 
 ## Immediate Next Action
 
 The next concrete code migration should be:
 
-1. migrate `P_Map-Toolset-MVP` convert/validate/route utilities
-2. then add second-wave `vehicle_dynamics` coupling inside object-sim
+1. add second-wave `vehicle_dynamics` coupling inside object-sim
+2. then connect scenario/object-sim tooling to the canonical map layer
 
 That order increases current feature coverage fastest while keeping repository scope under control.
