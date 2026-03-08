@@ -52,6 +52,14 @@ class CoreSimRunner:
         self.ego_avoidance_brake_event_count = 0
         self.ego_avoidance_applied_brake_mps2_max = 0.0
         self.ego_dynamics_longitudinal_force_limited_event_count = 0
+        self.route_lane_ids = (
+            [str(item) for item in scenario.map_context.route_report.get("route_lane_ids", [])]
+            if scenario.map_context is not None and scenario.map_context.route_report is not None
+            else []
+        )
+        self.route_lane_order_by_id = {
+            lane_id: idx for idx, lane_id in enumerate(self.route_lane_ids)
+        }
 
     def run(self) -> dict[str, Any]:
         started_wall = time.perf_counter()
@@ -136,9 +144,28 @@ class CoreSimRunner:
             ttc_sec = None
             ttc_same_lane_sec = None
             ttc_adjacent_lane_sec = None
+            route_ttc_sec = None
             lane_delta = abs(int(npc.lane_index) - int(self.ego.lane_index))
             same_lane = bool(npc.lane_index == self.ego.lane_index)
             adjacent_lane = bool(lane_delta == 1)
+            ego_route_lane_order = self.route_lane_order_by_id.get(self.ego.lane_id)
+            npc_route_lane_order = self.route_lane_order_by_id.get(npc.lane_id)
+            route_lane_delta = (
+                None
+                if ego_route_lane_order is None or npc_route_lane_order is None
+                else int(npc_route_lane_order - ego_route_lane_order)
+            )
+            route_relation = "unavailable"
+            if self.route_lane_ids:
+                if self.ego.lane_id in self.route_lane_order_by_id and npc.lane_id in self.route_lane_order_by_id:
+                    if route_lane_delta == 0:
+                        route_relation = "same_lane"
+                    elif route_lane_delta is not None and route_lane_delta > 0:
+                        route_relation = "downstream"
+                    else:
+                        route_relation = "upstream"
+                else:
+                    route_relation = "off_route"
 
             if same_lane and gap_m <= 0:
                 self.collision = True
@@ -152,6 +179,8 @@ class CoreSimRunner:
                 elif adjacent_lane:
                     self.min_ttc_adjacent_lane_sec = min(self.min_ttc_adjacent_lane_sec, ttc_value)
                     ttc_adjacent_lane_sec = round(ttc_value, 6)
+            if rel_speed_mps > 0 and gap_m > 0 and route_relation in {"same_lane", "downstream", "upstream"}:
+                route_ttc_sec = round(gap_m / rel_speed_mps, 6)
 
             self.trace_rows.append(
                 {
@@ -167,11 +196,16 @@ class CoreSimRunner:
                     "lane_delta": lane_delta,
                     "same_lane": same_lane,
                     "adjacent_lane": adjacent_lane,
+                    "ego_route_lane_order": ego_route_lane_order,
+                    "npc_route_lane_order": npc_route_lane_order,
+                    "route_lane_delta": route_lane_delta,
+                    "route_relation": route_relation,
                     "gap_m": round(gap_m, 6),
                     "relative_speed_mps": round(rel_speed_mps, 6),
                     "ttc_sec": ttc_sec,
                     "ttc_same_lane_sec": ttc_same_lane_sec,
                     "ttc_adjacent_lane_sec": ttc_adjacent_lane_sec,
+                    "route_ttc_sec": route_ttc_sec,
                     "ego_avoidance_brake_applied": bool(avoidance_action.get("brake_applied", False)),
                     "ego_avoidance_ttc_sec": avoidance_action.get("ttc_sec"),
                     "ego_avoidance_applied_brake_mps2": avoidance_action.get("applied_brake_mps2"),
@@ -367,6 +401,25 @@ def build_lane_risk_summary(*, run_id: str, summary: Mapping[str, Any], trace_ro
     min_gap_adjacent_lane = _collect_numeric(adjacent_lane_rows, "gap_m")
     ttc_same_lane = _collect_numeric(same_lane_rows, "ttc_same_lane_sec")
     ttc_adjacent_lane = _collect_numeric(adjacent_lane_rows, "ttc_adjacent_lane_sec")
+    route_relation_labels = ["same_lane", "downstream", "upstream", "off_route", "unavailable"]
+    route_relation_rows = {
+        label: [row for row in trace_rows if str(row.get("route_relation", "unavailable")) == label]
+        for label in route_relation_labels
+    }
+    route_same_lane_rows = route_relation_rows["same_lane"]
+    route_downstream_rows = route_relation_rows["downstream"]
+    route_upstream_rows = route_relation_rows["upstream"]
+    route_off_route_rows = route_relation_rows["off_route"]
+    route_unavailable_rows = route_relation_rows["unavailable"]
+    route_ttc_same_lane = _collect_numeric(route_same_lane_rows, "route_ttc_sec")
+    route_ttc_downstream = _collect_numeric(route_downstream_rows, "route_ttc_sec")
+    route_ttc_upstream = _collect_numeric(route_upstream_rows, "route_ttc_sec")
+    min_gap_route_same_lane = _collect_numeric(route_same_lane_rows, "gap_m")
+    min_gap_route_downstream = _collect_numeric(route_downstream_rows, "gap_m")
+    min_gap_route_upstream = _collect_numeric(route_upstream_rows, "gap_m")
+    route_lane_ids = summary.get("scenario_route_lane_ids", [])
+    if not isinstance(route_lane_ids, list):
+        route_lane_ids = []
     return {
         "lane_risk_summary_schema_version": "lane_risk_summary_v0",
         "run_id": run_id,
@@ -386,6 +439,37 @@ def build_lane_risk_summary(*, run_id: str, summary: Mapping[str, Any], trace_ro
         "min_ttc_any_lane_sec": summary.get("min_ttc_any_lane_sec"),
         "ttc_under_3s_same_lane_count": sum(1 for value in ttc_same_lane if value <= 3.0),
         "ttc_under_3s_adjacent_lane_count": sum(1 for value in ttc_adjacent_lane if value <= 3.0),
+        "route_semantics_enabled": bool(route_lane_ids),
+        "route_lane_ids": list(route_lane_ids),
+        "route_relation_counts": {
+            label: len(route_relation_rows[label]) for label in route_relation_labels
+        },
+        "route_same_lane_rows": len(route_same_lane_rows),
+        "route_downstream_rows": len(route_downstream_rows),
+        "route_upstream_rows": len(route_upstream_rows),
+        "route_off_route_rows": len(route_off_route_rows),
+        "route_unavailable_rows": len(route_unavailable_rows),
+        "min_gap_route_same_lane_m": (
+            None if not min_gap_route_same_lane else round(min(min_gap_route_same_lane), 6)
+        ),
+        "min_gap_route_downstream_m": (
+            None if not min_gap_route_downstream else round(min(min_gap_route_downstream), 6)
+        ),
+        "min_gap_route_upstream_m": (
+            None if not min_gap_route_upstream else round(min(min_gap_route_upstream), 6)
+        ),
+        "min_ttc_route_same_lane_sec": (
+            None if not route_ttc_same_lane else round(min(route_ttc_same_lane), 6)
+        ),
+        "min_ttc_route_downstream_sec": (
+            None if not route_ttc_downstream else round(min(route_ttc_downstream), 6)
+        ),
+        "min_ttc_route_upstream_sec": (
+            None if not route_ttc_upstream else round(min(route_ttc_upstream), 6)
+        ),
+        "ttc_under_3s_route_same_lane_count": sum(1 for value in route_ttc_same_lane if value <= 3.0),
+        "ttc_under_3s_route_downstream_count": sum(1 for value in route_ttc_downstream if value <= 3.0),
+        "ttc_under_3s_route_upstream_count": sum(1 for value in route_ttc_upstream if value <= 3.0),
     }
 
 

@@ -271,6 +271,13 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `lead_vehicle_lane_id`
 - When `log_scene_v0` provides a canonical map but no `route_definition`, replay synthesizes a default route and propagates it into the generated scenario.
 - `scenario_matrix_sweep` preserves canonical map, route definition, and actor `lane_id` values in each generated `matrix_scenario.json`.
+- `lane_risk_summary.json` now exposes route-aware counters in addition to legacy `same_lane` and `adjacent_lane` counters:
+  - `route_relation_counts`
+  - `route_same_lane_rows`
+  - `route_downstream_rows`
+  - `route_upstream_rows`
+  - `min_ttc_route_downstream_sec`
+  - `ttc_under_3s_route_downstream_count`
 - Default behavior remains the historical fixed-speed kinematic core.
 - Vehicle-dynamics coupling is currently longitudinal only; lane handling remains `1D + lane_index`.
 

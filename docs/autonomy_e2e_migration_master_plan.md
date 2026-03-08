@@ -118,6 +118,8 @@ Detailed audit:
 7. replay and matrix-sweep route propagation
    - `log_scene_v0` can synthesize and forward canonical routes
    - matrix sweep now preserves canonical map, route definition, and actor `lane_id` in each case scenario
+8. route-aware lane-risk semantics
+   - `lane_risk_summary_v0` now carries `same/downstream/upstream/off_route` route relation counts and route-aware TTC/gap summaries
 
 ### Reference only
 
@@ -296,7 +298,7 @@ Status:
 
 Work:
 
-1. consume canonical map semantics for richer lane/risk behavior than simple route-order normalization
+1. consume canonical map semantics for richer runtime behavior than current route-order normalization and route-aware lane-risk aggregation
 2. decide whether replay or matrix sweep should infer more lane semantics than current route/lane-id propagation
 
 Success criteria:

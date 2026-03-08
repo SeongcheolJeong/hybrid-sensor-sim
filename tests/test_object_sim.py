@@ -117,6 +117,8 @@ class ObjectSimTests(unittest.TestCase):
         self.assertIsNone(result.summary["min_ttc_same_lane_sec"])
         self.assertEqual(result.lane_risk_summary["same_lane_rows"], 200)
         self.assertEqual(result.lane_risk_summary["ttc_under_3s_same_lane_count"], 0)
+        self.assertFalse(result.lane_risk_summary["route_semantics_enabled"])
+        self.assertEqual(result.lane_risk_summary["route_relation_counts"]["unavailable"], 200)
 
     def test_run_object_sim_collision_case_is_deterministic(self) -> None:
         scenario = load_scenario(FIXTURE_ROOT / "highway_following_v0.json")
@@ -157,7 +159,18 @@ class ObjectSimTests(unittest.TestCase):
         self.assertEqual(result.summary["traffic_npc_lane_id_profile"], ["lane_b", "lane_a"])
         self.assertEqual(result.trace_rows[0]["ego_lane_id"], "lane_a")
         self.assertEqual(result.trace_rows[0]["npc_lane_id"], "lane_b")
+        self.assertEqual(result.trace_rows[0]["route_relation"], "downstream")
+        self.assertEqual(result.trace_rows[1]["route_relation"], "same_lane")
         self.assertIsNotNone(result.summary["min_ttc_adjacent_lane_sec"])
+        self.assertTrue(result.lane_risk_summary["route_semantics_enabled"])
+        self.assertEqual(result.lane_risk_summary["route_lane_ids"], ["lane_a", "lane_b", "lane_c"])
+        self.assertEqual(result.lane_risk_summary["route_same_lane_rows"], 61)
+        self.assertEqual(result.lane_risk_summary["route_downstream_rows"], 61)
+        self.assertEqual(result.lane_risk_summary["route_upstream_rows"], 0)
+        self.assertEqual(result.lane_risk_summary["route_relation_counts"]["off_route"], 0)
+        self.assertIsNone(result.lane_risk_summary["min_ttc_route_same_lane_sec"])
+        self.assertAlmostEqual(result.lane_risk_summary["min_ttc_route_downstream_sec"], 0.1, places=6)
+        self.assertGreater(result.lane_risk_summary["ttc_under_3s_route_downstream_count"], 0)
 
     def test_run_object_sim_respects_wall_timeout_override(self) -> None:
         scenario = load_scenario(FIXTURE_ROOT / "highway_safe_following_v0.json")
