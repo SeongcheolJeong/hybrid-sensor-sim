@@ -257,8 +257,11 @@ def _build_workflow_status(
     backend_report: dict[str, Any],
     history_guard_status: str | None,
 ) -> str:
-    if _is_usable_backend_handoff_output(backend_report):
+    handoff_output_quality = _classify_backend_handoff_output_quality(backend_report)
+    if handoff_output_quality == "usable":
         backend_status = "HANDOFF_DOCKER_OUTPUT_USABLE"
+    elif handoff_output_quality == "degraded":
+        backend_status = "HANDOFF_DOCKER_OUTPUT_DEGRADED"
     if history_guard_status == "FAIL":
         return "FAILED"
     if backend_status in {"SMOKE_FAILED", "FAILED", "HANDOFF_FAILED", "HANDOFF_DOCKER_FAILED"}:
@@ -269,6 +272,8 @@ def _build_workflow_status(
         return "ATTENTION"
     if backend_status == "HANDOFF_DOCKER_OUTPUT_USABLE":
         return "SUCCEEDED"
+    if backend_status == "HANDOFF_DOCKER_OUTPUT_DEGRADED":
+        return "DEGRADED"
     if backend_status == "HANDOFF_DOCKER_OUTPUT_READY":
         return "ATTENTION"
     if backend_status in {"HANDOFF_DOCKER_VERIFIED", "HANDOFF_DOCKER_EXECUTED"}:
@@ -296,22 +301,33 @@ def _infer_autoware_availability_mode(summary: dict[str, Any]) -> str | None:
     return None
 
 
-def _is_usable_backend_handoff_output(backend_report: dict[str, Any]) -> bool:
+def _classify_backend_handoff_output_quality(backend_report: dict[str, Any]) -> str | None:
     if str(backend_report.get("status", "")).strip() != "HANDOFF_DOCKER_OUTPUT_READY":
-        return False
+        return None
     smoke_summary = dict(backend_report.get("smoke", {}).get("summary", {}))
     autoware_summary = dict(backend_report.get("autoware", {}))
     autoware_status = str(autoware_summary.get("status", "")).strip().upper()
     autoware_mode = _infer_autoware_availability_mode(autoware_summary)
-    return (
+    outputs_ready = (
         str(smoke_summary.get("output_comparison_status", "")).strip() == "MATCHED"
         and str(smoke_summary.get("output_smoke_status", "")).strip() == "COMPLETE"
         and str(smoke_summary.get("output_origin_status", "")).strip() == "BACKEND_RUNTIME_ONLY"
-        and autoware_status in {"READY", "DEGRADED"}
         and autoware_mode == "runtime"
-        and bool(autoware_summary.get("required_topics_complete")) is True
-        and bool(autoware_summary.get("frame_tree_complete")) is True
     )
+    if not outputs_ready:
+        return None
+    if autoware_status == "READY":
+        if (
+            bool(autoware_summary.get("required_topics_complete")) is True
+            and bool(autoware_summary.get("frame_tree_complete")) is True
+        ):
+            return "usable"
+        return None
+    if autoware_status == "DEGRADED":
+        if bool(autoware_summary.get("frame_tree_complete")) is True:
+            return "degraded"
+        return None
+    return None
 
 
 def _build_status_summary(
@@ -321,7 +337,9 @@ def _build_status_summary(
     backend_report: dict[str, Any],
     history_guard_report: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    handoff_output_usable = _is_usable_backend_handoff_output(backend_report)
+    handoff_output_quality = _classify_backend_handoff_output_quality(backend_report)
+    handoff_output_usable = handoff_output_quality == "usable"
+    handoff_output_degraded = handoff_output_quality == "degraded"
     decision_trace = [
         {
             "step_id": "history_guard",
@@ -363,8 +381,14 @@ def _build_status_summary(
             "reason_code": "BACKEND_HANDOFF_DOCKER_OUTPUT_USABLE",
         },
         {
+            "step_id": "backend_handoff_docker_output_degraded",
+            "matched": handoff_output_degraded,
+            "status_if_matched": "DEGRADED",
+            "reason_code": "BACKEND_HANDOFF_DOCKER_OUTPUT_DEGRADED",
+        },
+        {
             "step_id": "backend_handoff_docker_output_ready",
-            "matched": backend_report["status"] == "HANDOFF_DOCKER_OUTPUT_READY" and not handoff_output_usable,
+            "matched": backend_report["status"] == "HANDOFF_DOCKER_OUTPUT_READY" and not handoff_output_usable and not handoff_output_degraded,
             "status_if_matched": "ATTENTION",
             "reason_code": "BACKEND_HANDOFF_DOCKER_OUTPUT_READY",
         },
@@ -461,6 +485,7 @@ def _build_status_summary(
         "backend_handoff_bundle_path": backend_report.get("renderer_backend_workflow", {}).get(
             "linux_handoff_bundle_path"
         ),
+        "backend_output_quality": handoff_output_quality,
         "backend_output_usable": handoff_output_usable,
         "backend_logical_scenario_id": backend_report.get("selection", {}).get("logical_scenario_id"),
         "backend_scenario_id": backend_report.get("bridge", {}).get("scenario_id"),
@@ -534,6 +559,7 @@ def _build_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Handoff warnings: `{', '.join(summary.get('backend_handoff_warning_codes', [])) or '-'}`",
         f"- Handoff command: `{summary.get('backend_handoff_recommended_command') or '-'}`",
         f"- Handoff bundle: `{summary.get('backend_handoff_bundle_path') or '-'}`",
+        f"- Output quality: `{summary.get('backend_output_quality') or '-'}`",
         f"- Output usable: `{summary.get('backend_output_usable') if summary.get('backend_output_usable') is not None else '-'}`",
         "",
         "## Autoware Bridge",
@@ -1010,7 +1036,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[ok] batch_status={workflow_report['batch_workflow']['status']}")
         print(f"[ok] backend_smoke_status={workflow_report['backend_smoke_workflow']['status']}")
         print(f"[ok] report={result['workflow_report_path']}")
-        return 0 if workflow_report["status"] in {"SUCCEEDED", "ATTENTION", "BRIDGED_ONLY", "HANDOFF_READY", "HANDOFF_DOCKER_VERIFIED", "HANDOFF_DOCKER_EXECUTED"} else 2
+        return 0 if workflow_report["status"] in {"SUCCEEDED", "DEGRADED", "ATTENTION", "BRIDGED_ONLY", "HANDOFF_READY", "HANDOFF_DOCKER_VERIFIED", "HANDOFF_DOCKER_EXECUTED"} else 2
     except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
         print(f"[error] scenario_runtime_backend_workflow.py: {exc}", file=sys.stderr)
         return 2

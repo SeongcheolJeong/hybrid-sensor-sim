@@ -216,7 +216,9 @@ Implemented in the current repository:
 52. packaged-runtime output-ready handoff classification
    - when a Linux handoff Docker run produces complete backend-runtime outputs and passes output comparison but the packaged runtime still exits non-zero, `renderer_backend_workflow` now emits `HANDOFF_DOCKER_OUTPUT_READY` instead of a generic handoff failure
    - `scenario_backend_smoke_workflow` preserves that state and still runs the Autoware bridge
-   - `scenario_runtime_backend_workflow` now treats that state as top-level `SUCCEEDED` when the same run is `MATCHED`, `COMPLETE`, `BACKEND_RUNTIME_ONLY`, and Autoware is runtime-ready; otherwise it remains `ATTENTION`
+   - `scenario_runtime_backend_workflow` now treats that state as top-level `SUCCEEDED` when the same run is `MATCHED`, `COMPLETE`, `BACKEND_RUNTIME_ONLY`, and Autoware is runtime `READY`
+   - if the same runtime-origin output set is complete and matched but the Autoware bridge is runtime `DEGRADED`, the top-level workflow now reports `DEGRADED`
+   - non-runtime or sidecar-backed output-ready handoff cases still remain `ATTENTION`
 
 Still pending from the same migration track:
 
