@@ -124,6 +124,9 @@ Implemented in the current repository:
    - matrix-side triage is now exposed through `failing_matrix_group_ids` and `attention_matrix_group_ids`
    - top-level gate breach inspection is now exposed through `breached_gate_rules`, `breached_gate_metric_ids`, and `matrix_group_gate_failure_code_counts`
    - top-level triage now also includes compact `worst_logical_scenario_row` and `worst_matrix_group_row`
+27. avoidance trigger propagation into batch reporting
+   - batch comparison now propagates `ego_avoidance_brake_event_count`, `ego_avoidance_last_trigger_interaction_kind`, and grouped avoidance trigger counters from object-sim summaries into logical-scenario rows, matrix-group rows, attention rows, and overview totals
+   - batch workflow `status_summary` now surfaces aggregate avoidance counts and interaction-kind counters for top-level triage
 
 Still pending from the same migration track:
 

@@ -189,10 +189,13 @@ python3 scripts/run_scenario_batch_comparison.py \
 `scenario_batch_comparison_report_v0.json` includes:
 
 - `overview`: combined variant/matrix counts, collision/timeout totals, and minimum-TTC hotspot
+- `overview`: now also carries aggregated avoidance telemetry such as `ego_avoidance_row_count`, `ego_avoidance_brake_event_count_total`, and `ego_avoidance_trigger_counts_by_interaction_kind`
 - `comparison_tables.logical_scenario_rows`: grouped variant execution results by logical scenario
 - `comparison_tables.matrix_group_rows`: grouped matrix cases by `traffic_profile_id::traffic_actor_pattern_id`
+- `comparison_tables.logical_scenario_rows` and `comparison_tables.matrix_group_rows`: now also aggregate avoidance telemetry through `ego_avoidance_row_count`, `ego_avoidance_brake_event_count_total`, and `ego_avoidance_trigger_counts_by_interaction_kind`
 - `comparison_tables.attention_rows`: compact rows that need cross-batch triage
 - `comparison_tables.attention_reason_counts`: compact aggregate of `attention_reasons` such as `PATH_CONFLICT_PRESENT`, `MERGE_CONFLICT_PRESENT`, and `PATH_TTC_UNDER_3S`
+- `comparison_tables.attention_rows`: now also include `ego_avoidance_brake_event_count` and `ego_avoidance_last_trigger_interaction_kind`
 - `gate`: optional threshold-based pass/fail result for attention rows, collisions, timeouts, and minimum TTC
   - `--gate-profile` loads reusable JSON policy
   - `--gate-profile-id scenario_batch_gate_strict_v0 --gate-profile-dir tests/fixtures/autonomy_e2e/p_validation` resolves a preset from a profile directory
@@ -228,6 +231,7 @@ python3 scripts/run_scenario_batch_workflow.py \
   - also includes `final_status_source` and ordered `decision_trace` so the `FAILED|ATTENTION|SUCCEEDED` decision path is explicit
   - also includes `failing_matrix_group_ids` and `attention_matrix_group_ids` for matrix-side triage
   - also includes `breached_gate_rules`, `breached_gate_metric_ids`, and `matrix_group_gate_failure_code_counts` for top-level gate breach inspection
+  - also includes `avoidance_row_count`, `avoidance_brake_event_count_total`, and `avoidance_trigger_counts_by_interaction_kind`
   - also includes compact `worst_logical_scenario_row` and `worst_matrix_group_row`
 - `variant_summary`: selected variant execution summary copied from the variant workflow
 - `matrix_summary`: matrix-sweep case summary

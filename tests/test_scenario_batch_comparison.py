@@ -73,6 +73,50 @@ class ScenarioBatchComparisonTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def _build_route_avoidance_scenario(self) -> dict[str, object]:
+        canonical_map_path = str((P_MAP_TOOLSET_FIXTURE_ROOT / "canonical_lane_graph_v0.json").resolve())
+        return {
+            "scenario_schema_version": "scenario_definition_v0",
+            "scenario_id": "scn_route_avoidance",
+            "duration_sec": 1.0,
+            "dt_sec": 0.1,
+            "canonical_map_path": canonical_map_path,
+            "route_definition": {
+                "entry_lane_id": "lane_a",
+                "exit_lane_id": "lane_c",
+                "via_lane_ids": ["lane_b"],
+                "cost_mode": "hops",
+            },
+            "enable_ego_collision_avoidance": True,
+            "avoidance_ttc_threshold_sec": 3.5,
+            "ego_max_brake_mps2": 5.0,
+            "avoidance_interaction_policy": {
+                "merge_conflict": {"ttc_threshold_sec": 3.5, "brake_scale": 0.5},
+            },
+            "ego": {"position_m": 0.0, "speed_mps": 10.0, "lane_id": "lane_a"},
+            "npcs": [{"position_m": 18.0, "speed_mps": 4.0, "lane_id": "lane_b"}],
+        }
+
+    def _write_route_avoidance_logical_scenarios(self, path: Path) -> None:
+        path.write_text(
+            json.dumps(
+                {
+                    "logical_scenarios": [
+                        {
+                            "scenario_id": "scn_route_avoidance",
+                            "parameters": {"scenario_variant": [1]},
+                            "variant_payload_kind": "scenario_definition_v0",
+                            "variant_payload_template": self._build_route_avoidance_scenario(),
+                        }
+                    ]
+                },
+                indent=2,
+                ensure_ascii=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
     def test_build_scenario_batch_comparison_report_writes_json_and_markdown(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -351,10 +395,80 @@ class ScenarioBatchComparisonTests(unittest.TestCase):
             self.assertIn("PATH_CONFLICT_PRESENT", attention_row["attention_reasons"])
             self.assertIn("MERGE_CONFLICT_PRESENT", attention_row["attention_reasons"])
             self.assertIn("PATH_TTC_UNDER_3S", attention_row["attention_reasons"])
+
+    def test_scenario_batch_comparison_propagates_avoidance_trigger_summaries(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            logical_path = root / "route_avoidance_logical_scenarios.json"
+            self._write_route_avoidance_logical_scenarios(logical_path)
+            workflow_result = run_scenario_variant_workflow(
+                logical_scenarios_path=str(logical_path),
+                scenario_language_profile="",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                out_root=root / "workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=1,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+            )
+            matrix_scenario_path = root / "route_avoidance_matrix.json"
+            matrix_scenario_path.write_text(
+                json.dumps(self._build_route_avoidance_scenario(), indent=2, ensure_ascii=True) + "\n",
+                encoding="utf-8",
+            )
+            run_scenario_matrix_sweep(
+                scenario_path=matrix_scenario_path,
+                out_root=root / "matrix_runs",
+                report_out=root / "matrix_report.json",
+                run_id_prefix="RUN_MATRIX_COMPARE",
+                traffic_profile_ids=["sumo_highway_balanced_v0"],
+                traffic_actor_pattern_ids=["sumo_route_shifted_v0"],
+                traffic_npc_speed_scale_values=[0.5],
+                tire_friction_coeff_values=[1.0],
+                surface_friction_scale_values=[1.0],
+                enable_ego_collision_avoidance=True,
+                avoidance_ttc_threshold_sec=10.0,
+                ego_max_brake_mps2=5.0,
+                max_cases=1,
+            )
+            report = build_scenario_batch_comparison_report(
+                variant_workflow_report_path=Path(workflow_result["workflow_report_path"]),
+                matrix_sweep_report_path=root / "matrix_report.json",
+                out_report=root / "comparison.json",
+            )
+
+            self.assertGreater(report["overview"]["ego_avoidance_row_count"], 0)
+            self.assertGreater(report["overview"]["ego_avoidance_brake_event_count_total"], 0)
+            self.assertGreater(
+                report["overview"]["ego_avoidance_trigger_counts_by_interaction_kind"]["merge_conflict"],
+                0,
+            )
+            logical_row = report["comparison_tables"]["logical_scenario_rows"][0]
+            self.assertGreater(logical_row["ego_avoidance_row_count"], 0)
+            self.assertGreater(logical_row["ego_avoidance_brake_event_count_total"], 0)
+            self.assertGreater(
+                logical_row["ego_avoidance_trigger_counts_by_interaction_kind"]["merge_conflict"],
+                0,
+            )
+            matrix_row = report["comparison_tables"]["matrix_group_rows"][0]
+            self.assertGreater(matrix_row["ego_avoidance_row_count"], 0)
+            self.assertGreater(matrix_row["ego_avoidance_brake_event_count_total"], 0)
+            attention_row = next(
+                row for row in report["comparison_tables"]["attention_rows"] if row["group_id"] == "scn_route_avoidance"
+            )
+            self.assertGreater(attention_row["ego_avoidance_brake_event_count"], 0)
+            self.assertEqual(attention_row["ego_avoidance_last_trigger_interaction_kind"], "merge_conflict")
+            markdown = (root / "comparison.md").read_text(encoding="utf-8")
+            self.assertIn("Avoidance brake event count", markdown)
+            self.assertIn("Avoidance trigger counts", markdown)
             self.assertGreater(attention_row["merge_conflict_rows"], 0)
-            self.assertEqual(report["comparison_tables"]["attention_reason_counts"]["PATH_CONFLICT_PRESENT"], 1)
-            self.assertEqual(report["comparison_tables"]["attention_reason_counts"]["MERGE_CONFLICT_PRESENT"], 1)
-            self.assertEqual(report["comparison_tables"]["attention_reason_counts"]["PATH_TTC_UNDER_3S"], 1)
+            self.assertEqual(report["comparison_tables"]["attention_reason_counts"]["PATH_CONFLICT_PRESENT"], 2)
+            self.assertEqual(report["comparison_tables"]["attention_reason_counts"]["MERGE_CONFLICT_PRESENT"], 2)
+            self.assertEqual(report["comparison_tables"]["attention_reason_counts"]["PATH_TTC_UNDER_3S"], 2)
 
     def test_scenario_batch_comparison_cli_threshold_can_override_profile(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

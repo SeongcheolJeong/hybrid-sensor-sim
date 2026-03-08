@@ -332,6 +332,21 @@ def _extract_path_interaction_fields(lane_risk_summary: dict[str, Any]) -> dict[
     }
 
 
+def _extract_avoidance_fields(summary: dict[str, Any]) -> dict[str, Any]:
+    raw_counts = summary.get("ego_avoidance_trigger_counts_by_interaction_kind", {})
+    trigger_counts = dict(raw_counts) if isinstance(raw_counts, dict) else {}
+    return {
+        "ego_avoidance_brake_event_count": int(summary.get("ego_avoidance_brake_event_count", 0) or 0),
+        "ego_avoidance_applied_brake_mps2_max": _coerce_optional_float(
+            summary.get("ego_avoidance_applied_brake_mps2_max")
+        ),
+        "ego_avoidance_last_trigger_interaction_kind": (
+            str(summary.get("ego_avoidance_last_trigger_interaction_kind", "")).strip() or None
+        ),
+        "ego_avoidance_trigger_counts_by_interaction_kind": trigger_counts,
+    }
+
+
 def _build_variant_batch_rows(variant_run_report: dict[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for run in variant_run_report.get("variant_runs", []):
@@ -340,6 +355,7 @@ def _build_variant_batch_rows(variant_run_report: dict[str, Any]) -> list[dict[s
         summary = _load_summary_payload(run.get("summary_path"))
         lane_risk_summary = _load_lane_risk_summary_payload(run.get("lane_risk_summary_path"))
         path_interaction_fields = _extract_path_interaction_fields(lane_risk_summary)
+        avoidance_fields = _extract_avoidance_fields(summary)
         object_sim_status = str(summary.get("status", run.get("object_sim_status", ""))).strip() or None
         termination_reason = str(summary.get("termination_reason", run.get("termination_reason", ""))).strip() or None
         row = {
@@ -361,6 +377,7 @@ def _build_variant_batch_rows(variant_run_report: dict[str, Any]) -> list[dict[s
             "lane_risk_summary_path": str(run.get("lane_risk_summary_path", "")).strip() or None,
         }
         row.update(path_interaction_fields)
+        row.update(avoidance_fields)
         rows.append(row)
     return rows
 
@@ -383,6 +400,7 @@ def _build_matrix_batch_rows(matrix_sweep_report: dict[str, Any]) -> list[dict[s
             else {}
         )
         path_interaction_fields = _extract_path_interaction_fields(lane_risk_summary)
+        avoidance_fields = _extract_avoidance_fields(summary)
         status_value = str(case.get("status", summary.get("status", ""))).strip() or None
         termination_reason = str(summary.get("termination_reason", "")).strip() or None
         row = {
@@ -409,6 +427,7 @@ def _build_matrix_batch_rows(matrix_sweep_report: dict[str, Any]) -> list[dict[s
             "surface_friction_scale": _coerce_optional_float(case.get("surface_friction_scale")),
         }
         row.update(path_interaction_fields)
+        row.update(avoidance_fields)
         rows.append(row)
     return rows
 
@@ -434,6 +453,10 @@ def _build_logical_scenario_rows(variant_rows: list[dict[str, Any]]) -> list[dic
                 "diverge_clear_row_count": 0,
                 "path_interaction_counts": Counter(),
                 "min_ttc_path_conflict_sec_min": None,
+                "ego_avoidance_row_count": 0,
+                "ego_avoidance_brake_event_count_total": 0,
+                "ego_avoidance_trigger_counts_by_interaction_kind": Counter(),
+                "ego_avoidance_last_trigger_interaction_kind_counts": Counter(),
                 "row_ids": [],
             },
         )
@@ -461,6 +484,15 @@ def _build_logical_scenario_rows(variant_rows: list[dict[str, Any]]) -> list[dic
         group["diverge_clear_row_count"] += int(row.get("diverge_clear_rows", 0) or 0)
         for label, count in dict(row.get("path_interaction_counts", {})).items():
             group["path_interaction_counts"][str(label)] += int(count)
+        brake_event_count = int(row.get("ego_avoidance_brake_event_count", 0) or 0)
+        if brake_event_count > 0:
+            group["ego_avoidance_row_count"] += 1
+        group["ego_avoidance_brake_event_count_total"] += brake_event_count
+        for label, count in dict(row.get("ego_avoidance_trigger_counts_by_interaction_kind", {})).items():
+            group["ego_avoidance_trigger_counts_by_interaction_kind"][str(label)] += int(count)
+        last_trigger_kind = str(row.get("ego_avoidance_last_trigger_interaction_kind", "")).strip()
+        if last_trigger_kind:
+            group["ego_avoidance_last_trigger_interaction_kind_counts"][last_trigger_kind] += 1
         ttc_value = _coerce_optional_float(row.get("min_ttc_any_lane_sec"))
         current_min = group["min_ttc_any_lane_sec_min"]
         if ttc_value is not None and (current_min is None or ttc_value < current_min):
@@ -486,6 +518,14 @@ def _build_logical_scenario_rows(variant_rows: list[dict[str, Any]]) -> list[dic
             "diverge_clear_row_count": int(group["diverge_clear_row_count"]),
             "path_interaction_counts": dict(sorted(group["path_interaction_counts"].items())),
             "min_ttc_path_conflict_sec_min": group["min_ttc_path_conflict_sec_min"],
+            "ego_avoidance_row_count": int(group["ego_avoidance_row_count"]),
+            "ego_avoidance_brake_event_count_total": int(group["ego_avoidance_brake_event_count_total"]),
+            "ego_avoidance_trigger_counts_by_interaction_kind": dict(
+                sorted(group["ego_avoidance_trigger_counts_by_interaction_kind"].items())
+            ),
+            "ego_avoidance_last_trigger_interaction_kind_counts": dict(
+                sorted(group["ego_avoidance_last_trigger_interaction_kind_counts"].items())
+            ),
             "row_ids": list(group["row_ids"]),
         }
         for logical_scenario_id, group in sorted(grouped.items())
@@ -515,6 +555,10 @@ def _build_matrix_group_rows(matrix_rows: list[dict[str, Any]]) -> list[dict[str
                 "diverge_clear_row_count": 0,
                 "path_interaction_counts": Counter(),
                 "min_ttc_path_conflict_sec_min": None,
+                "ego_avoidance_row_count": 0,
+                "ego_avoidance_brake_event_count_total": 0,
+                "ego_avoidance_trigger_counts_by_interaction_kind": Counter(),
+                "ego_avoidance_last_trigger_interaction_kind_counts": Counter(),
                 "traffic_npc_speed_scale_values": set(),
                 "tire_friction_coeff_values": set(),
                 "surface_friction_scale_values": set(),
@@ -539,6 +583,15 @@ def _build_matrix_group_rows(matrix_rows: list[dict[str, Any]]) -> list[dict[str
         group["diverge_clear_row_count"] += int(row.get("diverge_clear_rows", 0) or 0)
         for label, count in dict(row.get("path_interaction_counts", {})).items():
             group["path_interaction_counts"][str(label)] += int(count)
+        brake_event_count = int(row.get("ego_avoidance_brake_event_count", 0) or 0)
+        if brake_event_count > 0:
+            group["ego_avoidance_row_count"] += 1
+        group["ego_avoidance_brake_event_count_total"] += brake_event_count
+        for label, count in dict(row.get("ego_avoidance_trigger_counts_by_interaction_kind", {})).items():
+            group["ego_avoidance_trigger_counts_by_interaction_kind"][str(label)] += int(count)
+        last_trigger_kind = str(row.get("ego_avoidance_last_trigger_interaction_kind", "")).strip()
+        if last_trigger_kind:
+            group["ego_avoidance_last_trigger_interaction_kind_counts"][last_trigger_kind] += 1
         ttc_value = _coerce_optional_float(row.get("min_ttc_any_lane_sec"))
         current_min = group["min_ttc_any_lane_sec_min"]
         if ttc_value is not None and (current_min is None or ttc_value < current_min):
@@ -573,6 +626,14 @@ def _build_matrix_group_rows(matrix_rows: list[dict[str, Any]]) -> list[dict[str
             "diverge_clear_row_count": int(group["diverge_clear_row_count"]),
             "path_interaction_counts": dict(sorted(group["path_interaction_counts"].items())),
             "min_ttc_path_conflict_sec_min": group["min_ttc_path_conflict_sec_min"],
+            "ego_avoidance_row_count": int(group["ego_avoidance_row_count"]),
+            "ego_avoidance_brake_event_count_total": int(group["ego_avoidance_brake_event_count_total"]),
+            "ego_avoidance_trigger_counts_by_interaction_kind": dict(
+                sorted(group["ego_avoidance_trigger_counts_by_interaction_kind"].items())
+            ),
+            "ego_avoidance_last_trigger_interaction_kind_counts": dict(
+                sorted(group["ego_avoidance_last_trigger_interaction_kind_counts"].items())
+            ),
             "traffic_npc_speed_scale_values": sorted(group["traffic_npc_speed_scale_values"]),
             "tire_friction_coeff_values": sorted(group["tire_friction_coeff_values"]),
             "surface_friction_scale_values": sorted(group["surface_friction_scale_values"]),
@@ -638,6 +699,10 @@ def _build_attention_rows(batch_rows: list[dict[str, Any]]) -> list[dict[str, An
                 "failure_code": str(row.get("failure_code", "")).strip() or None,
                 "failure_reason": str(row.get("failure_reason", "")).strip() or None,
                 "attention_reasons": attention_reasons,
+                "ego_avoidance_brake_event_count": int(row.get("ego_avoidance_brake_event_count", 0) or 0),
+                "ego_avoidance_last_trigger_interaction_kind": (
+                    str(row.get("ego_avoidance_last_trigger_interaction_kind", "")).strip() or None
+                ),
             }
         )
     return rows
@@ -668,6 +733,9 @@ def _build_overview(
     path_conflict_row_count = 0
     merge_conflict_row_count = 0
     lane_change_conflict_row_count = 0
+    ego_avoidance_row_count = 0
+    ego_avoidance_brake_event_count_total = 0
+    ego_avoidance_trigger_counts_by_interaction_kind: Counter[str] = Counter()
     min_ttc_path_conflict_sec_min: float | None = None
     min_ttc_path_conflict_row_id = None
     min_ttc_path_conflict_source_batch = None
@@ -686,6 +754,12 @@ def _build_overview(
         path_conflict_row_count += int(row.get("path_conflict_rows", 0) or 0)
         merge_conflict_row_count += int(row.get("merge_conflict_rows", 0) or 0)
         lane_change_conflict_row_count += int(row.get("lane_change_conflict_rows", 0) or 0)
+        brake_event_count = int(row.get("ego_avoidance_brake_event_count", 0) or 0)
+        if brake_event_count > 0:
+            ego_avoidance_row_count += 1
+        ego_avoidance_brake_event_count_total += brake_event_count
+        for label, count in dict(row.get("ego_avoidance_trigger_counts_by_interaction_kind", {})).items():
+            ego_avoidance_trigger_counts_by_interaction_kind[str(label)] += int(count)
         ttc_value = _coerce_optional_float(row.get("min_ttc_any_lane_sec"))
         if ttc_value is not None and (min_ttc_any_lane_sec_min is None or ttc_value < min_ttc_any_lane_sec_min):
             min_ttc_any_lane_sec_min = ttc_value
@@ -710,6 +784,11 @@ def _build_overview(
         "path_conflict_row_count": int(path_conflict_row_count),
         "merge_conflict_row_count": int(merge_conflict_row_count),
         "lane_change_conflict_row_count": int(lane_change_conflict_row_count),
+        "ego_avoidance_row_count": int(ego_avoidance_row_count),
+        "ego_avoidance_brake_event_count_total": int(ego_avoidance_brake_event_count_total),
+        "ego_avoidance_trigger_counts_by_interaction_kind": dict(
+            sorted(ego_avoidance_trigger_counts_by_interaction_kind.items())
+        ),
         "min_ttc_any_lane_sec_min": min_ttc_any_lane_sec_min,
         "min_ttc_any_lane_row_id": min_ttc_any_lane_row_id,
         "min_ttc_any_lane_source_batch": min_ttc_any_lane_source_batch,
@@ -894,6 +973,9 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
                 ["Path conflict row count", str(overview["path_conflict_row_count"])],
                 ["Merge conflict row count", str(overview["merge_conflict_row_count"])],
                 ["Lane-change conflict row count", str(overview["lane_change_conflict_row_count"])],
+                ["Avoidance-active row count", str(overview["ego_avoidance_row_count"])],
+                ["Avoidance brake event count", str(overview["ego_avoidance_brake_event_count_total"])],
+                ["Avoidance trigger counts", _format_counter(overview["ego_avoidance_trigger_counts_by_interaction_kind"])],
                 ["Minimum TTC any-lane", _format_float(overview["min_ttc_any_lane_sec_min"])],
                 ["Minimum TTC source", str(overview.get("min_ttc_any_lane_source_batch") or "-")],
                 ["Minimum TTC row id", str(overview.get("min_ttc_any_lane_row_id") or "-")],
@@ -952,6 +1034,7 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
                 "Path",
                 "Merge",
                 "Lane Change",
+                "Avoidance",
                 "Min TTC Any",
                 "Min TTC Path",
             ],
@@ -967,6 +1050,7 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
                     str(row["path_conflict_row_count"]),
                     str(row["merge_conflict_row_count"]),
                     str(row["lane_change_conflict_row_count"]),
+                    str(row.get("ego_avoidance_brake_event_count_total", 0)),
                     _format_float(row["min_ttc_any_lane_sec_min"]),
                     _format_float(row["min_ttc_path_conflict_sec_min"]),
                 ]
@@ -989,6 +1073,7 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
                 "Path",
                 "Merge",
                 "Lane Change",
+                "Avoidance",
                 "Min TTC Any",
                 "Min TTC Path",
                 "Speed Scale",
@@ -1006,6 +1091,7 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
                     str(row["path_conflict_row_count"]),
                     str(row["merge_conflict_row_count"]),
                     str(row["lane_change_conflict_row_count"]),
+                    str(row.get("ego_avoidance_brake_event_count_total", 0)),
                     _format_float(row["min_ttc_any_lane_sec_min"]),
                     _format_float(row["min_ttc_path_conflict_sec_min"]),
                     ",".join(str(value) for value in row["traffic_npc_speed_scale_values"]) or "-",
@@ -1036,6 +1122,8 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
                     "Path",
                     "Merge",
                     "Lane Change",
+                    "Avoidance",
+                    "Avoidance Kind",
                     "Reasons",
                     "Failure Code",
                 ],
@@ -1052,6 +1140,8 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
                         str(row.get("path_conflict_rows", 0)),
                         str(row.get("merge_conflict_rows", 0)),
                         str(row.get("lane_change_conflict_rows", 0)),
+                        str(row.get("ego_avoidance_brake_event_count", 0)),
+                        str(row.get("ego_avoidance_last_trigger_interaction_kind") or "-"),
                         ",".join(row.get("attention_reasons", [])) or "-",
                         str(row["failure_code"] or "-"),
                     ]

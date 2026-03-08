@@ -471,6 +471,19 @@ def _build_workflow_status_summary(
         }
     )
     gate_policy = dict(comparison_summary.get("gate", {}).get("policy", {}))
+    logical_rows = list(comparison_summary.get("logical_scenario_rows", []))
+    matrix_rows = list(comparison_summary.get("matrix_group_rows", []))
+    avoidance_trigger_counts_by_interaction_kind: dict[str, int] = {}
+    avoidance_brake_event_count_total = 0
+    avoidance_row_count = 0
+    for row in logical_rows + matrix_rows:
+        avoidance_brake_event_count_total += int(row.get("ego_avoidance_brake_event_count_total", 0) or 0)
+        avoidance_row_count += int(row.get("ego_avoidance_row_count", 0) or 0)
+        for label, count in dict(row.get("ego_avoidance_trigger_counts_by_interaction_kind", {})).items():
+            key = str(label)
+            avoidance_trigger_counts_by_interaction_kind[key] = (
+                avoidance_trigger_counts_by_interaction_kind.get(key, 0) + int(count)
+            )
 
     def matrix_group_gate_failure_codes(row: dict[str, Any]) -> list[str]:
         failure_codes: list[str] = []
@@ -604,6 +617,11 @@ def _build_workflow_status_summary(
         "matrix_group_gate_failure_code_counts": dict(sorted(matrix_group_gate_failure_code_counts.items())),
         "attention_matrix_group_ids": attention_matrix_group_ids,
         "attention_matrix_group_count": len(attention_matrix_group_ids),
+        "avoidance_row_count": int(avoidance_row_count),
+        "avoidance_brake_event_count_total": int(avoidance_brake_event_count_total),
+        "avoidance_trigger_counts_by_interaction_kind": dict(
+            sorted(avoidance_trigger_counts_by_interaction_kind.items())
+        ),
         "attention_reason_counts": dict(comparison_summary.get("attention_reason_counts", {})),
         "worst_logical_scenario_row": dict(worst_logical_scenario_row) if worst_logical_scenario_row is not None else None,
         "worst_matrix_group_row": dict(worst_matrix_group_row) if worst_matrix_group_row is not None else None,
@@ -646,6 +664,9 @@ def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Failing matrix groups: `{','.join(status_summary['failing_matrix_group_ids']) or '-'}`",
         f"- Attention matrix groups: `{','.join(status_summary['attention_matrix_group_ids']) or '-'}`",
         f"- Matrix gate failure counts: `{_format_counter(status_summary['matrix_group_gate_failure_code_counts'])}`",
+        f"- Avoidance-active rows: `{status_summary['avoidance_row_count']}`",
+        f"- Avoidance brake event count: `{status_summary['avoidance_brake_event_count_total']}`",
+        f"- Avoidance trigger counts: `{_format_counter(status_summary['avoidance_trigger_counts_by_interaction_kind'])}`",
         "",
         "## Worst-Case Rows",
         "",
@@ -741,6 +762,7 @@ def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
                     "Path",
                     "Merge",
                     "Lane Change",
+                    "Avoidance",
                     "Min TTC Path",
                 ],
                 [
@@ -753,6 +775,7 @@ def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
                         str(row.get("path_conflict_row_count", 0)),
                         str(row.get("merge_conflict_row_count", 0)),
                         str(row.get("lane_change_conflict_row_count", 0)),
+                        str(row.get("ego_avoidance_brake_event_count_total", 0)),
                         _format_float(row.get("min_ttc_path_conflict_sec_min")),
                     ]
                     for row in failing_logical_rows
@@ -779,12 +802,13 @@ def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
                 "Object Sim",
                 "Collisions",
                 "Timeouts",
-                "Path",
-                "Merge",
-                "Lane Change",
-                "Min TTC Any",
-                "Min TTC Path",
-            ],
+                    "Path",
+                    "Merge",
+                    "Lane Change",
+                    "Avoidance",
+                    "Min TTC Any",
+                    "Min TTC Path",
+                ],
             [
                 [
                         str(row["logical_scenario_id"]),
@@ -797,6 +821,7 @@ def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
                     str(row.get("path_conflict_row_count", 0)),
                     str(row.get("merge_conflict_row_count", 0)),
                     str(row.get("lane_change_conflict_row_count", 0)),
+                    str(row.get("ego_avoidance_brake_event_count_total", 0)),
                     _format_float(row["min_ttc_any_lane_sec_min"]),
                     _format_float(row.get("min_ttc_path_conflict_sec_min")),
                 ]
@@ -817,12 +842,13 @@ def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
                 "Object Sim",
                 "Collisions",
                 "Timeouts",
-                "Path",
-                "Merge",
-                "Lane Change",
-                "Min TTC Any",
-                "Min TTC Path",
-            ],
+                    "Path",
+                    "Merge",
+                    "Lane Change",
+                    "Avoidance",
+                    "Min TTC Any",
+                    "Min TTC Path",
+                ],
             [
                 [
                         str(row["matrix_group_id"]),
@@ -834,6 +860,7 @@ def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
                     str(row.get("path_conflict_row_count", 0)),
                     str(row.get("merge_conflict_row_count", 0)),
                     str(row.get("lane_change_conflict_row_count", 0)),
+                    str(row.get("ego_avoidance_brake_event_count_total", 0)),
                     _format_float(row["min_ttc_any_lane_sec_min"]),
                     _format_float(row.get("min_ttc_path_conflict_sec_min")),
                 ]

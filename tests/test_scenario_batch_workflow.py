@@ -83,6 +83,49 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def _build_route_avoidance_scenario(self) -> dict[str, object]:
+        return {
+            "scenario_schema_version": "scenario_definition_v0",
+            "scenario_id": "scn_route_avoidance",
+            "duration_sec": 1.0,
+            "dt_sec": 0.1,
+            "canonical_map_path": str((P_MAP_TOOLSET_FIXTURE_ROOT / "canonical_lane_graph_v0.json").resolve()),
+            "route_definition": {
+                "entry_lane_id": "lane_a",
+                "exit_lane_id": "lane_c",
+                "via_lane_ids": ["lane_b"],
+                "cost_mode": "hops",
+            },
+            "enable_ego_collision_avoidance": True,
+            "avoidance_ttc_threshold_sec": 3.5,
+            "ego_max_brake_mps2": 5.0,
+            "avoidance_interaction_policy": {
+                "merge_conflict": {"ttc_threshold_sec": 3.5, "brake_scale": 0.5},
+            },
+            "ego": {"position_m": 0.0, "speed_mps": 10.0, "lane_id": "lane_a"},
+            "npcs": [{"position_m": 18.0, "speed_mps": 4.0, "lane_id": "lane_b"}],
+        }
+
+    def _write_route_avoidance_logical_scenarios(self, path: Path) -> None:
+        path.write_text(
+            json.dumps(
+                {
+                    "logical_scenarios": [
+                        {
+                            "scenario_id": "scn_route_avoidance",
+                            "parameters": {"scenario_variant": [1]},
+                            "variant_payload_kind": "scenario_definition_v0",
+                            "variant_payload_template": self._build_route_avoidance_scenario(),
+                        }
+                    ]
+                },
+                indent=2,
+                ensure_ascii=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
     def test_run_scenario_batch_workflow_writes_all_reports(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -507,6 +550,60 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             )
             markdown = Path(result["workflow_markdown_path"]).read_text(encoding="utf-8")
             self.assertIn(expected_group_id, markdown)
+
+    def test_scenario_batch_workflow_reports_avoidance_trigger_summaries(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            logical_path = root / "route_avoidance_logical_scenarios.json"
+            self._write_route_avoidance_logical_scenarios(logical_path)
+            matrix_scenario_path = root / "route_avoidance_matrix.json"
+            matrix_scenario_path.write_text(
+                json.dumps(self._build_route_avoidance_scenario(), indent=2, ensure_ascii=True) + "\n",
+                encoding="utf-8",
+            )
+            result = run_scenario_batch_workflow(
+                logical_scenarios_path=str(logical_path),
+                scenario_language_profile="",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                matrix_scenario_path=matrix_scenario_path,
+                out_root=root / "batch_workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=1,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+                matrix_run_id_prefix="RUN_BATCH_MATRIX",
+                traffic_profile_ids=["sumo_highway_balanced_v0"],
+                traffic_actor_pattern_ids=["sumo_route_shifted_v0"],
+                traffic_npc_speed_scale_values=[0.5],
+                tire_friction_coeff_values=[1.0],
+                surface_friction_scale_values=[1.0],
+                enable_ego_collision_avoidance=True,
+                avoidance_ttc_threshold_sec=10.0,
+                ego_max_brake_mps2=5.0,
+                max_cases=1,
+            )
+            workflow_report = result["workflow_report"]
+            self.assertGreater(workflow_report["status_summary"]["avoidance_row_count"], 0)
+            self.assertGreater(workflow_report["status_summary"]["avoidance_brake_event_count_total"], 0)
+            self.assertGreater(
+                workflow_report["status_summary"]["avoidance_trigger_counts_by_interaction_kind"]["merge_conflict"],
+                0,
+            )
+            self.assertGreater(
+                workflow_report["comparison_summary"]["logical_scenario_rows"][0]["ego_avoidance_brake_event_count_total"],
+                0,
+            )
+            self.assertGreater(
+                workflow_report["comparison_summary"]["matrix_group_rows"][0]["ego_avoidance_brake_event_count_total"],
+                0,
+            )
+            markdown = Path(result["workflow_markdown_path"]).read_text(encoding="utf-8")
+            self.assertIn("Avoidance brake event count", markdown)
+            self.assertIn("Avoidance trigger counts", markdown)
 
     def test_scenario_batch_workflow_cli_can_resolve_gate_profile_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
