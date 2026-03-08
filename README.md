@@ -275,9 +275,11 @@ Fixture preset examples:
 - `scenario_batch_gate_strict_v0`: strict attention/collision/timeout/TTC gate
 - `scenario_batch_gate_avoidance_v0`: strict avoidance-heavy route interaction gate
 - `scenario_batch_gate_avoidance_merge_v0`: merge-conflict avoidance trigger gate
+- `scenario_batch_gate_avoidance_lane_change_v0`: lane-change avoidance trigger gate
 - `scenario_batch_gate_avoidance_downstream_route_v0`: downstream-route avoidance trigger gate
 
 The workflow Markdown report now includes logical-scenario health with per-scenario gate columns, logical-scenario summary and matrix-group summary with path/merge/lane-change columns, successful/non-success variant tables, and attention rows annotated with `attention_reasons` such as `PATH_CONFLICT_PRESENT`, `MERGE_CONFLICT_PRESENT`, `LANE_CHANGE_CONFLICT_PRESENT`, and `PATH_TTC_UNDER_3S` when applicable.
+Attention rows and grouped batch rows now also preserve explicit route-lane traces such as `ego_route_lane_id`, `traffic_npc_route_lane_id_profile`, and `traffic_npc_route_binding_mode_profiles`, so lane-change conflicts remain inspectable all the way through batch triage.
 
 Both `run_scenario_variants.py` and `run_scenario_variant_workflow.py` resolve default scenario-language profiles from:
 

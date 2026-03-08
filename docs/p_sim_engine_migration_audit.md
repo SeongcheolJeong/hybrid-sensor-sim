@@ -151,6 +151,9 @@ Implemented in the current repository:
    - scenario actors can now carry `route_lane_id` in addition to their current `lane_id`, so route semantics no longer need to be collapsed onto the current-lane surface
    - replay now supports `ego_route_lane_id` and `lead_vehicle_route_lane_id`, and matrix actor patterns can synthesize `route_lane_id` through `traffic_npc_route_lane_profile`
    - this opens direct `lane_change_conflict` generation in object-sim, replay, and matrix-sweep outputs without breaking legacy current-lane behavior
+36. lane-change gate preset and route-lane batch triage
+   - the gate preset catalog now includes `scenario_batch_gate_avoidance_lane_change_v0`, so lane-change-trigger-heavy scenarios can fail independently of the broader avoidance presets
+   - batch comparison attention rows, grouped logical-scenario rows, grouped matrix rows, and workflow health rows now preserve `ego_route_lane_id`, `traffic_npc_route_lane_id_profiles`, and route-binding profiles, which keeps explicit lane-change evidence visible in top-level triage
 
 Still pending from the same migration track:
 

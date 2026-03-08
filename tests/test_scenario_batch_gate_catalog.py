@@ -17,6 +17,7 @@ class ScenarioBatchGateCatalogTests(unittest.TestCase):
     def test_build_gate_profile_catalog_filters_non_gate_json_files(self) -> None:
         catalog = build_scenario_batch_gate_profile_catalog(P_VALIDATION_FIXTURE_ROOT)
         self.assertIn("scenario_batch_gate_avoidance_v0", catalog)
+        self.assertIn("scenario_batch_gate_avoidance_lane_change_v0", catalog)
         self.assertIn("scenario_batch_gate_avoidance_merge_v0", catalog)
         self.assertIn("scenario_batch_gate_avoidance_downstream_route_v0", catalog)
         self.assertIn("scenario_batch_gate_strict_v0", catalog)
@@ -38,6 +39,15 @@ class ScenarioBatchGateCatalogTests(unittest.TestCase):
         self.assertEqual(
             avoidance_path,
             (P_VALIDATION_FIXTURE_ROOT / "scenario_batch_gate_avoidance_v0.json").resolve(),
+        )
+        lane_change_path = resolve_scenario_batch_gate_profile_path(
+            gate_profile="",
+            gate_profile_id="scenario_batch_gate_avoidance_lane_change_v0",
+            gate_profile_dir=str(P_VALIDATION_FIXTURE_ROOT),
+        )
+        self.assertEqual(
+            lane_change_path,
+            (P_VALIDATION_FIXTURE_ROOT / "scenario_batch_gate_avoidance_lane_change_v0.json").resolve(),
         )
         merge_path = resolve_scenario_batch_gate_profile_path(
             gate_profile="",

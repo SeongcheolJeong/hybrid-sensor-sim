@@ -452,6 +452,13 @@ def _build_logical_scenario_health_rows(
                 "ego_avoidance_last_trigger_max_gap_m_values": list(
                     row.get("ego_avoidance_last_trigger_max_gap_m_values", [])
                 ),
+                "ego_route_lane_ids": list(row.get("ego_route_lane_ids", [])),
+                "traffic_npc_route_lane_id_profiles": list(
+                    row.get("traffic_npc_route_lane_id_profiles", [])
+                ),
+                "traffic_npc_route_binding_mode_profiles": list(
+                    row.get("traffic_npc_route_binding_mode_profiles", [])
+                ),
                 "min_ttc_any_lane_sec_min": min_ttc_any_lane_sec,
                 "min_ttc_path_conflict_sec_min": min_ttc_path_conflict_sec,
                 "gate_min_min_ttc_any_lane_sec": min_ttc_threshold,
@@ -1099,8 +1106,8 @@ def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
     lines.extend(["", "## Attention Rows", ""])
     attention_rows = comparison_summary["attention_rows"]
     if attention_rows:
-        lines.append("| Source | Row ID | Group | Execution | Object Sim | Collision | Timeout | Failure Code |")
-        lines.append("| --- | --- | --- | --- | --- | --- | --- | --- |")
+        lines.append("| Source | Row ID | Group | Execution | Object Sim | Ego Route Lane | NPC Route Lanes | Collision | Timeout | Failure Code |")
+        lines.append("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
         for row in attention_rows:
             lines.append(
                 "| "
@@ -1111,6 +1118,8 @@ def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
                         str(row.get("group_id") or "-"),
                         str(row.get("execution_status") or "-"),
                         str(row.get("object_sim_status") or "-"),
+                        str(row.get("ego_route_lane_id") or "-"),
+                        ",".join(row.get("traffic_npc_route_lane_id_profile", [])) or "-",
                         str(row.get("collision")),
                         str(row.get("timeout")),
                         str(row.get("failure_code") or "-"),

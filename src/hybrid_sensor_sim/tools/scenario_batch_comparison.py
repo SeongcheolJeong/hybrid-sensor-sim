@@ -445,6 +445,34 @@ def _extract_avoidance_fields(summary: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _normalize_text_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    out: list[str] = []
+    for item in value:
+        text = str(item).strip()
+        if text:
+            out.append(text)
+    return out
+
+
+def _extract_route_lane_fields(summary: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "ego_lane_id": str(summary.get("ego_lane_id", "")).strip() or None,
+        "ego_route_lane_id": str(summary.get("ego_route_lane_id", "")).strip() or None,
+        "ego_lane_binding_mode": str(summary.get("ego_lane_binding_mode", "")).strip() or None,
+        "ego_route_binding_mode": str(summary.get("ego_route_binding_mode", "")).strip() or None,
+        "traffic_npc_lane_id_profile": _normalize_text_list(summary.get("traffic_npc_lane_id_profile")),
+        "traffic_npc_route_lane_id_profile": _normalize_text_list(
+            summary.get("traffic_npc_route_lane_id_profile")
+        ),
+        "traffic_npc_lane_binding_modes": _normalize_text_list(summary.get("traffic_npc_lane_binding_modes")),
+        "traffic_npc_route_binding_modes": _normalize_text_list(
+            summary.get("traffic_npc_route_binding_modes")
+        ),
+    }
+
+
 def _build_variant_batch_rows(variant_run_report: dict[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for run in variant_run_report.get("variant_runs", []):
@@ -454,6 +482,7 @@ def _build_variant_batch_rows(variant_run_report: dict[str, Any]) -> list[dict[s
         lane_risk_summary = _load_lane_risk_summary_payload(run.get("lane_risk_summary_path"))
         path_interaction_fields = _extract_path_interaction_fields(lane_risk_summary)
         avoidance_fields = _extract_avoidance_fields(summary)
+        route_lane_fields = _extract_route_lane_fields(summary)
         object_sim_status = str(summary.get("status", run.get("object_sim_status", ""))).strip() or None
         termination_reason = str(summary.get("termination_reason", run.get("termination_reason", ""))).strip() or None
         row = {
@@ -476,6 +505,7 @@ def _build_variant_batch_rows(variant_run_report: dict[str, Any]) -> list[dict[s
         }
         row.update(path_interaction_fields)
         row.update(avoidance_fields)
+        row.update(route_lane_fields)
         rows.append(row)
     return rows
 
@@ -499,6 +529,7 @@ def _build_matrix_batch_rows(matrix_sweep_report: dict[str, Any]) -> list[dict[s
         )
         path_interaction_fields = _extract_path_interaction_fields(lane_risk_summary)
         avoidance_fields = _extract_avoidance_fields(summary)
+        route_lane_fields = _extract_route_lane_fields(summary)
         status_value = str(case.get("status", summary.get("status", ""))).strip() or None
         termination_reason = str(summary.get("termination_reason", "")).strip() or None
         row = {
@@ -526,6 +557,7 @@ def _build_matrix_batch_rows(matrix_sweep_report: dict[str, Any]) -> list[dict[s
         }
         row.update(path_interaction_fields)
         row.update(avoidance_fields)
+        row.update(route_lane_fields)
         rows.append(row)
     return rows
 
@@ -557,6 +589,9 @@ def _build_logical_scenario_rows(variant_rows: list[dict[str, Any]]) -> list[dic
                 "ego_avoidance_last_trigger_interaction_kind_counts": Counter(),
                 "ego_avoidance_last_trigger_priority_values": set(),
                 "ego_avoidance_last_trigger_max_gap_m_values": set(),
+                "ego_route_lane_ids": set(),
+                "traffic_npc_route_lane_id_profiles": set(),
+                "traffic_npc_route_binding_mode_profiles": set(),
                 "row_ids": [],
             },
         )
@@ -599,6 +634,15 @@ def _build_logical_scenario_rows(variant_rows: list[dict[str, Any]]) -> list[dic
         last_trigger_max_gap_m = _coerce_optional_float(row.get("ego_avoidance_last_trigger_max_gap_m"))
         if last_trigger_max_gap_m is not None:
             group["ego_avoidance_last_trigger_max_gap_m_values"].add(float(last_trigger_max_gap_m))
+        ego_route_lane_id = str(row.get("ego_route_lane_id", "")).strip()
+        if ego_route_lane_id:
+            group["ego_route_lane_ids"].add(ego_route_lane_id)
+        npc_route_lane_profile = tuple(_normalize_text_list(row.get("traffic_npc_route_lane_id_profile")))
+        if npc_route_lane_profile:
+            group["traffic_npc_route_lane_id_profiles"].add(npc_route_lane_profile)
+        npc_route_binding_profile = tuple(_normalize_text_list(row.get("traffic_npc_route_binding_modes")))
+        if npc_route_binding_profile:
+            group["traffic_npc_route_binding_mode_profiles"].add(npc_route_binding_profile)
         ttc_value = _coerce_optional_float(row.get("min_ttc_any_lane_sec"))
         current_min = group["min_ttc_any_lane_sec_min"]
         if ttc_value is not None and (current_min is None or ttc_value < current_min):
@@ -636,6 +680,13 @@ def _build_logical_scenario_rows(variant_rows: list[dict[str, Any]]) -> list[dic
             "ego_avoidance_last_trigger_max_gap_m_values": sorted(
                 group["ego_avoidance_last_trigger_max_gap_m_values"]
             ),
+            "ego_route_lane_ids": sorted(group["ego_route_lane_ids"]),
+            "traffic_npc_route_lane_id_profiles": [
+                list(profile) for profile in sorted(group["traffic_npc_route_lane_id_profiles"])
+            ],
+            "traffic_npc_route_binding_mode_profiles": [
+                list(profile) for profile in sorted(group["traffic_npc_route_binding_mode_profiles"])
+            ],
             "row_ids": list(group["row_ids"]),
         }
         for logical_scenario_id, group in sorted(grouped.items())
@@ -671,6 +722,9 @@ def _build_matrix_group_rows(matrix_rows: list[dict[str, Any]]) -> list[dict[str
                 "ego_avoidance_last_trigger_interaction_kind_counts": Counter(),
                 "ego_avoidance_last_trigger_priority_values": set(),
                 "ego_avoidance_last_trigger_max_gap_m_values": set(),
+                "ego_route_lane_ids": set(),
+                "traffic_npc_route_lane_id_profiles": set(),
+                "traffic_npc_route_binding_mode_profiles": set(),
                 "traffic_npc_speed_scale_values": set(),
                 "tire_friction_coeff_values": set(),
                 "surface_friction_scale_values": set(),
@@ -710,6 +764,15 @@ def _build_matrix_group_rows(matrix_rows: list[dict[str, Any]]) -> list[dict[str
         last_trigger_max_gap_m = _coerce_optional_float(row.get("ego_avoidance_last_trigger_max_gap_m"))
         if last_trigger_max_gap_m is not None:
             group["ego_avoidance_last_trigger_max_gap_m_values"].add(float(last_trigger_max_gap_m))
+        ego_route_lane_id = str(row.get("ego_route_lane_id", "")).strip()
+        if ego_route_lane_id:
+            group["ego_route_lane_ids"].add(ego_route_lane_id)
+        npc_route_lane_profile = tuple(_normalize_text_list(row.get("traffic_npc_route_lane_id_profile")))
+        if npc_route_lane_profile:
+            group["traffic_npc_route_lane_id_profiles"].add(npc_route_lane_profile)
+        npc_route_binding_profile = tuple(_normalize_text_list(row.get("traffic_npc_route_binding_modes")))
+        if npc_route_binding_profile:
+            group["traffic_npc_route_binding_mode_profiles"].add(npc_route_binding_profile)
         ttc_value = _coerce_optional_float(row.get("min_ttc_any_lane_sec"))
         current_min = group["min_ttc_any_lane_sec_min"]
         if ttc_value is not None and (current_min is None or ttc_value < current_min):
@@ -756,6 +819,13 @@ def _build_matrix_group_rows(matrix_rows: list[dict[str, Any]]) -> list[dict[str
             "ego_avoidance_last_trigger_max_gap_m_values": sorted(
                 group["ego_avoidance_last_trigger_max_gap_m_values"]
             ),
+            "ego_route_lane_ids": sorted(group["ego_route_lane_ids"]),
+            "traffic_npc_route_lane_id_profiles": [
+                list(profile) for profile in sorted(group["traffic_npc_route_lane_id_profiles"])
+            ],
+            "traffic_npc_route_binding_mode_profiles": [
+                list(profile) for profile in sorted(group["traffic_npc_route_binding_mode_profiles"])
+            ],
             "traffic_npc_speed_scale_values": sorted(group["traffic_npc_speed_scale_values"]),
             "tire_friction_coeff_values": sorted(group["tire_friction_coeff_values"]),
             "surface_friction_scale_values": sorted(group["surface_friction_scale_values"]),
@@ -832,6 +902,13 @@ def _build_attention_rows(batch_rows: list[dict[str, Any]]) -> list[dict[str, An
                 ),
                 "ego_avoidance_last_trigger_max_gap_m": _coerce_optional_float(
                     row.get("ego_avoidance_last_trigger_max_gap_m")
+                ),
+                "ego_route_lane_id": str(row.get("ego_route_lane_id", "")).strip() or None,
+                "traffic_npc_route_lane_id_profile": _normalize_text_list(
+                    row.get("traffic_npc_route_lane_id_profile")
+                ),
+                "traffic_npc_route_binding_modes": _normalize_text_list(
+                    row.get("traffic_npc_route_binding_modes")
                 ),
             }
         )
@@ -1304,6 +1381,8 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
                     "Group",
                     "Execution",
                     "Object Sim",
+                    "Ego Route Lane",
+                    "NPC Route Lanes",
                     "Collision",
                     "Timeout",
                     "Min TTC Any",
@@ -1322,6 +1401,8 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
                         str(row["group_id"]),
                         str(row["execution_status"] or "-"),
                         str(row["object_sim_status"] or "-"),
+                        str(row.get("ego_route_lane_id") or "-"),
+                        ",".join(row.get("traffic_npc_route_lane_id_profile", [])) or "-",
                         str(row["collision"]),
                         str(row["timeout"]),
                         _format_float(row["min_ttc_any_lane_sec"]),

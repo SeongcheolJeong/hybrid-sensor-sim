@@ -162,6 +162,33 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             "npcs": [{"position_m": 20.0, "speed_mps": 4.0, "lane_id": "lane_c"}],
         }
 
+    def _build_lane_change_avoidance_scenario(self) -> dict[str, object]:
+        return {
+            "scenario_schema_version": "scenario_definition_v0",
+            "scenario_id": "scn_lane_change_route_avoidance",
+            "duration_sec": 0.5,
+            "dt_sec": 0.1,
+            "canonical_map_path": str((P_MAP_TOOLSET_FIXTURE_ROOT / "canonical_lane_graph_v0.json").resolve()),
+            "route_definition": {
+                "entry_lane_id": "lane_a",
+                "exit_lane_id": "lane_c",
+                "via_lane_ids": ["lane_b"],
+                "cost_mode": "hops",
+            },
+            "enable_ego_collision_avoidance": True,
+            "avoidance_ttc_threshold_sec": 10.0,
+            "ego_max_brake_mps2": 5.0,
+            "ego": {"position_m": 0.0, "speed_mps": 10.0, "lane_id": "lane_a"},
+            "npcs": [
+                {
+                    "position_m": 18.0,
+                    "speed_mps": 4.0,
+                    "lane_id": "lane_b",
+                    "route_lane_id": "lane_a",
+                }
+            ],
+        }
+
     def _write_downstream_route_avoidance_logical_scenarios(self, path: Path) -> None:
         path.write_text(
             json.dumps(
@@ -172,6 +199,26 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
                             "parameters": {"scenario_variant": [1]},
                             "variant_payload_kind": "scenario_definition_v0",
                             "variant_payload_template": self._build_downstream_route_avoidance_scenario(),
+                        }
+                    ]
+                },
+                indent=2,
+                ensure_ascii=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    def _write_lane_change_avoidance_logical_scenarios(self, path: Path) -> None:
+        path.write_text(
+            json.dumps(
+                {
+                    "logical_scenarios": [
+                        {
+                            "scenario_id": "scn_lane_change_route_avoidance",
+                            "parameters": {"scenario_variant": [1]},
+                            "variant_payload_kind": "scenario_definition_v0",
+                            "variant_payload_template": self._build_lane_change_avoidance_scenario(),
                         }
                     ]
                 },
@@ -1178,6 +1225,109 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
                 "AVOIDANCE_DOWNSTREAM_ROUTE_TRIGGER_COUNT_EXCEEDED",
                 payload["comparison_summary"]["gate"]["failure_codes"],
             )
+
+    def test_scenario_batch_workflow_cli_can_resolve_lane_change_gate_profile_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            logical_path = root / "lane_change_avoidance_logical_scenarios.json"
+            self._write_lane_change_avoidance_logical_scenarios(logical_path)
+            matrix_scenario_path = root / "lane_change_avoidance_matrix.json"
+            matrix_scenario_path.write_text(
+                json.dumps(self._build_lane_change_avoidance_scenario(), indent=2, ensure_ascii=True) + "\n",
+                encoding="utf-8",
+            )
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = scenario_batch_workflow_main(
+                    [
+                        "--logical-scenarios",
+                        str(logical_path),
+                        "--matrix-scenario",
+                        str(matrix_scenario_path),
+                        "--out-root",
+                        str(root / "batch_workflow"),
+                        "--execution-max-variants",
+                        "1",
+                        "--traffic-profile-ids",
+                        "sumo_highway_balanced_v0",
+                        "--traffic-actor-pattern-ids",
+                        "sumo_lane_change_conflict_v0",
+                        "--traffic-npc-speed-scale-values",
+                        "1.0",
+                        "--tire-friction-coeff-values",
+                        "1.0",
+                        "--surface-friction-scale-values",
+                        "1.0",
+                        "--enable-ego-collision-avoidance",
+                        "--avoidance-ttc-threshold-sec",
+                        "10.0",
+                        "--ego-max-brake-mps2",
+                        "5.0",
+                        "--max-cases",
+                        "1",
+                        "--gate-profile-id",
+                        "scenario_batch_gate_avoidance_lane_change_v0",
+                        "--gate-profile-dir",
+                        str(P_VALIDATION_FIXTURE_ROOT),
+                    ]
+                )
+            self.assertEqual(exit_code, 2)
+            payload = json.loads(
+                (root / "batch_workflow" / "scenario_batch_workflow_report_v0.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(payload["status"], "FAILED")
+            self.assertEqual(
+                payload["comparison_summary"]["gate"]["policy"]["profile_id"],
+                "scenario_batch_gate_avoidance_lane_change_v0",
+            )
+            self.assertIn(
+                "AVOIDANCE_LANE_CHANGE_TRIGGER_COUNT_EXCEEDED",
+                payload["comparison_summary"]["gate"]["failure_codes"],
+            )
+            attention_row = payload["comparison_summary"]["attention_rows"][0]
+            self.assertEqual(attention_row["ego_route_lane_id"], "lane_a")
+            self.assertEqual(attention_row["traffic_npc_route_lane_id_profile"], ["lane_a"])
+
+    def test_scenario_batch_workflow_propagates_route_lane_trace_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            logical_path = root / "lane_change_avoidance_logical_scenarios.json"
+            self._write_lane_change_avoidance_logical_scenarios(logical_path)
+            matrix_scenario_path = root / "lane_change_matrix.json"
+            matrix_scenario_path.write_text(
+                json.dumps(self._build_lane_change_avoidance_scenario(), indent=2, ensure_ascii=True) + "\n",
+                encoding="utf-8",
+            )
+            report = run_scenario_batch_workflow(
+                logical_scenarios_path=str(logical_path),
+                scenario_language_profile="",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                matrix_scenario_path=matrix_scenario_path,
+                out_root=root / "batch_workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=1,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+                matrix_run_id_prefix="RUN_BATCH_MATRIX",
+                traffic_profile_ids=["sumo_highway_balanced_v0"],
+                traffic_actor_pattern_ids=["sumo_lane_change_conflict_v0"],
+                traffic_npc_speed_scale_values=[1.0],
+                tire_friction_coeff_values=[1.0],
+                surface_friction_scale_values=[1.0],
+                enable_ego_collision_avoidance=True,
+                avoidance_ttc_threshold_sec=10.0,
+                ego_max_brake_mps2=5.0,
+                max_cases=1,
+            )
+            logical_row = report["workflow_report"]["comparison_summary"]["logical_scenario_rows"][0]
+            worst_row = report["workflow_report"]["status_summary"]["worst_logical_scenario_row"]
+            self.assertEqual(logical_row["ego_route_lane_ids"], ["lane_a"])
+            self.assertEqual(logical_row["traffic_npc_route_lane_id_profiles"], [["lane_a"]])
+            self.assertEqual(worst_row["ego_route_lane_ids"], ["lane_a"])
+            self.assertEqual(worst_row["traffic_npc_route_lane_id_profiles"], [["lane_a"]])
 
     def test_scenario_batch_workflow_script_bootstraps_src_path(self) -> None:
         script_path = Path(__file__).resolve().parents[1] / "scripts" / "run_scenario_batch_workflow.py"

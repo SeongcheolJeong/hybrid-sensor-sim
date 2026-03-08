@@ -168,6 +168,9 @@ Detailed audit:
    - the batch gate preset catalog now includes dedicated merge-conflict and downstream-route avoidance profiles so route-interaction-heavy scenarios can be gated without turning on the broader avoidance-wide preset
 21. explicit route-lane surface for lane-change conflicts
    - scenario actors can now carry `route_lane_id` separately from their current `lane_id`, replay can emit `ego_route_lane_id` / `lead_vehicle_route_lane_id`, and matrix patterns can synthesize `traffic_npc_route_lane_profile`, which together open direct `lane_change_conflict` generation without rewriting the current-lane surface
+22. lane-change avoidance preset and triage propagation
+   - the gate preset catalog now includes `scenario_batch_gate_avoidance_lane_change_v0` for explicit lane-change-trigger gating
+   - batch comparison/workflow triage now preserves route-lane traces through grouped rows, attention rows, and logical-scenario health rows so explicit lane-change evidence survives into top-level batch summaries
 11. route-relation-driven replay and sweep generation
    - `log_scene_v0` and matrix actor patterns can now synthesize actor lane assignments from route relations instead of relying only on explicit lane IDs or raw lane slots
 12. rendered payload generation in scenario variants
