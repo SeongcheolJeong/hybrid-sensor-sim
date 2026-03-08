@@ -50,6 +50,7 @@ Current repository paths:
 - `src/hybrid_sensor_sim/tools/scenario_variants.py`
 - `src/hybrid_sensor_sim/tools/scenario_matrix_sweep.py`
 - `src/hybrid_sensor_sim/tools/scenario_batch_comparison.py`
+- `src/hybrid_sensor_sim/tools/scenario_batch_gate_catalog.py`
 - `src/hybrid_sensor_sim/tools/scenario_batch_workflow.py`
 - `src/hybrid_sensor_sim/tools/sensor_rig_sweep.py`
 - `src/hybrid_sensor_sim/maps/convert.py`

@@ -49,6 +49,7 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
   - supports `rendered_payload_kind=log_scene_v0` via replay and `rendered_payload_kind=scenario_definition_v0` via direct object-sim execution
   - report includes `successful_variant_rows` and `non_success_variant_rows` for quick triage
 - `scripts/run_scenario_variant_workflow.py`: generates variants and immediately executes rendered payloads, writing a workflow report plus the underlying variant/run reports.
+- `src/hybrid_sensor_sim/tools/scenario_batch_gate_catalog.py`: reusable gate preset catalog and profile-id resolution for batch comparison/workflow tooling.
 - `scripts/run_scenario_batch_comparison.py`: compares a scenario variant workflow report against a matrix-sweep report and writes JSON plus Markdown comparison artifacts.
 - `scripts/run_scenario_batch_workflow.py`: runs variant workflow, matrix sweep, and batch comparison as one reusable workflow and writes a single top-level workflow report.
 - `scripts/run_scenario_matrix_sweep.py`: runs object-sim over traffic/friction parameter grids and writes a sweep report.
