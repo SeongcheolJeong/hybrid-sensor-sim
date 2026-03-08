@@ -257,6 +257,11 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             ignored_bin = ignored_root / "AWSIM-Demo.x86_64"
             ignored_bin.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
             ignored_bin.chmod(0o755)
+            package_ignored_root = search_root / "backend_package_workflow_selftest_probe" / "workspace" / "third_party" / "runtime_backends" / "awsim" / "expanded"
+            package_ignored_root.mkdir(parents=True, exist_ok=True)
+            package_ignored_bin = package_ignored_root / "AWSIM-Demo.x86_64"
+            package_ignored_bin.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            package_ignored_bin.chmod(0o755)
 
             with patch(
                 "hybrid_sensor_sim.tools.renderer_backend_local_setup._inspect_helios_docker_runtime",
@@ -272,6 +277,7 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertIsNone(summary["selection"]["AWSIM_BIN"])
             candidate_paths = [entry["path"] for entry in summary["backends"]["awsim"]["candidates"]]
             self.assertNotIn(str(ignored_bin.resolve()), candidate_paths)
+            self.assertNotIn(str(package_ignored_bin.resolve()), candidate_paths)
             self.assertEqual(summary["acquisition_hints"]["helios"]["status"], "docker_ready")
 
     def test_build_renderer_backend_local_setup_discovers_packaged_runtime_names(self) -> None:
@@ -664,6 +670,68 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             probe_payload = json.loads(probe_path.read_text(encoding="utf-8"))
             self.assertEqual(probe_payload["workflow_status"], "HANDOFF_DOCKER_VERIFIED")
 
+    def test_build_renderer_backend_local_setup_runs_backend_package_workflow_selftest_probe(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            repo_root.mkdir(parents=True, exist_ok=True)
+            output_dir = root / "artifacts"
+
+            def _fake_package_workflow_selftest(**kwargs: object) -> dict[str, object]:
+                summary_path = Path(str(kwargs["summary_path"]))
+                payload = {
+                    "generated_at_utc": "2026-03-08T00:00:00Z",
+                    "backend": kwargs["backend"],
+                    "archive_source": kwargs["archive_source"],
+                    "summary_path": str(summary_path),
+                    "workflow_status": "SMOKE_SUCCEEDED",
+                    "output_comparison_status": "MATCHED",
+                    "success": True,
+                }
+                summary_path.parent.mkdir(parents=True, exist_ok=True)
+                summary_path.write_text(json.dumps(payload), encoding="utf-8")
+                return payload
+
+            with patch(
+                "hybrid_sensor_sim.tools.renderer_backend_local_setup._inspect_helios_docker_runtime",
+                return_value=_ready_docker_runtime(),
+            ):
+                with patch(
+                    "hybrid_sensor_sim.tools.renderer_backend_package_workflow_selftest.run_renderer_backend_package_workflow_selftest",
+                    side_effect=_fake_package_workflow_selftest,
+                ) as mocked_selftest:
+                    summary = build_renderer_backend_local_setup(
+                        repo_root=repo_root,
+                        output_dir=output_dir,
+                        include_default_search_roots=False,
+                        probe_backend_package_workflow_selftest=True,
+                        package_workflow_selftest_backend="carla",
+                        package_workflow_selftest_archive_source="download_url",
+                    )
+
+            mocked_selftest.assert_called_once()
+            self.assertIn("backend_package_workflow_selftest", summary["probes"])
+            self.assertTrue(summary["probes"]["backend_package_workflow_selftest"]["success"])
+            self.assertEqual(summary["probes"]["backend_package_workflow_selftest"]["backend"], "carla")
+            self.assertEqual(
+                summary["probes"]["backend_package_workflow_selftest"]["archive_source"],
+                "download_url",
+            )
+            self.assertTrue(summary["probe_readiness"]["backend_package_workflow_selftest_ready"])
+            self.assertEqual(
+                summary["probe_readiness"]["backend_package_workflow_status"],
+                "SMOKE_SUCCEEDED",
+            )
+            self.assertTrue(summary["workflow_paths"]["package_workflow_path_ready"])
+            self.assertIn(
+                "--probe-backend-package-workflow-selftest --package-workflow-selftest-backend carla --package-workflow-selftest-archive-source download_url",
+                summary["commands"]["backend_package_workflow_selftest"],
+            )
+            probe_path = Path(summary["artifacts"]["backend_package_workflow_selftest_probe_path"])
+            self.assertTrue(probe_path.exists())
+            probe_payload = json.loads(probe_path.read_text(encoding="utf-8"))
+            self.assertEqual(probe_payload["output_comparison_status"], "MATCHED")
+
     def test_local_setup_main_writes_env_and_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -738,10 +806,15 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
                 "python3 scripts/discover_renderer_backend_local_env.py --probe-backend-workflow-selftest --workflow-selftest-backend awsim",
                 env_text,
             )
+            self.assertIn(
+                "python3 scripts/discover_renderer_backend_local_env.py --probe-backend-package-workflow-selftest --package-workflow-selftest-backend awsim",
+                env_text,
+            )
             self.assertTrue(report_path.exists())
             self.assertIn("Renderer Backend Local Setup Report", report_text)
             self.assertIn("Workflow Paths", report_text)
             self.assertIn("Probe Readiness", report_text)
+            self.assertIn("package_workflow_path_ready", report_text)
             self.assertIn("configs/renderer_backend_smoke.awsim.local.example.json", env_text)
             self.assertIn("configs/renderer_backend_smoke.awsim.local.docker.example.json", env_text)
 

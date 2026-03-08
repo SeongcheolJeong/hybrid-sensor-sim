@@ -27,6 +27,7 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `scripts/acquire_renderer_backend_package.py`: resolves an official AWSIM/CARLA package URL from `renderer_backend_local_setup.json`, downloads it, and optionally stages it into a runnable backend directory.
 - `scripts/stage_renderer_backend_package.py`: extracts packaged AWSIM/CARLA archives into `third_party/runtime_backends/<backend>` and writes a staging env file for smoke runs.
 - `scripts/run_renderer_backend_workflow.py`: runs `discover/load setup -> optional acquire -> smoke` as one workflow and writes a single workflow summary.
+- `scripts/run_renderer_backend_package_workflow_selftest.py`: synthesizes a packaged backend archive and exercises `acquire -> stage -> refresh discover -> smoke`.
 
 ## Quick start
 
@@ -557,6 +558,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - `--probe-helios-docker-demo` runs the configured docker demo and records actual HELIOS execution success/failure in `probes.helios_docker_demo`.
 - `--probe-linux-handoff-docker-selftest` runs the synthetic Linux handoff Docker self-test and records the result in `probes.linux_handoff_docker_selftest`.
 - `--probe-backend-workflow-selftest` runs the higher-level workflow self-test and records the result in `probes.backend_workflow_selftest`.
+- `--probe-backend-package-workflow-selftest` runs the packaged backend workflow self-test and records the result in `probes.backend_package_workflow_selftest`.
 - the Linux handoff Docker self-test summary carries `generated_at_utc`; workflow also falls back to the probe summary file mtime or setup summary mtime when it needs freshness metadata from older summaries.
 - `run_renderer_backend_workflow.py --run-linux-handoff-docker` reads that probe as a Docker preflight summary. It now tracks `generated_at_utc`, `age_seconds`, `max_age_seconds`, `timestamp_source`, and `stale`.
 - workflow reports:
@@ -570,6 +572,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `probe_readiness`
   - `workflow_paths`
   - `artifacts.report_path`
+- `probe_readiness` now also surfaces `backend_package_workflow_selftest_ready` / `backend_package_workflow_status`, and `workflow_paths` includes `package_workflow_path_ready`.
 - `renderer_backend_local_report.md` gives a compact runtime/probe/path readiness view without manually inspecting the full JSON.
 
 ### Local backend package staging

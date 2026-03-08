@@ -44,6 +44,8 @@ _CARLA_EXECUTABLE_NAMES = {
 _DISCOVERY_IGNORE_PATH_TOKENS = {
     "renderer_backend_workflow_selftest_probe",
     "backend_workflow_selftest_probe",
+    "renderer_backend_package_workflow_selftest_probe",
+    "backend_package_workflow_selftest_probe",
     "renderer_backend_linux_handoff_selftest",
     "linux_handoff_docker_selftest_probe",
     "workflow_docker_preflight_demo",
@@ -117,6 +119,23 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--probe-backend-workflow-selftest-execute",
         action="store_true",
         help="When probing the backend workflow self-test, execute the extracted Docker handoff script too.",
+    )
+    parser.add_argument(
+        "--probe-backend-package-workflow-selftest",
+        action="store_true",
+        help="Run the packaged backend workflow self-test and store the result summary.",
+    )
+    parser.add_argument(
+        "--package-workflow-selftest-backend",
+        choices=("awsim", "carla"),
+        default="awsim",
+        help="Backend flavor used by --probe-backend-package-workflow-selftest.",
+    )
+    parser.add_argument(
+        "--package-workflow-selftest-archive-source",
+        choices=("local_candidate", "download_url"),
+        default="local_candidate",
+        help="Archive source mode used by --probe-backend-package-workflow-selftest.",
     )
     return parser.parse_args(argv)
 
@@ -725,6 +744,7 @@ def _render_env_file(summary: dict[str, Any]) -> str:
             "# python3 scripts/discover_renderer_backend_local_env.py --probe-helios-docker-demo",
             "# python3 scripts/discover_renderer_backend_local_env.py --probe-linux-handoff-docker-selftest --probe-linux-handoff-docker-selftest-execute",
             "# python3 scripts/discover_renderer_backend_local_env.py --probe-backend-workflow-selftest --workflow-selftest-backend awsim",
+            "# python3 scripts/discover_renderer_backend_local_env.py --probe-backend-package-workflow-selftest --package-workflow-selftest-backend awsim",
             "# python3 scripts/run_renderer_backend_smoke.py --config configs/renderer_backend_smoke.awsim.local.example.json --backend awsim",
             "# python3 scripts/run_renderer_backend_smoke.py --config configs/renderer_backend_smoke.awsim.local.docker.example.json --backend awsim",
             "",
@@ -746,6 +766,9 @@ def _probe_success(probes: dict[str, Any], key: str) -> bool | None:
 def _build_probe_readiness(summary: dict[str, Any]) -> dict[str, Any]:
     probes = summary.get("probes", {})
     backend_workflow_probe = probes.get("backend_workflow_selftest", {}) if isinstance(probes, dict) else {}
+    backend_package_workflow_probe = (
+        probes.get("backend_package_workflow_selftest", {}) if isinstance(probes, dict) else {}
+    )
     return {
         "helios_docker_demo_ready": _probe_success(probes, "helios_docker_demo"),
         "linux_handoff_docker_selftest_ready": _probe_success(probes, "linux_handoff_docker_selftest"),
@@ -755,6 +778,15 @@ def _build_probe_readiness(summary: dict[str, Any]) -> dict[str, Any]:
             if isinstance(backend_workflow_probe, dict)
             else None
         ),
+        "backend_package_workflow_selftest_ready": _probe_success(
+            probes,
+            "backend_package_workflow_selftest",
+        ),
+        "backend_package_workflow_status": (
+            backend_package_workflow_probe.get("workflow_status")
+            if isinstance(backend_package_workflow_probe, dict)
+            else None
+        ),
     }
 
 
@@ -762,10 +794,14 @@ def _build_workflow_paths(readiness: dict[str, Any], probe_readiness: dict[str, 
     helios_docker_ready = bool(readiness.get("helios_docker_ready"))
     handoff_selftest_ready = probe_readiness.get("linux_handoff_docker_selftest_ready") is True
     workflow_selftest_ready = probe_readiness.get("backend_workflow_selftest_ready") is True
+    package_workflow_selftest_ready = (
+        probe_readiness.get("backend_package_workflow_selftest_ready") is True
+    )
     return {
         "helios_docker_available": helios_docker_ready,
         "linux_handoff_docker_path_ready": helios_docker_ready and handoff_selftest_ready,
         "backend_workflow_path_ready": workflow_selftest_ready,
+        "package_workflow_path_ready": package_workflow_selftest_ready,
         "local_backend_smoke_ready": bool(
             readiness.get("awsim_smoke_ready") or readiness.get("carla_smoke_ready")
         ),
@@ -802,6 +838,8 @@ def _render_local_setup_report(summary: dict[str, Any], summary_path: Path) -> s
         f"| linux_handoff_docker_selftest_ready | `{probe_readiness.get('linux_handoff_docker_selftest_ready')}` |",
         f"| backend_workflow_selftest_ready | `{probe_readiness.get('backend_workflow_selftest_ready')}` |",
         f"| backend_workflow_status | `{probe_readiness.get('backend_workflow_status')}` |",
+        f"| backend_package_workflow_selftest_ready | `{probe_readiness.get('backend_package_workflow_selftest_ready')}` |",
+        f"| backend_package_workflow_status | `{probe_readiness.get('backend_package_workflow_status')}` |",
         "",
         "## Workflow Paths",
         "| Path | Value |",
@@ -809,6 +847,7 @@ def _render_local_setup_report(summary: dict[str, Any], summary_path: Path) -> s
         f"| helios_docker_available | `{workflow_paths.get('helios_docker_available')}` |",
         f"| linux_handoff_docker_path_ready | `{workflow_paths.get('linux_handoff_docker_path_ready')}` |",
         f"| backend_workflow_path_ready | `{workflow_paths.get('backend_workflow_path_ready')}` |",
+        f"| package_workflow_path_ready | `{workflow_paths.get('package_workflow_path_ready')}` |",
         f"| local_backend_smoke_ready | `{workflow_paths.get('local_backend_smoke_ready')}` |",
         "",
         "## Selection",
@@ -1068,6 +1107,9 @@ def build_renderer_backend_local_setup(
     probe_backend_workflow_selftest: bool = False,
     workflow_selftest_backend: str = "awsim",
     probe_backend_workflow_selftest_execute: bool = False,
+    probe_backend_package_workflow_selftest: bool = False,
+    package_workflow_selftest_backend: str = "awsim",
+    package_workflow_selftest_archive_source: str = "local_candidate",
 ) -> dict[str, Any]:
     repo_root = repo_root.resolve()
     extra_roots = [_resolve_runtime_path(path) for path in (search_roots or [])]
@@ -1186,6 +1228,10 @@ def build_renderer_backend_local_setup(
     workflow_selftest_summary_path = (
         workflow_selftest_output_root / "renderer_backend_workflow_selftest.json"
     )
+    package_workflow_selftest_output_root = output_root / "backend_package_workflow_selftest_probe"
+    package_workflow_selftest_summary_path = (
+        package_workflow_selftest_output_root / "renderer_backend_package_workflow_selftest.json"
+    )
     commands = {
         "helios_docker_demo": "python3 scripts/discover_renderer_backend_local_env.py --probe-helios-docker-demo",
         "linux_handoff_docker_selftest": (
@@ -1195,6 +1241,12 @@ def build_renderer_backend_local_setup(
         "backend_workflow_selftest": (
             "python3 scripts/discover_renderer_backend_local_env.py "
             f"--probe-backend-workflow-selftest --workflow-selftest-backend {workflow_selftest_backend}"
+        ),
+        "backend_package_workflow_selftest": (
+            "python3 scripts/discover_renderer_backend_local_env.py "
+            "--probe-backend-package-workflow-selftest "
+            f"--package-workflow-selftest-backend {package_workflow_selftest_backend} "
+            f"--package-workflow-selftest-archive-source {package_workflow_selftest_archive_source}"
         ),
         "awsim_acquire": (
             "python3 scripts/acquire_renderer_backend_package.py "
@@ -1320,6 +1372,32 @@ def build_renderer_backend_local_setup(
         probes["backend_workflow_selftest"] = probe_summary
         if not probe_summary.get("success", False):
             issues.append("Backend workflow self-test failed.")
+    if probe_backend_package_workflow_selftest:
+        try:
+            from hybrid_sensor_sim.tools.renderer_backend_package_workflow_selftest import (
+                run_renderer_backend_package_workflow_selftest,
+            )
+
+            probe_summary = run_renderer_backend_package_workflow_selftest(
+                backend=package_workflow_selftest_backend,
+                output_root=package_workflow_selftest_output_root,
+                summary_path=package_workflow_selftest_summary_path,
+                archive_source=package_workflow_selftest_archive_source,
+            )
+        except Exception as exc:
+            probe_summary = {
+                "generated_at_utc": _format_utc(_utc_now()),
+                "backend": package_workflow_selftest_backend,
+                "output_root": str(package_workflow_selftest_output_root),
+                "summary_path": str(package_workflow_selftest_summary_path),
+                "archive_source": package_workflow_selftest_archive_source,
+                "success": False,
+                "error": str(exc),
+            }
+            _write_json(package_workflow_selftest_summary_path, probe_summary)
+        probes["backend_package_workflow_selftest"] = probe_summary
+        if not probe_summary.get("success", False):
+            issues.append("Backend package workflow self-test failed.")
     acquisition_hints = _build_acquisition_hints(
         repo_root=repo_root,
         search_roots=all_search_roots,
@@ -1357,6 +1435,7 @@ def build_renderer_backend_local_setup(
             "helios_docker_probe_path": str(probe_path),
             "linux_handoff_docker_selftest_probe_path": str(handoff_selftest_summary_path),
             "backend_workflow_selftest_probe_path": str(workflow_selftest_summary_path),
+            "backend_package_workflow_selftest_probe_path": str(package_workflow_selftest_summary_path),
         },
     }
     summary["probe_readiness"] = _build_probe_readiness(summary)
@@ -1380,6 +1459,9 @@ def main(argv: list[str] | None = None) -> int:
         probe_backend_workflow_selftest=args.probe_backend_workflow_selftest,
         workflow_selftest_backend=args.workflow_selftest_backend,
         probe_backend_workflow_selftest_execute=args.probe_backend_workflow_selftest_execute,
+        probe_backend_package_workflow_selftest=args.probe_backend_package_workflow_selftest,
+        package_workflow_selftest_backend=args.package_workflow_selftest_backend,
+        package_workflow_selftest_archive_source=args.package_workflow_selftest_archive_source,
     )
     summary_path = (
         _resolve_runtime_path(args.summary_path)
