@@ -353,6 +353,57 @@ class ObjectSimTests(unittest.TestCase):
         self.assertEqual(result.trace_rows[0]["route_relation"], "downstream")
         self.assertTrue(result.trace_rows[0]["ego_avoidance_brake_applied"])
         self.assertEqual(result.trace_rows[0]["path_conflict_source"], "route")
+        self.assertEqual(result.summary["ego_avoidance_last_trigger_actor_id"], "npc_1")
+        self.assertEqual(result.summary["ego_avoidance_last_trigger_interaction_kind"], "merge_conflict")
+        self.assertEqual(result.summary["ego_avoidance_last_trigger_route_relation"], "downstream")
+        self.assertEqual(
+            result.summary["ego_avoidance_trigger_counts_by_interaction_kind"],
+            {"merge_conflict": result.summary["ego_avoidance_brake_event_count"]},
+        )
+        self.assertEqual(result.trace_rows[0]["ego_avoidance_target_actor_id"], "npc_1")
+        self.assertEqual(result.trace_rows[0]["ego_avoidance_target_interaction_kind"], "merge_conflict")
+        self.assertEqual(result.trace_rows[0]["ego_avoidance_target_route_relation"], "downstream")
+
+    def test_route_aware_avoidance_prioritizes_more_urgent_merge_conflict(self) -> None:
+        canonical_map = json.loads((MAP_FIXTURE_ROOT / "canonical_lane_graph_v0.json").read_text(encoding="utf-8"))
+        scenario = load_scenario(
+            {
+                "scenario_schema_version": "scenario_definition_v0",
+                "scenario_id": "route_avoidance_merge_priority",
+                "duration_sec": 0.5,
+                "dt_sec": 0.1,
+                "canonical_map": canonical_map,
+                "route_definition": {
+                    "entry_lane_id": "lane_a",
+                    "exit_lane_id": "lane_c",
+                    "via_lane_ids": ["lane_b"],
+                    "cost_mode": "hops",
+                },
+                "enable_ego_collision_avoidance": True,
+                "avoidance_ttc_threshold_sec": 3.0,
+                "ego_max_brake_mps2": 5.0,
+                "ego": {"position_m": 0.0, "speed_mps": 10.0, "lane_id": "lane_a"},
+                "npcs": [
+                    {"actor_id": "same_lane_far", "position_m": 12.0, "speed_mps": 9.5, "lane_id": "lane_a"},
+                    {"actor_id": "merge_risk", "position_m": 18.0, "speed_mps": 4.0, "lane_id": "lane_b"},
+                ],
+            }
+        )
+        result = run_object_sim(scenario, seed=42, metadata={"run_id": "ROUTE_AVOID_MERGE_PRIORITY_001"})
+
+        self.assertEqual(result.summary["status"], "success")
+        self.assertGreater(result.summary["ego_avoidance_brake_event_count"], 0)
+        self.assertEqual(result.summary["ego_avoidance_last_trigger_actor_id"], "merge_risk")
+        self.assertEqual(result.summary["ego_avoidance_last_trigger_interaction_kind"], "merge_conflict")
+        self.assertEqual(result.summary["ego_avoidance_last_trigger_route_relation"], "downstream")
+        self.assertEqual(
+            result.summary["ego_avoidance_trigger_counts_by_interaction_kind"],
+            {"merge_conflict": result.summary["ego_avoidance_brake_event_count"]},
+        )
+        self.assertEqual(result.trace_rows[0]["ego_avoidance_target_actor_id"], "merge_risk")
+        self.assertEqual(result.trace_rows[0]["ego_avoidance_target_interaction_kind"], "merge_conflict")
+        self.assertTrue(result.trace_rows[0]["ego_avoidance_brake_applied"])
+        self.assertAlmostEqual(float(result.trace_rows[0]["ego_avoidance_target_ttc_sec"]), 2.2, places=6)
 
     def test_run_object_sim_respects_wall_timeout_override(self) -> None:
         scenario = load_scenario(FIXTURE_ROOT / "highway_safe_following_v0.json")

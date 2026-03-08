@@ -108,6 +108,9 @@ Implemented in the current repository:
    - route-interaction-specific gate thresholds now cover `path_conflict`, `merge_conflict`, `lane_change_conflict`, and `min_ttc_path_conflict_sec`
    - attention rows now carry explicit `attention_reasons` including `PATH_CONFLICT_PRESENT`, `MERGE_CONFLICT_PRESENT`, `LANE_CHANGE_CONFLICT_PRESENT`, and `PATH_TTC_UNDER_3S`
    - logical-scenario health rows now propagate per-scenario gate failures for route-interaction thresholds, not only collision/timeout/TTC-any-lane failures
+25. route-aware avoidance target selection
+   - object-sim avoidance now selects the most urgent path-conflict target by TTC before braking, rather than only the nearest conflicting actor
+   - `summary.json` and `trace.csv` now expose the chosen actor and interaction kind through `ego_avoidance_last_trigger_*` and `ego_avoidance_target_*`
 25. compact failing-scenario triage for batch workflows
    - batch comparison now aggregates `attention_reason_counts` across attention rows
    - batch workflow now exposes `failing_logical_scenario_rows`, `failing_logical_scenario_gate_failure_code_counts`, and `failing_logical_scenario_health_reason_counts`

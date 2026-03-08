@@ -411,8 +411,10 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `ttc_under_3s_route_downstream_count`
 - Object-sim runtime now also uses route semantics directly for path-conflict TTC and ego avoidance:
   - `summary.json`: `route_aware_runtime_enabled`, `min_ttc_path_conflict_sec`
-  - `trace.csv`: `path_conflict`, `path_conflict_source`, `path_interaction_kind`, `path_ttc_sec`
+  - `trace.csv`: `path_conflict`, `path_conflict_source`, `path_interaction_kind`, `path_ttc_sec`, `ego_avoidance_target_*`
   - `lane_risk_summary.json`: `path_conflict_rows`, `min_ttc_path_conflict_sec`, `path_interaction_counts`, `merge_conflict_rows`, `lane_change_clear_rows`, `diverge_clear_rows`
+- Route-aware avoidance now records which actor and interaction kind triggered braking:
+  - `summary.json`: `ego_avoidance_last_trigger_*`, `ego_avoidance_trigger_counts_by_interaction_kind`
 - The route-aware runtime surface now distinguishes:
   - `same_lane_conflict`
   - `merge_conflict`

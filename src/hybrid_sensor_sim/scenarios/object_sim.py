@@ -53,6 +53,12 @@ class CoreSimRunner:
         self.trace_rows: list[dict[str, Any]] = []
         self.ego_avoidance_brake_event_count = 0
         self.ego_avoidance_applied_brake_mps2_max = 0.0
+        self.ego_avoidance_trigger_counts_by_interaction_kind: dict[str, int] = {}
+        self.ego_avoidance_last_trigger_actor_id: str | None = None
+        self.ego_avoidance_last_trigger_interaction_kind: str | None = None
+        self.ego_avoidance_last_trigger_route_relation: str | None = None
+        self.ego_avoidance_last_trigger_ttc_sec: float | None = None
+        self.ego_avoidance_last_trigger_gap_m: float | None = None
         self.ego_dynamics_longitudinal_force_limited_event_count = 0
         self.route_lane_ids = (
             [str(item) for item in scenario.map_context.route_report.get("route_lane_ids", [])]
@@ -224,6 +230,14 @@ class CoreSimRunner:
                     "ego_avoidance_effective_brake_limit_mps2": avoidance_action.get(
                         "effective_brake_limit_mps2"
                     ),
+                    "ego_avoidance_target_actor_id": avoidance_action.get("target_actor_id"),
+                    "ego_avoidance_target_interaction_kind": avoidance_action.get("target_interaction_kind"),
+                    "ego_avoidance_target_route_relation": avoidance_action.get("target_route_relation"),
+                    "ego_avoidance_target_path_conflict_source": avoidance_action.get(
+                        "target_path_conflict_source"
+                    ),
+                    "ego_avoidance_target_gap_m": avoidance_action.get("target_gap_m"),
+                    "ego_avoidance_target_ttc_sec": avoidance_action.get("target_ttc_sec"),
                     "ego_surface_friction_scale": round(self.scenario.surface_friction_scale, 6),
                     "ego_dynamics_mode": ego_dynamics_step.get("ego_dynamics_mode"),
                     "ego_dynamics_throttle": ego_dynamics_step.get("throttle"),
@@ -396,36 +410,75 @@ class CoreSimRunner:
             "longitudinal_force_limited": bool(dynamics_step["longitudinal_force_limited"]),
         }
 
+    @staticmethod
+    def _avoidance_interaction_priority(interaction_kind: str) -> int:
+        if interaction_kind == "same_lane_conflict":
+            return 0
+        if interaction_kind == "merge_conflict":
+            return 1
+        if interaction_kind == "lane_change_conflict":
+            return 2
+        if interaction_kind == "downstream_route_conflict":
+            return 3
+        return 4
+
     def _apply_ego_collision_avoidance(self, dt_sec: float) -> dict[str, Any]:
         result: dict[str, Any] = {
             "brake_applied": False,
             "ttc_sec": None,
             "applied_brake_mps2": None,
             "effective_brake_limit_mps2": None,
+            "target_actor_id": None,
+            "target_interaction_kind": None,
+            "target_route_relation": None,
+            "target_path_conflict_source": None,
+            "target_gap_m": None,
+            "target_ttc_sec": None,
         }
         if not self.scenario.enable_ego_collision_avoidance:
             return result
         if self.scenario.avoidance_ttc_threshold_sec <= 0 or self.scenario.ego_max_brake_mps2 <= 0:
             return result
-        lead_candidates: list[ActorState] = []
+        lead_candidates: list[dict[str, Any]] = []
         for npc in self.npcs:
             same_lane = bool(int(npc.lane_index) == int(self.ego.lane_index))
             _, _, _, route_relation = self._classify_route_relation(npc)
-            path_conflict, _, _ = self._classify_path_interaction(
+            path_conflict, path_conflict_source, path_interaction_kind = self._classify_path_interaction(
                 same_lane=same_lane,
                 adjacent_lane=bool(abs(int(npc.lane_index) - int(self.ego.lane_index)) == 1),
                 route_relation=route_relation,
             )
-            if path_conflict and npc.position_m > self.ego.position_m:
-                lead_candidates.append(npc)
+            gap_m = npc.position_m - self.ego.position_m - 0.5 * (npc.length_m + self.ego.length_m)
+            rel_speed_mps = self.ego.speed_mps - npc.speed_mps
+            if path_conflict and npc.position_m > self.ego.position_m and gap_m > 0 and rel_speed_mps > 0:
+                lead_candidates.append(
+                    {
+                        "npc": npc,
+                        "gap_m": gap_m,
+                        "target_ttc_sec": gap_m / rel_speed_mps,
+                        "route_relation": route_relation,
+                        "path_conflict_source": path_conflict_source,
+                        "path_interaction_kind": path_interaction_kind,
+                    }
+                )
         if not lead_candidates:
             return result
-        lead = min(lead_candidates, key=lambda row: row.position_m)
-        gap_m = lead.position_m - self.ego.position_m - 0.5 * (lead.length_m + self.ego.length_m)
-        rel_speed_mps = self.ego.speed_mps - lead.speed_mps
-        if gap_m <= 0 or rel_speed_mps <= 0:
-            return result
-        ttc_sec = gap_m / rel_speed_mps
+        lead = min(
+            lead_candidates,
+            key=lambda row: (
+                round(float(row["target_ttc_sec"]), 6),
+                self._avoidance_interaction_priority(str(row["path_interaction_kind"])),
+                round(float(row["gap_m"]), 6),
+                str(row["npc"].actor_id),
+            ),
+        )
+        result["target_actor_id"] = str(lead["npc"].actor_id)
+        result["target_interaction_kind"] = str(lead["path_interaction_kind"])
+        result["target_route_relation"] = str(lead["route_relation"])
+        result["target_path_conflict_source"] = str(lead["path_conflict_source"])
+        result["target_gap_m"] = round(float(lead["gap_m"]), 6)
+        result["target_ttc_sec"] = round(float(lead["target_ttc_sec"]), 6)
+        ttc_sec = float(lead["target_ttc_sec"])
         result["ttc_sec"] = round(ttc_sec, 6)
         if ttc_sec > self.scenario.avoidance_ttc_threshold_sec:
             return result
@@ -442,6 +495,15 @@ class CoreSimRunner:
         result["brake_applied"] = True
         result["applied_brake_mps2"] = round(effective_brake_limit_mps2, 6)
         result["effective_brake_limit_mps2"] = round(effective_brake_limit_mps2, 6)
+        trigger_interaction_kind = str(lead["path_interaction_kind"])
+        self.ego_avoidance_last_trigger_actor_id = str(lead["npc"].actor_id)
+        self.ego_avoidance_last_trigger_interaction_kind = trigger_interaction_kind
+        self.ego_avoidance_last_trigger_route_relation = str(lead["route_relation"])
+        self.ego_avoidance_last_trigger_ttc_sec = round(ttc_sec, 6)
+        self.ego_avoidance_last_trigger_gap_m = round(float(lead["gap_m"]), 6)
+        self.ego_avoidance_trigger_counts_by_interaction_kind[trigger_interaction_kind] = (
+            self.ego_avoidance_trigger_counts_by_interaction_kind.get(trigger_interaction_kind, 0) + 1
+        )
         return result
 
 
@@ -727,6 +789,14 @@ def run_object_sim(
                 float(runner.ego_avoidance_applied_brake_mps2_max),
                 6,
             ),
+            "ego_avoidance_trigger_counts_by_interaction_kind": dict(
+                sorted(runner.ego_avoidance_trigger_counts_by_interaction_kind.items())
+            ),
+            "ego_avoidance_last_trigger_actor_id": runner.ego_avoidance_last_trigger_actor_id,
+            "ego_avoidance_last_trigger_interaction_kind": runner.ego_avoidance_last_trigger_interaction_kind,
+            "ego_avoidance_last_trigger_route_relation": runner.ego_avoidance_last_trigger_route_relation,
+            "ego_avoidance_last_trigger_ttc_sec": runner.ego_avoidance_last_trigger_ttc_sec,
+            "ego_avoidance_last_trigger_gap_m": runner.ego_avoidance_last_trigger_gap_m,
             "traffic_npc_count": int(len(effective_scenario.npcs)),
             "traffic_npc_lane_profile": [int(npc.lane_index) for npc in effective_scenario.npcs],
             "traffic_npc_lane_id_profile": [npc.lane_id for npc in effective_scenario.npcs],
