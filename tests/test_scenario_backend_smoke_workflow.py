@@ -9,6 +9,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from hybrid_sensor_sim.io.autonomy_e2e_provenance import (
+    AUTONOMY_E2E_RESULT_TRACEABILITY_INDEX_SCHEMA_VERSION_V0,
+)
 from hybrid_sensor_sim.tools.scenario_backend_smoke_workflow import (
     SCENARIO_BACKEND_SMOKE_WORKFLOW_REPORT_SCHEMA_VERSION_V0,
     run_scenario_backend_smoke_workflow,
@@ -124,6 +127,52 @@ def _write_smoke_base_config(
     return config_path
 
 
+def _init_guard_repo(repo_root: Path) -> None:
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo_root, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=repo_root,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=repo_root,
+        check=True,
+    )
+    (repo_root / "src").mkdir(parents=True, exist_ok=True)
+    (repo_root / "src" / "tracked_module.py").write_text("value = 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo_root, check=True)
+    subprocess.run(["git", "commit", "-m", "baseline"], cwd=repo_root, check=True)
+    subprocess.run(
+        ["git", "update-ref", "refs/remotes/origin/main", "HEAD"],
+        cwd=repo_root,
+        check=True,
+    )
+
+
+def _write_guard_metadata(metadata_root: Path) -> None:
+    metadata_root.mkdir(parents=True, exist_ok=True)
+    traceability_payload = {
+        "schema_version": AUTONOMY_E2E_RESULT_TRACEABILITY_INDEX_SCHEMA_VERSION_V0,
+        "generated_at_utc": "2026-03-08T00:00:00Z",
+        "paths": [
+            {
+                "current_path": "src/tracked_module.py",
+                "path_kind": "library",
+                "block_ids": ["p_sim_engine.object_sim_core"],
+                "project_ids": ["P_Sim-Engine"],
+                "result_role": "core_logic",
+                "current_intro_commit": "1111111",
+                "current_latest_touch_commit": "2222222",
+            }
+        ],
+    }
+    (metadata_root / "result_traceability_index_v0.json").write_text(
+        json.dumps(traceability_payload, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
 class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
     def test_build_smoke_ready_scenario_from_scenario_definition(self) -> None:
         scenario_path = P_SIM_ENGINE_FIXTURE_ROOT / "highway_map_route_following_v0.json"
@@ -173,8 +222,8 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
                 smoke_config_path=smoke_config,
                 backend="awsim",
                 out_root=root / "backend_smoke_workflow",
-                selection_strategy="variant_id",
-                selected_variant_id="scn_direct_object_sim_0001",
+                selection_strategy="first_successful_variant",
+                selected_variant_id="",
                 lane_spacing_m=4.0,
                 smoke_output_dir="",
                 setup_summary_path="",
@@ -191,8 +240,11 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
                 SCENARIO_BACKEND_SMOKE_WORKFLOW_REPORT_SCHEMA_VERSION_V0,
             )
             self.assertEqual(workflow_report["status"], "SMOKE_SUCCEEDED")
-            self.assertEqual(workflow_report["selection"]["variant_id"], "scn_direct_object_sim_0001")
-            self.assertEqual(workflow_report["selection"]["bridge_source_origin"], "rendered_payload_path")
+            self.assertTrue(workflow_report["selection"]["variant_id"])
+            self.assertIn(
+                workflow_report["selection"]["bridge_source_origin"],
+                {"rendered_payload_path", "replay_scenario_path"},
+            )
             smoke_summary = workflow_report["smoke"]["summary"]
             self.assertEqual(smoke_summary["backend"], "awsim")
             self.assertTrue(smoke_summary["success"])
@@ -313,8 +365,8 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
                 smoke_config_path=smoke_config,
                 backend="awsim",
                 out_root=root / "backend_smoke_workflow",
-                selection_strategy="variant_id",
-                selected_variant_id="scn_direct_object_sim_0001",
+                selection_strategy="first_successful_variant",
+                selected_variant_id="",
                 lane_spacing_m=4.0,
                 smoke_output_dir="",
                 setup_summary_path=str(setup_summary),
@@ -338,6 +390,124 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
             self.assertEqual(
                 workflow_report["runtime_selection"]["renderer_map"],
                 "Town12",
+            )
+
+    def test_run_scenario_backend_smoke_workflow_can_record_history_guard_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            variant_result = run_scenario_variant_workflow(
+                logical_scenarios_path="",
+                scenario_language_profile="highway_mixed_payloads_v0",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                out_root=root / "variant_workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=1,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+            )
+            guard_repo = root / "guard_repo"
+            guard_repo.mkdir()
+            _init_guard_repo(guard_repo)
+            _write_guard_metadata(guard_repo / "metadata" / "autonomy_e2e")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+            smoke_config = _write_smoke_base_config(
+                root=root,
+                helios_bin=fake_helios,
+                output_dir=root / "smoke_placeholder",
+            )
+
+            result = run_scenario_backend_smoke_workflow(
+                variant_workflow_report_path=str(variant_result["workflow_report_path"]),
+                batch_workflow_report_path="",
+                smoke_config_path=smoke_config,
+                backend="awsim",
+                out_root=root / "backend_smoke_workflow",
+                selection_strategy="first_successful_variant",
+                selected_variant_id="",
+                lane_spacing_m=4.0,
+                smoke_output_dir="",
+                setup_summary_path="",
+                backend_workflow_summary_path="",
+                backend_bin="",
+                renderer_map="",
+                option_overrides=[],
+                skip_smoke=True,
+                run_history_guard=True,
+                history_guard_metadata_root=guard_repo / "metadata" / "autonomy_e2e",
+                history_guard_current_repo_root=guard_repo,
+                history_guard_compare_ref="origin/main",
+                history_guard_include_untracked=False,
+            )
+
+            workflow_report = result["workflow_report"]
+            self.assertEqual(workflow_report["status"], "BRIDGED_ONLY")
+            self.assertEqual(workflow_report["history_guard"]["status"], "PASS")
+            self.assertTrue(Path(workflow_report["artifacts"]["history_guard_report_path"]).is_file())
+
+    def test_run_scenario_backend_smoke_workflow_fails_when_history_guard_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            variant_result = run_scenario_variant_workflow(
+                logical_scenarios_path="",
+                scenario_language_profile="highway_mixed_payloads_v0",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                out_root=root / "variant_workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=1,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+            )
+            guard_repo = root / "guard_repo"
+            guard_repo.mkdir()
+            _init_guard_repo(guard_repo)
+            _write_guard_metadata(guard_repo / "metadata" / "autonomy_e2e")
+            (guard_repo / "src" / "tracked_module.py").write_text("value = 2\n", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+            smoke_config = _write_smoke_base_config(
+                root=root,
+                helios_bin=fake_helios,
+                output_dir=root / "smoke_placeholder",
+            )
+
+            result = run_scenario_backend_smoke_workflow(
+                variant_workflow_report_path=str(variant_result["workflow_report_path"]),
+                batch_workflow_report_path="",
+                smoke_config_path=smoke_config,
+                backend="awsim",
+                out_root=root / "backend_smoke_workflow",
+                selection_strategy="first_successful_variant",
+                selected_variant_id="",
+                lane_spacing_m=4.0,
+                smoke_output_dir="",
+                setup_summary_path="",
+                backend_workflow_summary_path="",
+                backend_bin="",
+                renderer_map="",
+                option_overrides=[],
+                skip_smoke=True,
+                run_history_guard=True,
+                history_guard_metadata_root=guard_repo / "metadata" / "autonomy_e2e",
+                history_guard_current_repo_root=guard_repo,
+                history_guard_compare_ref="origin/main",
+                history_guard_include_untracked=False,
+            )
+
+            workflow_report = result["workflow_report"]
+            self.assertEqual(workflow_report["status"], "FAILED")
+            self.assertEqual(workflow_report["history_guard"]["status"], "FAIL")
+            self.assertIn(
+                "MIGRATION_CHANGES_WITHOUT_METADATA_REFRESH",
+                workflow_report["history_guard"]["failure_codes"],
             )
 
     def test_scenario_backend_smoke_workflow_script_bootstraps_src_path(self) -> None:

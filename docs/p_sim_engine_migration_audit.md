@@ -188,6 +188,9 @@ Implemented in the current repository:
 44. provenance-aware runtime smoke governance
    - `src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py` can now optionally run the checked-in Autonomy-E2E history guard as part of the top-level runtime/backend workflow
    - this makes publish-time scenario smoke runs report whether migrated result paths were changed without refreshing `metadata/autonomy_e2e`
+45. provenance-aware backend smoke governance
+   - `src/hybrid_sensor_sim/tools/scenario_backend_smoke_workflow.py` can now also run the checked-in Autonomy-E2E history guard directly
+   - this gives the lower-level smoke bridge the same publish-time provenance check even when the top-level runtime workflow is not used
 
 Still pending from the same migration track:
 

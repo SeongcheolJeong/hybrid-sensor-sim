@@ -94,6 +94,7 @@ Still pending from this master plan:
 1. deeper map-aware behavior inside scenario/object-sim flows
 2. real packaged backend smoke execution against AWSIM/CARLA binaries
 3. tighter publish gating that combines scenario/runtime smoke with provenance refresh status
+4. lower-level backend smoke entrypoints should preserve the same provenance-aware publish checks as top-level workflows
 
 ## Boundary
 

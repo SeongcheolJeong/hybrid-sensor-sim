@@ -352,6 +352,7 @@ python3 scripts/run_scenario_backend_smoke_workflow.py \
 - `selection`: chosen `variant_id`, `logical_scenario_id`, bridge source path, and whether the bridge used `rendered_payload_path` or `replay_scenario_path`
 - `runtime_selection`: resolved `backend_bin` / `renderer_map` and whether they came from explicit CLI, `renderer_backend_local_setup.json`, or `renderer_backend_workflow_summary.json`
 - `bridge`: lane spacing, actor IDs, lane bindings, route-lane metadata, and the translated smoke scenario artifact path
+- `history_guard`: optional provenance guard result for publish-time validation against `origin/main`
 - `artifacts`: `scenario_backend_smoke_selection.json`, `scenario_runtime_bridge_manifest.json`, translated smoke scenario JSON, and materialized smoke input config
 - `smoke`: optional downstream `renderer_backend_smoke` execution status, summary/report paths, and captured stdout/stderr logs
 
