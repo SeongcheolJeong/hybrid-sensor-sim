@@ -21,6 +21,22 @@ def _pipeline_status(
         if missing_required_sensor_count > 0:
             return "DEGRADED"
         return "PLANNED"
+    if availability_mode == "sidecar":
+        if missing_required_sensor_count > 0:
+            return "SIDECAR_DEGRADED"
+        if output_comparison_status and output_comparison_status != "MATCHED":
+            return "SIDECAR_DEGRADED"
+        if output_smoke_status and output_smoke_status != "COMPLETE":
+            return "SIDECAR_DEGRADED"
+        return "SIDECAR_READY"
+    if availability_mode == "mixed":
+        if missing_required_sensor_count > 0:
+            return "MIXED_DEGRADED"
+        if output_comparison_status and output_comparison_status != "MATCHED":
+            return "MIXED_DEGRADED"
+        if output_smoke_status and output_smoke_status != "COMPLETE":
+            return "MIXED_DEGRADED"
+        return "MIXED_READY"
     if missing_required_sensor_count > 0:
         return "DEGRADED"
     if output_comparison_status and output_comparison_status != "MATCHED":
@@ -52,6 +68,10 @@ def build_autoware_pipeline_manifest(
     normalized_availability_mode = str(availability_mode).strip().lower() or "runtime"
     if normalized_availability_mode == "planned":
         warnings.append("planned_backend_exports_only")
+    elif normalized_availability_mode == "sidecar":
+        warnings.append("sidecar_materialized_backend_exports")
+    elif normalized_availability_mode == "mixed":
+        warnings.append("mixed_runtime_and_sidecar_backend_exports")
     missing_required_sensor_count = int(sensor_contracts.get("missing_required_sensor_count", 0) or 0)
     output_comparison_status = (
         (smoke_summary.get("output_comparison") or {}).get("status")
@@ -80,6 +100,21 @@ def build_autoware_pipeline_manifest(
         "backend_output_smoke_status": output_smoke_status,
         "backend_output_comparison_status": output_comparison_status,
         "backend_output_comparison_mismatch_reasons": mismatch_reasons,
+        "backend_output_origin_status": (
+            (smoke_summary.get("output_smoke_report") or {}).get("output_origin_status")
+            if isinstance(smoke_summary.get("output_smoke_report"), dict)
+            else None
+        ),
+        "backend_output_origin_counts": (
+            dict((smoke_summary.get("output_smoke_report") or {}).get("output_origin_counts", {}))
+            if isinstance(smoke_summary.get("output_smoke_report"), dict)
+            else {}
+        ),
+        "backend_output_origin_reasons": (
+            list((smoke_summary.get("output_smoke_report") or {}).get("output_origin_reasons", []))
+            if isinstance(smoke_summary.get("output_smoke_report"), dict)
+            else []
+        ),
         "frame_tree_path": artifacts.get("frame_tree_path"),
         "sensor_contracts_path": artifacts.get("sensor_contracts_path"),
         "sensors": list(sensor_contracts.get("sensors", [])),

@@ -1207,6 +1207,21 @@ def run_scenario_backend_smoke_workflow(
                 if isinstance(smoke_summary.get("output_smoke_report"), dict)
                 else None
             ),
+            "output_origin_status": (
+                (smoke_summary.get("output_smoke_report") or {}).get("output_origin_status")
+                if isinstance(smoke_summary.get("output_smoke_report"), dict)
+                else None
+            ),
+            "output_origin_counts": (
+                dict((smoke_summary.get("output_smoke_report") or {}).get("output_origin_counts", {}))
+                if isinstance(smoke_summary.get("output_smoke_report"), dict)
+                else {}
+            ),
+            "output_origin_reasons": (
+                list((smoke_summary.get("output_smoke_report") or {}).get("output_origin_reasons", []))
+                if isinstance(smoke_summary.get("output_smoke_report"), dict)
+                else []
+            ),
             "output_comparison_status": (smoke_summary.get("output_comparison") or {}).get("status")
             if isinstance(smoke_summary.get("output_comparison"), dict)
             else None,
@@ -1218,6 +1233,26 @@ def run_scenario_backend_smoke_workflow(
             "output_comparison_unexpected_output_count": (
                 (smoke_summary.get("output_comparison") or {}).get("unexpected_output_count")
                 if isinstance(smoke_summary.get("output_comparison"), dict)
+                else None
+            ),
+            "output_comparison_origin_status": (
+                (smoke_summary.get("output_comparison") or {}).get("output_origin_status")
+                if isinstance(smoke_summary.get("output_comparison"), dict)
+                else None
+            ),
+            "output_comparison_origin_counts": (
+                dict((smoke_summary.get("output_comparison") or {}).get("output_origin_counts", {}))
+                if isinstance(smoke_summary.get("output_comparison"), dict)
+                else {}
+            ),
+            "sidecar_materialization_status": (
+                (smoke_summary.get("sidecar_materialization") or {}).get("status")
+                if isinstance(smoke_summary.get("sidecar_materialization"), dict)
+                else None
+            ),
+            "sidecar_materialized_output_count": (
+                (smoke_summary.get("sidecar_materialization") or {}).get("materialized_output_count")
+                if isinstance(smoke_summary.get("sidecar_materialization"), dict)
                 else None
             ),
             **runtime_diagnostics,
@@ -1246,6 +1281,7 @@ def run_scenario_backend_smoke_workflow(
         workflow_report["autoware"] = {
             "requested": True,
             "status": autoware_report.get("status"),
+            "availability_mode": autoware_report.get("availability_mode"),
             "strict": bool(autoware_strict),
             "base_frame": str(autoware_base_frame).strip() or "base_link",
             "available_sensor_count": autoware_report.get("available_sensor_count"),

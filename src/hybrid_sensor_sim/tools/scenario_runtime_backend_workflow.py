@@ -333,6 +333,21 @@ def _build_status_summary(
             "reason_code": "BACKEND_HANDOFF_DOCKER_READY",
         },
     ]
+    def _infer_autoware_availability_mode(summary: dict[str, Any]) -> str | None:
+        raw_mode = str(summary.get("availability_mode", "")).strip().lower()
+        if raw_mode:
+            return raw_mode
+        status = str(summary.get("status", "")).strip().upper()
+        if status == "PLANNED":
+            return "planned"
+        if status.startswith("SIDECAR_"):
+            return "sidecar"
+        if status.startswith("MIXED_"):
+            return "mixed"
+        if status in {"READY", "DEGRADED"}:
+            return "runtime"
+        return None
+
     final_status_source = "default_success"
     status_reason_codes: list[str] = []
     for step in decision_trace:
@@ -380,8 +395,17 @@ def _build_status_summary(
         "backend_output_smoke_coverage_ratio": smoke_summary.get(
             "output_smoke_coverage_ratio"
         ),
+        "backend_output_origin_status": smoke_summary.get("output_origin_status"),
+        "backend_output_origin_counts": dict(smoke_summary.get("output_origin_counts", {})),
+        "backend_output_origin_reasons": list(smoke_summary.get("output_origin_reasons", [])),
         "backend_output_inspection_status": smoke_summary.get("output_inspection_status"),
         "backend_runner_smoke_status": smoke_summary.get("runner_smoke_status"),
+        "backend_sidecar_materialization_status": smoke_summary.get(
+            "sidecar_materialization_status"
+        ),
+        "backend_sidecar_materialized_output_count": smoke_summary.get(
+            "sidecar_materialized_output_count"
+        ),
         "backend_run_status": smoke_summary.get("run_status"),
         "backend_handoff_status": backend_report.get("renderer_backend_workflow", {}).get("status"),
         "backend_handoff_ready": backend_report.get("renderer_backend_workflow", {}).get("linux_handoff_ready"),
@@ -395,6 +419,7 @@ def _build_status_summary(
             "linux_handoff_bundle_path"
         ),
         "autoware_pipeline_status": autoware_summary.get("status"),
+        "autoware_availability_mode": _infer_autoware_availability_mode(autoware_summary),
         "autoware_available_sensor_count": autoware_summary.get("available_sensor_count"),
         "autoware_missing_required_sensor_count": autoware_summary.get("missing_required_sensor_count"),
         "autoware_available_topics": list(autoware_summary.get("available_topics", [])),
@@ -438,11 +463,15 @@ def _build_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Variant ID: `{summary['backend_variant_id'] or '-'}`",
         f"- Output smoke: `{summary['backend_output_smoke_status'] or '-'}`",
         f"- Output smoke coverage ratio: `{summary['backend_output_smoke_coverage_ratio'] if summary['backend_output_smoke_coverage_ratio'] is not None else '-'}`",
+        f"- Output origin status: `{summary.get('backend_output_origin_status') or '-'}`",
+        f"- Output origin reasons: `{', '.join(summary.get('backend_output_origin_reasons', [])) or '-'}`",
         f"- Output comparison: `{summary['backend_output_comparison_status'] or '-'}`",
         f"- Output comparison mismatch reasons: `{', '.join(summary['backend_output_comparison_mismatch_reasons']) or '-'}`",
         f"- Output comparison unexpected count: `{summary['backend_output_comparison_unexpected_output_count'] if summary['backend_output_comparison_unexpected_output_count'] is not None else '-'}`",
         f"- Output inspection: `{summary['backend_output_inspection_status'] or '-'}`",
         f"- Runner smoke: `{summary['backend_runner_smoke_status'] or '-'}`",
+        f"- Sidecar materialization: `{summary.get('backend_sidecar_materialization_status') or '-'}`",
+        f"- Sidecar materialized outputs: `{summary.get('backend_sidecar_materialized_output_count') if summary.get('backend_sidecar_materialized_output_count') is not None else '-'}`",
         f"- Run status: `{summary['backend_run_status'] or '-'}`",
         f"- Runtime exit code: `{summary['backend_runtime_exit_code'] if summary['backend_runtime_exit_code'] is not None else '-'}`",
         f"- Runtime crash signatures: `{', '.join(summary['backend_runtime_crash_signatures']) or '-'}`",
@@ -457,6 +486,7 @@ def _build_markdown_report(workflow_report: dict[str, Any]) -> str:
         "## Autoware Bridge",
         "",
         f"- Status: `{summary.get('autoware_pipeline_status') or '-'}`",
+        f"- Availability mode: `{summary.get('autoware_availability_mode') or '-'}`",
         f"- Available sensors: `{summary.get('autoware_available_sensor_count') if summary.get('autoware_available_sensor_count') is not None else '-'}`",
         f"- Missing required sensors: `{summary.get('autoware_missing_required_sensor_count') if summary.get('autoware_missing_required_sensor_count') is not None else '-'}`",
         f"- Required topics complete: `{summary.get('autoware_required_topics_complete') if summary.get('autoware_required_topics_complete') is not None else '-'}`",

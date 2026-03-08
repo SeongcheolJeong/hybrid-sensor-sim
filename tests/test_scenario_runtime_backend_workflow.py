@@ -282,6 +282,14 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
                 report["status_summary"]["autoware_pipeline_status"],
                 {"READY", "DEGRADED"},
             )
+            self.assertEqual(
+                report["status_summary"]["autoware_availability_mode"],
+                "runtime",
+            )
+            self.assertEqual(
+                report["status_summary"]["backend_output_origin_status"],
+                "BACKEND_RUNTIME_ONLY",
+            )
             self.assertIsNotNone(report["status_summary"]["autoware_missing_required_sensor_count"])
             self.assertTrue(Path(report["artifacts"]["autoware_pipeline_manifest_path"]).is_file())
             self.assertTrue(Path(report["artifacts"]["smoke_scenario_path"]).is_file())
@@ -1030,6 +1038,10 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
             self.assertEqual(
                 report["status_summary"]["autoware_pipeline_status"],
                 "PLANNED",
+            )
+            self.assertEqual(
+                report["status_summary"]["autoware_availability_mode"],
+                "planned",
             )
             self.assertTrue(
                 report["status_summary"]["autoware_required_topics_complete"]

@@ -340,6 +340,8 @@ def _group_expected_outputs(
                 "expected_count": 0,
                 "found_count": 0,
                 "missing_count": 0,
+                "backend_runtime_found_count": 0,
+                "sidecar_found_count": 0,
                 "artifact_keys": [],
                 "sensor_ids": [],
                 "found_sensor_ids": [],
@@ -371,13 +373,37 @@ def _group_expected_outputs(
         if "exists" in entry:
             if bool(entry.get("exists", False)):
                 summary["found_count"] += 1
+                if str(entry.get("output_origin", "")).strip() == "sidecar_materialized":
+                    summary["sidecar_found_count"] += 1
+                else:
+                    summary["backend_runtime_found_count"] += 1
                 if sensor_id and sensor_id not in summary["found_sensor_ids"]:
                     summary["found_sensor_ids"].append(sensor_id)
             else:
                 summary["missing_count"] += 1
                 if sensor_id and sensor_id not in summary["missing_sensor_ids"]:
                     summary["missing_sensor_ids"].append(sensor_id)
-    return [groups[key] for key in sorted(groups)]
+    grouped_rows = [groups[key] for key in sorted(groups)]
+    for summary in grouped_rows:
+        backend_runtime_found_count = int(summary.get("backend_runtime_found_count", 0))
+        sidecar_found_count = int(summary.get("sidecar_found_count", 0))
+        missing_count = int(summary.get("missing_count", 0))
+        expected_count = int(summary.get("expected_count", 0))
+        summary["output_origin_status"] = _output_origin_status(
+            expected_count=expected_count,
+            backend_runtime_count=backend_runtime_found_count,
+            sidecar_count=sidecar_found_count,
+        )
+        summary["output_origin_counts"] = {
+            "backend_runtime": backend_runtime_found_count,
+            "sidecar_materialized": sidecar_found_count,
+            "missing": missing_count,
+        }
+        summary["output_origin_reasons"] = _output_origin_reasons(
+            backend_runtime_count=backend_runtime_found_count,
+            sidecar_count=sidecar_found_count,
+        )
+    return grouped_rows
 
 
 def _output_smoke_status(
@@ -399,6 +425,37 @@ def _output_coverage_ratio(*, expected_count: int, found_count: int) -> float | 
     if expected_count <= 0:
         return None
     return round(found_count / expected_count, 4)
+
+
+def _output_origin_status(
+    *,
+    expected_count: int,
+    backend_runtime_count: int,
+    sidecar_count: int,
+) -> str:
+    if expected_count <= 0:
+        return "UNOBSERVED"
+    found_count = backend_runtime_count + sidecar_count
+    if found_count <= 0:
+        return "MISSING"
+    if backend_runtime_count > 0 and sidecar_count <= 0:
+        return "BACKEND_RUNTIME_ONLY"
+    if backend_runtime_count <= 0 and sidecar_count > 0:
+        return "SIDECAR_ONLY"
+    return "MIXED"
+
+
+def _output_origin_reasons(
+    *,
+    backend_runtime_count: int,
+    sidecar_count: int,
+) -> list[str]:
+    reasons: list[str] = []
+    if sidecar_count > 0:
+        reasons.append("SIDECAR_OUTPUTS_PRESENT")
+    if sidecar_count > 0 and backend_runtime_count <= 0:
+        reasons.append("NO_NATIVE_BACKEND_OUTPUTS")
+    return reasons
 
 
 def _output_comparison_status(
@@ -1230,8 +1287,14 @@ def _materialize_sidecar_outputs(
             )
 
     runtime_state_materialized = False
+    runtime_state_target_path: str | None = None
+    runtime_state_artifact_key: str | None = None
     if runtime_state_entry is not None:
         runtime_state_path = Path(str(runtime_state_entry.get("path", ""))).expanduser()
+        runtime_state_target_path = str(runtime_state_path) if str(runtime_state_path) else None
+        runtime_state_artifact_key = (
+            str(runtime_state_entry.get("artifact_key", "")).strip() or None
+        )
         if str(runtime_state_path) and not runtime_state_path.exists():
             runtime_state_path.parent.mkdir(parents=True, exist_ok=True)
             runtime_state_payload = {
@@ -1257,6 +1320,8 @@ def _materialize_sidecar_outputs(
         "backend_return_code": backend_return_code,
         "materialized_output_count": len(materialized_outputs),
         "runtime_state_materialized": runtime_state_materialized,
+        "runtime_state_target_path": runtime_state_target_path,
+        "runtime_state_artifact_key": runtime_state_artifact_key,
         "materialized_outputs": materialized_outputs,
         "skipped_entry_count": len(skipped_entries),
         "skipped_entries": skipped_entries,
@@ -1271,8 +1336,27 @@ def _materialize_sidecar_outputs(
 
 
 def _inspect_expected_outputs(
-    expected_outputs: list[dict[str, Any]]
+    expected_outputs: list[dict[str, Any]],
+    *,
+    sidecar_materialization_report: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Path], int, int]:
+    sidecar_target_paths: set[str] = set()
+    if isinstance(sidecar_materialization_report, dict):
+        for output in sidecar_materialization_report.get("materialized_outputs", []):
+            if not isinstance(output, dict):
+                continue
+            target_path = str(output.get("target_path", "")).strip()
+            if target_path:
+                sidecar_target_paths.add(str(Path(target_path).expanduser().resolve()))
+        if bool(sidecar_materialization_report.get("runtime_state_materialized")):
+            runtime_state_target_path = str(
+                sidecar_materialization_report.get("runtime_state_target_path", "")
+            ).strip()
+            if runtime_state_target_path:
+                sidecar_target_paths.add(
+                    str(Path(runtime_state_target_path).expanduser().resolve())
+                )
+
     inspected: list[dict[str, Any]] = []
     artifacts: dict[str, Path] = {}
     found_count = 0
@@ -1292,6 +1376,14 @@ def _inspect_expected_outputs(
         resolved_path = next((candidate for candidate in candidate_paths if candidate.exists()), None)
         path = resolved_path or (candidate_paths[0] if candidate_paths else Path(""))
         exists = resolved_path is not None
+        output_origin = "missing"
+        if exists:
+            resolved_key = str(path.resolve())
+            output_origin = (
+                "sidecar_materialized"
+                if resolved_key in sidecar_target_paths
+                else "backend_runtime"
+            )
         if exists:
             found_count += 1
         else:
@@ -1302,6 +1394,8 @@ def _inspect_expected_outputs(
             "is_dir": path.is_dir() if exists else False,
             "resolved_path": str(path) if exists else None,
             "inspected_paths": [str(candidate) for candidate in candidate_paths],
+            "output_origin": output_origin,
+            "sidecar_materialized": output_origin == "sidecar_materialized",
         }
         if exists and path.is_file():
             record["size_bytes"] = path.stat().st_size
@@ -1342,6 +1436,8 @@ def _build_sensor_output_summary(
                 "output_count": 0,
                 "found_output_count": 0,
                 "missing_output_count": 0,
+                "backend_runtime_output_count": 0,
+                "sidecar_output_count": 0,
                 "output_role_counts": {},
                 "artifact_type_counts": {},
                 "found_output_roles": [],
@@ -1356,6 +1452,10 @@ def _build_sensor_output_summary(
         if exists:
             sensor_summary["found_output_count"] += 1
             sensor_summary["available"] = True
+            if str(entry.get("output_origin", "")).strip() == "sidecar_materialized":
+                sensor_summary["sidecar_output_count"] += 1
+            else:
+                sensor_summary["backend_runtime_output_count"] += 1
         else:
             sensor_summary["missing_output_count"] += 1
         if output_role:
@@ -1383,6 +1483,8 @@ def _build_sensor_output_summary(
                 "relative_path": str(entry.get("relative_path", "")).strip(),
                 "resolved_path": str(entry.get("resolved_path", "")).strip() or None,
                 "exists": exists,
+                "output_origin": str(entry.get("output_origin", "")).strip() or "missing",
+                "sidecar_materialized": bool(entry.get("sidecar_materialized", False)),
                 "embedded_output": bool(entry.get("embedded_output", False)),
                 "embedded_field": str(entry.get("embedded_field", "")).strip(),
                 "shared_output_artifact_key": str(
@@ -1395,6 +1497,10 @@ def _build_sensor_output_summary(
         expected_count = int(sensor_summary.get("output_count", 0))
         found_count = int(sensor_summary.get("found_output_count", 0))
         missing_count = int(sensor_summary.get("missing_output_count", 0))
+        backend_runtime_output_count = int(
+            sensor_summary.get("backend_runtime_output_count", 0)
+        )
+        sidecar_output_count = int(sensor_summary.get("sidecar_output_count", 0))
         sensor_summary["status"] = _output_smoke_status(
             expected_count=expected_count,
             found_count=found_count,
@@ -1403,6 +1509,20 @@ def _build_sensor_output_summary(
         sensor_summary["coverage_ratio"] = _output_coverage_ratio(
             expected_count=expected_count,
             found_count=found_count,
+        )
+        sensor_summary["output_origin_status"] = _output_origin_status(
+            expected_count=expected_count,
+            backend_runtime_count=backend_runtime_output_count,
+            sidecar_count=sidecar_output_count,
+        )
+        sensor_summary["output_origin_counts"] = {
+            "backend_runtime": backend_runtime_output_count,
+            "sidecar_materialized": sidecar_output_count,
+            "missing": missing_count,
+        }
+        sensor_summary["output_origin_reasons"] = _output_origin_reasons(
+            backend_runtime_count=backend_runtime_output_count,
+            sidecar_count=sidecar_output_count,
         )
         if bool(sensor_summary.get("available")):
             found_sensor_count += 1
@@ -1417,6 +1537,18 @@ def _build_sensor_output_summary(
             output_role_counts[output_role] = int(output_role_counts.get(output_role, 0)) + 1
         if artifact_type:
             artifact_type_counts[artifact_type] = int(artifact_type_counts.get(artifact_type, 0)) + 1
+    backend_runtime_output_count = sum(
+        1
+        for entry in sensor_entries
+        if bool(entry.get("exists", False))
+        and str(entry.get("output_origin", "")).strip() != "sidecar_materialized"
+    )
+    sidecar_output_count = sum(
+        1
+        for entry in sensor_entries
+        if bool(entry.get("exists", False))
+        and str(entry.get("output_origin", "")).strip() == "sidecar_materialized"
+    )
 
     status_counts: dict[str, int] = {}
     for sensor_summary in sensors.values():
@@ -1437,6 +1569,22 @@ def _build_sensor_output_summary(
         "coverage_ratio": _output_coverage_ratio(
             expected_count=len(sensors),
             found_count=found_sensor_count,
+        ),
+        "output_origin_status": _output_origin_status(
+            expected_count=len(sensor_entries),
+            backend_runtime_count=backend_runtime_output_count,
+            sidecar_count=sidecar_output_count,
+        ),
+        "output_origin_counts": {
+            "backend_runtime": backend_runtime_output_count,
+            "sidecar_materialized": sidecar_output_count,
+            "missing": sum(
+                1 for entry in sensor_entries if not bool(entry.get("exists", False))
+            ),
+        },
+        "output_origin_reasons": _output_origin_reasons(
+            backend_runtime_count=backend_runtime_output_count,
+            sidecar_count=sidecar_output_count,
         ),
         "status_counts": status_counts,
         "output_role_counts": output_role_counts,
@@ -1465,6 +1613,18 @@ def _build_backend_output_smoke_report(
 ) -> tuple[Path, dict[str, Path], dict[str, Any]]:
     found_count = sum(1 for entry in expected_outputs if bool(entry.get("exists", False)))
     missing_count = max(0, len(expected_outputs) - found_count)
+    backend_runtime_found_count = sum(
+        1
+        for entry in expected_outputs
+        if bool(entry.get("exists", False))
+        and str(entry.get("output_origin", "")).strip() != "sidecar_materialized"
+    )
+    sidecar_found_count = sum(
+        1
+        for entry in expected_outputs
+        if bool(entry.get("exists", False))
+        and str(entry.get("output_origin", "")).strip() == "sidecar_materialized"
+    )
     found_artifact_keys = sorted(
         {
             str(entry.get("artifact_key", "")).strip()
@@ -1535,6 +1695,8 @@ def _build_backend_output_smoke_report(
                 "expected_output_count": 0,
                 "found_output_count": 0,
                 "missing_output_count": 0,
+                "backend_runtime_found_count": 0,
+                "sidecar_found_count": 0,
                 "artifact_keys": [],
                 "found_artifact_keys": [],
                 "missing_artifact_keys": [],
@@ -1549,6 +1711,10 @@ def _build_backend_output_smoke_report(
         sensor_summary["expected_output_count"] += 1
         if exists:
             sensor_summary["found_output_count"] += 1
+            if str(entry.get("output_origin", "")).strip() == "sidecar_materialized":
+                sensor_summary["sidecar_found_count"] += 1
+            else:
+                sensor_summary["backend_runtime_found_count"] += 1
         else:
             sensor_summary["missing_output_count"] += 1
         if artifact_key and artifact_key not in sensor_summary["artifact_keys"]:
@@ -1580,6 +1746,24 @@ def _build_backend_output_smoke_report(
         if not status:
             continue
         sensor_status_counts[status] = int(sensor_status_counts.get(status, 0)) + 1
+        backend_runtime_sensor_count = int(summary.get("backend_runtime_found_count", 0))
+        sidecar_sensor_count = int(summary.get("sidecar_found_count", 0))
+        expected_sensor_count = int(summary.get("expected_output_count", 0))
+        missing_sensor_count = int(summary.get("missing_output_count", 0))
+        summary["output_origin_status"] = _output_origin_status(
+            expected_count=expected_sensor_count,
+            backend_runtime_count=backend_runtime_sensor_count,
+            sidecar_count=sidecar_sensor_count,
+        )
+        summary["output_origin_counts"] = {
+            "backend_runtime": backend_runtime_sensor_count,
+            "sidecar_materialized": sidecar_sensor_count,
+            "missing": missing_sensor_count,
+        }
+        summary["output_origin_reasons"] = _output_origin_reasons(
+            backend_runtime_count=backend_runtime_sensor_count,
+            sidecar_count=sidecar_sensor_count,
+        )
 
     report_payload = {
         "status": _output_smoke_status(
@@ -1590,6 +1774,20 @@ def _build_backend_output_smoke_report(
         "coverage_ratio": _output_coverage_ratio(
             expected_count=len(expected_outputs),
             found_count=found_count,
+        ),
+        "output_origin_status": _output_origin_status(
+            expected_count=len(expected_outputs),
+            backend_runtime_count=backend_runtime_found_count,
+            sidecar_count=sidecar_found_count,
+        ),
+        "output_origin_counts": {
+            "backend_runtime": backend_runtime_found_count,
+            "sidecar_materialized": sidecar_found_count,
+            "missing": missing_count,
+        },
+        "output_origin_reasons": _output_origin_reasons(
+            backend_runtime_count=backend_runtime_found_count,
+            sidecar_count=sidecar_found_count,
         ),
         "expected_output_count": len(expected_outputs),
         "found_output_count": found_count,
@@ -1622,6 +1820,18 @@ def _build_backend_output_comparison_report(
 
     output_root = Path(raw_output_root).expanduser().resolve()
     if not output_root.exists():
+        backend_runtime_found_count = sum(
+            1
+            for entry in expected_outputs
+            if bool(entry.get("exists", False))
+            and str(entry.get("output_origin", "")).strip() != "sidecar_materialized"
+        )
+        sidecar_found_count = sum(
+            1
+            for entry in expected_outputs
+            if bool(entry.get("exists", False))
+            and str(entry.get("output_origin", "")).strip() == "sidecar_materialized"
+        )
         report_payload = {
             "status": "UNOBSERVED",
             "mismatch_reasons": _output_comparison_mismatch_reasons(
@@ -1634,6 +1844,20 @@ def _build_backend_output_comparison_report(
             "output_root": str(output_root),
             "output_root_exists": False,
             "expected_output_count": len(expected_outputs),
+            "output_origin_status": _output_origin_status(
+                expected_count=len(expected_outputs),
+                backend_runtime_count=backend_runtime_found_count,
+                sidecar_count=sidecar_found_count,
+            ),
+            "output_origin_counts": {
+                "backend_runtime": backend_runtime_found_count,
+                "sidecar_materialized": sidecar_found_count,
+                "missing": len(expected_outputs),
+            },
+            "output_origin_reasons": _output_origin_reasons(
+                backend_runtime_count=backend_runtime_found_count,
+                sidecar_count=sidecar_found_count,
+            ),
             "discovered_file_count": 0,
             "matched_file_count": 0,
             "unexpected_output_count": 0,
@@ -1801,6 +2025,18 @@ def _build_backend_output_comparison_report(
         expected_count = len(sensor_entries)
         missing_count = sum(1 for entry in sensor_entries if not bool(entry.get("exists", False)))
         found_count = sum(1 for entry in sensor_entries if bool(entry.get("exists", False)))
+        backend_runtime_found_count = sum(
+            1
+            for entry in sensor_entries
+            if bool(entry.get("exists", False))
+            and str(entry.get("output_origin", "")).strip() != "sidecar_materialized"
+        )
+        sidecar_found_count = sum(
+            1
+            for entry in sensor_entries
+            if bool(entry.get("exists", False))
+            and str(entry.get("output_origin", "")).strip() == "sidecar_materialized"
+        )
         discovered_count = int(sensor_discovery_counts.get(sensor_id, 0))
         unexpected_count = int(sensor_unexpected_counts.get(sensor_id, 0))
         found_output_roles = sorted(
@@ -1944,6 +2180,22 @@ def _build_backend_output_comparison_report(
                 "missing_output_count": missing_count,
                 "discovered_file_count": discovered_count,
                 "unexpected_output_count": unexpected_count,
+                "backend_runtime_found_count": backend_runtime_found_count,
+                "sidecar_found_count": sidecar_found_count,
+                "output_origin_status": _output_origin_status(
+                    expected_count=expected_count,
+                    backend_runtime_count=backend_runtime_found_count,
+                    sidecar_count=sidecar_found_count,
+                ),
+                "output_origin_counts": {
+                    "backend_runtime": backend_runtime_found_count,
+                    "sidecar_materialized": sidecar_found_count,
+                    "missing": missing_count,
+                },
+                "output_origin_reasons": _output_origin_reasons(
+                    backend_runtime_count=backend_runtime_found_count,
+                    sidecar_count=sidecar_found_count,
+                ),
                 "status": _output_comparison_status(
                     expected_count=expected_count,
                     missing_count=missing_count,
@@ -1974,6 +2226,18 @@ def _build_backend_output_comparison_report(
         )
 
     overall_missing_count = sum(1 for entry in expected_outputs if not bool(entry.get("exists", False)))
+    overall_backend_runtime_found_count = sum(
+        1
+        for entry in expected_outputs
+        if bool(entry.get("exists", False))
+        and str(entry.get("output_origin", "")).strip() != "sidecar_materialized"
+    )
+    overall_sidecar_found_count = sum(
+        1
+        for entry in expected_outputs
+        if bool(entry.get("exists", False))
+        and str(entry.get("output_origin", "")).strip() == "sidecar_materialized"
+    )
     overall_mismatch_reasons = _output_comparison_mismatch_reasons(
         expected_count=len(expected_outputs),
         missing_count=overall_missing_count,
@@ -1997,6 +2261,20 @@ def _build_backend_output_comparison_report(
         "output_root": str(output_root),
         "output_root_exists": True,
         "expected_output_count": len(expected_outputs),
+        "output_origin_status": _output_origin_status(
+            expected_count=len(expected_outputs),
+            backend_runtime_count=overall_backend_runtime_found_count,
+            sidecar_count=overall_sidecar_found_count,
+        ),
+        "output_origin_counts": {
+            "backend_runtime": overall_backend_runtime_found_count,
+            "sidecar_materialized": overall_sidecar_found_count,
+            "missing": overall_missing_count,
+        },
+        "output_origin_reasons": _output_origin_reasons(
+            backend_runtime_count=overall_backend_runtime_found_count,
+            sidecar_count=overall_sidecar_found_count,
+        ),
         "discovered_file_count": len(discovered_files),
         "matched_file_count": matched_file_count,
         "unexpected_output_count": unexpected_output_count,
@@ -2163,7 +2441,8 @@ def execute_backend_runner_request(
     )
     artifacts.update(sidecar_materialization_artifacts)
     inspected_outputs, discovered_artifacts, found_count, missing_count = _inspect_expected_outputs(
-        expected_outputs
+        expected_outputs,
+        sidecar_materialization_report=sidecar_materialization_report,
     )
     artifacts.update(discovered_artifacts)
     sensor_output_summary_path, sensor_output_summary_artifacts = _build_sensor_output_summary(
@@ -2266,7 +2545,8 @@ def inspect_backend_runner_request_outputs(
 
     expected_outputs = _normalize_expected_outputs(payload.get("expected_outputs"))
     inspected_outputs, discovered_artifacts, _found_count, _missing_count = _inspect_expected_outputs(
-        expected_outputs
+        expected_outputs,
+        sidecar_materialization_report=None,
     )
     artifacts.update(discovered_artifacts)
     sensor_output_summary_path, sensor_output_summary_artifacts = _build_sensor_output_summary(

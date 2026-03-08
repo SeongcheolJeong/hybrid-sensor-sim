@@ -253,10 +253,22 @@ def write_autoware_export_bundle(
     autoware_root.mkdir(parents=True, exist_ok=True)
     sensor_mounts = list(playback_contract.get("renderer_sensor_mounts", []) or [])
     frame_tree = build_autoware_frame_tree(sensor_mounts, base_frame=base_frame)
+    output_smoke_summary = (
+        dict(smoke_summary.get("output_smoke_report", {}))
+        if isinstance(smoke_summary.get("output_smoke_report"), dict)
+        else {}
+    )
+    output_origin_status = str(output_smoke_summary.get("output_origin_status", "")).strip()
+    availability_mode = "runtime"
+    if output_origin_status == "SIDECAR_ONLY":
+        availability_mode = "sidecar"
+    elif output_origin_status == "MIXED":
+        availability_mode = "mixed"
     sensor_contracts = build_autoware_sensor_contracts(
         backend_sensor_output_summary=backend_sensor_output_summary,
         backend_output_spec=backend_output_spec,
         sensor_mounts=sensor_mounts,
+        availability_mode=availability_mode,
     )
     strict_failed = bool(strict and int(sensor_contracts.get("missing_required_sensor_count", 0) or 0) > 0)
     frame_tree_path = autoware_root / "autoware_frame_tree.json"
@@ -282,7 +294,7 @@ def write_autoware_export_bundle(
         smoke_summary=smoke_summary,
         artifacts=artifacts,
         strict_failed=strict_failed,
-        availability_mode="runtime",
+        availability_mode=availability_mode,
     )
     dataset_manifest = build_autoware_dataset_manifest(
         run_id=run_id,
@@ -308,6 +320,7 @@ def write_autoware_export_bundle(
     return {
         "status": pipeline_manifest["status"],
         "strict": bool(strict),
+        "availability_mode": availability_mode,
         "base_frame": str(base_frame).strip() or "base_link",
         "available_sensor_count": int(sensor_contracts.get("available_sensor_count", 0) or 0),
         "missing_required_sensor_count": int(sensor_contracts.get("missing_required_sensor_count", 0) or 0),

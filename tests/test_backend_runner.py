@@ -543,8 +543,18 @@ exit 1
             self.assertTrue(sidecar_report["runtime_state_materialized"])
             self.assertEqual(comparison_report["status"], "MATCHED")
             self.assertEqual(comparison_report["mismatch_reasons"], [])
+            self.assertEqual(comparison_report["output_origin_status"], "SIDECAR_ONLY")
+            self.assertEqual(
+                comparison_report["output_origin_counts"]["sidecar_materialized"],
+                4,
+            )
             self.assertEqual(smoke_report["status"], "COMPLETE")
             self.assertEqual(smoke_report["missing_output_count"], 0)
+            self.assertEqual(smoke_report["output_origin_status"], "SIDECAR_ONLY")
+            self.assertEqual(
+                smoke_report["output_origin_counts"]["sidecar_materialized"],
+                4,
+            )
             self.assertTrue(
                 (output_root / "sensor_exports" / "camera_front" / "rgb_frame.json").is_file()
             )

@@ -269,7 +269,20 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"[ok] autoware_status={result['report']['status']}")
         print(f"[ok] report={result['report_path']}")
-        return 0 if result["report"]["status"] in {"READY", "DEGRADED", "PLANNED"} else 2
+        return (
+            0
+            if result["report"]["status"]
+            in {
+                "READY",
+                "DEGRADED",
+                "PLANNED",
+                "SIDECAR_READY",
+                "SIDECAR_DEGRADED",
+                "MIXED_READY",
+                "MIXED_DEGRADED",
+            }
+            else 2
+        )
     except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
         print(f"[error] run_autoware_pipeline_bridge.py: {exc}", file=sys.stderr)
         return 2

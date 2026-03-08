@@ -140,9 +140,9 @@ def build_autoware_sensor_contracts(
     missing_required_sensor_count = 0
     available_sensor_count = 0
     normalized_availability_mode = str(availability_mode).strip().lower() or "runtime"
-    if normalized_availability_mode not in {"runtime", "planned"}:
+    if normalized_availability_mode not in {"runtime", "planned", "sidecar", "mixed"}:
         raise ValueError(
-            f"availability_mode must be 'runtime' or 'planned', got: {availability_mode}"
+            f"availability_mode must be 'runtime', 'planned', 'sidecar', or 'mixed', got: {availability_mode}"
         )
 
     for sensor_id in sensor_ids:
@@ -173,6 +173,7 @@ def build_autoware_sensor_contracts(
                 continue
             exists = bool(output.get("exists", False))
             resolved_path = str(output.get("resolved_path", "")).strip() or None
+            output_origin = str(output.get("output_origin", "")).strip() or None
             available = bool(
                 (exists and resolved_path)
                 or (
@@ -201,6 +202,7 @@ def build_autoware_sensor_contracts(
                     "data_format": str(output.get("data_format", "")).strip() or None,
                     "source_artifact_key": str(output.get("artifact_key", "")).strip() or None,
                     "source_resolved_path": resolved_path,
+                    "output_origin": output_origin,
                     "required": required,
                     "available": available,
                     "availability_mode": normalized_availability_mode,
@@ -225,6 +227,7 @@ def build_autoware_sensor_contracts(
                     "data_format": None,
                     "source_artifact_key": None,
                     "source_resolved_path": None,
+                    "output_origin": None,
                     "required": True,
                     "available": False,
                     "availability_mode": normalized_availability_mode,

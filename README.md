@@ -56,6 +56,8 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `scripts/run_scenario_runtime_backend_workflow.py`: runs scenario batch workflow first, then feeds the selected result into renderer backend smoke as one top-level workflow.
 - `src/hybrid_sensor_sim/autoware/*.py`: JSON-first Autoware topic/frame/pipeline contract bridge built from backend smoke artifacts.
 - `scripts/run_autoware_pipeline_bridge.py`: builds Autoware-facing sensor contracts, frame tree, pipeline manifest, and dataset manifest from backend smoke workflow reports.
+  - bridge availability modes are now explicit: `runtime`, `planned`, `sidecar`, `mixed`
+  - pipeline statuses now distinguish `READY/DEGRADED`, `PLANNED`, `SIDECAR_READY/SIDECAR_DEGRADED`, and `MIXED_READY/MIXED_DEGRADED`
 - `src/hybrid_sensor_sim/tools/scenario_batch_gate_catalog.py`: reusable gate preset catalog and profile-id resolution for batch comparison/workflow tooling.
 - `scripts/run_scenario_batch_comparison.py`: compares a scenario variant workflow report against a matrix-sweep report and writes JSON plus Markdown comparison artifacts.
 - `scripts/run_scenario_batch_workflow.py`: runs variant workflow, matrix sweep, and batch comparison as one reusable workflow and writes a single top-level workflow report.
@@ -360,6 +362,7 @@ python3 scripts/run_scenario_backend_smoke_workflow.py \
 - `renderer_backend_workflow`: optional packaged-backend handoff planning result, including blocker codes, recommended next command, Linux handoff readiness, and handoff artifact paths
 - `smoke`: optional downstream `renderer_backend_smoke` execution status, summary/report paths, captured stdout/stderr logs, backend output triage (`output_smoke_status`, `output_comparison_status`, mismatch reasons, unexpected output count), and packaged-runtime crash diagnostics (`backend_runtime_exit_code`, failed plugins, missing shared libraries, crash signatures)
 - `autoware`: optional Autoware-facing bridge status, available topics, missing required sensor count, and bundle artifact paths
+  - the workflow now also carries `autoware.availability_mode` so sidecar-materialized backend exports are not reported as plain runtime-ready output
 
 Scenario runtime/backend workflow:
 
@@ -388,6 +391,7 @@ python3 scripts/run_scenario_runtime_backend_workflow.py \
 - host-incompatible packaged backend selections are now lifted to top-level `HANDOFF_READY` or `HANDOFF_DOCKER_*` runtime statuses, together with `backend_handoff_status`, `backend_handoff_ready`, blocker codes, recommended command, and bundle/script artifact paths
 - `history_guard`: optional provenance guard status, failure codes, and report path for publish-time validation against `origin/main`
 - `status_summary`: final status source, ordered decision trace, batch triage IDs, backend smoke result summary, backend output smoke/comparison mismatch details, Autoware readiness, and optional history-guard status
+  - the backend smoke summary now also exposes `backend_output_origin_status`, `backend_output_origin_counts`, `backend_sidecar_materialization_status`, and `backend_sidecar_materialized_output_count`
 - `status_summary`: now also carries packaged-runtime diagnostics such as runtime exit code, failed plugin basenames, missing shared libraries, and crash signatures when a real AWSIM/CARLA handoff run aborts inside the Linux container path
 - `artifacts`: top-level report paths plus generated smoke scenario/config paths, Autoware bundle artifact paths, and optional history-guard report
 
@@ -400,6 +404,7 @@ python3 scripts/run_autoware_pipeline_bridge.py \
 ```
 
 If the backend workflow is in `HANDOFF_READY` or `HANDOFF_DOCKER_*` state and no real smoke summary exists yet, the bridge now emits a `PLANNED` Autoware bundle from the smoke input config. This keeps topic/frame readiness visible before the actual Linux/AWSIM handoff run.
+When backend outputs exist only because the runner materialized sidecar exports into the expected layout, the bridge now emits `SIDECAR_READY` or `SIDECAR_DEGRADED` instead of plain `READY`. Mixed runtime-and-sidecar runs are reported as `MIXED_READY` or `MIXED_DEGRADED`.
 
 Both `run_scenario_variants.py` and `run_scenario_variant_workflow.py` resolve default scenario-language profiles from:
 

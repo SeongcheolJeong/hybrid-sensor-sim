@@ -166,6 +166,54 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
             self.assertTrue(Path(report["artifacts"]["pipeline_manifest_path"]).is_file())
             self.assertTrue(Path(report["artifacts"]["dataset_manifest_path"]).is_file())
 
+    def test_bridge_marks_sidecar_only_exports(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            backend_report_path = self._write_backend_workflow_fixture(root, include_lidar=True)
+            backend_report = json.loads(backend_report_path.read_text(encoding="utf-8"))
+            smoke_summary_path = Path(backend_report["smoke"]["summary_path"])
+            smoke_summary = json.loads(smoke_summary_path.read_text(encoding="utf-8"))
+            sensor_summary_path = Path(
+                smoke_summary["artifacts"]["backend_sensor_output_summary"]
+            )
+            sensor_summary = json.loads(sensor_summary_path.read_text(encoding="utf-8"))
+            for sensor in sensor_summary["sensors"]:
+                for output in sensor.get("outputs", []):
+                    output["output_origin"] = "sidecar_materialized"
+            sensor_summary_path.write_text(
+                json.dumps(sensor_summary, indent=2, ensure_ascii=True) + "\n",
+                encoding="utf-8",
+            )
+            smoke_summary["output_smoke_report"]["output_origin_status"] = "SIDECAR_ONLY"
+            smoke_summary["output_smoke_report"]["output_origin_counts"] = {
+                "backend_runtime": 0,
+                "sidecar_materialized": 2,
+                "missing": 0,
+            }
+            smoke_summary["output_smoke_report"]["output_origin_reasons"] = [
+                "SIDECAR_OUTPUTS_PRESENT"
+            ]
+            smoke_summary["output_comparison"]["output_origin_status"] = "SIDECAR_ONLY"
+            smoke_summary["output_comparison"]["output_origin_counts"] = {
+                "backend_runtime": 0,
+                "sidecar_materialized": 2,
+                "missing": 0,
+            }
+            smoke_summary_path.write_text(
+                json.dumps(smoke_summary, indent=2, ensure_ascii=True) + "\n",
+                encoding="utf-8",
+            )
+
+            result = run_autoware_pipeline_bridge(
+                backend_smoke_workflow_report_path=str(backend_report_path),
+                runtime_backend_workflow_report_path="",
+                out_root=root / "autoware_bundle",
+                strict=False,
+            )
+            report = result["report"]
+            self.assertEqual(report["status"], "SIDECAR_READY")
+            self.assertEqual(report["availability_mode"], "sidecar")
+
     def test_bridge_rebases_workspace_paths_from_handoff_smoke_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)

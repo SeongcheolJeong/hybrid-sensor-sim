@@ -682,6 +682,9 @@ def build_renderer_backend_smoke_summary(
     runner_smoke_manifest = _load_artifact_payload(
         result.artifacts.get("backend_runner_smoke_manifest")
     )
+    sidecar_materialization_report = _load_artifact_payload(
+        result.artifacts.get("backend_sidecar_materialization_report")
+    )
     output_smoke_report = _load_artifact_payload(result.artifacts.get("backend_output_smoke_report"))
     output_comparison_report = _load_artifact_payload(
         result.artifacts.get("backend_output_comparison_report")
@@ -735,10 +738,26 @@ def build_renderer_backend_smoke_summary(
             if isinstance(runner_smoke_manifest, dict)
             else None
         ),
+        "sidecar_materialization": (
+            {
+                "status": sidecar_materialization_report.get("status"),
+                "materialized_output_count": sidecar_materialization_report.get(
+                    "materialized_output_count"
+                ),
+                "runtime_state_materialized": sidecar_materialization_report.get(
+                    "runtime_state_materialized"
+                ),
+            }
+            if isinstance(sidecar_materialization_report, dict)
+            else None
+        ),
         "output_smoke_report": (
             {
                 "status": output_smoke_report.get("status"),
                 "coverage_ratio": output_smoke_report.get("coverage_ratio"),
+                "output_origin_status": output_smoke_report.get("output_origin_status"),
+                "output_origin_counts": output_smoke_report.get("output_origin_counts", {}),
+                "output_origin_reasons": output_smoke_report.get("output_origin_reasons", []),
             }
             if isinstance(output_smoke_report, dict)
             else None
@@ -750,6 +769,9 @@ def build_renderer_backend_smoke_summary(
                 "unexpected_output_count": output_comparison_report.get(
                     "unexpected_output_count"
                 ),
+                "output_origin_status": output_comparison_report.get("output_origin_status"),
+                "output_origin_counts": output_comparison_report.get("output_origin_counts", {}),
+                "output_origin_reasons": output_comparison_report.get("output_origin_reasons", []),
             }
             if isinstance(output_comparison_report, dict)
             else None

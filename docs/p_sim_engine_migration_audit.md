@@ -200,6 +200,7 @@ Implemented in the current repository:
    - `src/hybrid_sensor_sim/tools/autoware_pipeline_bridge.py` and `scripts/run_autoware_pipeline_bridge.py` expose the bridge directly
    - `scenario_backend_smoke_workflow` and `scenario_runtime_backend_workflow` now lift Autoware readiness into their workflow reports
    - when the backend is only `HANDOFF_READY` or `HANDOFF_DOCKER_*`, the bridge now emits a `PLANNED` Autoware bundle from the smoke input config so topic/frame readiness is still visible before the real AWSIM/CARLA handoff run
+   - when expected backend exports are present only because of sidecar materialization, the bridge now reports `SIDECAR_READY` or `SIDECAR_DEGRADED` and preserves `output_origin_status` through smoke/runtime workflow summaries instead of flattening those runs into plain `READY`
 48. packaged-backend handoff surfacing in scenario smoke workflows
    - `scenario_backend_smoke_workflow` now detects host-incompatible staged packaged backends and routes them through `renderer_backend_workflow` dry-run handoff planning instead of reporting only a smoke failure
    - `scenario_runtime_backend_workflow` now lifts that handoff state to top-level `HANDOFF_READY` or `HANDOFF_DOCKER_*` statuses together with blocker codes, recommended next command, and handoff artifact paths

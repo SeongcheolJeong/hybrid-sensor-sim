@@ -333,6 +333,7 @@ Use only as a planning reference for:
 Full HIL/workspace CI still belongs to stack integration or a separate integration repo.
 However, this repository now carries a `partial` migration in the form of an Autoware-facing data-contract bridge layered on top of backend smoke artifacts.
 That bridge now also supports `planned` output mode when a staged packaged backend is only handoff-ready, so runtime workflows can expose topic/frame readiness before a real Linux/AWSIM execution occurs.
+It now also distinguishes `runtime`, `sidecar`, and `mixed` backend-export provenance so sidecar-materialized outputs are not reported as plain runtime-ready Autoware data.
 
 ## Phased Migration Order
 
