@@ -292,6 +292,19 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
             self.assertEqual(consumer_manifest["required_topic_count"], 2)
             self.assertEqual(consumer_manifest["missing_required_topic_count"], 0)
             self.assertEqual(len(consumer_manifest["consumer_topics"]), 2)
+            self.assertEqual(consumer_manifest["subscription_spec_count"], 2)
+            self.assertEqual(consumer_manifest["sensor_input_count"], 2)
+            self.assertEqual(consumer_manifest["static_transform_count"], 2)
+            self.assertEqual(len(consumer_manifest["subscription_specs"]), 2)
+            self.assertEqual(len(consumer_manifest["sensor_inputs"]), 2)
+            self.assertEqual(len(consumer_manifest["static_transforms"]), 2)
+            self.assertEqual(consumer_manifest["sensor_inputs"][0]["sensor_id"], "cam_front")
+            self.assertEqual(
+                consumer_manifest["sensor_inputs"][0]["required_topic_count"], 1
+            )
+            self.assertEqual(
+                consumer_manifest["static_transforms"][0]["parent_frame_id"], "base_link"
+            )
             self.assertTrue(consumer_manifest["consumer_topics"][0]["payload_exists"])
 
     def test_bridge_ready_for_tracking_fusion_consumer_profile(self) -> None:
@@ -318,11 +331,28 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
             self.assertEqual(report["missing_required_topic_count"], 0)
             self.assertEqual(report["missing_required_sensor_count"], 0)
             self.assertTrue(report["consumer_ready"])
+            self.assertEqual(report["subscription_spec_count"], 4)
+            self.assertEqual(report["sensor_input_count"], 3)
+            self.assertEqual(report["static_transform_count"], 3)
             self.assertIn("/sensing/radar/radar_front/tracks", report["available_topics"])
             self.assertIn(
                 "autoware_auto_perception_msgs/msg/TrackedObjects",
                 report["available_message_types"],
             )
+            consumer_manifest = json.loads(
+                Path(report["artifacts"]["consumer_input_manifest_path"]).read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(len(consumer_manifest["consumer_topics"]), 4)
+            radar_sensor_input = next(
+                item
+                for item in consumer_manifest["sensor_inputs"]
+                if item["sensor_id"] == "radar_front"
+            )
+            self.assertEqual(radar_sensor_input["required_topic_count"], 2)
+            self.assertEqual(len(radar_sensor_input["subscriptions"]), 2)
+            self.assertEqual(radar_sensor_input["frame_id"], "radar_front")
 
     def test_bridge_marks_sidecar_only_exports(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -662,6 +692,15 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
             self.assertEqual(consumer_manifest["required_topic_count"], 4)
             self.assertEqual(consumer_manifest["missing_required_topic_count"], 0)
             self.assertEqual(len(consumer_manifest["consumer_topics"]), 4)
+            self.assertEqual(consumer_manifest["subscription_spec_count"], 4)
+            self.assertEqual(consumer_manifest["sensor_input_count"], 3)
+            self.assertEqual(consumer_manifest["static_transform_count"], 3)
+            self.assertTrue(
+                all(
+                    transform["parent_frame_id"] == "base_link"
+                    for transform in consumer_manifest["static_transforms"]
+                )
+            )
 
     def test_script_bootstraps_src_path(self) -> None:
         script_path = Path(__file__).resolve().parents[1] / "scripts" / "run_autoware_pipeline_bridge.py"

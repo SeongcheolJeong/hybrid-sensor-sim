@@ -243,10 +243,22 @@ def build_autoware_consumer_input_manifest(
     pipeline_manifest: dict[str, Any],
     dataset_manifest: dict[str, Any],
     topic_catalog: dict[str, Any],
+    frame_tree: dict[str, Any],
     artifacts: dict[str, str | None],
 ) -> dict[str, Any]:
     topic_entries = list(topic_catalog.get("entries", []) or [])
+    frame_entries = list(frame_tree.get("sensor_frames", []) or [])
+    frame_by_sensor_id: dict[str, dict[str, Any]] = {}
+    for entry in frame_entries:
+        if not isinstance(entry, dict):
+            continue
+        sensor_id = str(entry.get("sensor_id", "")).strip()
+        if not sensor_id:
+            continue
+        frame_by_sensor_id[sensor_id] = entry
     consumer_topics: list[dict[str, Any]] = []
+    subscription_specs: list[dict[str, Any]] = []
+    sensor_input_map: dict[str, dict[str, Any]] = {}
     required_topics: list[str] = []
     available_topics: list[str] = []
     missing_required_topics: list[str] = []
@@ -264,29 +276,131 @@ def build_autoware_consumer_input_manifest(
             available_topics.append(topic)
         if required and not available:
             missing_required_topics.append(topic)
-        consumer_topics.append(
+        message_type = str(entry.get("message_type", "")).strip() or None
+        frame_id = str(entry.get("frame_id", "")).strip() or None
+        sensor_id = str(entry.get("sensor_id", "")).strip() or None
+        modality = str(entry.get("modality", "")).strip() or None
+        output_role = str(entry.get("output_role", "")).strip() or None
+        availability_mode = str(entry.get("availability_mode", "")).strip() or None
+        output_origin = str(entry.get("output_origin", "")).strip() or None
+        payload_path = str(entry.get("payload_path", "")).strip() or None
+        payload_exists = bool(entry.get("payload_exists"))
+        payload_materialization_mode = (
+            str(entry.get("payload_materialization_mode", "")).strip() or None
+        )
+        export_manifest_path = str(entry.get("export_manifest_path", "")).strip() or None
+        consumer_topic = {
+            "topic": topic,
+            "message_type": message_type,
+            "frame_id": frame_id,
+            "sensor_id": sensor_id,
+            "modality": modality,
+            "output_role": output_role,
+            "required": required,
+            "available": available,
+            "availability_mode": availability_mode,
+            "output_origin": output_origin,
+            "payload_path": payload_path,
+            "payload_exists": payload_exists,
+            "payload_materialization_mode": payload_materialization_mode,
+            "export_manifest_path": export_manifest_path,
+        }
+        consumer_topics.append(consumer_topic)
+        subscription_specs.append(
             {
                 "topic": topic,
-                "message_type": str(entry.get("message_type", "")).strip() or None,
-                "frame_id": str(entry.get("frame_id", "")).strip() or None,
-                "sensor_id": str(entry.get("sensor_id", "")).strip() or None,
-                "modality": str(entry.get("modality", "")).strip() or None,
-                "output_role": str(entry.get("output_role", "")).strip() or None,
+                "message_type": message_type,
+                "frame_id": frame_id,
                 "required": required,
                 "available": available,
-                "availability_mode": str(entry.get("availability_mode", "")).strip() or None,
-                "output_origin": str(entry.get("output_origin", "")).strip() or None,
-                "payload_path": str(entry.get("payload_path", "")).strip() or None,
-                "payload_exists": bool(entry.get("payload_exists")),
-                "payload_materialization_mode": str(
-                    entry.get("payload_materialization_mode", "")
-                ).strip()
-                or None,
-                "export_manifest_path": str(entry.get("export_manifest_path", "")).strip()
-                or None,
+                "sensor_id": sensor_id,
+                "modality": modality,
+                "output_role": output_role,
+                "availability_mode": availability_mode,
+                "output_origin": output_origin,
+                "payload_path": payload_path,
+                "payload_exists": payload_exists,
+                "payload_materialization_mode": payload_materialization_mode,
             }
         )
+        if sensor_id:
+            frame_entry = frame_by_sensor_id.get(sensor_id, {})
+            sensor_input = sensor_input_map.setdefault(
+                sensor_id,
+                {
+                    "sensor_id": sensor_id,
+                    "modality": modality,
+                    "frame_id": frame_id or str(frame_entry.get("frame_id", "")).strip() or None,
+                    "parent_frame_id": str(frame_entry.get("parent_frame_id", "")).strip() or None,
+                    "attach_to_actor_id": str(frame_entry.get("attach_to_actor_id", "")).strip() or None,
+                    "required_topic_count": 0,
+                    "available_topic_count": 0,
+                    "missing_required_topic_count": 0,
+                    "required_topics": [],
+                    "available_topics": [],
+                    "missing_required_topics": [],
+                    "subscriptions": [],
+                },
+            )
+            sensor_input["modality"] = sensor_input.get("modality") or modality
+            if required:
+                sensor_input["required_topic_count"] += 1
+                sensor_input["required_topics"].append(topic)
+            if available:
+                sensor_input["available_topic_count"] += 1
+                sensor_input["available_topics"].append(topic)
+            if required and not available:
+                sensor_input["missing_required_topic_count"] += 1
+                sensor_input["missing_required_topics"].append(topic)
+            sensor_input["subscriptions"].append(
+                {
+                    "topic": topic,
+                    "message_type": message_type,
+                    "output_role": output_role,
+                    "required": required,
+                    "available": available,
+                    "payload_path": payload_path,
+                    "payload_exists": payload_exists,
+                }
+            )
     consumer_topics.sort(key=lambda item: item["topic"] or "")
+    subscription_specs.sort(key=lambda item: item["topic"] or "")
+    sensor_inputs = []
+    for sensor_id in sorted(sensor_input_map):
+        sensor_input = sensor_input_map[sensor_id]
+        sensor_input["required_topics"] = sorted(sensor_input["required_topics"])
+        sensor_input["available_topics"] = sorted(sensor_input["available_topics"])
+        sensor_input["missing_required_topics"] = sorted(
+            sensor_input["missing_required_topics"]
+        )
+        sensor_input["subscriptions"] = sorted(
+            sensor_input["subscriptions"], key=lambda item: item["topic"] or ""
+        )
+        sensor_inputs.append(sensor_input)
+    static_transforms = []
+    for entry in sorted(frame_entries, key=lambda item: str(item.get("sensor_id", "")).strip()):
+        if not isinstance(entry, dict):
+            continue
+        frame_id = str(entry.get("frame_id", "")).strip()
+        if not frame_id:
+            continue
+        static_transforms.append(
+            {
+                "sensor_id": str(entry.get("sensor_id", "")).strip() or None,
+                "sensor_type": str(entry.get("sensor_type", "")).strip() or None,
+                "frame_id": frame_id,
+                "child_frame_id": frame_id,
+                "parent_frame_id": str(entry.get("parent_frame_id", "")).strip() or None,
+                "attach_to_actor_id": str(entry.get("attach_to_actor_id", "")).strip() or None,
+                "enabled": bool(entry.get("enabled", True)),
+                "translation": dict(entry.get("translation", {}))
+                if isinstance(entry.get("translation"), dict)
+                else {},
+                "rotation_rpy": dict(entry.get("rotation_rpy", {}))
+                if isinstance(entry.get("rotation_rpy"), dict)
+                else {},
+            }
+        )
     return {
         "schema_version": AUTOWARE_CONSUMER_INPUT_MANIFEST_SCHEMA_VERSION_V0,
         "run_id": str(run_id).strip(),
@@ -320,6 +434,9 @@ def build_autoware_consumer_input_manifest(
         "available_topics": sorted(available_topics),
         "missing_required_topics": sorted(missing_required_topics),
         "available_message_types": list(topic_catalog.get("available_message_types", [])),
+        "subscription_spec_count": len(subscription_specs),
+        "sensor_input_count": len(sensor_inputs),
+        "static_transform_count": len(static_transforms),
         "frame_tree_path": artifacts.get("frame_tree_path"),
         "sensor_contracts_path": artifacts.get("sensor_contracts_path"),
         "pipeline_manifest_path": artifacts.get("pipeline_manifest_path"),
@@ -328,4 +445,7 @@ def build_autoware_consumer_input_manifest(
         "topic_export_index_path": artifacts.get("topic_export_index_path"),
         "topic_catalog_path": artifacts.get("topic_catalog_path"),
         "consumer_topics": consumer_topics,
+        "subscription_specs": subscription_specs,
+        "sensor_inputs": sensor_inputs,
+        "static_transforms": static_transforms,
     }

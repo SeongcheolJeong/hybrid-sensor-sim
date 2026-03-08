@@ -107,6 +107,7 @@ Still pending from this master plan:
    - that `DEGRADED` classification is now reproduced on the real AWSIM Linux handoff path, not only in mocked tests
    - the same real AWSIM Linux handoff path now also reproduces a runtime-origin `READY` case for `tracking_fusion_v0` when radar tracks are enabled
    - the Autoware bridge now exposes run-level lineage so the selected variant, scenario source, smoke-ready scenario, and backend-export roots are all visible in one dataset manifest
+   - `autoware_consumer_input_manifest.json` now also carries grouped downstream-ingest structure via `subscription_specs`, `sensor_inputs`, and `static_transforms`, reducing the amount of ad-hoc parsing a downstream Autoware-style consumer has to do
 3. tighter publish gating that combines scenario/runtime smoke with provenance refresh status
 4. lower-level backend smoke entrypoints should preserve the same provenance-aware publish checks as top-level workflows
 5. top-level runtime/backend workflow should expose backend output comparison drift without requiring manual drill-down into nested smoke reports

@@ -526,6 +526,7 @@ def write_autoware_export_bundle(
         pipeline_manifest=pipeline_manifest,
         dataset_manifest=dataset_manifest,
         topic_catalog=topic_catalog,
+        frame_tree=frame_tree,
         artifacts=artifacts,
     )
     _write_json(consumer_input_manifest_path, consumer_input_manifest)
@@ -552,6 +553,15 @@ def write_autoware_export_bundle(
         "required_topic_count": int(topic_catalog.get("required_topic_count", 0) or 0),
         "missing_required_topic_count": int(topic_catalog.get("missing_required_topic_count", 0) or 0),
         "available_message_types": list(topic_catalog.get("available_message_types", [])),
+        "subscription_spec_count": int(
+            consumer_input_manifest.get("subscription_spec_count", 0) or 0
+        ),
+        "sensor_input_count": int(
+            consumer_input_manifest.get("sensor_input_count", 0) or 0
+        ),
+        "static_transform_count": int(
+            consumer_input_manifest.get("static_transform_count", 0) or 0
+        ),
         "available_modalities": list(dataset_manifest.get("available_modalities", [])),
         "data_roots": list(dataset_manifest.get("data_roots", [])),
         "recording_style": dataset_manifest.get("recording_style"),
@@ -692,6 +702,7 @@ def write_autoware_planned_export_bundle(
         pipeline_manifest=pipeline_manifest,
         dataset_manifest=dataset_manifest,
         topic_catalog=topic_catalog,
+        frame_tree=frame_tree,
         artifacts=artifacts,
     )
     _write_json(consumer_input_manifest_path, consumer_input_manifest)
@@ -718,6 +729,15 @@ def write_autoware_planned_export_bundle(
         "required_topic_count": int(topic_catalog.get("required_topic_count", 0) or 0),
         "missing_required_topic_count": int(topic_catalog.get("missing_required_topic_count", 0) or 0),
         "available_message_types": list(topic_catalog.get("available_message_types", [])),
+        "subscription_spec_count": int(
+            consumer_input_manifest.get("subscription_spec_count", 0) or 0
+        ),
+        "sensor_input_count": int(
+            consumer_input_manifest.get("sensor_input_count", 0) or 0
+        ),
+        "static_transform_count": int(
+            consumer_input_manifest.get("static_transform_count", 0) or 0
+        ),
         "available_modalities": list(dataset_manifest.get("available_modalities", [])),
         "data_roots": list(dataset_manifest.get("data_roots", [])),
         "recording_style": dataset_manifest.get("recording_style"),

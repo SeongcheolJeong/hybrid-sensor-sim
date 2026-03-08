@@ -513,6 +513,13 @@ def _build_status_summary(
         "autoware_missing_required_topic_count": autoware_summary.get(
             "missing_required_topic_count"
         ),
+        "autoware_subscription_spec_count": autoware_summary.get(
+            "subscription_spec_count"
+        ),
+        "autoware_sensor_input_count": autoware_summary.get("sensor_input_count"),
+        "autoware_static_transform_count": autoware_summary.get(
+            "static_transform_count"
+        ),
         "autoware_available_message_types": list(
             autoware_summary.get("available_message_types", [])
         ),
@@ -594,6 +601,9 @@ def _build_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Materialized topic exports: `{summary.get('autoware_materialized_topic_export_count') if summary.get('autoware_materialized_topic_export_count') is not None else '-'}`",
         f"- Required topics: `{summary.get('autoware_required_topic_count') if summary.get('autoware_required_topic_count') is not None else '-'}`",
         f"- Missing required topics: `{summary.get('autoware_missing_required_topic_count') if summary.get('autoware_missing_required_topic_count') is not None else '-'}`",
+        f"- Subscription specs: `{summary.get('autoware_subscription_spec_count') if summary.get('autoware_subscription_spec_count') is not None else '-'}`",
+        f"- Sensor inputs: `{summary.get('autoware_sensor_input_count') if summary.get('autoware_sensor_input_count') is not None else '-'}`",
+        f"- Static transforms: `{summary.get('autoware_static_transform_count') if summary.get('autoware_static_transform_count') is not None else '-'}`",
         f"- Dataset ready: `{summary.get('autoware_dataset_ready') if summary.get('autoware_dataset_ready') is not None else '-'}`",
         f"- Recording style: `{summary.get('autoware_recording_style') or '-'}`",
         f"- Required topics complete: `{summary.get('autoware_required_topics_complete') if summary.get('autoware_required_topics_complete') is not None else '-'}`",

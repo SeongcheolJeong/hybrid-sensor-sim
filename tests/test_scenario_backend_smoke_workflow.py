@@ -291,6 +291,9 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
             self.assertIsNotNone(
                 workflow_report["autoware"]["missing_required_topic_count"]
             )
+            self.assertIsNotNone(workflow_report["autoware"]["subscription_spec_count"])
+            self.assertIsNotNone(workflow_report["autoware"]["sensor_input_count"])
+            self.assertIsNotNone(workflow_report["autoware"]["static_transform_count"])
             self.assertTrue(workflow_report["autoware"]["available_message_types"])
             self.assertIn("camera", workflow_report["autoware"]["available_modalities"])
             self.assertEqual(

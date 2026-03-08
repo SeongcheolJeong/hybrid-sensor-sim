@@ -424,6 +424,7 @@ The Autoware bundle now also carries run-level lineage:
 - `available_modalities`
 - `data_roots`
 It also materializes a topic-facing export bundle under `autoware/topics/...` together with `autoware_topic_export_index.json`, `autoware_topic_catalog.json`, and `autoware_consumer_input_manifest.json`, so downstream consumers can inspect per-topic payload paths and load-ready topic/frame inputs without re-reading backend smoke reports.
+The consumer input manifest now also groups those inputs as `subscription_specs`, `sensor_inputs`, and `static_transforms`, so downstream ingest code can consume topic subscriptions, per-sensor input bundles, and frame transforms directly instead of reconstructing them from the flat topic list.
 It now also writes `autoware_topic_catalog.json`, which lifts required-topic counts, missing required topics, and available message types into one compact downstream-facing catalog.
 When backend outputs exist only because the runner materialized sidecar exports into the expected layout, the bridge now emits `SIDECAR_READY` or `SIDECAR_DEGRADED` instead of plain `READY`. Mixed runtime-and-sidecar runs are reported as `MIXED_READY` or `MIXED_DEGRADED`.
 Consumer profiles now let the same runtime-origin export set be graded against stricter downstream expectations. The built-in profiles are:

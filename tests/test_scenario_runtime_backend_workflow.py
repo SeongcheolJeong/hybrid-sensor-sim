@@ -308,6 +308,15 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
             self.assertIsNotNone(
                 report["status_summary"]["autoware_missing_required_topic_count"]
             )
+            self.assertIsNotNone(
+                report["status_summary"]["autoware_subscription_spec_count"]
+            )
+            self.assertIsNotNone(
+                report["status_summary"]["autoware_sensor_input_count"]
+            )
+            self.assertIsNotNone(
+                report["status_summary"]["autoware_static_transform_count"]
+            )
             self.assertTrue(report["status_summary"]["autoware_available_message_types"])
             self.assertTrue(report["status_summary"]["autoware_data_roots"])
             self.assertEqual(
