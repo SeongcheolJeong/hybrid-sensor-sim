@@ -65,6 +65,7 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `scripts/run_autonomy_e2e_history_refresh.py`: regenerates checked-in `Autonomy-E2E` provenance metadata from the historical source repository.
 - `scripts/run_autonomy_e2e_history_report.py`: builds JSON/Markdown summaries from the checked-in provenance ledger.
 - `scripts/run_autonomy_e2e_history_query.py`: queries the checked-in provenance ledger by project, block, or current path.
+- `scripts/run_autonomy_e2e_history_guard.py`: checks changed migration result paths against `origin/main` and fails when provenance metadata was not refreshed.
 
 ## Quick start
 
@@ -198,6 +199,11 @@ python3 scripts/run_autonomy_e2e_history_refresh.py \
 python3 scripts/run_autonomy_e2e_history_query.py \
   --metadata-root /Users/seongcheoljeong/Documents/Test/metadata/autonomy_e2e \
   --block-id p_sim_engine.vehicle_dynamics
+
+python3 scripts/run_autonomy_e2e_history_guard.py \
+  --metadata-root /Users/seongcheoljeong/Documents/Test/metadata/autonomy_e2e \
+  --current-repo-root /Users/seongcheoljeong/Documents/Test \
+  --compare-ref origin/main
 ```
 
 Autonomy-E2E provenance and Git governance:
@@ -206,6 +212,7 @@ Autonomy-E2E provenance and Git governance:
 - historical `Autonomy-E2E` is reference/migration evidence, not the implementation source of truth
 - `main` is the published baseline branch
 - new feature work should default to `codex/*` branches
+- changed migrated paths under `src/`, `scripts/`, `tests/`, or `configs/` should refresh `metadata/autonomy_e2e` before publish
 - a completed feature/migration block should update:
   - code
   - tests

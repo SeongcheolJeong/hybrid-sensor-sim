@@ -112,6 +112,15 @@ python3 /Users/seongcheoljeong/Documents/Test/scripts/run_autonomy_e2e_history_q
   --current-path src/hybrid_sensor_sim/physics/vehicle_dynamics.py
 ```
 
+Guard migration changes before publishing:
+
+```bash
+python3 /Users/seongcheoljeong/Documents/Test/scripts/run_autonomy_e2e_history_guard.py \
+  --metadata-root /Users/seongcheoljeong/Documents/Test/metadata/autonomy_e2e \
+  --current-repo-root /Users/seongcheoljeong/Documents/Test \
+  --compare-ref origin/main
+```
+
 ## How To Add a New Migrated Block
 
 Whenever a new migration/result block lands:
@@ -164,6 +173,11 @@ Push discipline:
 1. validate first
 2. commit coherent blocks
 3. push promptly
+
+Guard discipline:
+
+1. if changed paths under `src/`, `scripts/`, `tests/`, or `configs/` map to historical blocks, refresh `metadata/autonomy_e2e` before publish
+2. if new governed paths are not in the reverse traceability index, treat that as a migration-governance failure
 
 ## Scope Reminder
 

@@ -71,6 +71,9 @@ from hybrid_sensor_sim.tools.autonomy_e2e_history_query import (
     query_by_current_path,
     query_by_project_id,
 )
+from hybrid_sensor_sim.tools.autonomy_e2e_history_guard import (
+    build_autonomy_e2e_history_guard_report,
+)
 
 __all__ = [
     "build_renderer_backend_local_setup",
@@ -100,4 +103,5 @@ __all__ = [
     "query_by_block_id",
     "query_by_current_path",
     "query_by_project_id",
+    "build_autonomy_e2e_history_guard_report",
 ]
