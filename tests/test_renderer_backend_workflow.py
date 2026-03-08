@@ -914,6 +914,7 @@ class RendererBackendWorkflowTests(unittest.TestCase):
                     "artifacts": {
                         "summary_path": str(refreshed_summary_path),
                         "env_path": str(output_dir / "renderer_backend_local.env.sh"),
+                        "report_path": str(output_dir / "renderer_backend_local_report.md"),
                         "linux_handoff_docker_selftest_probe_path": str(
                             output_dir / "linux_handoff_docker_selftest_probe" / "renderer_backend_linux_handoff_selftest.json"
                         ),

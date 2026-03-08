@@ -733,6 +733,110 @@ def _render_env_file(summary: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _probe_success(probes: dict[str, Any], key: str) -> bool | None:
+    probe = probes.get(key) if isinstance(probes, dict) else None
+    if not isinstance(probe, dict) or not probe:
+        return None
+    success = probe.get("success")
+    if isinstance(success, bool):
+        return success
+    return None
+
+
+def _build_probe_readiness(summary: dict[str, Any]) -> dict[str, Any]:
+    probes = summary.get("probes", {})
+    backend_workflow_probe = probes.get("backend_workflow_selftest", {}) if isinstance(probes, dict) else {}
+    return {
+        "helios_docker_demo_ready": _probe_success(probes, "helios_docker_demo"),
+        "linux_handoff_docker_selftest_ready": _probe_success(probes, "linux_handoff_docker_selftest"),
+        "backend_workflow_selftest_ready": _probe_success(probes, "backend_workflow_selftest"),
+        "backend_workflow_status": (
+            backend_workflow_probe.get("workflow_status")
+            if isinstance(backend_workflow_probe, dict)
+            else None
+        ),
+    }
+
+
+def _build_workflow_paths(readiness: dict[str, Any], probe_readiness: dict[str, Any]) -> dict[str, Any]:
+    helios_docker_ready = bool(readiness.get("helios_docker_ready"))
+    handoff_selftest_ready = probe_readiness.get("linux_handoff_docker_selftest_ready") is True
+    workflow_selftest_ready = probe_readiness.get("backend_workflow_selftest_ready") is True
+    return {
+        "helios_docker_available": helios_docker_ready,
+        "linux_handoff_docker_path_ready": helios_docker_ready and handoff_selftest_ready,
+        "backend_workflow_path_ready": workflow_selftest_ready,
+        "local_backend_smoke_ready": bool(
+            readiness.get("awsim_smoke_ready") or readiness.get("carla_smoke_ready")
+        ),
+    }
+
+
+def _render_local_setup_report(summary: dict[str, Any], summary_path: Path) -> str:
+    readiness = summary.get("readiness", {})
+    probe_readiness = summary.get("probe_readiness", {})
+    workflow_paths = summary.get("workflow_paths", {})
+    selection = summary.get("selection", {})
+    commands = summary.get("commands", {})
+    issues = summary.get("issues", [])
+    lines = [
+        "# Renderer Backend Local Setup Report",
+        "",
+        f"- summary_path: `{summary_path}`",
+        f"- generated_at_utc: `{summary.get('generated_at_utc')}`",
+        "",
+        "## Runtime Readiness",
+        "| Item | Value |",
+        "| --- | --- |",
+        f"| helios_ready | `{readiness.get('helios_ready')}` |",
+        f"| helios_docker_ready | `{readiness.get('helios_docker_ready')}` |",
+        f"| awsim_ready | `{readiness.get('awsim_ready')}` |",
+        f"| awsim_host_compatible | `{readiness.get('awsim_host_compatible')}` |",
+        f"| carla_ready | `{readiness.get('carla_ready')}` |",
+        f"| carla_host_compatible | `{readiness.get('carla_host_compatible')}` |",
+        "",
+        "## Probe Readiness",
+        "| Probe | Value |",
+        "| --- | --- |",
+        f"| helios_docker_demo_ready | `{probe_readiness.get('helios_docker_demo_ready')}` |",
+        f"| linux_handoff_docker_selftest_ready | `{probe_readiness.get('linux_handoff_docker_selftest_ready')}` |",
+        f"| backend_workflow_selftest_ready | `{probe_readiness.get('backend_workflow_selftest_ready')}` |",
+        f"| backend_workflow_status | `{probe_readiness.get('backend_workflow_status')}` |",
+        "",
+        "## Workflow Paths",
+        "| Path | Value |",
+        "| --- | --- |",
+        f"| helios_docker_available | `{workflow_paths.get('helios_docker_available')}` |",
+        f"| linux_handoff_docker_path_ready | `{workflow_paths.get('linux_handoff_docker_path_ready')}` |",
+        f"| backend_workflow_path_ready | `{workflow_paths.get('backend_workflow_path_ready')}` |",
+        f"| local_backend_smoke_ready | `{workflow_paths.get('local_backend_smoke_ready')}` |",
+        "",
+        "## Selection",
+        "| Key | Value |",
+        "| --- | --- |",
+    ]
+    for key in (
+        "HELIOS_BIN",
+        "HELIOS_DOCKER_IMAGE",
+        "HELIOS_DOCKER_BINARY",
+        "AWSIM_BIN",
+        "AWSIM_RENDERER_MAP",
+        "CARLA_BIN",
+        "CARLA_RENDERER_MAP",
+    ):
+        lines.append(f"| {key} | `{selection.get(key)}` |")
+    if isinstance(issues, list) and issues:
+        lines.extend(["", "## Issues"])
+        for issue in issues:
+            lines.append(f"- `{issue}`")
+    if isinstance(commands, dict) and commands:
+        lines.extend(["", "## Commands"])
+        for key in sorted(commands):
+            lines.append(f"- `{key}`: `{commands[key]}`")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def _run_hybrid_config(config_path: Path) -> dict[str, Any]:
     cfg = _load_json(config_path)
     mode = BackendMode(cfg.get("mode", BackendMode.HYBRID_AUTO.value))
@@ -1229,7 +1333,7 @@ def build_renderer_backend_local_setup(
         },
         readiness=readiness,
     )
-    return {
+    summary = {
         "generated_at_utc": _format_utc(_utc_now()),
         "search_roots": [str(path) for path in all_search_roots],
         "backends": {
@@ -1249,11 +1353,15 @@ def build_renderer_backend_local_setup(
         "artifacts": {
             "summary_path": str(summary_path),
             "env_path": str(env_path),
+            "report_path": str(output_root / "renderer_backend_local_report.md"),
             "helios_docker_probe_path": str(probe_path),
             "linux_handoff_docker_selftest_probe_path": str(handoff_selftest_summary_path),
             "backend_workflow_selftest_probe_path": str(workflow_selftest_summary_path),
         },
     }
+    summary["probe_readiness"] = _build_probe_readiness(summary)
+    summary["workflow_paths"] = _build_workflow_paths(readiness, summary["probe_readiness"])
+    return summary
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1283,10 +1391,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.env_path is not None
         else Path(summary["artifacts"]["env_path"])
     )
+    report_path = Path(summary["artifacts"]["report_path"])
     summary["artifacts"]["summary_path"] = str(summary_path)
     summary["artifacts"]["env_path"] = str(env_path)
     _write_json(summary_path, summary)
     _write_text(env_path, _render_env_file(summary))
+    _write_text(report_path, _render_local_setup_report(summary, summary_path))
     print(json.dumps(summary, indent=2))
     return 0 if summary["readiness"]["awsim_smoke_ready"] or summary["readiness"]["carla_smoke_ready"] else 1
 

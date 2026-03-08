@@ -597,6 +597,8 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertIn("linux_handoff_docker_selftest", summary["probes"])
             self.assertTrue(summary["probes"]["linux_handoff_docker_selftest"]["success"])
             self.assertTrue(summary["probes"]["linux_handoff_docker_selftest"]["execute"])
+            self.assertTrue(summary["probe_readiness"]["linux_handoff_docker_selftest_ready"])
+            self.assertTrue(summary["workflow_paths"]["linux_handoff_docker_path_ready"])
             self.assertIn(
                 "--probe-linux-handoff-docker-selftest",
                 summary["commands"]["linux_handoff_docker_selftest"],
@@ -650,6 +652,9 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertTrue(summary["probes"]["backend_workflow_selftest"]["success"])
             self.assertEqual(summary["probes"]["backend_workflow_selftest"]["backend"], "carla")
             self.assertTrue(summary["probes"]["backend_workflow_selftest"]["docker_handoff_execute"])
+            self.assertTrue(summary["probe_readiness"]["backend_workflow_selftest_ready"])
+            self.assertEqual(summary["probe_readiness"]["backend_workflow_status"], "HANDOFF_DOCKER_VERIFIED")
+            self.assertTrue(summary["workflow_paths"]["backend_workflow_path_ready"])
             self.assertIn(
                 "--probe-backend-workflow-selftest --workflow-selftest-backend carla",
                 summary["commands"]["backend_workflow_selftest"],
@@ -706,11 +711,15 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
                 (output_dir / "renderer_backend_local_setup.json").read_text(encoding="utf-8")
             )
             env_text = (output_dir / "renderer_backend_local.env.sh").read_text(encoding="utf-8")
+            report_path = output_dir / "renderer_backend_local_report.md"
+            report_text = report_path.read_text(encoding="utf-8")
             self.assertEqual(summary["selection"]["HELIOS_BIN"], str(helios_bin.resolve()))
             self.assertEqual(summary["selection"]["HELIOS_DOCKER_IMAGE"], "heliosplusplus:cli")
             self.assertEqual(summary["selection"]["AWSIM_BIN"], str(awsim_bin.resolve()))
             self.assertIsNone(summary["selection"]["CARLA_BIN"])
             self.assertFalse(summary["readiness"]["carla_smoke_ready"])
+            self.assertIn("probe_readiness", summary)
+            self.assertIn("workflow_paths", summary)
             self.assertIn("acquisition_hints", summary)
             self.assertIn("export HELIOS_BIN=", env_text)
             self.assertIn("export HELIOS_DOCKER_IMAGE=", env_text)
@@ -729,6 +738,10 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
                 "python3 scripts/discover_renderer_backend_local_env.py --probe-backend-workflow-selftest --workflow-selftest-backend awsim",
                 env_text,
             )
+            self.assertTrue(report_path.exists())
+            self.assertIn("Renderer Backend Local Setup Report", report_text)
+            self.assertIn("Workflow Paths", report_text)
+            self.assertIn("Probe Readiness", report_text)
             self.assertIn("configs/renderer_backend_smoke.awsim.local.example.json", env_text)
             self.assertIn("configs/renderer_backend_smoke.awsim.local.docker.example.json", env_text)
 

@@ -566,6 +566,11 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - workflow smoke config materialization now uses setup-summary selections as env overrides, so docker presets with `${AWSIM_BIN}` / `${HELIOS_DOCKER_IMAGE}` style placeholders can be resolved without first exporting those variables into the shell.
 - use `--no-default-search-roots` when you want discovery to only scan explicit `--search-root` inputs plus the repo root.
 - discovery now ignores known synthetic self-test artifact directories while recursively scanning broad roots, so workflow self-test stubs do not pollute normal AWSIM/CARLA runtime selection.
+- local setup summary now also includes:
+  - `probe_readiness`
+  - `workflow_paths`
+  - `artifacts.report_path`
+- `renderer_backend_local_report.md` gives a compact runtime/probe/path readiness view without manually inspecting the full JSON.
 
 ### Local backend package staging
 

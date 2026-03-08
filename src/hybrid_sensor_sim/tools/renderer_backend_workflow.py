@@ -19,6 +19,9 @@ from hybrid_sensor_sim.tools.renderer_backend_local_setup import (
     _render_env_file as _render_local_setup_env_file,
 )
 from hybrid_sensor_sim.tools.renderer_backend_local_setup import (
+    _render_local_setup_report,
+)
+from hybrid_sensor_sim.tools.renderer_backend_local_setup import (
     _inspect_executable_host_compatibility,
 )
 from hybrid_sensor_sim.tools.renderer_backend_local_setup import (
@@ -549,8 +552,10 @@ def _refresh_setup_summary(
     )
     summary_path = Path(refreshed["artifacts"]["summary_path"])
     env_path = Path(refreshed["artifacts"]["env_path"])
+    report_path = Path(refreshed["artifacts"]["report_path"])
     _write_json(summary_path, refreshed)
     _write_text(env_path, _render_local_setup_env_file(refreshed))
+    _write_text(report_path, _render_local_setup_report(refreshed, summary_path))
     return refreshed, summary_path, env_path
 
 
