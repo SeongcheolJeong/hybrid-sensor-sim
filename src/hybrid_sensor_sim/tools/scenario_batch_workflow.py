@@ -403,6 +403,11 @@ def _build_failing_logical_scenario_rows(
     )
 
 
+def _sort_float_none_last(value: Any) -> float:
+    float_value = _coerce_optional_float(value)
+    return float_value if float_value is not None else float("inf")
+
+
 def _build_workflow_status_summary(
     *,
     workflow_status: str,
@@ -500,8 +505,35 @@ def _build_workflow_status_summary(
             failure_codes.append("MIN_TTC_PATH_CONFLICT_BELOW_THRESHOLD")
         return failure_codes
 
+    logical_health_rows = list(comparison_summary.get("logical_scenario_health_rows", []))
+    worst_logical_scenario_row = None
+    if logical_health_rows:
+        logical_health_priority = {"FAIL": 0, "ATTENTION": 1, "PASS": 2}
+        gate_status_priority = {"FAIL": 0, "PASS": 1, "DISABLED": 2}
+
+        def logical_health_sort_key(row: dict[str, Any]) -> tuple[Any, ...]:
+            return (
+                logical_health_priority.get(str(row.get("health_status")), 99),
+                gate_status_priority.get(str(row.get("gate_status")), 99),
+                -len(list(row.get("gate_failure_codes", []))),
+                -int(row.get("collision_count", 0) or 0),
+                -int(row.get("timeout_count", 0) or 0),
+                -int(row.get("merge_conflict_row_count", 0) or 0),
+                -int(row.get("lane_change_conflict_row_count", 0) or 0),
+                -int(row.get("path_conflict_row_count", 0) or 0),
+                _sort_float_none_last(row.get("min_ttc_path_conflict_sec_min")),
+                _sort_float_none_last(row.get("min_ttc_any_lane_sec_min")),
+                str(row.get("logical_scenario_id") or ""),
+            )
+
+        worst_logical_scenario_row = min(logical_health_rows, key=logical_health_sort_key)
+
+    matrix_group_rows = list(comparison_summary.get("matrix_group_rows", []))
+
     failing_matrix_group_ids = []
     matrix_group_gate_failure_code_counts: dict[str, int] = {}
+    worst_matrix_group_row = None
+    matrix_group_rank_rows: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
     for row in comparison_summary.get("matrix_group_rows", []):
         if not row.get("matrix_group_id"):
             continue
@@ -512,7 +544,41 @@ def _build_workflow_status_summary(
                 matrix_group_gate_failure_code_counts[failure_code] = (
                     matrix_group_gate_failure_code_counts.get(failure_code, 0) + 1
                 )
+        matrix_group_rank_rows.append(
+            (
+                (
+                    0 if failure_codes else 1,
+                    -len(failure_codes),
+                    -int(row.get("collision_count", 0) or 0),
+                    -int(row.get("timeout_count", 0) or 0),
+                    -int(row.get("merge_conflict_row_count", 0) or 0),
+                    -int(row.get("lane_change_conflict_row_count", 0) or 0),
+                    -int(row.get("path_conflict_row_count", 0) or 0),
+                    _sort_float_none_last(row.get("min_ttc_path_conflict_sec_min")),
+                    _sort_float_none_last(row.get("min_ttc_any_lane_sec_min")),
+                    str(row.get("matrix_group_id") or ""),
+                ),
+                {
+                    "matrix_group_id": str(row.get("matrix_group_id") or ""),
+                    "case_count": int(row.get("case_count", 0) or 0),
+                    "execution_status_counts": dict(row.get("execution_status_counts", {})),
+                    "object_sim_status_counts": dict(row.get("object_sim_status_counts", {})),
+                    "collision_count": int(row.get("collision_count", 0) or 0),
+                    "timeout_count": int(row.get("timeout_count", 0) or 0),
+                    "path_conflict_row_count": int(row.get("path_conflict_row_count", 0) or 0),
+                    "merge_conflict_row_count": int(row.get("merge_conflict_row_count", 0) or 0),
+                    "lane_change_conflict_row_count": int(row.get("lane_change_conflict_row_count", 0) or 0),
+                    "min_ttc_any_lane_sec_min": _coerce_optional_float(row.get("min_ttc_any_lane_sec_min")),
+                    "min_ttc_path_conflict_sec_min": _coerce_optional_float(
+                        row.get("min_ttc_path_conflict_sec_min")
+                    ),
+                    "gate_failure_codes": failure_codes,
+                },
+            )
+        )
     failing_matrix_group_ids = sorted(failing_matrix_group_ids)
+    if matrix_group_rank_rows:
+        worst_matrix_group_row = min(matrix_group_rank_rows, key=lambda item: item[0])[1]
     breached_gate_rules = [
         dict(rule)
         for rule in comparison_summary["gate"].get("evaluated_rules", [])
@@ -539,6 +605,8 @@ def _build_workflow_status_summary(
         "attention_matrix_group_ids": attention_matrix_group_ids,
         "attention_matrix_group_count": len(attention_matrix_group_ids),
         "attention_reason_counts": dict(comparison_summary.get("attention_reason_counts", {})),
+        "worst_logical_scenario_row": dict(worst_logical_scenario_row) if worst_logical_scenario_row is not None else None,
+        "worst_matrix_group_row": dict(worst_matrix_group_row) if worst_matrix_group_row is not None else None,
         "logical_scenario_health_status_counts": dict(
             comparison_summary.get("logical_scenario_health_status_counts", {})
         ),
@@ -578,6 +646,11 @@ def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Failing matrix groups: `{','.join(status_summary['failing_matrix_group_ids']) or '-'}`",
         f"- Attention matrix groups: `{','.join(status_summary['attention_matrix_group_ids']) or '-'}`",
         f"- Matrix gate failure counts: `{_format_counter(status_summary['matrix_group_gate_failure_code_counts'])}`",
+        "",
+        "## Worst-Case Rows",
+        "",
+        f"- Worst logical scenario: `{(status_summary['worst_logical_scenario_row'] or {}).get('logical_scenario_id', '-')}`",
+        f"- Worst matrix group: `{(status_summary['worst_matrix_group_row'] or {}).get('matrix_group_id', '-')}`",
         "",
         "## Status Decision Trace",
         "",

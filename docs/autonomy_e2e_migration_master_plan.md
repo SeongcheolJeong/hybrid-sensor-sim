@@ -44,6 +44,7 @@ Implemented from the first migration wave:
 24. explicit workflow decision traces for batch status selection
 25. matrix-group triage surfaced in top-level batch status summaries
 26. top-level batch gate breach summaries by metric and matrix group
+27. compact worst-case logical-scenario and matrix-group rows in top-level batch summaries
 
 Current repository paths:
 

@@ -228,6 +228,7 @@ python3 scripts/run_scenario_batch_workflow.py \
   - also includes `final_status_source` and ordered `decision_trace` so the `FAILED|ATTENTION|SUCCEEDED` decision path is explicit
   - also includes `failing_matrix_group_ids` and `attention_matrix_group_ids` for matrix-side triage
   - also includes `breached_gate_rules`, `breached_gate_metric_ids`, and `matrix_group_gate_failure_code_counts` for top-level gate breach inspection
+  - also includes compact `worst_logical_scenario_row` and `worst_matrix_group_row`
 - `variant_summary`: selected variant execution summary copied from the variant workflow
 - `matrix_summary`: matrix-sweep case summary
 - `comparison_summary`: cross-batch overview, gate result, and compact attention rows

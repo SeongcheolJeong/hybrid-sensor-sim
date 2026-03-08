@@ -117,6 +117,7 @@ Implemented in the current repository:
    - `status_summary` now also includes `final_status_source` and ordered `decision_trace`
    - matrix-side triage is now exposed through `failing_matrix_group_ids` and `attention_matrix_group_ids`
    - top-level gate breach inspection is now exposed through `breached_gate_rules`, `breached_gate_metric_ids`, and `matrix_group_gate_failure_code_counts`
+   - top-level triage now also includes compact `worst_logical_scenario_row` and `worst_matrix_group_row`
 
 Still pending from the same migration track:
 
