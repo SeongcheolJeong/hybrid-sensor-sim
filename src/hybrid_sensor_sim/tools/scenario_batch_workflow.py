@@ -410,15 +410,41 @@ def _build_workflow_status_summary(
     matrix_report: dict[str, Any],
     comparison_summary: dict[str, Any],
 ) -> dict[str, Any]:
+    decision_trace = [
+        {
+            "step_id": "variant_execution_failures",
+            "matched": int(variant_workflow_report.get("execution_status_counts", {}).get("FAILED", 0)) > 0,
+            "status_if_matched": "FAILED",
+            "reason_code": "VARIANT_EXECUTION_FAILURE_PRESENT",
+        },
+        {
+            "step_id": "matrix_success_cases",
+            "matched": int(matrix_report.get("success_case_count", 0)) <= 0,
+            "status_if_matched": "FAILED",
+            "reason_code": "MATRIX_NO_SUCCESS_CASES",
+        },
+        {
+            "step_id": "comparison_gate",
+            "matched": comparison_summary["gate"]["status"] == "FAIL",
+            "status_if_matched": "FAILED",
+            "reason_code": "BATCH_GATE_FAILED",
+        },
+        {
+            "step_id": "attention_rows",
+            "matched": int(comparison_summary.get("attention_row_count", 0)) > 0,
+            "status_if_matched": "ATTENTION",
+            "reason_code": "ATTENTION_ROWS_PRESENT",
+        },
+    ]
     status_reason_codes: list[str] = []
-    if int(variant_workflow_report.get("execution_status_counts", {}).get("FAILED", 0)) > 0:
-        status_reason_codes.append("VARIANT_EXECUTION_FAILURE_PRESENT")
-    if int(matrix_report.get("success_case_count", 0)) <= 0:
-        status_reason_codes.append("MATRIX_NO_SUCCESS_CASES")
-    if comparison_summary["gate"]["status"] == "FAIL":
-        status_reason_codes.append("BATCH_GATE_FAILED")
-    if int(comparison_summary.get("attention_row_count", 0)) > 0:
-        status_reason_codes.append("ATTENTION_ROWS_PRESENT")
+    for step in decision_trace:
+        if step["matched"]:
+            status_reason_codes.append(str(step["reason_code"]))
+    final_status_source = "default_success"
+    for step in decision_trace:
+        if step["matched"]:
+            final_status_source = str(step["step_id"])
+            break
 
     failing_logical_scenario_ids = [
         str(row["logical_scenario_id"])
@@ -434,8 +460,10 @@ def _build_workflow_status_summary(
     )
     return {
         "workflow_status": workflow_status,
+        "final_status_source": final_status_source,
         "status_reason_codes": status_reason_codes,
         "status_reason_count": len(status_reason_codes),
+        "decision_trace": decision_trace,
         "gate_failure_codes": list(comparison_summary["gate"].get("failure_codes", [])),
         "failing_logical_scenario_ids": failing_logical_scenario_ids,
         "failing_logical_scenario_count": len(failing_logical_scenario_ids),
@@ -473,22 +501,44 @@ def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Gate status: `{gate['status']}`",
         f"- Gate profile: `{gate['policy'].get('profile_path') or '-'}`",
         f"- Gate failure codes: `{','.join(gate['failure_codes']) or '-'}`",
+        f"- Final status source: `{status_summary['final_status_source']}`",
         f"- Status reason codes: `{','.join(status_summary['status_reason_codes']) or '-'}`",
         f"- Failing logical scenarios: `{','.join(status_summary['failing_logical_scenario_ids']) or '-'}`",
         f"- Attention logical scenarios: `{','.join(status_summary['attention_logical_scenario_ids']) or '-'}`",
         "",
-        "## Artifacts",
-        "",
-        f"- Variant workflow report: `{workflow_report['artifacts']['variant_workflow_report_path']}`",
-        f"- Variant run report: `{workflow_report['artifacts']['variant_run_report_path']}`",
-        f"- Matrix sweep report: `{workflow_report['artifacts']['matrix_sweep_report_path']}`",
-        f"- Comparison report: `{workflow_report['artifacts']['comparison_report_path']}`",
-        f"- Comparison markdown: `{workflow_report['artifacts']['comparison_markdown_path']}`",
-        f"- Workflow markdown: `{workflow_report['artifacts']['workflow_markdown_path']}`",
-        "",
-        "## Logical Scenario Health",
+        "## Status Decision Trace",
         "",
     ]
+    lines.append(
+        _markdown_table(
+            ["Step", "Matched", "Status If Matched", "Reason Code"],
+            [
+                [
+                    str(step["step_id"]),
+                    str(step["matched"]),
+                    str(step["status_if_matched"]),
+                    str(step["reason_code"]),
+                ]
+                for step in status_summary["decision_trace"]
+            ],
+        )
+    )
+    lines.extend(
+        [
+            "",
+            "## Artifacts",
+            "",
+            f"- Variant workflow report: `{workflow_report['artifacts']['variant_workflow_report_path']}`",
+            f"- Variant run report: `{workflow_report['artifacts']['variant_run_report_path']}`",
+            f"- Matrix sweep report: `{workflow_report['artifacts']['matrix_sweep_report_path']}`",
+            f"- Comparison report: `{workflow_report['artifacts']['comparison_report_path']}`",
+            f"- Comparison markdown: `{workflow_report['artifacts']['comparison_markdown_path']}`",
+            f"- Workflow markdown: `{workflow_report['artifacts']['workflow_markdown_path']}`",
+            "",
+            "## Logical Scenario Health",
+            "",
+        ]
+    )
     if logical_health_rows:
         lines.append(
             _markdown_table(

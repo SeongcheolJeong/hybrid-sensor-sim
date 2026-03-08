@@ -41,6 +41,7 @@ Implemented from the first migration wave:
 21. per-scenario route-interaction gate failures in logical-scenario health reporting
 22. compact failing logical-scenario triage and attention-reason aggregation in batch reports
 23. top-level workflow status summaries for failing and attention logical scenarios
+24. explicit workflow decision traces for batch status selection
 
 Current repository paths:
 

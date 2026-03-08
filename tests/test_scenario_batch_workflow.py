@@ -113,9 +113,14 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             self.assertEqual(workflow_report["comparison_summary"]["logical_scenario_health_row_count"], 1)
             self.assertEqual(workflow_report["comparison_summary"]["logical_scenario_health_status_counts"]["PASS"], 1)
             self.assertEqual(workflow_report["status_summary"]["workflow_status"], "SUCCEEDED")
+            self.assertEqual(workflow_report["status_summary"]["final_status_source"], "default_success")
             self.assertEqual(workflow_report["status_summary"]["status_reason_codes"], [])
             self.assertEqual(workflow_report["status_summary"]["failing_logical_scenario_ids"], [])
             self.assertEqual(workflow_report["status_summary"]["attention_logical_scenario_ids"], [])
+            self.assertEqual(
+                [step["step_id"] for step in workflow_report["status_summary"]["decision_trace"]],
+                ["variant_execution_failures", "matrix_success_cases", "comparison_gate", "attention_rows"],
+            )
             self.assertEqual(
                 workflow_report["comparison_summary"]["logical_scenario_health_gate_status_counts"]["DISABLED"],
                 1,
@@ -181,6 +186,7 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             workflow_report = result["workflow_report"]
             self.assertEqual(workflow_report["status"], "ATTENTION")
             self.assertGreater(workflow_report["comparison_summary"]["attention_row_count"], 0)
+            self.assertEqual(workflow_report["status_summary"]["final_status_source"], "attention_rows")
             self.assertIn("ATTENTION_ROWS_PRESENT", workflow_report["status_summary"]["status_reason_codes"])
             self.assertEqual(
                 workflow_report["status_summary"]["attention_logical_scenario_ids"],
@@ -261,6 +267,7 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             workflow_report = result["workflow_report"]
             self.assertEqual(workflow_report["status"], "FAILED")
             self.assertEqual(workflow_report["comparison_summary"]["gate"]["status"], "FAIL")
+            self.assertEqual(workflow_report["status_summary"]["final_status_source"], "comparison_gate")
             self.assertIn("BATCH_GATE_FAILED", workflow_report["status_summary"]["status_reason_codes"])
             self.assertEqual(
                 workflow_report["status_summary"]["failing_logical_scenario_ids"],
@@ -379,6 +386,7 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
                 "MERGE_CONFLICT_ROWS_EXCEEDED",
                 workflow_report["comparison_summary"]["gate"]["failure_codes"],
             )
+            self.assertEqual(workflow_report["status_summary"]["final_status_source"], "comparison_gate")
             self.assertIn("BATCH_GATE_FAILED", workflow_report["status_summary"]["status_reason_codes"])
             self.assertEqual(
                 workflow_report["status_summary"]["failing_logical_scenario_ids"],
