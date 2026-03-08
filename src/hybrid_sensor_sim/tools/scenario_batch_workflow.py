@@ -488,6 +488,18 @@ def _sort_float_none_last(value: Any) -> float:
     return float_value if float_value is not None else float("inf")
 
 
+def _avoidance_rank_key(row: dict[str, Any]) -> tuple[int, int, int, int, int, int]:
+    trigger_counts = dict(row.get("ego_avoidance_trigger_counts_by_interaction_kind", {}))
+    return (
+        -int(row.get("ego_avoidance_brake_event_count_total", 0) or 0),
+        -int(trigger_counts.get("lane_change_conflict", 0) or 0),
+        -int(trigger_counts.get("merge_conflict", 0) or 0),
+        -int(trigger_counts.get("downstream_route_conflict", 0) or 0),
+        -int(trigger_counts.get("same_lane_conflict", 0) or 0),
+        -int(row.get("ego_avoidance_row_count", 0) or 0),
+    )
+
+
 def _build_workflow_status_summary(
     *,
     workflow_status: str,
@@ -654,6 +666,7 @@ def _build_workflow_status_summary(
                 -int(row.get("merge_conflict_row_count", 0) or 0),
                 -int(row.get("lane_change_conflict_row_count", 0) or 0),
                 -int(row.get("path_conflict_row_count", 0) or 0),
+                *_avoidance_rank_key(row),
                 _sort_float_none_last(row.get("min_ttc_path_conflict_sec_min")),
                 _sort_float_none_last(row.get("min_ttc_any_lane_sec_min")),
                 str(row.get("logical_scenario_id") or ""),
@@ -687,6 +700,7 @@ def _build_workflow_status_summary(
                     -int(row.get("merge_conflict_row_count", 0) or 0),
                     -int(row.get("lane_change_conflict_row_count", 0) or 0),
                     -int(row.get("path_conflict_row_count", 0) or 0),
+                    *_avoidance_rank_key(row),
                     _sort_float_none_last(row.get("min_ttc_path_conflict_sec_min")),
                     _sort_float_none_last(row.get("min_ttc_any_lane_sec_min")),
                     str(row.get("matrix_group_id") or ""),
@@ -701,6 +715,13 @@ def _build_workflow_status_summary(
                     "path_conflict_row_count": int(row.get("path_conflict_row_count", 0) or 0),
                     "merge_conflict_row_count": int(row.get("merge_conflict_row_count", 0) or 0),
                     "lane_change_conflict_row_count": int(row.get("lane_change_conflict_row_count", 0) or 0),
+                    "ego_avoidance_row_count": int(row.get("ego_avoidance_row_count", 0) or 0),
+                    "ego_avoidance_brake_event_count_total": int(
+                        row.get("ego_avoidance_brake_event_count_total", 0) or 0
+                    ),
+                    "ego_avoidance_trigger_counts_by_interaction_kind": dict(
+                        sorted(dict(row.get("ego_avoidance_trigger_counts_by_interaction_kind", {})).items())
+                    ),
                     "min_ttc_any_lane_sec_min": _coerce_optional_float(row.get("min_ttc_any_lane_sec_min")),
                     "min_ttc_path_conflict_sec_min": _coerce_optional_float(
                         row.get("min_ttc_path_conflict_sec_min")

@@ -134,6 +134,9 @@ Implemented in the current repository:
    - top-level batch gate, per-scenario logical health, and matrix-group triage now all evaluate the same avoidance metrics and reuse the same failure codes
 30. richer interaction-specific avoidance policy
    - object-sim avoidance policy now supports `priority` and `max_gap_m` per interaction kind, and the selected policy values are emitted in summary and trace artifacts
+31. avoidance-aware worst-case batch ranking
+   - `status_summary.worst_logical_scenario_row` and `status_summary.worst_matrix_group_row` are now ranked with avoidance brake-event totals and interaction-specific trigger mix ahead of TTC tie-breaks
+   - worst matrix-group rows now also carry `ego_avoidance_row_count`, `ego_avoidance_brake_event_count_total`, and `ego_avoidance_trigger_counts_by_interaction_kind`
 
 Still pending from the same migration track:
 
