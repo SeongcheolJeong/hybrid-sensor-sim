@@ -13,9 +13,11 @@ from hybrid_sensor_sim.scenarios.matrix_sweep import (
     _parse_non_negative_int,
     run_scenario_matrix_sweep,
 )
+from hybrid_sensor_sim.tools.scenario_batch_gate_catalog import (
+    resolve_scenario_batch_gate_profile_path,
+)
 from hybrid_sensor_sim.tools.scenario_batch_comparison import (
     build_scenario_batch_comparison_report,
-    _resolve_gate_profile_path,
 )
 from hybrid_sensor_sim.tools.scenario_variant_workflow import (
     run_scenario_variant_workflow,
@@ -174,11 +176,67 @@ def _markdown_table(headers: list[str], rows: list[list[str]]) -> str:
     return "\n".join(out)
 
 
+def _build_logical_scenario_health_rows(
+    logical_rows: list[dict[str, Any]],
+    *,
+    gate_policy: dict[str, Any],
+) -> list[dict[str, Any]]:
+    health_rows: list[dict[str, Any]] = []
+    min_ttc_threshold = _coerce_optional_float(gate_policy.get("min_min_ttc_any_lane_sec"))
+    for row in logical_rows:
+        execution_status_counts = dict(row.get("execution_status_counts", {}))
+        variant_count = int(row.get("variant_count", 0))
+        succeeded_count = int(execution_status_counts.get("SUCCEEDED", 0))
+        non_success_variant_count = max(variant_count - succeeded_count, 0)
+        reasons: list[str] = []
+        fail = False
+        if int(execution_status_counts.get("FAILED", 0)) > 0:
+            reasons.append("EXECUTION_FAILURE_PRESENT")
+            fail = True
+        if int(row.get("collision_count", 0)) > 0:
+            reasons.append("COLLISION_PRESENT")
+            fail = True
+        if int(row.get("timeout_count", 0)) > 0:
+            reasons.append("TIMEOUT_PRESENT")
+            fail = True
+        min_ttc_any_lane_sec = _coerce_optional_float(row.get("min_ttc_any_lane_sec_min"))
+        if (
+            min_ttc_threshold is not None
+            and min_ttc_any_lane_sec is not None
+            and min_ttc_any_lane_sec < min_ttc_threshold
+        ):
+            reasons.append("MIN_TTC_BELOW_THRESHOLD")
+            fail = True
+        if non_success_variant_count > 0 and "NON_SUCCESS_VARIANTS_PRESENT" not in reasons:
+            reasons.append("NON_SUCCESS_VARIANTS_PRESENT")
+        if fail:
+            health_status = "FAIL"
+        elif non_success_variant_count > 0:
+            health_status = "ATTENTION"
+        else:
+            health_status = "PASS"
+        health_rows.append(
+            {
+                "logical_scenario_id": str(row.get("logical_scenario_id", "")).strip() or None,
+                "health_status": health_status,
+                "health_reasons": reasons,
+                "variant_count": variant_count,
+                "non_success_variant_count": non_success_variant_count,
+                "collision_count": int(row.get("collision_count", 0)),
+                "timeout_count": int(row.get("timeout_count", 0)),
+                "min_ttc_any_lane_sec_min": min_ttc_any_lane_sec,
+                "gate_min_min_ttc_any_lane_sec": min_ttc_threshold,
+            }
+        )
+    return health_rows
+
+
 def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
     variant_summary = workflow_report["variant_summary"]
     matrix_summary = workflow_report["matrix_summary"]
     comparison_summary = workflow_report["comparison_summary"]
     gate = comparison_summary["gate"]
+    logical_health_rows = comparison_summary["logical_scenario_health_rows"]
     logical_rows = comparison_summary["logical_scenario_rows"]
     matrix_rows = comparison_summary["matrix_group_rows"]
     lines = [
@@ -203,9 +261,46 @@ def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Comparison markdown: `{workflow_report['artifacts']['comparison_markdown_path']}`",
         f"- Workflow markdown: `{workflow_report['artifacts']['workflow_markdown_path']}`",
         "",
-        "## Logical Scenario Summary",
+        "## Logical Scenario Health",
         "",
     ]
+    if logical_health_rows:
+        lines.append(
+            _markdown_table(
+                [
+                    "Logical Scenario",
+                    "Health",
+                    "Reasons",
+                    "Variants",
+                    "Non-Success",
+                    "Collisions",
+                    "Timeouts",
+                    "Min TTC Any",
+                ],
+                [
+                    [
+                        str(row["logical_scenario_id"] or "-"),
+                        str(row["health_status"]),
+                        ",".join(row["health_reasons"]) or "-",
+                        str(row["variant_count"]),
+                        str(row["non_success_variant_count"]),
+                        str(row["collision_count"]),
+                        str(row["timeout_count"]),
+                        _format_float(row["min_ttc_any_lane_sec_min"]),
+                    ]
+                    for row in logical_health_rows
+                ],
+            )
+        )
+    else:
+        lines.append("No logical scenario health rows.")
+    lines.extend(
+        [
+            "",
+            "## Logical Scenario Summary",
+            "",
+        ]
+    )
     if logical_rows:
         lines.append(
             _markdown_table(
@@ -430,6 +525,10 @@ def run_scenario_batch_workflow(
         gate_max_timeout_rows=gate_max_timeout_rows,
         gate_min_min_ttc_any_lane_sec=gate_min_min_ttc_any_lane_sec,
     )
+    logical_scenario_health_rows = _build_logical_scenario_health_rows(
+        list(comparison_report["comparison_tables"]["logical_scenario_rows"]),
+        gate_policy=dict(comparison_report["gate"]["policy"]),
+    )
     variant_workflow_report = variant_result["workflow_report"]
     workflow_status = _build_workflow_status(
         variant_workflow_report=variant_workflow_report,
@@ -486,6 +585,13 @@ def run_scenario_batch_workflow(
             "overview": dict(comparison_report["overview"]),
             "logical_scenario_row_count": int(comparison_report["comparison_tables"]["logical_scenario_row_count"]),
             "matrix_group_row_count": int(comparison_report["comparison_tables"]["matrix_group_row_count"]),
+            "logical_scenario_health_rows": logical_scenario_health_rows,
+            "logical_scenario_health_row_count": len(logical_scenario_health_rows),
+            "logical_scenario_health_status_counts": {
+                "PASS": sum(1 for row in logical_scenario_health_rows if row["health_status"] == "PASS"),
+                "ATTENTION": sum(1 for row in logical_scenario_health_rows if row["health_status"] == "ATTENTION"),
+                "FAIL": sum(1 for row in logical_scenario_health_rows if row["health_status"] == "FAIL"),
+            },
             "logical_scenario_rows": list(comparison_report["comparison_tables"]["logical_scenario_rows"]),
             "matrix_group_rows": list(comparison_report["comparison_tables"]["matrix_group_rows"]),
             "attention_row_count": int(comparison_report["comparison_tables"]["attention_row_count"]),
@@ -530,7 +636,7 @@ def main(argv: list[str] | None = None) -> int:
             sim_version=args.sim_version,
             fidelity_profile=args.fidelity_profile,
             matrix_run_id_prefix=str(args.matrix_run_id_prefix).strip() or "RUN_CORE_SIM_SWEEP",
-            gate_profile_path=_resolve_gate_profile_path(
+            gate_profile_path=resolve_scenario_batch_gate_profile_path(
                 gate_profile=args.gate_profile,
                 gate_profile_id=args.gate_profile_id,
                 gate_profile_dir=args.gate_profile_dir,

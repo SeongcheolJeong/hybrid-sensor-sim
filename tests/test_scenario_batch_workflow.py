@@ -83,8 +83,11 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             self.assertEqual(workflow_report["comparison_summary"]["attention_row_count"], 0)
             self.assertEqual(workflow_report["comparison_summary"]["logical_scenario_row_count"], 1)
             self.assertEqual(workflow_report["comparison_summary"]["matrix_group_row_count"], 1)
+            self.assertEqual(workflow_report["comparison_summary"]["logical_scenario_health_row_count"], 1)
+            self.assertEqual(workflow_report["comparison_summary"]["logical_scenario_health_status_counts"]["PASS"], 1)
             self.assertEqual(len(workflow_report["comparison_summary"]["logical_scenario_rows"]), 1)
             self.assertEqual(len(workflow_report["comparison_summary"]["matrix_group_rows"]), 1)
+            self.assertEqual(len(workflow_report["comparison_summary"]["logical_scenario_health_rows"]), 1)
             self.assertTrue(Path(result["workflow_report_path"]).is_file())
             self.assertTrue(Path(workflow_report["artifacts"]["variant_workflow_report_path"]).is_file())
             self.assertTrue(Path(workflow_report["artifacts"]["matrix_sweep_report_path"]).is_file())
@@ -93,6 +96,7 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             self.assertTrue(Path(workflow_report["artifacts"]["workflow_markdown_path"]).is_file())
             self.assertEqual(workflow_report["comparison_summary"]["gate"]["status"], "DISABLED")
             markdown = Path(result["workflow_markdown_path"]).read_text(encoding="utf-8")
+            self.assertIn("## Logical Scenario Health", markdown)
             self.assertIn("## Logical Scenario Summary", markdown)
             self.assertIn("## Matrix Group Summary", markdown)
             self.assertIn("## Successful Variants", markdown)
@@ -207,6 +211,14 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             workflow_report = result["workflow_report"]
             self.assertEqual(workflow_report["status"], "FAILED")
             self.assertEqual(workflow_report["comparison_summary"]["gate"]["status"], "FAIL")
+            self.assertEqual(
+                workflow_report["comparison_summary"]["logical_scenario_health_status_counts"]["FAIL"],
+                1,
+            )
+            self.assertIn(
+                "COLLISION_PRESENT",
+                workflow_report["comparison_summary"]["logical_scenario_health_rows"][0]["health_reasons"],
+            )
             self.assertIn(
                 "COLLISION_ROWS_EXCEEDED",
                 workflow_report["comparison_summary"]["gate"]["failure_codes"],

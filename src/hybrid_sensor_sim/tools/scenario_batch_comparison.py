@@ -8,11 +8,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from hybrid_sensor_sim.tools.scenario_batch_gate_catalog import (
+    load_scenario_batch_gate_profile,
+    resolve_scenario_batch_gate_profile_path,
+)
+
 CORE_SIM_MATRIX_SWEEP_SCHEMA_VERSION_V0 = "core_sim_matrix_sweep_report_v0"
 SCENARIO_VARIANT_RUN_REPORT_SCHEMA_VERSION_V0 = "scenario_variant_run_report_v0"
 SCENARIO_VARIANT_WORKFLOW_REPORT_SCHEMA_VERSION_V0 = "scenario_variant_workflow_report_v0"
 SCENARIO_BATCH_COMPARISON_REPORT_SCHEMA_VERSION_V0 = "scenario_batch_comparison_report_v0"
-SCENARIO_BATCH_GATE_PROFILE_SCHEMA_VERSION_V0 = "scenario_batch_gate_profile_v0"
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -164,43 +168,6 @@ def _parse_optional_non_negative_float(raw: Any, *, field: str) -> float | None:
     return parsed
 
 
-def _load_gate_profile(path: Path) -> dict[str, Any]:
-    payload = _load_json_dict(path, label="scenario batch gate profile")
-    schema_version = str(payload.get("gate_profile_schema_version", "")).strip()
-    if schema_version != SCENARIO_BATCH_GATE_PROFILE_SCHEMA_VERSION_V0:
-        raise ValueError(
-            "gate_profile_schema_version must be "
-            f"{SCENARIO_BATCH_GATE_PROFILE_SCHEMA_VERSION_V0}"
-        )
-    policy = payload.get("policy")
-    if not isinstance(policy, dict):
-        raise ValueError("scenario batch gate profile missing policy block")
-    return payload
-
-
-def _default_gate_profile_dir() -> Path:
-    return (
-        Path(__file__).resolve().parents[3]
-        / "tests"
-        / "fixtures"
-        / "autonomy_e2e"
-        / "p_validation"
-    )
-
-
-def _resolve_gate_profile_path(*, gate_profile: str, gate_profile_id: str, gate_profile_dir: str) -> Path | None:
-    gate_profile_text = str(gate_profile).strip()
-    gate_profile_id_text = str(gate_profile_id).strip()
-    if gate_profile_text and gate_profile_id_text:
-        raise ValueError("use either --gate-profile or --gate-profile-id, not both")
-    if gate_profile_text:
-        return Path(gate_profile_text).resolve()
-    if not gate_profile_id_text:
-        return None
-    base_dir = Path(gate_profile_dir).resolve() if str(gate_profile_dir).strip() else _default_gate_profile_dir()
-    return (base_dir / f"{gate_profile_id_text}.json").resolve()
-
-
 def _resolve_gate_policy(
     *,
     gate_profile_path: Path | None,
@@ -212,7 +179,7 @@ def _resolve_gate_policy(
     profile_payload: dict[str, Any] | None = None
     profile_policy: dict[str, Any] = {}
     if gate_profile_path is not None:
-        profile_payload = _load_gate_profile(gate_profile_path)
+        profile_payload = load_scenario_batch_gate_profile(gate_profile_path)
         raw_policy = profile_payload["policy"]
         profile_policy = {
             "max_attention_rows": _parse_optional_non_negative_int(
@@ -938,7 +905,7 @@ def main(argv: list[str] | None = None) -> int:
             matrix_sweep_report_path=Path(args.matrix_sweep_report).resolve(),
             out_report=out_report,
             markdown_out=markdown_out,
-            gate_profile_path=_resolve_gate_profile_path(
+            gate_profile_path=resolve_scenario_batch_gate_profile_path(
                 gate_profile=args.gate_profile,
                 gate_profile_id=args.gate_profile_id,
                 gate_profile_dir=args.gate_profile_dir,
