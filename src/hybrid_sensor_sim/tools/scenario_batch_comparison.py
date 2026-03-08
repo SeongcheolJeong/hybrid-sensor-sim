@@ -62,9 +62,29 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Optional maximum allowed timeout rows before gate failure",
     )
     parser.add_argument(
+        "--gate-max-path-conflict-rows",
+        default="",
+        help="Optional maximum allowed path-conflict rows before gate failure",
+    )
+    parser.add_argument(
+        "--gate-max-merge-conflict-rows",
+        default="",
+        help="Optional maximum allowed merge-conflict rows before gate failure",
+    )
+    parser.add_argument(
+        "--gate-max-lane-change-conflict-rows",
+        default="",
+        help="Optional maximum allowed lane-change-conflict rows before gate failure",
+    )
+    parser.add_argument(
         "--gate-min-min-ttc-any-lane-sec",
         default="",
         help="Optional minimum allowed global minimum TTC before gate failure",
+    )
+    parser.add_argument(
+        "--gate-min-min-ttc-path-conflict-sec",
+        default="",
+        help="Optional minimum allowed global minimum path-conflict TTC before gate failure",
     )
     return parser.parse_args(argv)
 
@@ -185,7 +205,11 @@ def _resolve_gate_policy(
     gate_max_attention_rows: int | None,
     gate_max_collision_rows: int | None,
     gate_max_timeout_rows: int | None,
+    gate_max_path_conflict_rows: int | None,
+    gate_max_merge_conflict_rows: int | None,
+    gate_max_lane_change_conflict_rows: int | None,
     gate_min_min_ttc_any_lane_sec: float | None,
+    gate_min_min_ttc_path_conflict_sec: float | None,
 ) -> dict[str, Any]:
     profile_payload: dict[str, Any] | None = None
     profile_policy: dict[str, Any] = {}
@@ -205,9 +229,25 @@ def _resolve_gate_policy(
                 raw_policy.get("max_timeout_rows"),
                 field="policy.max_timeout_rows",
             ),
+            "max_path_conflict_rows": _parse_optional_non_negative_int(
+                raw_policy.get("max_path_conflict_rows"),
+                field="policy.max_path_conflict_rows",
+            ),
+            "max_merge_conflict_rows": _parse_optional_non_negative_int(
+                raw_policy.get("max_merge_conflict_rows"),
+                field="policy.max_merge_conflict_rows",
+            ),
+            "max_lane_change_conflict_rows": _parse_optional_non_negative_int(
+                raw_policy.get("max_lane_change_conflict_rows"),
+                field="policy.max_lane_change_conflict_rows",
+            ),
             "min_min_ttc_any_lane_sec": _parse_optional_non_negative_float(
                 raw_policy.get("min_min_ttc_any_lane_sec"),
                 field="policy.min_min_ttc_any_lane_sec",
+            ),
+            "min_min_ttc_path_conflict_sec": _parse_optional_non_negative_float(
+                raw_policy.get("min_min_ttc_path_conflict_sec"),
+                field="policy.min_min_ttc_path_conflict_sec",
             ),
         }
     return {
@@ -232,10 +272,30 @@ def _resolve_gate_policy(
             if gate_max_timeout_rows is not None
             else profile_policy.get("max_timeout_rows")
         ),
+        "max_path_conflict_rows": (
+            gate_max_path_conflict_rows
+            if gate_max_path_conflict_rows is not None
+            else profile_policy.get("max_path_conflict_rows")
+        ),
+        "max_merge_conflict_rows": (
+            gate_max_merge_conflict_rows
+            if gate_max_merge_conflict_rows is not None
+            else profile_policy.get("max_merge_conflict_rows")
+        ),
+        "max_lane_change_conflict_rows": (
+            gate_max_lane_change_conflict_rows
+            if gate_max_lane_change_conflict_rows is not None
+            else profile_policy.get("max_lane_change_conflict_rows")
+        ),
         "min_min_ttc_any_lane_sec": (
             gate_min_min_ttc_any_lane_sec
             if gate_min_min_ttc_any_lane_sec is not None
             else profile_policy.get("min_min_ttc_any_lane_sec")
+        ),
+        "min_min_ttc_path_conflict_sec": (
+            gate_min_min_ttc_path_conflict_sec
+            if gate_min_min_ttc_path_conflict_sec is not None
+            else profile_policy.get("min_min_ttc_path_conflict_sec")
         ),
     }
 
@@ -527,13 +587,39 @@ def _build_attention_rows(batch_rows: list[dict[str, Any]]) -> list[dict[str, An
     for row in batch_rows:
         execution_status = str(row.get("execution_status", "")).strip()
         object_sim_status = str(row.get("object_sim_status", "")).strip()
+        path_ttc_value = _coerce_optional_float(row.get("min_ttc_path_conflict_sec"))
+        risky_path_conflict = (
+            path_ttc_value is not None
+            and path_ttc_value <= 3.0
+            and (
+                int(row.get("merge_conflict_rows", 0) or 0) > 0
+                or int(row.get("lane_change_conflict_rows", 0) or 0) > 0
+                or int(row.get("downstream_route_conflict_rows", 0) or 0) > 0
+            )
+        )
         if (
             execution_status == "SUCCEEDED"
             and object_sim_status in {"", "success"}
             and not bool(row.get("collision"))
             and not bool(row.get("timeout"))
+            and not risky_path_conflict
         ):
             continue
+        attention_reasons: list[str] = []
+        if execution_status and execution_status != "SUCCEEDED":
+            attention_reasons.append("EXECUTION_FAILURE_PRESENT")
+        if bool(row.get("collision")):
+            attention_reasons.append("COLLISION_PRESENT")
+        if bool(row.get("timeout")):
+            attention_reasons.append("TIMEOUT_PRESENT")
+        if int(row.get("path_conflict_rows", 0) or 0) > 0:
+            attention_reasons.append("PATH_CONFLICT_PRESENT")
+        if int(row.get("merge_conflict_rows", 0) or 0) > 0:
+            attention_reasons.append("MERGE_CONFLICT_PRESENT")
+        if int(row.get("lane_change_conflict_rows", 0) or 0) > 0:
+            attention_reasons.append("LANE_CHANGE_CONFLICT_PRESENT")
+        if risky_path_conflict:
+            attention_reasons.append("PATH_TTC_UNDER_3S")
         rows.append(
             {
                 "source_batch": str(row.get("source_batch", "")).strip() or None,
@@ -545,8 +631,13 @@ def _build_attention_rows(batch_rows: list[dict[str, Any]]) -> list[dict[str, An
                 "collision": bool(row.get("collision", False)),
                 "timeout": bool(row.get("timeout", False)),
                 "min_ttc_any_lane_sec": _coerce_optional_float(row.get("min_ttc_any_lane_sec")),
+                "path_conflict_rows": int(row.get("path_conflict_rows", 0) or 0),
+                "merge_conflict_rows": int(row.get("merge_conflict_rows", 0) or 0),
+                "lane_change_conflict_rows": int(row.get("lane_change_conflict_rows", 0) or 0),
+                "min_ttc_path_conflict_sec": path_ttc_value,
                 "failure_code": str(row.get("failure_code", "")).strip() or None,
                 "failure_reason": str(row.get("failure_reason", "")).strip() or None,
+                "attention_reasons": attention_reasons,
             }
         )
     return rows
@@ -569,6 +660,9 @@ def _build_overview(
     path_conflict_row_count = 0
     merge_conflict_row_count = 0
     lane_change_conflict_row_count = 0
+    min_ttc_path_conflict_sec_min: float | None = None
+    min_ttc_path_conflict_row_id = None
+    min_ttc_path_conflict_source_batch = None
 
     for row in list(variant_rows) + list(matrix_rows):
         execution_status = str(row.get("execution_status", "")).strip()
@@ -589,6 +683,13 @@ def _build_overview(
             min_ttc_any_lane_sec_min = ttc_value
             min_ttc_any_lane_row_id = row.get("row_id")
             min_ttc_any_lane_source_batch = row.get("source_batch")
+        path_ttc_value = _coerce_optional_float(row.get("min_ttc_path_conflict_sec"))
+        if path_ttc_value is not None and (
+            min_ttc_path_conflict_sec_min is None or path_ttc_value < min_ttc_path_conflict_sec_min
+        ):
+            min_ttc_path_conflict_sec_min = path_ttc_value
+            min_ttc_path_conflict_row_id = row.get("row_id")
+            min_ttc_path_conflict_source_batch = row.get("source_batch")
 
     return {
         "variant_selected_count": int(workflow_report.get("selected_variant_count", 0)),
@@ -604,6 +705,9 @@ def _build_overview(
         "min_ttc_any_lane_sec_min": min_ttc_any_lane_sec_min,
         "min_ttc_any_lane_row_id": min_ttc_any_lane_row_id,
         "min_ttc_any_lane_source_batch": min_ttc_any_lane_source_batch,
+        "min_ttc_path_conflict_sec_min": min_ttc_path_conflict_sec_min,
+        "min_ttc_path_conflict_row_id": min_ttc_path_conflict_row_id,
+        "min_ttc_path_conflict_source_batch": min_ttc_path_conflict_source_batch,
     }
 
 
@@ -619,7 +723,11 @@ def _build_gate_summary(
         "max_attention_rows": gate_policy.get("max_attention_rows"),
         "max_collision_rows": gate_policy.get("max_collision_rows"),
         "max_timeout_rows": gate_policy.get("max_timeout_rows"),
+        "max_path_conflict_rows": gate_policy.get("max_path_conflict_rows"),
+        "max_merge_conflict_rows": gate_policy.get("max_merge_conflict_rows"),
+        "max_lane_change_conflict_rows": gate_policy.get("max_lane_change_conflict_rows"),
         "min_min_ttc_any_lane_sec": gate_policy.get("min_min_ttc_any_lane_sec"),
+        "min_min_ttc_path_conflict_sec": gate_policy.get("min_min_ttc_path_conflict_sec"),
     }
     evaluated_rules: list[dict[str, Any]] = []
     failure_codes: list[str] = []
@@ -676,11 +784,39 @@ def _build_gate_summary(
         failure_code="TIMEOUT_ROWS_EXCEEDED",
     )
     evaluate(
+        metric_id="path_conflict_row_count",
+        metric_value=overview["path_conflict_row_count"],
+        threshold_value=policy["max_path_conflict_rows"],
+        comparison="max_le",
+        failure_code="PATH_CONFLICT_ROWS_EXCEEDED",
+    )
+    evaluate(
+        metric_id="merge_conflict_row_count",
+        metric_value=overview["merge_conflict_row_count"],
+        threshold_value=policy["max_merge_conflict_rows"],
+        comparison="max_le",
+        failure_code="MERGE_CONFLICT_ROWS_EXCEEDED",
+    )
+    evaluate(
+        metric_id="lane_change_conflict_row_count",
+        metric_value=overview["lane_change_conflict_row_count"],
+        threshold_value=policy["max_lane_change_conflict_rows"],
+        comparison="max_le",
+        failure_code="LANE_CHANGE_CONFLICT_ROWS_EXCEEDED",
+    )
+    evaluate(
         metric_id="min_ttc_any_lane_sec_min",
         metric_value=overview["min_ttc_any_lane_sec_min"],
         threshold_value=policy["min_min_ttc_any_lane_sec"],
         comparison="min_ge",
         failure_code="MIN_TTC_BELOW_THRESHOLD",
+    )
+    evaluate(
+        metric_id="min_ttc_path_conflict_sec_min",
+        metric_value=overview["min_ttc_path_conflict_sec_min"],
+        threshold_value=policy["min_min_ttc_path_conflict_sec"],
+        comparison="min_ge",
+        failure_code="MIN_TTC_PATH_CONFLICT_BELOW_THRESHOLD",
     )
 
     if enabled_rule_count == 0:
@@ -752,6 +888,9 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
                 ["Minimum TTC any-lane", _format_float(overview["min_ttc_any_lane_sec_min"])],
                 ["Minimum TTC source", str(overview.get("min_ttc_any_lane_source_batch") or "-")],
                 ["Minimum TTC row id", str(overview.get("min_ttc_any_lane_row_id") or "-")],
+                ["Minimum TTC path-conflict", _format_float(overview["min_ttc_path_conflict_sec_min"])],
+                ["Minimum TTC path-conflict source", str(overview.get("min_ttc_path_conflict_source_batch") or "-")],
+                ["Minimum TTC path-conflict row id", str(overview.get("min_ttc_path_conflict_row_id") or "-")],
             ],
         )
     )
@@ -883,6 +1022,10 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
                     "Collision",
                     "Timeout",
                     "Min TTC Any",
+                    "Path",
+                    "Merge",
+                    "Lane Change",
+                    "Reasons",
                     "Failure Code",
                 ],
                 [
@@ -895,6 +1038,10 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
                         str(row["collision"]),
                         str(row["timeout"]),
                         _format_float(row["min_ttc_any_lane_sec"]),
+                        str(row.get("path_conflict_rows", 0)),
+                        str(row.get("merge_conflict_rows", 0)),
+                        str(row.get("lane_change_conflict_rows", 0)),
+                        ",".join(row.get("attention_reasons", [])) or "-",
                         str(row["failure_code"] or "-"),
                     ]
                     for row in attention_rows
@@ -932,7 +1079,11 @@ def build_scenario_batch_comparison_report(
     gate_max_attention_rows: int | None = None,
     gate_max_collision_rows: int | None = None,
     gate_max_timeout_rows: int | None = None,
+    gate_max_path_conflict_rows: int | None = None,
+    gate_max_merge_conflict_rows: int | None = None,
+    gate_max_lane_change_conflict_rows: int | None = None,
     gate_min_min_ttc_any_lane_sec: float | None = None,
+    gate_min_min_ttc_path_conflict_sec: float | None = None,
 ) -> dict[str, Any]:
     workflow_report = _load_variant_workflow_report(variant_workflow_report_path)
     variant_run_report_path_value = workflow_report["artifacts"].get("variant_run_report_path")
@@ -952,7 +1103,11 @@ def build_scenario_batch_comparison_report(
         gate_max_attention_rows=gate_max_attention_rows,
         gate_max_collision_rows=gate_max_collision_rows,
         gate_max_timeout_rows=gate_max_timeout_rows,
+        gate_max_path_conflict_rows=gate_max_path_conflict_rows,
+        gate_max_merge_conflict_rows=gate_max_merge_conflict_rows,
+        gate_max_lane_change_conflict_rows=gate_max_lane_change_conflict_rows,
         gate_min_min_ttc_any_lane_sec=gate_min_min_ttc_any_lane_sec,
+        gate_min_min_ttc_path_conflict_sec=gate_min_min_ttc_path_conflict_sec,
     )
 
     out_report = out_report.resolve()
@@ -1045,9 +1200,25 @@ def main(argv: list[str] | None = None) -> int:
                 args.gate_max_timeout_rows,
                 field="gate-max-timeout-rows",
             ),
+            gate_max_path_conflict_rows=_parse_optional_non_negative_int(
+                args.gate_max_path_conflict_rows,
+                field="gate-max-path-conflict-rows",
+            ),
+            gate_max_merge_conflict_rows=_parse_optional_non_negative_int(
+                args.gate_max_merge_conflict_rows,
+                field="gate-max-merge-conflict-rows",
+            ),
+            gate_max_lane_change_conflict_rows=_parse_optional_non_negative_int(
+                args.gate_max_lane_change_conflict_rows,
+                field="gate-max-lane-change-conflict-rows",
+            ),
             gate_min_min_ttc_any_lane_sec=_parse_optional_non_negative_float(
                 args.gate_min_min_ttc_any_lane_sec,
                 field="gate-min-min-ttc-any-lane-sec",
+            ),
+            gate_min_min_ttc_path_conflict_sec=_parse_optional_non_negative_float(
+                args.gate_min_min_ttc_path_conflict_sec,
+                field="gate-min-min-ttc-path-conflict-sec",
             ),
         )
         print(f"[ok] logical_scenario_row_count={report['comparison_tables']['logical_scenario_row_count']}")

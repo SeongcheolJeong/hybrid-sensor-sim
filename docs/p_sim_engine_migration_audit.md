@@ -104,6 +104,10 @@ Implemented in the current repository:
 23. batch comparison propagation of route interaction summaries
    - `src/hybrid_sensor_sim/tools/scenario_batch_comparison.py` now reads `lane_risk_summary.json` from both variant runs and matrix cases
    - logical-scenario and matrix-group summary rows now aggregate `path_conflict_row_count`, `merge_conflict_row_count`, `lane_change_conflict_row_count`, `path_interaction_counts`, and `min_ttc_path_conflict_sec_min`
+24. route-interaction-aware batch gate and attention triage
+   - route-interaction-specific gate thresholds now cover `path_conflict`, `merge_conflict`, `lane_change_conflict`, and `min_ttc_path_conflict_sec`
+   - attention rows now carry explicit `attention_reasons` including `PATH_CONFLICT_PRESENT`, `MERGE_CONFLICT_PRESENT`, `LANE_CHANGE_CONFLICT_PRESENT`, and `PATH_TTC_UNDER_3S`
+   - logical-scenario health rows now propagate per-scenario gate failures for route-interaction thresholds, not only collision/timeout/TTC-any-lane failures
 
 Still pending from the same migration track:
 

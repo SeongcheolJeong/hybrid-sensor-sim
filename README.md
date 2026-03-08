@@ -196,6 +196,11 @@ python3 scripts/run_scenario_batch_comparison.py \
   - `--gate-profile` loads reusable JSON policy
   - `--gate-profile-id scenario_batch_gate_strict_v0 --gate-profile-dir tests/fixtures/autonomy_e2e/p_validation` resolves a preset from a profile directory
   - explicit CLI gate flags override the matching profile fields
+  - route-interaction-specific gates are also supported through:
+    - `--gate-max-path-conflict-rows`
+    - `--gate-max-merge-conflict-rows`
+    - `--gate-max-lane-change-conflict-rows`
+    - `--gate-min-min-ttc-path-conflict-sec`
 
 The comparison command also writes a Markdown report next to the JSON report by default.
 
@@ -223,8 +228,9 @@ python3 scripts/run_scenario_batch_workflow.py \
 - `comparison_summary`: cross-batch overview, gate result, and compact attention rows
 - `comparison_summary.logical_scenario_rows`: compact logical-scenario table reused by workflow Markdown
 - `comparison_summary.logical_scenario_rows` and `comparison_summary.matrix_group_rows` now also carry aggregated route-interaction fields such as `path_conflict_row_count`, `merge_conflict_row_count`, `lane_change_conflict_row_count`, `path_interaction_counts`, and `min_ttc_path_conflict_sec_min`
-- `comparison_summary.logical_scenario_health_rows`: pass/fail/attention logical-scenario health table derived from collisions, timeouts, execution failures, and TTC threshold breaches, now including per-scenario `gate_status`, `gate_failure_codes`, and `gate_evaluated_rules`
+- `comparison_summary.logical_scenario_health_rows`: pass/fail/attention logical-scenario health table derived from collisions, timeouts, execution failures, TTC threshold breaches, and route-interaction thresholds, now including per-scenario `gate_status`, `gate_failure_codes`, `gate_evaluated_rules`, `path_conflict_row_count`, `merge_conflict_row_count`, `lane_change_conflict_row_count`, and `min_ttc_path_conflict_sec_min`
 - `comparison_summary.logical_scenario_health_gate_status_counts`: compact `DISABLED|PASS|FAIL` counts for the per-scenario gate surface
+- batch gate policy can now optionally cover `path_conflict`, `merge_conflict`, `lane_change_conflict`, and `min_ttc_path_conflict_sec` in addition to the existing attention/collision/timeout/TTC-any-lane rules
 - `comparison_summary.matrix_group_rows`: compact matrix-group table reused by workflow Markdown
 - `variant_summary.successful_variant_rows`: compact successful variant rows reused by workflow Markdown
 - `variant_summary.non_success_variant_rows`: compact failed/skipped variant rows reused by workflow Markdown
@@ -232,7 +238,7 @@ python3 scripts/run_scenario_batch_workflow.py \
 
 Use `--fail-on-attention` if attention rows should fail the command.
 Use `--gate-profile-id` when you want a preset gate policy without spelling out the JSON path.
-The workflow Markdown report now includes logical-scenario health with per-scenario gate columns, logical-scenario summary and matrix-group summary with path/merge/lane-change columns, and successful/non-success variant tables.
+The workflow Markdown report now includes logical-scenario health with per-scenario gate columns, logical-scenario summary and matrix-group summary with path/merge/lane-change columns, successful/non-success variant tables, and attention rows annotated with `attention_reasons` such as `PATH_CONFLICT_PRESENT`, `MERGE_CONFLICT_PRESENT`, `LANE_CHANGE_CONFLICT_PRESENT`, and `PATH_TTC_UNDER_3S` when applicable.
 
 Both `run_scenario_variants.py` and `run_scenario_variant_workflow.py` resolve default scenario-language profiles from:
 

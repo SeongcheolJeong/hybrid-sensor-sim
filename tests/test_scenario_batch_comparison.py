@@ -20,6 +20,7 @@ from hybrid_sensor_sim.tools.scenario_variant_workflow import run_scenario_varia
 
 P_VALIDATION_FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "autonomy_e2e" / "p_validation"
 P_SIM_ENGINE_FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "autonomy_e2e" / "p_sim_engine"
+P_MAP_TOOLSET_FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "autonomy_e2e" / "p_map_toolset"
 
 
 class ScenarioBatchComparisonTests(unittest.TestCase):
@@ -36,6 +37,32 @@ class ScenarioBatchComparisonTests(unittest.TestCase):
                             "parameters": {"scenario_variant": [1]},
                             "variant_payload_kind": "scenario_definition_v0",
                             "variant_payload_template": collision_scenario,
+                        }
+                    ]
+                },
+                indent=2,
+                ensure_ascii=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    def _write_route_attention_logical_scenarios(self, path: Path) -> None:
+        route_scenario = json.loads(
+            (P_SIM_ENGINE_FIXTURE_ROOT / "highway_map_route_following_v0.json").read_text(encoding="utf-8")
+        )
+        route_scenario["canonical_map_path"] = str(
+            (P_MAP_TOOLSET_FIXTURE_ROOT / "canonical_lane_graph_v0.json").resolve()
+        )
+        path.write_text(
+            json.dumps(
+                {
+                    "logical_scenarios": [
+                        {
+                            "scenario_id": "scn_route_attention",
+                            "parameters": {"scenario_variant": [1]},
+                            "variant_payload_kind": "scenario_definition_v0",
+                            "variant_payload_template": route_scenario,
                         }
                     ]
                 },
@@ -275,6 +302,56 @@ class ScenarioBatchComparisonTests(unittest.TestCase):
                 str((P_VALIDATION_FIXTURE_ROOT / "scenario_batch_gate_strict_v0.json").resolve()),
             )
             self.assertIn("ATTENTION_ROWS_EXCEEDED", report["gate"]["failure_codes"])
+
+    def test_scenario_batch_comparison_attention_rows_include_path_interaction_reasons(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            logical_path = root / "route_attention_logical_scenarios.json"
+            self._write_route_attention_logical_scenarios(logical_path)
+            workflow_result = run_scenario_variant_workflow(
+                logical_scenarios_path=str(logical_path),
+                scenario_language_profile="",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                out_root=root / "workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=1,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+            )
+            run_scenario_matrix_sweep(
+                scenario_path=P_SIM_ENGINE_FIXTURE_ROOT / "highway_safe_following_v0.json",
+                out_root=root / "matrix_runs",
+                report_out=root / "matrix_report.json",
+                run_id_prefix="RUN_MATRIX_COMPARE",
+                traffic_profile_ids=["sumo_highway_balanced_v0"],
+                traffic_actor_pattern_ids=["sumo_platoon_sparse_v0"],
+                traffic_npc_speed_scale_values=[1.0],
+                tire_friction_coeff_values=[1.0],
+                surface_friction_scale_values=[1.0],
+                enable_ego_collision_avoidance=False,
+                avoidance_ttc_threshold_sec=2.5,
+                ego_max_brake_mps2=6.0,
+                max_cases=0,
+            )
+            report = build_scenario_batch_comparison_report(
+                variant_workflow_report_path=Path(workflow_result["workflow_report_path"]),
+                matrix_sweep_report_path=root / "matrix_report.json",
+                out_report=root / "comparison.json",
+            )
+            self.assertGreater(report["comparison_tables"]["attention_row_count"], 0)
+            attention_row = next(
+                row
+                for row in report["comparison_tables"]["attention_rows"]
+                if row["group_id"] == "scn_route_attention"
+            )
+            self.assertIn("PATH_CONFLICT_PRESENT", attention_row["attention_reasons"])
+            self.assertIn("MERGE_CONFLICT_PRESENT", attention_row["attention_reasons"])
+            self.assertIn("PATH_TTC_UNDER_3S", attention_row["attention_reasons"])
+            self.assertGreater(attention_row["merge_conflict_rows"], 0)
 
     def test_scenario_batch_comparison_cli_threshold_can_override_profile(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

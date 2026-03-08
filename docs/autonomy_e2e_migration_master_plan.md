@@ -37,6 +37,8 @@ Implemented from the first migration wave:
 17. per-scenario gate evaluation inside logical-scenario health summaries
 18. merge/diverge/lane-change interaction tagging inside route-aware object sim
 19. propagation of route interaction summaries into batch comparison and workflow reporting
+20. route-interaction-aware batch gate thresholds and attention reasons
+21. per-scenario route-interaction gate failures in logical-scenario health reporting
 
 Current repository paths:
 

@@ -85,7 +85,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--gate-max-attention-rows", default="")
     parser.add_argument("--gate-max-collision-rows", default="")
     parser.add_argument("--gate-max-timeout-rows", default="")
+    parser.add_argument("--gate-max-path-conflict-rows", default="")
+    parser.add_argument("--gate-max-merge-conflict-rows", default="")
+    parser.add_argument("--gate-max-lane-change-conflict-rows", default="")
     parser.add_argument("--gate-min-min-ttc-any-lane-sec", default="")
+    parser.add_argument("--gate-min-min-ttc-path-conflict-sec", default="")
     return parser.parse_args(argv)
 
 
@@ -186,6 +190,10 @@ def _build_logical_scenario_health_rows(
     max_attention_rows = gate_policy.get("max_attention_rows")
     max_collision_rows = gate_policy.get("max_collision_rows")
     max_timeout_rows = gate_policy.get("max_timeout_rows")
+    max_path_conflict_rows = gate_policy.get("max_path_conflict_rows")
+    max_merge_conflict_rows = gate_policy.get("max_merge_conflict_rows")
+    max_lane_change_conflict_rows = gate_policy.get("max_lane_change_conflict_rows")
+    min_ttc_path_conflict_threshold = _coerce_optional_float(gate_policy.get("min_min_ttc_path_conflict_sec"))
 
     def evaluate_rule(
         *,
@@ -221,8 +229,12 @@ def _build_logical_scenario_health_rows(
         non_success_variant_count = max(variant_count - succeeded_count, 0)
         collision_count = int(row.get("collision_count", 0))
         timeout_count = int(row.get("timeout_count", 0))
+        path_conflict_row_count = int(row.get("path_conflict_row_count", 0))
+        merge_conflict_row_count = int(row.get("merge_conflict_row_count", 0))
+        lane_change_conflict_row_count = int(row.get("lane_change_conflict_row_count", 0))
         attention_variant_count = max(non_success_variant_count, collision_count, timeout_count)
         min_ttc_any_lane_sec = _coerce_optional_float(row.get("min_ttc_any_lane_sec_min"))
+        min_ttc_path_conflict_sec = _coerce_optional_float(row.get("min_ttc_path_conflict_sec_min"))
         gate_evaluated_rules = [
             rule
             for rule in [
@@ -248,11 +260,39 @@ def _build_logical_scenario_health_rows(
                     failure_code="TIMEOUT_ROWS_EXCEEDED",
                 ),
                 evaluate_rule(
+                    metric_id="path_conflict_row_count",
+                    metric_value=path_conflict_row_count,
+                    threshold_value=max_path_conflict_rows,
+                    comparison="max_le",
+                    failure_code="PATH_CONFLICT_ROWS_EXCEEDED",
+                ),
+                evaluate_rule(
+                    metric_id="merge_conflict_row_count",
+                    metric_value=merge_conflict_row_count,
+                    threshold_value=max_merge_conflict_rows,
+                    comparison="max_le",
+                    failure_code="MERGE_CONFLICT_ROWS_EXCEEDED",
+                ),
+                evaluate_rule(
+                    metric_id="lane_change_conflict_row_count",
+                    metric_value=lane_change_conflict_row_count,
+                    threshold_value=max_lane_change_conflict_rows,
+                    comparison="max_le",
+                    failure_code="LANE_CHANGE_CONFLICT_ROWS_EXCEEDED",
+                ),
+                evaluate_rule(
                     metric_id="min_ttc_any_lane_sec_min",
                     metric_value=min_ttc_any_lane_sec,
                     threshold_value=min_ttc_threshold,
                     comparison="min_ge",
                     failure_code="MIN_TTC_BELOW_THRESHOLD",
+                ),
+                evaluate_rule(
+                    metric_id="min_ttc_path_conflict_sec_min",
+                    metric_value=min_ttc_path_conflict_sec,
+                    threshold_value=min_ttc_path_conflict_threshold,
+                    comparison="min_ge",
+                    failure_code="MIN_TTC_PATH_CONFLICT_BELOW_THRESHOLD",
                 ),
             ]
             if rule is not None
@@ -282,12 +322,25 @@ def _build_logical_scenario_health_rows(
         if timeout_count > 0:
             reasons.append("TIMEOUT_PRESENT")
             fail = True
+        if path_conflict_row_count > 0:
+            reasons.append("PATH_CONFLICT_PRESENT")
+        if merge_conflict_row_count > 0:
+            reasons.append("MERGE_CONFLICT_PRESENT")
+        if lane_change_conflict_row_count > 0:
+            reasons.append("LANE_CHANGE_CONFLICT_PRESENT")
         if (
             min_ttc_threshold is not None
             and min_ttc_any_lane_sec is not None
             and min_ttc_any_lane_sec < min_ttc_threshold
         ):
             reasons.append("MIN_TTC_BELOW_THRESHOLD")
+            fail = True
+        if (
+            min_ttc_path_conflict_threshold is not None
+            and min_ttc_path_conflict_sec is not None
+            and min_ttc_path_conflict_sec < min_ttc_path_conflict_threshold
+        ):
+            reasons.append("MIN_TTC_PATH_CONFLICT_BELOW_THRESHOLD")
             fail = True
         if non_success_variant_count > 0 and "NON_SUCCESS_VARIANTS_PRESENT" not in reasons:
             reasons.append("NON_SUCCESS_VARIANTS_PRESENT")
@@ -310,8 +363,13 @@ def _build_logical_scenario_health_rows(
                 "attention_variant_count": attention_variant_count,
                 "collision_count": collision_count,
                 "timeout_count": timeout_count,
+                "path_conflict_row_count": path_conflict_row_count,
+                "merge_conflict_row_count": merge_conflict_row_count,
+                "lane_change_conflict_row_count": lane_change_conflict_row_count,
                 "min_ttc_any_lane_sec_min": min_ttc_any_lane_sec,
+                "min_ttc_path_conflict_sec_min": min_ttc_path_conflict_sec,
                 "gate_min_min_ttc_any_lane_sec": min_ttc_threshold,
+                "gate_min_min_ttc_path_conflict_sec": min_ttc_path_conflict_threshold,
                 "gate_status": gate_status,
                 "gate_passed": gate_passed,
                 "gate_failure_codes": gate_failure_codes,
@@ -583,7 +641,11 @@ def run_scenario_batch_workflow(
     gate_max_attention_rows: int | None = None,
     gate_max_collision_rows: int | None = None,
     gate_max_timeout_rows: int | None = None,
+    gate_max_path_conflict_rows: int | None = None,
+    gate_max_merge_conflict_rows: int | None = None,
+    gate_max_lane_change_conflict_rows: int | None = None,
     gate_min_min_ttc_any_lane_sec: float | None = None,
+    gate_min_min_ttc_path_conflict_sec: float | None = None,
 ) -> dict[str, Any]:
     out_root = out_root.resolve()
     out_root.mkdir(parents=True, exist_ok=True)
@@ -633,7 +695,11 @@ def run_scenario_batch_workflow(
         gate_max_attention_rows=gate_max_attention_rows,
         gate_max_collision_rows=gate_max_collision_rows,
         gate_max_timeout_rows=gate_max_timeout_rows,
+        gate_max_path_conflict_rows=gate_max_path_conflict_rows,
+        gate_max_merge_conflict_rows=gate_max_merge_conflict_rows,
+        gate_max_lane_change_conflict_rows=gate_max_lane_change_conflict_rows,
         gate_min_min_ttc_any_lane_sec=gate_min_min_ttc_any_lane_sec,
+        gate_min_min_ttc_path_conflict_sec=gate_min_min_ttc_path_conflict_sec,
     )
     logical_scenario_health_rows = _build_logical_scenario_health_rows(
         list(comparison_report["comparison_tables"]["logical_scenario_rows"]),
@@ -789,9 +855,25 @@ def main(argv: list[str] | None = None) -> int:
                 args.gate_max_timeout_rows,
                 field="gate-max-timeout-rows",
             ),
+            gate_max_path_conflict_rows=_parse_optional_non_negative_int(
+                args.gate_max_path_conflict_rows,
+                field="gate-max-path-conflict-rows",
+            ),
+            gate_max_merge_conflict_rows=_parse_optional_non_negative_int(
+                args.gate_max_merge_conflict_rows,
+                field="gate-max-merge-conflict-rows",
+            ),
+            gate_max_lane_change_conflict_rows=_parse_optional_non_negative_int(
+                args.gate_max_lane_change_conflict_rows,
+                field="gate-max-lane-change-conflict-rows",
+            ),
             gate_min_min_ttc_any_lane_sec=_parse_optional_non_negative_float(
                 args.gate_min_min_ttc_any_lane_sec,
                 field="gate-min-min-ttc-any-lane-sec",
+            ),
+            gate_min_min_ttc_path_conflict_sec=_parse_optional_non_negative_float(
+                args.gate_min_min_ttc_path_conflict_sec,
+                field="gate-min-min-ttc-path-conflict-sec",
             ),
         )
         workflow_report = result["workflow_report"]

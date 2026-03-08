@@ -18,6 +18,7 @@ from hybrid_sensor_sim.tools.scenario_batch_workflow import main as scenario_bat
 
 P_VALIDATION_FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "autonomy_e2e" / "p_validation"
 P_SIM_ENGINE_FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "autonomy_e2e" / "p_sim_engine"
+P_MAP_TOOLSET_FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "autonomy_e2e" / "p_map_toolset"
 
 
 class ScenarioBatchWorkflowTests(unittest.TestCase):
@@ -34,6 +35,32 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
                             "parameters": {"scenario_variant": [1]},
                             "variant_payload_kind": "scenario_definition_v0",
                             "variant_payload_template": collision_scenario,
+                        }
+                    ]
+                },
+                indent=2,
+                ensure_ascii=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    def _write_route_attention_logical_scenarios(self, path: Path) -> None:
+        route_scenario = json.loads(
+            (P_SIM_ENGINE_FIXTURE_ROOT / "highway_map_route_following_v0.json").read_text(encoding="utf-8")
+        )
+        route_scenario["canonical_map_path"] = str(
+            (P_MAP_TOOLSET_FIXTURE_ROOT / "canonical_lane_graph_v0.json").resolve()
+        )
+        path.write_text(
+            json.dumps(
+                {
+                    "logical_scenarios": [
+                        {
+                            "scenario_id": "scn_route_attention",
+                            "parameters": {"scenario_variant": [1]},
+                            "variant_payload_kind": "scenario_definition_v0",
+                            "variant_payload_template": route_scenario,
                         }
                     ]
                 },
@@ -300,6 +327,49 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
                 "ATTENTION_ROWS_EXCEEDED",
                 workflow_report["comparison_summary"]["logical_scenario_health_rows"][0]["gate_failure_codes"],
             )
+
+    def test_scenario_batch_workflow_route_interaction_gate_failure_sets_failed_status(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            logical_path = root / "route_attention_logical_scenarios.json"
+            self._write_route_attention_logical_scenarios(logical_path)
+            result = run_scenario_batch_workflow(
+                logical_scenarios_path=str(logical_path),
+                scenario_language_profile="",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                matrix_scenario_path=P_SIM_ENGINE_FIXTURE_ROOT / "highway_safe_following_v0.json",
+                out_root=root / "batch_workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=1,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+                matrix_run_id_prefix="RUN_BATCH_MATRIX",
+                traffic_profile_ids=["sumo_highway_balanced_v0"],
+                traffic_actor_pattern_ids=["sumo_platoon_sparse_v0"],
+                traffic_npc_speed_scale_values=[1.0],
+                tire_friction_coeff_values=[1.0],
+                surface_friction_scale_values=[1.0],
+                enable_ego_collision_avoidance=False,
+                avoidance_ttc_threshold_sec=2.5,
+                ego_max_brake_mps2=6.0,
+                max_cases=0,
+                gate_max_merge_conflict_rows=0,
+            )
+            workflow_report = result["workflow_report"]
+            self.assertEqual(workflow_report["status"], "FAILED")
+            self.assertIn(
+                "MERGE_CONFLICT_ROWS_EXCEEDED",
+                workflow_report["comparison_summary"]["gate"]["failure_codes"],
+            )
+            health_row = workflow_report["comparison_summary"]["logical_scenario_health_rows"][0]
+            self.assertEqual(health_row["gate_status"], "FAIL")
+            self.assertIn("MERGE_CONFLICT_PRESENT", health_row["health_reasons"])
+            self.assertIn("PATH_CONFLICT_PRESENT", health_row["health_reasons"])
+            self.assertIn("MERGE_CONFLICT_ROWS_EXCEEDED", health_row["gate_failure_codes"])
 
     def test_scenario_batch_workflow_cli_can_resolve_gate_profile_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
