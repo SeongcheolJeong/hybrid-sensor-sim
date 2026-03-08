@@ -26,6 +26,7 @@ Implemented from the first migration wave:
 6. object-sim matrix sweep runner
 7. sensor rig sweep on current native preview/coverage outputs
 8. map convert / validate / route layer
+9. rendered variant execution runner for `scenario_variants_report_v0`
 
 Current repository paths:
 
@@ -128,6 +129,8 @@ Detailed audit:
    - `log_scene_v0` and matrix actor patterns can now synthesize actor lane assignments from route relations instead of relying only on explicit lane IDs or raw lane slots
 12. rendered payload generation in scenario variants
    - `logical_scenarios_v0` can now emit rendered concrete payloads, including route-relation-driven `log_scene_v0` variants
+13. rendered variant execution
+   - `scenario_variants_report_v0` can now drive replay/object-sim execution directly through `src/hybrid_sensor_sim/tools/scenario_variant_runner.py`
 
 ### Reference only
 
