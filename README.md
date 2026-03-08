@@ -613,6 +613,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_linux_handoff_config.json`
   - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_linux_handoff.env.sh`
   - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_linux_handoff.sh`
+  - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_linux_handoff_docker.sh`
   - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_linux_handoff_transfer_manifest.json`
   - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_linux_handoff_pack.sh`
   - `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_linux_handoff_unpack.sh`
@@ -624,6 +625,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - the workflow summary/report now includes structured blocker codes, a recommended next command, and Linux handoff transfer/env requirements when the selected runtime must move to a Linux runner
 - the Linux handoff path also emits a transfer manifest with per-file verification data, a local pack script, a bundle manifest, and a Linux unpack/verify script so the required inputs can be bundled and revalidated before smoke execution
 - `scripts/run_renderer_backend_linux_handoff.py` is the runner-side helper that consumes the bundle plus manifests, revalidates checksums, and optionally executes the extracted handoff script
+- `scripts/run_renderer_backend_linux_handoff_docker.py` runs the same handoff helper in a local Linux Docker container; the generated `renderer_backend_workflow_linux_handoff_docker.sh` defaults to verify-only (`HANDOFF_SKIP_RUN=1`) so local container checks stay safe by default
 
 ## Next implementation target
 

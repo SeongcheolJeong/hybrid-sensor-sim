@@ -251,6 +251,7 @@ Primary code references:
   - backend workflow now emits Linux-runner handoff artifacts so host-incompatible packaged runtimes can still move directly into a supported smoke path
   - Linux-runner handoff now also emits a transfer manifest with verification metadata plus pack/unpack scripts so the staged runtime/config/scenario inputs can be bundled and revalidated on the runner
   - workflow can now optionally pack and locally verify that Linux handoff bundle before the runner-side smoke step
+  - workflow now also emits a Docker handoff helper/script so the same Linux bundle can be revalidated inside a local Linux container before using a separate runner
   - local runtime discovery can now optionally run a real HELIOS docker demo probe and persist the result for readiness triage
   - local runtime discovery also emits backend acquisition hints so source-only AWSIM/CARLA states map directly to concrete download/build next steps
   - backend package acquire tool now resolves official package URLs from local setup summary, downloads archives, and chains directly into staging
