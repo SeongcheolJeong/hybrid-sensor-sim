@@ -21,6 +21,7 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `src/hybrid_sensor_sim/renderers/playback_contract.py`: renderer playback contract builder for CARLA/AWSIM bridge.
 - `src/hybrid_sensor_sim/orchestrator.py`: mode selection and pipeline chaining.
 - `docs/hybrid_helios_plan.md`: functional roadmap and risk management.
+- `docs/p_sim_engine_migration_audit.md`: audit of historical `P_Sim-Engine` work and concrete migration targets into this repository.
 - `scripts/setup_helios.sh`: bootstrap helper for cloning/building HELIOS.
 - `scripts/run_renderer_backend_smoke.py`: AWSIM/CARLA smoke launcher that forces direct backend execution plus output-contract inspection.
 - `scripts/discover_renderer_backend_local_env.py`: discovers local HELIOS/AWSIM/CARLA runtime candidates and writes a reusable env file plus readiness summary.
