@@ -11,6 +11,12 @@ from typing import Any
 
 from hybrid_sensor_sim.scenarios import LOG_SCENE_SCHEMA_VERSION_V0, SCENARIO_SCHEMA_VERSION_V0
 from hybrid_sensor_sim.tools.renderer_backend_smoke import main as renderer_backend_smoke_main
+from hybrid_sensor_sim.tools.renderer_backend_workflow import (
+    run_renderer_backend_workflow,
+)
+from hybrid_sensor_sim.tools.renderer_backend_local_setup import (
+    _inspect_executable_host_compatibility,
+)
 from hybrid_sensor_sim.tools.autonomy_e2e_history_guard import (
     build_autonomy_e2e_history_guard_report,
 )
@@ -56,6 +62,51 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--backend-bin", default="", help="Forwarded to renderer backend smoke")
     parser.add_argument("--renderer-map", default="", help="Forwarded to renderer backend smoke")
     parser.add_argument("--set-option", action="append", default=[], help="Forwarded to renderer backend smoke")
+    parser.add_argument(
+        "--renderer-backend-workflow-output-root",
+        default="",
+        help="Optional output root for staged packaged backend handoff workflow when the selected runtime is host-incompatible",
+    )
+    parser.add_argument(
+        "--pack-linux-handoff",
+        action="store_true",
+        help="When preparing renderer backend handoff, also build a transfer bundle",
+    )
+    parser.add_argument(
+        "--verify-linux-handoff-bundle",
+        action="store_true",
+        help="When preparing renderer backend handoff, verify the generated transfer bundle locally",
+    )
+    parser.add_argument(
+        "--run-linux-handoff-docker",
+        action="store_true",
+        help="When preparing renderer backend handoff, run the Docker handoff helper",
+    )
+    parser.add_argument(
+        "--docker-handoff-execute",
+        action="store_true",
+        help="When running the Docker handoff helper, execute the extracted handoff script instead of verify-only mode",
+    )
+    parser.add_argument(
+        "--docker-binary",
+        default="docker",
+        help="Docker CLI binary used for renderer backend handoff",
+    )
+    parser.add_argument(
+        "--docker-image",
+        default="python:3.11-slim",
+        help="Linux Docker image used for renderer backend handoff",
+    )
+    parser.add_argument(
+        "--docker-container-workspace",
+        default="/workspace",
+        help="Workspace mount path inside the Docker container for renderer backend handoff",
+    )
+    parser.add_argument(
+        "--refresh-docker-handoff-preflight",
+        action="store_true",
+        help="Refresh the Docker handoff preflight probe before renderer backend handoff execution",
+    )
     parser.add_argument("--skip-smoke", action="store_true", help="Only select and translate; do not execute renderer backend smoke")
     parser.add_argument(
         "--skip-autoware-bridge",
@@ -550,7 +601,16 @@ def run_scenario_backend_smoke_workflow(
     backend_bin: str,
     renderer_map: str,
     option_overrides: list[str],
-    skip_smoke: bool,
+    renderer_backend_workflow_output_root: str = "",
+    pack_linux_handoff: bool = False,
+    verify_linux_handoff_bundle: bool = False,
+    run_linux_handoff_docker: bool = False,
+    docker_handoff_execute: bool = False,
+    docker_binary: str = "docker",
+    docker_image: str = "python:3.11-slim",
+    docker_container_workspace: str = "/workspace",
+    refresh_docker_handoff_preflight: bool = False,
+    skip_smoke: bool = False,
     skip_autoware_bridge: bool = False,
     autoware_base_frame: str = "base_link",
     autoware_strict: bool = False,
@@ -624,6 +684,35 @@ def run_scenario_backend_smoke_workflow(
     )
     resolved_backend_bin = _optional_text(runtime_selection.get("backend_bin"))
     resolved_renderer_map = _optional_text(runtime_selection.get("renderer_map"))
+    backend_compatibility = (
+        _inspect_executable_host_compatibility(Path(resolved_backend_bin))
+        if resolved_backend_bin
+        else {
+            "host_compatible": None,
+            "host_compatibility_reason": "",
+            "binary_format": None,
+            "file_description": "",
+            "binary_architectures": [],
+            "translation_required": None,
+        }
+    )
+    runtime_selection.update(
+        {
+            "backend_host_compatible": backend_compatibility.get("host_compatible"),
+            "backend_host_compatibility_reason": backend_compatibility.get(
+                "host_compatibility_reason"
+            )
+            or None,
+            "backend_binary_format": backend_compatibility.get("binary_format"),
+            "backend_binary_architectures": list(
+                backend_compatibility.get("binary_architectures", [])
+            ),
+            "backend_translation_required": backend_compatibility.get(
+                "translation_required"
+            ),
+            "backend_file_description": backend_compatibility.get("file_description") or None,
+        }
+    )
 
     smoke_stdout_path = out_root / "scenario_backend_smoke_stdout.log"
     smoke_stderr_path = out_root / "scenario_backend_smoke_stderr.log"
@@ -633,9 +722,54 @@ def run_scenario_backend_smoke_workflow(
     smoke_exit_code = None
     smoke_summary = None
     autoware_result = None
+    renderer_backend_workflow_summary = None
     status = "BRIDGED_ONLY" if skip_smoke else "SMOKE_FAILED"
 
-    if not skip_smoke:
+    if (
+        not skip_smoke
+        and resolved_backend_bin
+        and backend_compatibility.get("host_compatible") is False
+    ):
+        repo_root = Path(__file__).resolve().parents[3]
+        renderer_backend_workflow_root = (
+            Path(str(renderer_backend_workflow_output_root).strip()).expanduser().resolve()
+            if str(renderer_backend_workflow_output_root).strip()
+            else (out_root / "renderer_backend_workflow").resolve()
+        )
+        renderer_backend_workflow_summary = run_renderer_backend_workflow(
+            backend=backend,
+            repo_root=repo_root,
+            workflow_root=renderer_backend_workflow_root,
+            setup_summary_path=(
+                Path(str(runtime_selection.get("setup_summary_path"))).resolve()
+                if runtime_selection.get("setup_summary_path")
+                else None
+            ),
+            config_path=smoke_input_config_path.resolve(),
+            backend_bin_override=resolved_backend_bin,
+            renderer_map_override=resolved_renderer_map or None,
+            auto_acquire=False,
+            dry_run=True,
+            option_overrides=list(option_overrides),
+            pack_linux_handoff=bool(pack_linux_handoff),
+            verify_linux_handoff_bundle=bool(verify_linux_handoff_bundle),
+            run_linux_handoff_docker=bool(run_linux_handoff_docker),
+            docker_handoff_execute=bool(docker_handoff_execute),
+            docker_binary=docker_binary,
+            docker_image=docker_image,
+            docker_container_workspace=docker_container_workspace,
+            refresh_docker_handoff_preflight=bool(refresh_docker_handoff_preflight),
+        )
+        if renderer_backend_workflow_summary.get("status") in {
+            "HANDOFF_DOCKER_VERIFIED",
+            "HANDOFF_DOCKER_EXECUTED",
+        }:
+            status = str(renderer_backend_workflow_summary["status"])
+        elif renderer_backend_workflow_summary.get("linux_handoff", {}).get("ready"):
+            status = "HANDOFF_READY"
+        else:
+            status = "SMOKE_FAILED"
+    elif not skip_smoke:
         smoke_argv = [
             "--config",
             str(smoke_input_config_path),
@@ -737,6 +871,79 @@ def run_scenario_backend_smoke_workflow(
                 else None
             ),
         },
+        "renderer_backend_workflow": {
+            "requested": bool(
+                not skip_smoke
+                and resolved_backend_bin
+                and backend_compatibility.get("host_compatible") is False
+            ),
+            "status": (
+                renderer_backend_workflow_summary.get("status")
+                if isinstance(renderer_backend_workflow_summary, dict)
+                else None
+            ),
+            "success": (
+                renderer_backend_workflow_summary.get("success")
+                if isinstance(renderer_backend_workflow_summary, dict)
+                else None
+            ),
+            "summary_path": (
+                renderer_backend_workflow_summary.get("artifacts", {}).get("summary_path")
+                if isinstance(renderer_backend_workflow_summary, dict)
+                else None
+            ),
+            "report_path": (
+                renderer_backend_workflow_summary.get("artifacts", {}).get("report_path")
+                if isinstance(renderer_backend_workflow_summary, dict)
+                else None
+            ),
+            "recommended_next_command": (
+                renderer_backend_workflow_summary.get("recommended_next_command")
+                if isinstance(renderer_backend_workflow_summary, dict)
+                else None
+            ),
+            "blocker_codes": (
+                [
+                    str(item.get("code"))
+                    for item in renderer_backend_workflow_summary.get("blockers", [])
+                    if isinstance(item, dict) and str(item.get("code", "")).strip()
+                ]
+                if isinstance(renderer_backend_workflow_summary, dict)
+                else []
+            ),
+            "linux_handoff_ready": (
+                renderer_backend_workflow_summary.get("linux_handoff", {}).get("ready")
+                if isinstance(renderer_backend_workflow_summary, dict)
+                else None
+            ),
+            "linux_handoff_bundle_path": (
+                renderer_backend_workflow_summary.get("linux_handoff", {})
+                .get("bundle", {})
+                .get("bundle_path")
+                if isinstance(renderer_backend_workflow_summary, dict)
+                else None
+            ),
+            "linux_handoff_script_path": (
+                renderer_backend_workflow_summary.get("artifacts", {}).get(
+                    "linux_handoff_script_path"
+                )
+                if isinstance(renderer_backend_workflow_summary, dict)
+                else None
+            ),
+            "linux_handoff_docker_script_path": (
+                renderer_backend_workflow_summary.get("artifacts", {}).get(
+                    "linux_handoff_docker_script_path"
+                )
+                if isinstance(renderer_backend_workflow_summary, dict)
+                else None
+            ),
+            "docker_handoff_status": (
+                renderer_backend_workflow_summary.get("status")
+                if isinstance(renderer_backend_workflow_summary, dict)
+                and str(renderer_backend_workflow_summary.get("status", "")).startswith("HANDOFF_DOCKER_")
+                else None
+            ),
+        },
         "autoware": {
             "requested": not bool(skip_autoware_bridge),
             "status": (
@@ -811,6 +1018,28 @@ def run_scenario_backend_smoke_workflow(
             "autoware_dataset_manifest_path": (
                 dict(autoware_result.get("report", {})).get("artifacts", {}).get("dataset_manifest_path")
                 if isinstance(autoware_result, dict)
+                else None
+            ),
+            "renderer_backend_workflow_summary_path": (
+                renderer_backend_workflow_summary.get("artifacts", {}).get("summary_path")
+                if isinstance(renderer_backend_workflow_summary, dict)
+                else None
+            ),
+            "renderer_backend_workflow_report_path": (
+                renderer_backend_workflow_summary.get("artifacts", {}).get("report_path")
+                if isinstance(renderer_backend_workflow_summary, dict)
+                else None
+            ),
+            "renderer_backend_linux_handoff_script_path": (
+                renderer_backend_workflow_summary.get("artifacts", {}).get("linux_handoff_script_path")
+                if isinstance(renderer_backend_workflow_summary, dict)
+                else None
+            ),
+            "renderer_backend_linux_handoff_bundle_manifest_path": (
+                renderer_backend_workflow_summary.get("artifacts", {}).get(
+                    "linux_handoff_bundle_manifest_path"
+                )
+                if isinstance(renderer_backend_workflow_summary, dict)
                 else None
             ),
             "history_guard_report_path": (
@@ -924,6 +1153,15 @@ def main(argv: list[str] | None = None) -> int:
             backend_bin=args.backend_bin,
             renderer_map=args.renderer_map,
             option_overrides=list(args.set_option),
+            renderer_backend_workflow_output_root=args.renderer_backend_workflow_output_root,
+            pack_linux_handoff=bool(args.pack_linux_handoff),
+            verify_linux_handoff_bundle=bool(args.verify_linux_handoff_bundle),
+            run_linux_handoff_docker=bool(args.run_linux_handoff_docker),
+            docker_handoff_execute=bool(args.docker_handoff_execute),
+            docker_binary=args.docker_binary,
+            docker_image=args.docker_image,
+            docker_container_workspace=args.docker_container_workspace,
+            refresh_docker_handoff_preflight=bool(args.refresh_docker_handoff_preflight),
             skip_smoke=bool(args.skip_smoke),
             skip_autoware_bridge=bool(args.skip_autoware_bridge),
             autoware_base_frame=args.autoware_base_frame,
@@ -939,7 +1177,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[ok] variant_id={workflow_report['selection']['variant_id']}")
         print(f"[ok] smoke_scenario={workflow_report['artifacts']['smoke_scenario_path']}")
         print(f"[ok] report={result['workflow_report_path']}")
-        return 0 if workflow_report["status"] in {"BRIDGED_ONLY", "SMOKE_SUCCEEDED"} else 2
+        return 0 if workflow_report["status"] in {"BRIDGED_ONLY", "SMOKE_SUCCEEDED", "HANDOFF_READY", "HANDOFF_DOCKER_VERIFIED", "HANDOFF_DOCKER_EXECUTED"} else 2
     except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
         print(f"[error] scenario_backend_smoke_workflow.py: {exc}", file=sys.stderr)
         return 2

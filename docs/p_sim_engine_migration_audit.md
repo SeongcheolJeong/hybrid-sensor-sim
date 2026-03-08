@@ -199,6 +199,9 @@ Implemented in the current repository:
    - `src/hybrid_sensor_sim/autoware/*.py` now builds JSON-first topic/frame/pipeline manifests from backend smoke artifacts
    - `src/hybrid_sensor_sim/tools/autoware_pipeline_bridge.py` and `scripts/run_autoware_pipeline_bridge.py` expose the bridge directly
    - `scenario_backend_smoke_workflow` and `scenario_runtime_backend_workflow` now lift Autoware readiness into their workflow reports
+48. packaged-backend handoff surfacing in scenario smoke workflows
+   - `scenario_backend_smoke_workflow` now detects host-incompatible staged packaged backends and routes them through `renderer_backend_workflow` dry-run handoff planning instead of reporting only a smoke failure
+   - `scenario_runtime_backend_workflow` now lifts that handoff state to top-level `HANDOFF_READY` or `HANDOFF_DOCKER_*` statuses together with blocker codes, recommended next command, and handoff artifact paths
 
 Still pending from the same migration track:
 

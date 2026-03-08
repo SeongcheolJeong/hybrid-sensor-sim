@@ -353,9 +353,11 @@ python3 scripts/run_scenario_backend_smoke_workflow.py \
 
 - `selection`: chosen `variant_id`, `logical_scenario_id`, bridge source path, and whether the bridge used `rendered_payload_path` or `replay_scenario_path`
 - `runtime_selection`: resolved `backend_bin` / `renderer_map` and whether they came from explicit CLI, auto-discovered canonical `artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json`, or auto-discovered canonical `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_summary.json`
+- if a staged packaged backend is selected but is host-incompatible on the current machine, the workflow now switches to `renderer_backend_workflow` dry-run handoff planning and reports `HANDOFF_READY` or `HANDOFF_DOCKER_*` instead of an opaque smoke failure
 - `bridge`: lane spacing, actor IDs, lane bindings, route-lane metadata, and the translated smoke scenario artifact path
 - `history_guard`: optional provenance guard result for publish-time validation against `origin/main`
 - `artifacts`: `scenario_backend_smoke_selection.json`, `scenario_runtime_bridge_manifest.json`, translated smoke scenario JSON, and materialized smoke input config
+- `renderer_backend_workflow`: optional packaged-backend handoff planning result, including blocker codes, recommended next command, Linux handoff readiness, and handoff artifact paths
 - `smoke`: optional downstream `renderer_backend_smoke` execution status, summary/report paths, captured stdout/stderr logs, and backend output triage (`output_smoke_status`, `output_comparison_status`, mismatch reasons, unexpected output count)
 - `autoware`: optional Autoware-facing bridge status, available topics, missing required sensor count, and bundle artifact paths
 
@@ -383,6 +385,7 @@ python3 scripts/run_scenario_runtime_backend_workflow.py \
 - `batch_workflow`: embedded batch-workflow status, report paths, and worst logical scenario summary
 - `backend_smoke_workflow`: embedded backend-smoke workflow status, selected variant, runtime selection, bridge summary, and smoke result
 - `backend_smoke_workflow.runtime_selection` also records whether backend selection came from explicit args, local setup/workflow summaries, or staged package artifacts under `third_party/runtime_backends/<backend>/renderer_backend_package_{stage,acquire}.json`
+- host-incompatible packaged backend selections are now lifted to top-level `HANDOFF_READY` or `HANDOFF_DOCKER_*` runtime statuses, together with `backend_handoff_status`, `backend_handoff_ready`, blocker codes, recommended command, and bundle/script artifact paths
 - `history_guard`: optional provenance guard status, failure codes, and report path for publish-time validation against `origin/main`
 - `status_summary`: final status source, ordered decision trace, batch triage IDs, backend smoke result summary, backend output smoke/comparison mismatch details, Autoware readiness, and optional history-guard status
 - `artifacts`: top-level report paths plus generated smoke scenario/config paths, Autoware bundle artifact paths, and optional history-guard report

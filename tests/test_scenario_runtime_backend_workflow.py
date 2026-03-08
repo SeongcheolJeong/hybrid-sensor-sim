@@ -876,6 +876,158 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
                 "Town27",
             )
 
+    def test_run_scenario_runtime_backend_workflow_promotes_backend_handoff_ready(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            batch_report_path = root / "batch_workflow_report.json"
+            backend_report_path = root / "scenario_backend_smoke_workflow_report_v0.json"
+            smoke_scenario_path = root / "smoke_scenario.json"
+            smoke_input_config_path = root / "smoke_input_config.json"
+            renderer_summary_path = root / "renderer_backend_workflow_summary.json"
+            renderer_report_path = root / "renderer_backend_workflow_report.md"
+            handoff_script_path = root / "renderer_backend_workflow_linux_handoff.sh"
+            bundle_manifest_path = (
+                root / "renderer_backend_workflow_linux_handoff_bundle_manifest.json"
+            )
+
+            with patch(
+                "hybrid_sensor_sim.tools.scenario_runtime_backend_workflow.run_scenario_batch_workflow",
+                return_value={
+                    "workflow_report_path": batch_report_path,
+                    "workflow_markdown_path": root / "batch_workflow_report.md",
+                    "workflow_report": {
+                        "status": "SUCCEEDED",
+                        "status_summary": {
+                            "worst_logical_scenario_row": {
+                                "logical_scenario_id": "scn_ok"
+                            },
+                            "gate_failure_codes": [],
+                            "status_reason_codes": [],
+                        },
+                    },
+                },
+            ), patch(
+                "hybrid_sensor_sim.tools.scenario_runtime_backend_workflow.run_scenario_backend_smoke_workflow",
+                return_value={
+                    "workflow_report_path": backend_report_path,
+                    "workflow_report": {
+                        "status": "HANDOFF_READY",
+                        "selection": {"variant_id": "v1"},
+                        "runtime_selection": {
+                            "backend_bin": "/tmp/AWSIM-Demo-Lightweight.x86_64",
+                            "backend_bin_source": "explicit",
+                            "backend_host_compatible": False,
+                            "backend_host_compatibility_reason": "EXEC_FORMAT_ERROR",
+                        },
+                        "bridge": {
+                            "source_payload_kind": "scenario_definition_v0",
+                            "source_payload_path": "/tmp/scenario.json",
+                            "smoke_scenario_name": "SCENE",
+                            "object_count": 3,
+                        },
+                        "smoke": {"requested": True},
+                        "renderer_backend_workflow": {
+                            "status": "DRY_RUN_BLOCKED",
+                            "linux_handoff_ready": True,
+                            "blocker_codes": ["BACKEND_HOST_INCOMPATIBLE"],
+                            "recommended_next_command": "bash handoff.sh",
+                            "linux_handoff_bundle_path": "/tmp/handoff_bundle.tar.gz",
+                        },
+                        "autoware": {
+                            "status": None,
+                            "available_sensor_count": None,
+                            "missing_required_sensor_count": None,
+                            "available_topics": [],
+                            "required_topics_complete": None,
+                            "frame_tree_complete": None,
+                        },
+                        "artifacts": {
+                            "smoke_scenario_path": str(smoke_scenario_path),
+                            "smoke_input_config_path": str(smoke_input_config_path),
+                            "renderer_backend_workflow_summary_path": str(
+                                renderer_summary_path
+                            ),
+                            "renderer_backend_workflow_report_path": str(
+                                renderer_report_path
+                            ),
+                            "renderer_backend_linux_handoff_script_path": str(
+                                handoff_script_path
+                            ),
+                            "renderer_backend_linux_handoff_bundle_manifest_path": str(
+                                bundle_manifest_path
+                            ),
+                            "autoware_report_path": None,
+                            "autoware_sensor_contracts_path": None,
+                            "autoware_frame_tree_path": None,
+                            "autoware_pipeline_manifest_path": None,
+                            "autoware_dataset_manifest_path": None,
+                        },
+                    },
+                },
+            ):
+                result = run_scenario_runtime_backend_workflow(
+                    logical_scenarios_path=str(
+                        P_VALIDATION_FIXTURE_ROOT / "highway_mixed_payloads_v0.json"
+                    ),
+                    scenario_language_profile="",
+                    scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                    matrix_scenario_path=P_SIM_ENGINE_FIXTURE_ROOT
+                    / "highway_safe_following_v0.json",
+                    smoke_config_path=root / "smoke_config.json",
+                    backend="awsim",
+                    out_root=root / "runtime_backend_workflow",
+                    sampling="full",
+                    sample_size=0,
+                    seed=7,
+                    max_variants_per_scenario=1000,
+                    execution_max_variants=1,
+                    sds_version="sds_test",
+                    sim_version="sim_test",
+                    fidelity_profile="dev-fast",
+                    matrix_run_id_prefix="RUN_BATCH",
+                    traffic_profile_ids=["sumo_highway_balanced_v0"],
+                    traffic_actor_pattern_ids=["sumo_platoon_sparse_v0"],
+                    traffic_npc_speed_scale_values=[1.0],
+                    tire_friction_coeff_values=[1.0],
+                    surface_friction_scale_values=[1.0],
+                    enable_ego_collision_avoidance=False,
+                    avoidance_ttc_threshold_sec=2.5,
+                    ego_max_brake_mps2=6.0,
+                    max_cases=0,
+                    selection_strategy="worst_logical_scenario",
+                    selected_variant_id="",
+                    lane_spacing_m=4.0,
+                    smoke_output_dir="",
+                    setup_summary_path="",
+                    backend_workflow_summary_path="",
+                    backend_bin="",
+                    renderer_map="",
+                    option_overrides=[],
+                    skip_smoke=False,
+                )
+
+            report = result["workflow_report"]
+            self.assertEqual(report["status"], "HANDOFF_READY")
+            self.assertEqual(
+                report["status_summary"]["final_status_source"],
+                "backend_handoff_ready",
+            )
+            self.assertEqual(
+                report["status_summary"]["backend_handoff_status"],
+                "DRY_RUN_BLOCKED",
+            )
+            self.assertTrue(report["status_summary"]["backend_handoff_ready"])
+            self.assertIn(
+                "BACKEND_HOST_INCOMPATIBLE",
+                report["status_summary"]["backend_handoff_blocker_codes"],
+            )
+            self.assertEqual(
+                report["artifacts"]["renderer_backend_linux_handoff_script_path"],
+                str(handoff_script_path),
+            )
+
     def test_scenario_runtime_backend_workflow_script_bootstraps_src_path(self) -> None:
         script_path = (
             Path(__file__).resolve().parents[1]

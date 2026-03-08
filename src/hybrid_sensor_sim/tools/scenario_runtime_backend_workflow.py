@@ -126,6 +126,51 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--backend-bin", default="", help="Forwarded to renderer backend smoke")
     parser.add_argument("--renderer-map", default="", help="Forwarded to renderer backend smoke")
     parser.add_argument("--set-option", action="append", default=[], help="Forwarded to renderer backend smoke")
+    parser.add_argument(
+        "--renderer-backend-workflow-output-root",
+        default="",
+        help="Optional output root for packaged-backend handoff workflow artifacts",
+    )
+    parser.add_argument(
+        "--pack-linux-handoff",
+        action="store_true",
+        help="When preparing packaged-backend handoff, also build a transfer bundle",
+    )
+    parser.add_argument(
+        "--verify-linux-handoff-bundle",
+        action="store_true",
+        help="When preparing packaged-backend handoff, verify the generated transfer bundle locally",
+    )
+    parser.add_argument(
+        "--run-linux-handoff-docker",
+        action="store_true",
+        help="When preparing packaged-backend handoff, run the Docker handoff helper",
+    )
+    parser.add_argument(
+        "--docker-handoff-execute",
+        action="store_true",
+        help="When running the Docker handoff helper, execute the extracted handoff script instead of verify-only mode",
+    )
+    parser.add_argument(
+        "--docker-binary",
+        default="docker",
+        help="Docker CLI binary used for packaged-backend handoff",
+    )
+    parser.add_argument(
+        "--docker-image",
+        default="python:3.11-slim",
+        help="Linux Docker image used for packaged-backend handoff",
+    )
+    parser.add_argument(
+        "--docker-container-workspace",
+        default="/workspace",
+        help="Workspace mount path inside the Docker container for packaged-backend handoff",
+    )
+    parser.add_argument(
+        "--refresh-docker-handoff-preflight",
+        action="store_true",
+        help="Refresh the Docker handoff preflight probe before packaged-backend handoff execution",
+    )
     parser.add_argument("--skip-smoke", action="store_true", help="Run batch workflow and bridge only")
     parser.add_argument(
         "--skip-autoware-bridge",
@@ -208,12 +253,16 @@ def _build_workflow_status(
 ) -> str:
     if history_guard_status == "FAIL":
         return "FAILED"
-    if backend_status in {"SMOKE_FAILED", "FAILED"}:
+    if backend_status in {"SMOKE_FAILED", "FAILED", "HANDOFF_FAILED", "HANDOFF_DOCKER_FAILED"}:
         return "FAILED"
     if batch_status == "FAILED":
         return "FAILED"
     if batch_status == "ATTENTION":
         return "ATTENTION"
+    if backend_status in {"HANDOFF_DOCKER_VERIFIED", "HANDOFF_DOCKER_EXECUTED"}:
+        return backend_status
+    if backend_status == "HANDOFF_READY":
+        return "HANDOFF_READY"
     if backend_status == "BRIDGED_ONLY":
         return "BRIDGED_ONLY"
     return "SUCCEEDED"
@@ -260,6 +309,18 @@ def _build_status_summary(
             "status_if_matched": "BRIDGED_ONLY",
             "reason_code": "BACKEND_SMOKE_SKIPPED",
         },
+        {
+            "step_id": "backend_handoff_ready",
+            "matched": backend_report["status"] == "HANDOFF_READY",
+            "status_if_matched": "HANDOFF_READY",
+            "reason_code": "BACKEND_HANDOFF_READY",
+        },
+        {
+            "step_id": "backend_handoff_docker",
+            "matched": backend_report["status"] in {"HANDOFF_DOCKER_VERIFIED", "HANDOFF_DOCKER_EXECUTED"},
+            "status_if_matched": backend_report["status"],
+            "reason_code": "BACKEND_HANDOFF_DOCKER_READY",
+        },
     ]
     final_status_source = "default_success"
     status_reason_codes: list[str] = []
@@ -296,6 +357,17 @@ def _build_status_summary(
         "backend_output_inspection_status": smoke_summary.get("output_inspection_status"),
         "backend_runner_smoke_status": smoke_summary.get("runner_smoke_status"),
         "backend_run_status": smoke_summary.get("run_status"),
+        "backend_handoff_status": backend_report.get("renderer_backend_workflow", {}).get("status"),
+        "backend_handoff_ready": backend_report.get("renderer_backend_workflow", {}).get("linux_handoff_ready"),
+        "backend_handoff_blocker_codes": list(
+            backend_report.get("renderer_backend_workflow", {}).get("blocker_codes", [])
+        ),
+        "backend_handoff_recommended_command": backend_report.get("renderer_backend_workflow", {}).get(
+            "recommended_next_command"
+        ),
+        "backend_handoff_bundle_path": backend_report.get("renderer_backend_workflow", {}).get(
+            "linux_handoff_bundle_path"
+        ),
         "autoware_pipeline_status": autoware_summary.get("status"),
         "autoware_available_sensor_count": autoware_summary.get("available_sensor_count"),
         "autoware_missing_required_sensor_count": autoware_summary.get("missing_required_sensor_count"),
@@ -346,6 +418,11 @@ def _build_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Output inspection: `{summary['backend_output_inspection_status'] or '-'}`",
         f"- Runner smoke: `{summary['backend_runner_smoke_status'] or '-'}`",
         f"- Run status: `{summary['backend_run_status'] or '-'}`",
+        f"- Handoff status: `{summary['backend_handoff_status'] or '-'}`",
+        f"- Handoff ready: `{summary['backend_handoff_ready'] if summary['backend_handoff_ready'] is not None else '-'}`",
+        f"- Handoff blockers: `{', '.join(summary.get('backend_handoff_blocker_codes', [])) or '-'}`",
+        f"- Handoff command: `{summary.get('backend_handoff_recommended_command') or '-'}`",
+        f"- Handoff bundle: `{summary.get('backend_handoff_bundle_path') or '-'}`",
         "",
         "## Autoware Bridge",
         "",
@@ -428,6 +505,15 @@ def run_scenario_runtime_backend_workflow(
     backend_bin: str,
     renderer_map: str,
     option_overrides: list[str],
+    renderer_backend_workflow_output_root: str = "",
+    pack_linux_handoff: bool = False,
+    verify_linux_handoff_bundle: bool = False,
+    run_linux_handoff_docker: bool = False,
+    docker_handoff_execute: bool = False,
+    docker_binary: str = "docker",
+    docker_image: str = "python:3.11-slim",
+    docker_container_workspace: str = "/workspace",
+    refresh_docker_handoff_preflight: bool = False,
     skip_smoke: bool,
     skip_autoware_bridge: bool = False,
     autoware_base_frame: str = "base_link",
@@ -499,6 +585,15 @@ def run_scenario_runtime_backend_workflow(
         backend_bin=backend_bin,
         renderer_map=renderer_map,
         option_overrides=option_overrides,
+        renderer_backend_workflow_output_root=renderer_backend_workflow_output_root,
+        pack_linux_handoff=pack_linux_handoff,
+        verify_linux_handoff_bundle=verify_linux_handoff_bundle,
+        run_linux_handoff_docker=run_linux_handoff_docker,
+        docker_handoff_execute=docker_handoff_execute,
+        docker_binary=docker_binary,
+        docker_image=docker_image,
+        docker_container_workspace=docker_container_workspace,
+        refresh_docker_handoff_preflight=refresh_docker_handoff_preflight,
         skip_smoke=skip_smoke,
         skip_autoware_bridge=skip_autoware_bridge,
         autoware_base_frame=autoware_base_frame,
@@ -581,6 +676,9 @@ def run_scenario_runtime_backend_workflow(
                 "object_count": backend_report.get("bridge", {}).get("object_count"),
             },
             "smoke": dict(backend_report.get("smoke", {})),
+            "renderer_backend_workflow": dict(
+                backend_report.get("renderer_backend_workflow", {})
+            ),
             "autoware": dict(backend_report.get("autoware", {})),
         },
         "history_guard": {
@@ -617,6 +715,10 @@ def run_scenario_runtime_backend_workflow(
             "autoware_frame_tree_path": backend_report["artifacts"].get("autoware_frame_tree_path"),
             "autoware_pipeline_manifest_path": backend_report["artifacts"].get("autoware_pipeline_manifest_path"),
             "autoware_dataset_manifest_path": backend_report["artifacts"].get("autoware_dataset_manifest_path"),
+            "renderer_backend_workflow_summary_path": backend_report["artifacts"].get("renderer_backend_workflow_summary_path"),
+            "renderer_backend_workflow_report_path": backend_report["artifacts"].get("renderer_backend_workflow_report_path"),
+            "renderer_backend_linux_handoff_script_path": backend_report["artifacts"].get("renderer_backend_linux_handoff_script_path"),
+            "renderer_backend_linux_handoff_bundle_manifest_path": backend_report["artifacts"].get("renderer_backend_linux_handoff_bundle_manifest_path"),
             "history_guard_report_path": (
                 str(history_guard_report_path.resolve())
                 if history_guard_report_path is not None
@@ -760,6 +862,15 @@ def main(argv: list[str] | None = None) -> int:
             backend_bin=args.backend_bin,
             renderer_map=args.renderer_map,
             option_overrides=list(args.set_option),
+            renderer_backend_workflow_output_root=args.renderer_backend_workflow_output_root,
+            pack_linux_handoff=bool(args.pack_linux_handoff),
+            verify_linux_handoff_bundle=bool(args.verify_linux_handoff_bundle),
+            run_linux_handoff_docker=bool(args.run_linux_handoff_docker),
+            docker_handoff_execute=bool(args.docker_handoff_execute),
+            docker_binary=args.docker_binary,
+            docker_image=args.docker_image,
+            docker_container_workspace=args.docker_container_workspace,
+            refresh_docker_handoff_preflight=bool(args.refresh_docker_handoff_preflight),
             skip_smoke=bool(args.skip_smoke),
             skip_autoware_bridge=bool(args.skip_autoware_bridge),
             autoware_base_frame=args.autoware_base_frame,
@@ -775,7 +886,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[ok] batch_status={workflow_report['batch_workflow']['status']}")
         print(f"[ok] backend_smoke_status={workflow_report['backend_smoke_workflow']['status']}")
         print(f"[ok] report={result['workflow_report_path']}")
-        return 0 if workflow_report["status"] in {"SUCCEEDED", "ATTENTION", "BRIDGED_ONLY"} else 2
+        return 0 if workflow_report["status"] in {"SUCCEEDED", "ATTENTION", "BRIDGED_ONLY", "HANDOFF_READY", "HANDOFF_DOCKER_VERIFIED", "HANDOFF_DOCKER_EXECUTED"} else 2
     except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
         print(f"[error] scenario_runtime_backend_workflow.py: {exc}", file=sys.stderr)
         return 2

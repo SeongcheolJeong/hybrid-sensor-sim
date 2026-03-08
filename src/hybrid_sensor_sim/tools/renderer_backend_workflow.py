@@ -2122,39 +2122,11 @@ def build_renderer_backend_workflow(
     }
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = _parse_args(argv)
-    repo_root = Path(__file__).resolve().parents[3]
-    workflow_root = (
-        _resolve_path(args.output_root)
-        if args.output_root is not None
-        else (repo_root / "artifacts" / "renderer_backend_workflow" / args.backend).resolve()
-    )
-    summary = build_renderer_backend_workflow(
-        backend=args.backend,
-        repo_root=repo_root,
-        workflow_root=workflow_root,
-        setup_summary_path=_resolve_path(args.setup_summary) if args.setup_summary is not None else None,
-        config_path=_resolve_path(args.config) if args.config is not None else None,
-        backend_bin_override=args.backend_bin,
-        renderer_map_override=args.renderer_map,
-        auto_acquire=args.auto_acquire,
-        download_url=args.download_url,
-        download_name=args.download_name,
-        download_dir=_resolve_path(args.download_dir) if args.download_dir is not None else None,
-        overwrite_download=args.overwrite_download,
-        dry_run=args.dry_run,
-        option_overrides=list(args.set_option),
-        pack_linux_handoff=args.pack_linux_handoff,
-        verify_linux_handoff_bundle=args.verify_linux_handoff_bundle,
-        run_linux_handoff_docker=args.run_linux_handoff_docker,
-        docker_handoff_execute=args.docker_handoff_execute,
-        docker_binary=args.docker_binary,
-        docker_image=args.docker_image,
-        docker_container_workspace=args.docker_container_workspace,
-        docker_handoff_preflight_max_age_seconds=args.docker_handoff_preflight_max_age_seconds,
-        refresh_docker_handoff_preflight=args.refresh_docker_handoff_preflight,
-    )
+def _materialize_renderer_backend_workflow(
+    summary: dict[str, Any],
+    *,
+    repo_root: Path,
+) -> dict[str, Any]:
     summary_path = Path(summary["artifacts"]["summary_path"])
     env_path = Path(summary["artifacts"]["env_path"])
     report_path = Path(summary["artifacts"]["report_path"])
@@ -2276,7 +2248,7 @@ def main(argv: list[str] | None = None) -> int:
                             if linux_handoff_bundle_manifest_path.exists()
                             else None
                         ),
-                        repo_root=repo_root,
+                        repo_root=repo_root.resolve(),
                         output_root=_resolve_path(docker_handoff["output_root"]),
                         summary_path=_resolve_path(docker_handoff["summary_path"]),
                         docker_binary=str(docker_handoff["docker_binary"]),
@@ -2316,6 +2288,96 @@ def main(argv: list[str] | None = None) -> int:
                 "",
             ]
         ),
+    )
+    return summary
+
+
+def run_renderer_backend_workflow(
+    *,
+    backend: str,
+    repo_root: Path,
+    workflow_root: Path,
+    setup_summary_path: Path | None = None,
+    config_path: Path | None = None,
+    backend_bin_override: str | None = None,
+    renderer_map_override: str | None = None,
+    auto_acquire: bool = False,
+    download_url: str | None = None,
+    download_name: str | None = None,
+    download_dir: Path | None = None,
+    overwrite_download: bool = False,
+    dry_run: bool = False,
+    option_overrides: list[str] | None = None,
+    pack_linux_handoff: bool = False,
+    verify_linux_handoff_bundle: bool = False,
+    run_linux_handoff_docker: bool = False,
+    docker_handoff_execute: bool = False,
+    docker_binary: str = "docker",
+    docker_image: str = _DEFAULT_LINUX_HANDOFF_DOCKER_IMAGE,
+    docker_container_workspace: str = _DEFAULT_LINUX_HANDOFF_CONTAINER_WORKSPACE,
+    docker_handoff_preflight_max_age_seconds: int | None = _DEFAULT_DOCKER_HANDOFF_PREFLIGHT_MAX_AGE_SECONDS,
+    refresh_docker_handoff_preflight: bool = False,
+) -> dict[str, Any]:
+    summary = build_renderer_backend_workflow(
+        backend=backend,
+        repo_root=repo_root,
+        workflow_root=workflow_root,
+        setup_summary_path=setup_summary_path,
+        config_path=config_path,
+        backend_bin_override=backend_bin_override,
+        renderer_map_override=renderer_map_override,
+        auto_acquire=auto_acquire,
+        download_url=download_url,
+        download_name=download_name,
+        download_dir=download_dir,
+        overwrite_download=overwrite_download,
+        dry_run=dry_run,
+        option_overrides=option_overrides,
+        pack_linux_handoff=pack_linux_handoff,
+        verify_linux_handoff_bundle=verify_linux_handoff_bundle,
+        run_linux_handoff_docker=run_linux_handoff_docker,
+        docker_handoff_execute=docker_handoff_execute,
+        docker_binary=docker_binary,
+        docker_image=docker_image,
+        docker_container_workspace=docker_container_workspace,
+        docker_handoff_preflight_max_age_seconds=docker_handoff_preflight_max_age_seconds,
+        refresh_docker_handoff_preflight=refresh_docker_handoff_preflight,
+    )
+    return _materialize_renderer_backend_workflow(summary, repo_root=repo_root)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv)
+    repo_root = Path(__file__).resolve().parents[3]
+    workflow_root = (
+        _resolve_path(args.output_root)
+        if args.output_root is not None
+        else (repo_root / "artifacts" / "renderer_backend_workflow" / args.backend).resolve()
+    )
+    summary = run_renderer_backend_workflow(
+        backend=args.backend,
+        repo_root=repo_root,
+        workflow_root=workflow_root,
+        setup_summary_path=_resolve_path(args.setup_summary) if args.setup_summary is not None else None,
+        config_path=_resolve_path(args.config) if args.config is not None else None,
+        backend_bin_override=args.backend_bin,
+        renderer_map_override=args.renderer_map,
+        auto_acquire=args.auto_acquire,
+        download_url=args.download_url,
+        download_name=args.download_name,
+        download_dir=_resolve_path(args.download_dir) if args.download_dir is not None else None,
+        overwrite_download=args.overwrite_download,
+        dry_run=args.dry_run,
+        option_overrides=list(args.set_option),
+        pack_linux_handoff=args.pack_linux_handoff,
+        verify_linux_handoff_bundle=args.verify_linux_handoff_bundle,
+        run_linux_handoff_docker=args.run_linux_handoff_docker,
+        docker_handoff_execute=args.docker_handoff_execute,
+        docker_binary=args.docker_binary,
+        docker_image=args.docker_image,
+        docker_container_workspace=args.docker_container_workspace,
+        docker_handoff_preflight_max_age_seconds=args.docker_handoff_preflight_max_age_seconds,
+        refresh_docker_handoff_preflight=args.refresh_docker_handoff_preflight,
     )
     print(json.dumps(summary, indent=2))
     docker_handoff = summary.get("docker_handoff", {})

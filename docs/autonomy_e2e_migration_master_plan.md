@@ -85,6 +85,7 @@ Current repository paths:
 - `src/hybrid_sensor_sim/tools/scenario_backend_smoke_workflow.py`
 - `src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py`
 - canonical staged-runtime artifact reuse is now automatic: scenario smoke workflows auto-discover `artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json` and `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_summary.json` when explicit summary paths are not supplied
+- host-incompatible staged packaged backends are now surfaced as `renderer_backend_workflow` Linux handoff plans through the scenario smoke workflows, rather than only as generic smoke failures
 - `src/hybrid_sensor_sim/tools/sensor_rig_sweep.py`
 - `src/hybrid_sensor_sim/maps/convert.py`
 - `src/hybrid_sensor_sim/maps/validate.py`

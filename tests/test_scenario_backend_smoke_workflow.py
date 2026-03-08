@@ -770,6 +770,122 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
                 workflow_report["history_guard"]["failure_codes"],
             )
 
+    def test_run_scenario_backend_smoke_workflow_surfaces_linux_handoff_for_host_incompatible_backend(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            variant_result = run_scenario_variant_workflow(
+                logical_scenarios_path="",
+                scenario_language_profile="highway_mixed_payloads_v0",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                out_root=root / "variant_workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=1,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+            )
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+            fake_backend = root / "AWSIM-Demo-Lightweight.x86_64"
+            fake_backend.write_text("binary\n", encoding="utf-8")
+            smoke_config = _write_smoke_base_config(
+                root=root,
+                helios_bin=fake_helios,
+                output_dir=root / "smoke_placeholder",
+            )
+            renderer_workflow_root = root / "renderer_backend_workflow"
+            renderer_summary_path = renderer_workflow_root / "renderer_backend_workflow_summary.json"
+            renderer_report_path = renderer_workflow_root / "renderer_backend_workflow_report.md"
+            linux_handoff_script_path = (
+                renderer_workflow_root / "renderer_backend_workflow_linux_handoff.sh"
+            )
+            linux_handoff_docker_script_path = (
+                renderer_workflow_root / "renderer_backend_workflow_linux_handoff_docker.sh"
+            )
+            bundle_manifest_path = (
+                renderer_workflow_root
+                / "renderer_backend_workflow_linux_handoff_bundle_manifest.json"
+            )
+
+            with patch(
+                "hybrid_sensor_sim.tools.scenario_backend_smoke_workflow._inspect_executable_host_compatibility",
+                return_value={
+                    "host_compatible": False,
+                    "host_compatibility_reason": "EXEC_FORMAT_ERROR",
+                    "binary_format": "ELF",
+                    "binary_architectures": ["x86_64"],
+                    "translation_required": False,
+                    "file_description": "ELF 64-bit LSB executable",
+                },
+            ), patch(
+                "hybrid_sensor_sim.tools.scenario_backend_smoke_workflow.run_renderer_backend_workflow",
+                return_value={
+                    "status": "DRY_RUN_BLOCKED",
+                    "success": False,
+                    "recommended_next_command": "bash handoff.sh",
+                    "blockers": [{"code": "BACKEND_HOST_INCOMPATIBLE"}],
+                    "linux_handoff": {
+                        "ready": True,
+                        "bundle": {"bundle_path": str(root / "handoff_bundle.tar.gz")},
+                    },
+                    "artifacts": {
+                        "summary_path": str(renderer_summary_path),
+                        "report_path": str(renderer_report_path),
+                        "linux_handoff_script_path": str(linux_handoff_script_path),
+                        "linux_handoff_docker_script_path": str(
+                            linux_handoff_docker_script_path
+                        ),
+                        "linux_handoff_bundle_manifest_path": str(bundle_manifest_path),
+                    },
+                },
+            ):
+                result = run_scenario_backend_smoke_workflow(
+                    variant_workflow_report_path=str(variant_result["workflow_report_path"]),
+                    batch_workflow_report_path="",
+                    smoke_config_path=smoke_config,
+                    backend="awsim",
+                    out_root=root / "backend_smoke_workflow",
+                    selection_strategy="first_successful_variant",
+                    selected_variant_id="",
+                    lane_spacing_m=4.0,
+                    smoke_output_dir="",
+                    setup_summary_path="",
+                    backend_workflow_summary_path="",
+                    backend_bin=str(fake_backend),
+                    renderer_map="SampleMap",
+                    option_overrides=[],
+                    skip_smoke=False,
+                    skip_autoware_bridge=True,
+                )
+
+            workflow_report = result["workflow_report"]
+            self.assertEqual(workflow_report["status"], "HANDOFF_READY")
+            self.assertTrue(workflow_report["renderer_backend_workflow"]["requested"])
+            self.assertEqual(
+                workflow_report["renderer_backend_workflow"]["status"],
+                "DRY_RUN_BLOCKED",
+            )
+            self.assertTrue(
+                workflow_report["renderer_backend_workflow"]["linux_handoff_ready"]
+            )
+            self.assertEqual(
+                workflow_report["runtime_selection"]["backend_host_compatible"],
+                False,
+            )
+            self.assertEqual(
+                workflow_report["runtime_selection"]["backend_host_compatibility_reason"],
+                "EXEC_FORMAT_ERROR",
+            )
+            self.assertEqual(
+                workflow_report["artifacts"]["renderer_backend_workflow_summary_path"],
+                str(renderer_summary_path),
+            )
+
     def test_scenario_backend_smoke_workflow_script_bootstraps_src_path(self) -> None:
         script_path = Path(__file__).resolve().parents[1] / "scripts" / "run_scenario_backend_smoke_workflow.py"
         completed = subprocess.run(
