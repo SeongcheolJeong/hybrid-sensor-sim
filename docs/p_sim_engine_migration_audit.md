@@ -68,10 +68,11 @@ Implemented in the current repository:
 7. `core_sim_matrix_sweep_runner.py` baseline -> `src/hybrid_sensor_sim/scenarios/matrix_sweep.py`, `src/hybrid_sensor_sim/tools/scenario_matrix_sweep.py`
 8. `sensor_rig_sweep.py` baseline -> `src/hybrid_sensor_sim/tools/sensor_rig_sweep.py`
 9. second-wave `vehicle_dynamics` coupling into `src/hybrid_sensor_sim/scenarios/object_sim.py`
+10. canonical map / route consumption into `src/hybrid_sensor_sim/scenarios/schema.py` and `src/hybrid_sensor_sim/scenarios/object_sim.py`
 
 Still pending from the same migration track:
 
-1. map-aware scenario/object-sim consumption of the migrated canonical map layer
+1. deeper map-aware behavior beyond lane-id normalization and route summary wiring
 
 ## Block Mapping
 
@@ -121,7 +122,7 @@ These old files are still worth mining directly:
 
 The current repository does not yet have first-class equivalents for:
 
-1. map-aware scenario/object-sim consumption of the migrated canonical map layer
+1. richer map-aware behavior beyond route-lane normalization inside object-sim
 
 This is consistent with the current source tree, which is centered on:
 
@@ -151,7 +152,7 @@ Why first:
 - It creates the basis for object-sim and replay work.
 - It is more important than migrating any old runtime adapter scaffold.
 
-### 2. Map-aware scenario consumption next
+### 2. Deeper map-aware scenario behavior next
 
 Source:
 
@@ -181,7 +182,7 @@ Porting them would add duplication, not capability.
 
 The highest-value next migration from `Autonomy-E2E` is now:
 
-1. connect the migrated canonical map layer to scenario/object-sim inputs coherently
+1. deepen map-aware behavior on top of the new canonical-map-to-route normalization path
 2. keep the current longitudinal vehicle-dynamics coupling stable while map-aware behavior is added
 3. only then deepen map-aware scenario generation and validation
 

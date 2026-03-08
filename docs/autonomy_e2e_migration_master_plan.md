@@ -48,7 +48,7 @@ Current repository paths:
 
 Still pending from this master plan:
 
-1. canonical map consumption inside scenario/object-sim flows
+1. deeper map-aware behavior inside scenario/object-sim flows
 
 ## Boundary
 
@@ -113,6 +113,8 @@ Detailed audit:
    - now migrated as the current library-first object-sim sweep runner
 5. second-wave object-sim ego `vehicle_dynamics` coupling
    - now migrated as optional `ego_dynamics_mode=vehicle_dynamics` longitudinal coupling
+6. canonical map route consumption inside `scenario_definition_v0`
+   - now migrated as optional `canonical_map/canonical_map_path + route_definition + actor lane_id`
 
 ### Reference only
 
@@ -141,7 +143,7 @@ Primary source:
 ### Current status
 
 1. standalone map utilities are now present
-2. object-sim/scenario tooling still does not consume the canonical map layer directly
+2. object-sim/scenario tooling now consumes the canonical map layer for route-based lane normalization and summary wiring
 
 ## 3. P_Validation-Tooling-MVP
 
@@ -265,7 +267,7 @@ Work:
 
 Status:
 
-- `Next`
+- `Done`
 
 Source:
 
@@ -276,6 +278,23 @@ Work:
 1. connect canonical lane graph inputs to scenario/object-sim
 2. decide the minimum map-aware behavior surface that does not destabilize the current deterministic runner
 3. preserve the current standalone map utilities while adding scenario consumers on top
+
+Success criteria:
+
+1. `scenario_definition_v0` can reference `canonical_map_path` or embed `canonical_map`
+2. route-based lane-id normalization works without changing the legacy `lane_index` runtime surface
+3. object-sim summary and trace expose map/route consumption results
+
+## Phase D: Deeper Map-Aware Behavior
+
+Status:
+
+- `Next`
+
+Work:
+
+1. consume canonical map semantics for richer lane/risk behavior than simple route-order normalization
+2. decide whether replay or matrix sweep should synthesize lane_id values from canonical routes by default
 
 Success criteria:
 

@@ -15,6 +15,7 @@ from hybrid_sensor_sim.scenarios.replay import (
 from hybrid_sensor_sim.scenarios.schema import (
     SCENARIO_SCHEMA_VERSION_V0,
     ActorState,
+    ScenarioMapContext,
     ScenarioConfig,
     ScenarioValidationError,
     load_scenario,
@@ -37,6 +38,7 @@ __all__ = [
     "SCENARIO_SCHEMA_VERSION_V0",
     "SCENARIO_VARIANTS_REPORT_SCHEMA_VERSION_V0",
     "ScenarioConfig",
+    "ScenarioMapContext",
     "ScenarioValidationError",
     "build_lane_risk_summary",
     "build_replay_manifest",

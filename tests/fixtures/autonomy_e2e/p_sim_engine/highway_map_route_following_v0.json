@@ -1,0 +1,36 @@
+{
+  "scenario_schema_version": "scenario_definition_v0",
+  "scenario_id": "SC_HWY_MAP_ROUTE_001",
+  "duration_sec": 6.0,
+  "dt_sec": 0.1,
+  "canonical_map_path": "../p_map_toolset/canonical_lane_graph_v0.json",
+  "route_definition": {
+    "entry_lane_id": "lane_a",
+    "exit_lane_id": "lane_c",
+    "via_lane_ids": ["lane_b"],
+    "cost_mode": "hops"
+  },
+  "ego": {
+    "actor_id": "ego",
+    "position_m": 0.0,
+    "speed_mps": 14.0,
+    "length_m": 4.8,
+    "lane_id": "lane_a"
+  },
+  "npcs": [
+    {
+      "actor_id": "adjacent_vehicle",
+      "position_m": 24.0,
+      "speed_mps": 8.0,
+      "length_m": 4.8,
+      "lane_id": "lane_b"
+    },
+    {
+      "actor_id": "lead_same_lane",
+      "position_m": 45.0,
+      "speed_mps": 16.0,
+      "length_m": 4.8,
+      "lane_id": "lane_a"
+    }
+  ]
+}

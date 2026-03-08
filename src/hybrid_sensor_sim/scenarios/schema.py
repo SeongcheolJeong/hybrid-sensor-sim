@@ -5,6 +5,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from hybrid_sensor_sim.maps import (
+    ROUTE_COST_MODE_HOPS,
+    build_canonical_map_validation_report,
+    compute_canonical_route,
+    load_map_payload,
+)
 from hybrid_sensor_sim.physics.vehicle_dynamics import validate_vehicle_profile
 
 
@@ -22,6 +28,15 @@ class ActorState:
     speed_mps: float
     length_m: float = 4.8
     lane_index: int = 0
+    lane_id: str | None = None
+
+
+@dataclass(frozen=True)
+class ScenarioMapContext:
+    map_payload: dict[str, Any]
+    map_path: str | None
+    validation_report: dict[str, Any]
+    route_report: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -43,6 +58,7 @@ class ScenarioConfig:
     ego_vehicle_profile: dict[str, float] | None = None
     ego_target_speed_mps: float | None = None
     ego_road_grade_percent: float = 0.0
+    map_context: ScenarioMapContext | None = None
 
 
 def _load_json_object(path: Path) -> dict[str, Any]:
@@ -69,18 +85,124 @@ def _parse_bool(value: Any, *, field: str) -> bool:
     raise ScenarioValidationError(f"{field} must be a boolean")
 
 
-def _as_actor(payload: dict[str, Any], fallback_id: str) -> ActorState:
+def _resolve_route_lane_index(*, lane_id: str, route_lane_ids: list[str]) -> int:
+    if lane_id not in route_lane_ids:
+        raise ScenarioValidationError(f"lane_id not found in scenario route: {lane_id}")
+    return int(route_lane_ids.index(lane_id))
+
+
+def _as_actor(
+    payload: dict[str, Any],
+    fallback_id: str,
+    *,
+    route_lane_ids: list[str] | None = None,
+) -> ActorState:
     _require_keys(payload, ["position_m", "speed_mps"])
+    lane_id_raw = payload.get("lane_id")
+    lane_id = None if lane_id_raw is None else str(lane_id_raw).strip()
+    if lane_id == "":
+        raise ScenarioValidationError(f"{fallback_id} lane_id must be a non-empty string when provided")
+    lane_index_raw = payload.get("lane_index")
+    if lane_id is not None:
+        if route_lane_ids is None:
+            raise ScenarioValidationError(f"{fallback_id} lane_id requires route_definition")
+        lane_index = _resolve_route_lane_index(lane_id=lane_id, route_lane_ids=route_lane_ids)
+        if lane_index_raw is not None and int(lane_index_raw) != lane_index:
+            raise ScenarioValidationError(
+                f"{fallback_id} lane_index does not match route-derived lane index for lane_id={lane_id}"
+            )
+    else:
+        lane_index = int(payload.get("lane_index", 0))
     return ActorState(
         actor_id=str(payload.get("actor_id", fallback_id)),
         position_m=float(payload["position_m"]),
         speed_mps=float(payload["speed_mps"]),
         length_m=float(payload.get("length_m", 4.8)),
-        lane_index=int(payload.get("lane_index", 0)),
+        lane_index=lane_index,
+        lane_id=lane_id,
     )
 
 
-def validate_scenario_payload(payload: dict[str, Any]) -> ScenarioConfig:
+def _resolve_optional_path(raw_path: Any, *, source_path: Path | None, field: str) -> Path:
+    path_text = str(raw_path).strip()
+    if not path_text:
+        raise ScenarioValidationError(f"{field} must be a non-empty path")
+    candidate = Path(path_text)
+    if not candidate.is_absolute():
+        base_dir = source_path.parent if source_path is not None else Path.cwd()
+        candidate = (base_dir / candidate).resolve()
+    else:
+        candidate = candidate.resolve()
+    return candidate
+
+
+def _load_map_context(
+    payload: dict[str, Any],
+    *,
+    source_path: Path | None,
+) -> ScenarioMapContext | None:
+    canonical_map_payload_raw = payload.get("canonical_map")
+    canonical_map_path_raw = payload.get("canonical_map_path")
+    if canonical_map_payload_raw is None and canonical_map_path_raw is None:
+        if payload.get("route_definition") is not None:
+            raise ScenarioValidationError("route_definition requires canonical_map or canonical_map_path")
+        return None
+    if canonical_map_payload_raw is not None and canonical_map_path_raw is not None:
+        raise ScenarioValidationError("provide only one of canonical_map or canonical_map_path")
+
+    map_path: Path | None = None
+    if canonical_map_payload_raw is not None:
+        if not isinstance(canonical_map_payload_raw, dict):
+            raise ScenarioValidationError("canonical_map must be a JSON object")
+        map_payload = dict(canonical_map_payload_raw)
+    else:
+        map_path = _resolve_optional_path(
+            canonical_map_path_raw,
+            source_path=source_path,
+            field="canonical_map_path",
+        )
+        map_payload = load_map_payload(map_path, "canonical map")
+
+    validation_report = build_canonical_map_validation_report(
+        map_payload,
+        map_path=map_path,
+    )
+    if int(validation_report["error_count"]) > 0:
+        raise ScenarioValidationError(
+            "invalid canonical map: " + "; ".join(validation_report["errors"])
+        )
+
+    route_definition_raw = payload.get("route_definition")
+    route_report = None
+    if route_definition_raw is not None:
+        if not isinstance(route_definition_raw, dict):
+            raise ScenarioValidationError("route_definition must be an object")
+        via_lane_ids = route_definition_raw.get("via_lane_ids", [])
+        if via_lane_ids is None:
+            via_lane_ids = []
+        if not isinstance(via_lane_ids, list):
+            raise ScenarioValidationError("route_definition.via_lane_ids must be a list")
+        try:
+            route_report = compute_canonical_route(
+                map_payload,
+                entry_lane_id=str(route_definition_raw.get("entry_lane_id", "")).strip(),
+                exit_lane_id=str(route_definition_raw.get("exit_lane_id", "")).strip(),
+                via_lane_ids=[str(item) for item in via_lane_ids],
+                cost_mode=str(route_definition_raw.get("cost_mode", ROUTE_COST_MODE_HOPS)).strip().lower(),
+                map_path=map_path,
+            )
+        except ValueError as exc:
+            raise ScenarioValidationError(f"invalid route_definition: {exc}") from exc
+
+    return ScenarioMapContext(
+        map_payload=map_payload,
+        map_path=str(map_path) if map_path is not None else None,
+        validation_report=validation_report,
+        route_report=route_report,
+    )
+
+
+def validate_scenario_payload(payload: dict[str, Any], *, source_path: Path | None = None) -> ScenarioConfig:
     _require_keys(
         payload,
         ["scenario_schema_version", "scenario_id", "duration_sec", "dt_sec", "ego", "npcs"],
@@ -93,11 +215,16 @@ def validate_scenario_payload(payload: dict[str, Any]) -> ScenarioConfig:
             f"{scenario_schema_version}; expected {SCENARIO_SCHEMA_VERSION_V0}"
         )
 
-    ego = _as_actor(payload["ego"], "ego")
+    map_context = _load_map_context(payload, source_path=source_path)
+    route_lane_ids = None
+    if map_context is not None and map_context.route_report is not None:
+        route_lane_ids = [str(item) for item in map_context.route_report.get("route_lane_ids", [])]
+
+    ego = _as_actor(payload["ego"], "ego", route_lane_ids=route_lane_ids)
     npcs_raw = payload["npcs"]
     if not isinstance(npcs_raw, list) or len(npcs_raw) == 0:
         raise ScenarioValidationError("npcs must be a non-empty list")
-    npcs = [_as_actor(npc, f"npc_{idx + 1}") for idx, npc in enumerate(npcs_raw)]
+    npcs = [_as_actor(npc, f"npc_{idx + 1}", route_lane_ids=route_lane_ids) for idx, npc in enumerate(npcs_raw)]
 
     duration_sec = float(payload["duration_sec"])
     dt_sec = float(payload["dt_sec"])
@@ -180,12 +307,15 @@ def validate_scenario_payload(payload: dict[str, Any]) -> ScenarioConfig:
         ego_vehicle_profile=ego_vehicle_profile,
         ego_target_speed_mps=ego_target_speed_mps,
         ego_road_grade_percent=ego_road_grade_percent,
+        map_context=map_context,
     )
 
 
 def load_scenario(payload_or_path: dict[str, Any] | str | Path) -> ScenarioConfig:
     if isinstance(payload_or_path, dict):
         payload = payload_or_path
+        source_path = None
     else:
-        payload = _load_json_object(Path(payload_or_path).resolve())
-    return validate_scenario_payload(payload)
+        source_path = Path(payload_or_path).resolve()
+        payload = _load_json_object(source_path)
+    return validate_scenario_payload(payload, source_path=source_path)

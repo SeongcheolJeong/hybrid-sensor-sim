@@ -187,6 +187,15 @@ def apply_traffic_actor_pattern(
                 speed_mps=max(0.0, (base_speed_mps + speed_slot_offset_mps) * traffic_npc_speed_scale),
                 length_m=4.8,
                 lane_index=lane_index,
+                lane_id=(
+                    scenario.map_context.route_report["route_lane_ids"][lane_index]
+                    if (
+                        scenario.map_context is not None
+                        and scenario.map_context.route_report is not None
+                        and 0 <= lane_index < len(scenario.map_context.route_report.get("route_lane_ids", []))
+                    )
+                    else None
+                ),
             )
         )
 
@@ -208,6 +217,7 @@ def apply_traffic_actor_pattern(
         ego_vehicle_profile=scenario.ego_vehicle_profile,
         ego_target_speed_mps=scenario.ego_target_speed_mps,
         ego_road_grade_percent=scenario.ego_road_grade_percent,
+        map_context=scenario.map_context,
     )
 
 

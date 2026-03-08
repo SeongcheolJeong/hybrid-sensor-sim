@@ -45,6 +45,7 @@ class CoreSimRunner:
                     speed_mps=npc.speed_mps + jitter,
                     length_m=npc.length_m,
                     lane_index=npc.lane_index,
+                    lane_id=npc.lane_id,
                 )
 
         self.trace_rows: list[dict[str, Any]] = []
@@ -124,6 +125,7 @@ class CoreSimRunner:
                     speed_mps=npc.speed_mps,
                     length_m=npc.length_m,
                     lane_index=npc.lane_index,
+                    lane_id=npc.lane_id,
                 )
             )
         self.npcs = updated_npcs
@@ -157,9 +159,11 @@ class CoreSimRunner:
                     "ego_position_m": round(self.ego.position_m, 6),
                     "ego_speed_mps": round(self.ego.speed_mps, 6),
                     "ego_lane_index": int(self.ego.lane_index),
+                    "ego_lane_id": self.ego.lane_id,
                     "npc_id": npc.actor_id,
                     "npc_position_m": round(npc.position_m, 6),
                     "npc_lane_index": int(npc.lane_index),
+                    "npc_lane_id": npc.lane_id,
                     "lane_delta": lane_delta,
                     "same_lane": same_lane,
                     "adjacent_lane": adjacent_lane,
@@ -211,6 +215,7 @@ class CoreSimRunner:
             speed_mps=speed_mps,
             length_m=self.ego.length_m,
             lane_index=self.ego.lane_index,
+            lane_id=self.ego.lane_id,
         )
         return {
             "ego_dynamics_mode": "kinematic",
@@ -278,6 +283,7 @@ class CoreSimRunner:
             speed_mps=float(dynamics_step["speed_mps"]),
             length_m=self.ego.length_m,
             lane_index=self.ego.lane_index,
+            lane_id=self.ego.lane_id,
         )
         return {
             "ego_dynamics_mode": "vehicle_dynamics",
@@ -414,6 +420,7 @@ def run_object_sim(
         ego_vehicle_profile=scenario.ego_vehicle_profile,
         ego_target_speed_mps=scenario.ego_target_speed_mps,
         ego_road_grade_percent=scenario.ego_road_grade_percent,
+        map_context=scenario.map_context,
     )
     runner = CoreSimRunner(scenario=effective_scenario, seed=seed)
     summary = runner.run()
@@ -422,7 +429,17 @@ def run_object_sim(
     sds_version = str(metadata_dict.get("sds_version", "sds_unknown"))
     sim_version = str(metadata_dict.get("sim_version", "sim_engine_v0_prototype"))
     fidelity_profile = str(metadata_dict.get("fidelity_profile", "dev-fast"))
-    map_id = str(metadata_dict.get("map_id", "map_unknown"))
+    scenario_map_id = (
+        str(effective_scenario.map_context.map_payload.get("map_id", "map_unknown"))
+        if effective_scenario.map_context is not None
+        else "map_unknown"
+    )
+    metadata_map_id = str(metadata_dict.get("map_id", "") or "").strip()
+    map_id = (
+        scenario_map_id
+        if metadata_map_id in {"", "map_unknown"}
+        else metadata_map_id
+    )
     map_version = str(metadata_dict.get("map_version", "v0"))
     odd_tags = metadata_dict.get("odd_tags", [])
     if isinstance(odd_tags, str):
@@ -430,6 +447,10 @@ def run_object_sim(
     else:
         odd_tags = [str(tag).strip() for tag in list(odd_tags) if str(tag).strip()]
     lifecycle_state = "FAILED" if summary["status"] in {"failed", "timeout"} else "LOGGED"
+    route_report = effective_scenario.map_context.route_report if effective_scenario.map_context is not None else None
+    validation_report = (
+        effective_scenario.map_context.validation_report if effective_scenario.map_context is not None else None
+    )
     summary.update(
         {
             "scenario_path": metadata_dict.get("scenario_path"),
@@ -443,6 +464,32 @@ def run_object_sim(
             "odd_tags": odd_tags,
             "lifecycle_state": lifecycle_state,
             "batch_id": metadata_dict.get("batch_id"),
+            "scenario_map_enabled": bool(effective_scenario.map_context is not None),
+            "scenario_map_path": (
+                effective_scenario.map_context.map_path if effective_scenario.map_context is not None else None
+            ),
+            "scenario_map_validation_error_count": (
+                int(validation_report["error_count"]) if validation_report is not None else 0
+            ),
+            "scenario_map_validation_warning_count": (
+                int(validation_report["warning_count"]) if validation_report is not None else 0
+            ),
+            "scenario_map_routing_semantic_status": (
+                validation_report["routing_semantic_summary"]["routing_semantic_status"]
+                if validation_report is not None
+                else None
+            ),
+            "scenario_route_enabled": bool(route_report is not None),
+            "scenario_route_lane_ids": (
+                list(route_report.get("route_lane_ids", [])) if route_report is not None else []
+            ),
+            "scenario_route_lane_count": (
+                int(route_report.get("route_lane_count", 0)) if route_report is not None else 0
+            ),
+            "scenario_route_cost_mode": (
+                str(route_report.get("route_cost_mode", "")) if route_report is not None else None
+            ),
+            "scenario_route_cost_value": route_report.get("route_cost_value") if route_report is not None else None,
             "enable_ego_collision_avoidance": bool(effective_scenario.enable_ego_collision_avoidance),
             "avoidance_ttc_threshold_sec": float(effective_scenario.avoidance_ttc_threshold_sec),
             "ego_max_brake_mps2": float(effective_scenario.ego_max_brake_mps2),
@@ -467,6 +514,8 @@ def run_object_sim(
             ),
             "traffic_npc_count": int(len(effective_scenario.npcs)),
             "traffic_npc_lane_profile": [int(npc.lane_index) for npc in effective_scenario.npcs],
+            "traffic_npc_lane_id_profile": [npc.lane_id for npc in effective_scenario.npcs],
+            "ego_lane_id": effective_scenario.ego.lane_id,
             "traffic_npc_gap_profile_m": [
                 round(float(npc.position_m - effective_scenario.ego.position_m), 6)
                 for npc in effective_scenario.npcs

@@ -61,6 +61,51 @@ class ObjectSimTests(unittest.TestCase):
                 }
             )
 
+    def test_load_scenario_resolves_lane_ids_from_map_route(self) -> None:
+        scenario = load_scenario(FIXTURE_ROOT / "highway_map_route_following_v0.json")
+
+        self.assertIsNotNone(scenario.map_context)
+        self.assertEqual(scenario.ego.lane_id, "lane_a")
+        self.assertEqual(scenario.ego.lane_index, 0)
+        self.assertEqual(scenario.npcs[0].lane_id, "lane_b")
+        self.assertEqual(scenario.npcs[0].lane_index, 1)
+        self.assertEqual(scenario.map_context.route_report["route_lane_ids"], ["lane_a", "lane_b", "lane_c"])
+
+    def test_load_scenario_rejects_lane_id_not_on_route(self) -> None:
+        with self.assertRaisesRegex(ScenarioValidationError, "lane_id not found in scenario route"):
+            load_scenario(
+                {
+                    "scenario_schema_version": "scenario_definition_v0",
+                    "scenario_id": "bad_map_lane",
+                    "duration_sec": 1.0,
+                    "dt_sec": 0.1,
+                    "canonical_map": {
+                        "map_schema_version": "canonical_lane_graph_v0",
+                        "map_id": "demo_map_v0",
+                        "lanes": [
+                            {
+                                "lane_id": "lane_a",
+                                "centerline_m": [{"x_m": 0.0, "y_m": 0.0}, {"x_m": 10.0, "y_m": 0.0}],
+                                "predecessor_lane_ids": [],
+                                "successor_lane_ids": ["lane_b"],
+                            },
+                            {
+                                "lane_id": "lane_b",
+                                "centerline_m": [{"x_m": 10.0, "y_m": 0.0}, {"x_m": 20.0, "y_m": 0.0}],
+                                "predecessor_lane_ids": ["lane_a"],
+                                "successor_lane_ids": [],
+                            },
+                        ],
+                    },
+                    "route_definition": {
+                        "entry_lane_id": "lane_a",
+                        "exit_lane_id": "lane_b",
+                    },
+                    "ego": {"position_m": 0.0, "speed_mps": 1.0, "lane_id": "lane_unknown"},
+                    "npcs": [{"position_m": 5.0, "speed_mps": 1.0, "lane_id": "lane_a"}],
+                }
+            )
+
     def test_run_object_sim_success_case_is_deterministic(self) -> None:
         scenario = load_scenario(FIXTURE_ROOT / "highway_safe_following_v0.json")
         result = run_object_sim(scenario, seed=42, metadata={"run_id": "SAFE_001"})
@@ -97,6 +142,22 @@ class ObjectSimTests(unittest.TestCase):
         self.assertEqual(result.trace_rows[0]["ego_dynamics_mode"], "vehicle_dynamics")
         self.assertIsNotNone(result.trace_rows[0]["ego_dynamics_throttle"])
         self.assertIsNotNone(result.trace_rows[0]["ego_dynamics_accel_mps2"])
+
+    def test_run_object_sim_exposes_map_route_context(self) -> None:
+        scenario = load_scenario(FIXTURE_ROOT / "highway_map_route_following_v0.json")
+        result = run_object_sim(scenario, seed=42, metadata={"run_id": "MAP_ROUTE_001"})
+
+        self.assertEqual(result.summary["status"], "success")
+        self.assertTrue(result.summary["scenario_map_enabled"])
+        self.assertTrue(result.summary["scenario_route_enabled"])
+        self.assertEqual(result.summary["map_id"], "demo_map_v0")
+        self.assertEqual(result.summary["scenario_map_routing_semantic_status"], "pass")
+        self.assertEqual(result.summary["scenario_route_lane_ids"], ["lane_a", "lane_b", "lane_c"])
+        self.assertEqual(result.summary["scenario_route_lane_count"], 3)
+        self.assertEqual(result.summary["traffic_npc_lane_id_profile"], ["lane_b", "lane_a"])
+        self.assertEqual(result.trace_rows[0]["ego_lane_id"], "lane_a")
+        self.assertEqual(result.trace_rows[0]["npc_lane_id"], "lane_b")
+        self.assertIsNotNone(result.summary["min_ttc_adjacent_lane_sec"])
 
     def test_run_object_sim_respects_wall_timeout_override(self) -> None:
         scenario = load_scenario(FIXTURE_ROOT / "highway_safe_following_v0.json")

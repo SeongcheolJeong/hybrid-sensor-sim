@@ -17,7 +17,7 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `src/hybrid_sensor_sim/backends/helios_adapter.py`: external HELIOS execution adapter.
 - `src/hybrid_sensor_sim/backends/native_physics.py`: local physics enhancement layer.
 - `src/hybrid_sensor_sim/scenarios/schema.py`: migrated `scenario_definition_v0` schema validation and actor normalization.
-- `src/hybrid_sensor_sim/scenarios/object_sim.py`: deterministic 1D object-sim core with collision/minTTC/lane-risk outputs and optional ego vehicle-dynamics coupling.
+- `src/hybrid_sensor_sim/scenarios/object_sim.py`: deterministic 1D object-sim core with collision/minTTC/lane-risk outputs, optional ego vehicle-dynamics coupling, and canonical map/route lane-id consumption.
 - `src/hybrid_sensor_sim/scenarios/log_scene.py`: migrated `log_scene_v0` validation.
 - `src/hybrid_sensor_sim/scenarios/replay.py`: `log_scene_v0` to `scenario_definition_v0` conversion helpers.
 - `src/hybrid_sensor_sim/scenarios/variants.py`: migrated `logical_scenarios_v0` variant generation with deterministic `full` and `random` sampling.
@@ -91,6 +91,16 @@ python3 scripts/run_object_sim.py \
   --run-id RUN_SAFE_DYN_001 \
   --seed 42 \
   --out artifacts/object_sim_dynamics_runs
+```
+
+Object sim with canonical map route consumption:
+
+```bash
+python3 scripts/run_object_sim.py \
+  --scenario tests/fixtures/autonomy_e2e/p_sim_engine/highway_map_route_following_v0.json \
+  --run-id RUN_MAP_ROUTE_001 \
+  --seed 42 \
+  --out artifacts/object_sim_map_route_runs
 ```
 
 Log replay and augmentation:
@@ -169,6 +179,7 @@ Autonomy-E2E fixtures currently mirrored into this repo:
 - `tests/fixtures/autonomy_e2e/p_sim_engine/highway_following_v0.json`
 - `tests/fixtures/autonomy_e2e/p_sim_engine/highway_safe_following_v0.json`
 - `tests/fixtures/autonomy_e2e/p_sim_engine/highway_safe_following_vehicle_dynamics_v0.json`
+- `tests/fixtures/autonomy_e2e/p_sim_engine/highway_map_route_following_v0.json`
 - `tests/fixtures/autonomy_e2e/p_sim_engine/log_scene_v0.json`
 - `tests/fixtures/autonomy_e2e/p_sim_engine/rig_sweep_base_config.json`
 - `tests/fixtures/autonomy_e2e/p_sim_engine/rig_sweep_candidates_v1.json`
@@ -242,6 +253,11 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `ego_vehicle_profile`
   - `ego_target_speed_mps`
   - `ego_road_grade_percent`
+- `scenario_definition_v0` also supports optional canonical-map inputs:
+  - `canonical_map` or `canonical_map_path`
+  - `route_definition`
+  - actor-level `lane_id`
+- When a route is provided, actor `lane_id` values are normalized into the existing `lane_index` surface using the route lane order.
 - Default behavior remains the historical fixed-speed kinematic core.
 - Vehicle-dynamics coupling is currently longitudinal only; lane handling remains `1D + lane_index`.
 
