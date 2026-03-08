@@ -1,11 +1,11 @@
 {
   "schema_version": "autonomy_e2e_history_refresh_report_v0",
-  "generated_at_utc": "2026-03-08T14:38:11+00:00",
+  "generated_at_utc": "2026-03-08T15:46:28+00:00",
   "source_repo_root": "/Users/seongcheoljeong/Documents/Autonomy-E2E/Autonomy-E2E",
   "current_repo_root": "/Users/seongcheoljeong/Documents/Test",
   "integration_baseline_commit": "8d2353f",
-  "current_repo_head_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23",
-  "current_repo_worktree_dirty": false,
+  "current_repo_head_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
+  "current_repo_worktree_dirty": true,
   "source_repo_available": true,
   "inventory_status": "generated",
   "history_snapshot_status": "generated",
@@ -17,6 +17,7 @@
     "new_unmapped_prototype_files": [],
     "orphan_current_paths": [],
     "changed_registry_blocks": [
+      "p_autoware_workspace_ci.data_contract_bridge",
       "p_autoware_workspace_ci.hil_sequence_reference",
       "p_cloud_engine.local_batch_pattern",
       "p_data_lake.run_ingest_reference",

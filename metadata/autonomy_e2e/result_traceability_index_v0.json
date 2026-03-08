@@ -1,12 +1,13 @@
 {
   "schema_version": "autonomy_e2e_result_traceability_index_v0",
-  "generated_at_utc": "2026-03-08T14:38:11+00:00",
+  "generated_at_utc": "2026-03-08T15:46:28+00:00",
   "current_repo_root": "/Users/seongcheoljeong/Documents/Test",
   "paths": [
     {
       "current_path": "README.md",
       "path_kind": "doc",
       "block_ids": [
+        "p_autoware_workspace_ci.data_contract_bridge",
         "p_map_toolset.canonical_route",
         "p_map_toolset.convert_map",
         "p_map_toolset.validate_canonical_map",
@@ -24,18 +25,33 @@
         "p_validation.scenario_variants"
       ],
       "project_ids": [
+        "P_Autoware-Workspace-CI-MVP",
         "P_Map-Toolset-MVP",
         "P_Sim-Engine",
         "P_Validation-Tooling-MVP"
       ],
       "result_role": "audit_doc",
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23"
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12"
+    },
+    {
+      "current_path": "docs/autonomy_e2e_history_integration.md",
+      "path_kind": "doc",
+      "block_ids": [
+        "p_autoware_workspace_ci.data_contract_bridge"
+      ],
+      "project_ids": [
+        "P_Autoware-Workspace-CI-MVP"
+      ],
+      "result_role": "audit_doc",
+      "current_intro_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12"
     },
     {
       "current_path": "docs/autonomy_e2e_migration_master_plan.md",
       "path_kind": "doc",
       "block_ids": [
+        "p_autoware_workspace_ci.data_contract_bridge",
         "p_autoware_workspace_ci.hil_sequence_reference",
         "p_cloud_engine.local_batch_pattern",
         "p_data_lake.run_ingest_reference",
@@ -65,12 +81,13 @@
       ],
       "result_role": "audit_doc",
       "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23"
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12"
     },
     {
       "current_path": "docs/p_sim_engine_migration_audit.md",
       "path_kind": "doc",
       "block_ids": [
+        "p_autoware_workspace_ci.data_contract_bridge",
         "p_sim_engine.batch_workflow",
         "p_sim_engine.log_replay",
         "p_sim_engine.log_scene_augment",
@@ -86,11 +103,12 @@
         "p_sim_engine.vehicle_dynamics"
       ],
       "project_ids": [
+        "P_Autoware-Workspace-CI-MVP",
         "P_Sim-Engine"
       ],
       "result_role": "audit_doc",
       "current_intro_commit": "9104dc8429b6e5bd7faac52cbd37a8a8287ff960",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23"
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12"
     },
     {
       "current_path": "docs/sensor_sim_master_plan.md",
@@ -117,6 +135,19 @@
       "result_role": "runner",
       "current_intro_commit": "2cb14f3bfdce22dff53d5a4da4f4504cc3f511d3",
       "current_latest_touch_commit": "2cb14f3bfdce22dff53d5a4da4f4504cc3f511d3"
+    },
+    {
+      "current_path": "scripts/run_autoware_pipeline_bridge.py",
+      "path_kind": "script",
+      "block_ids": [
+        "p_autoware_workspace_ci.data_contract_bridge"
+      ],
+      "project_ids": [
+        "P_Autoware-Workspace-CI-MVP"
+      ],
+      "result_role": "runner",
+      "current_intro_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12"
     },
     {
       "current_path": "scripts/run_log_replay.py",
@@ -217,9 +248,11 @@
       "current_path": "scripts/run_scenario_backend_smoke_workflow.py",
       "path_kind": "script",
       "block_ids": [
+        "p_autoware_workspace_ci.data_contract_bridge",
         "p_sim_engine.scenario_runtime_smoke_bridge"
       ],
       "project_ids": [
+        "P_Autoware-Workspace-CI-MVP",
         "P_Sim-Engine"
       ],
       "result_role": "runner",
@@ -273,9 +306,11 @@
       "current_path": "scripts/run_scenario_runtime_backend_workflow.py",
       "path_kind": "script",
       "block_ids": [
+        "p_autoware_workspace_ci.data_contract_bridge",
         "p_sim_engine.scenario_runtime_smoke_bridge"
       ],
       "project_ids": [
+        "P_Autoware-Workspace-CI-MVP",
         "P_Sim-Engine"
       ],
       "result_role": "runner",
@@ -359,6 +394,71 @@
       "result_role": "runner",
       "current_intro_commit": "79c6cb79df13b161aca4f82c9c99e8c69cb53739",
       "current_latest_touch_commit": "79c6cb79df13b161aca4f82c9c99e8c69cb53739"
+    },
+    {
+      "current_path": "src/hybrid_sensor_sim/autoware/contracts.py",
+      "path_kind": "library",
+      "block_ids": [
+        "p_autoware_workspace_ci.data_contract_bridge"
+      ],
+      "project_ids": [
+        "P_Autoware-Workspace-CI-MVP"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12"
+    },
+    {
+      "current_path": "src/hybrid_sensor_sim/autoware/export_bridge.py",
+      "path_kind": "library",
+      "block_ids": [
+        "p_autoware_workspace_ci.data_contract_bridge"
+      ],
+      "project_ids": [
+        "P_Autoware-Workspace-CI-MVP"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12"
+    },
+    {
+      "current_path": "src/hybrid_sensor_sim/autoware/frames.py",
+      "path_kind": "library",
+      "block_ids": [
+        "p_autoware_workspace_ci.data_contract_bridge"
+      ],
+      "project_ids": [
+        "P_Autoware-Workspace-CI-MVP"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12"
+    },
+    {
+      "current_path": "src/hybrid_sensor_sim/autoware/pipeline_manifest.py",
+      "path_kind": "library",
+      "block_ids": [
+        "p_autoware_workspace_ci.data_contract_bridge"
+      ],
+      "project_ids": [
+        "P_Autoware-Workspace-CI-MVP"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12"
+    },
+    {
+      "current_path": "src/hybrid_sensor_sim/autoware/topics.py",
+      "path_kind": "library",
+      "block_ids": [
+        "p_autoware_workspace_ci.data_contract_bridge"
+      ],
+      "project_ids": [
+        "P_Autoware-Workspace-CI-MVP"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12"
     },
     {
       "current_path": "src/hybrid_sensor_sim/backends/native_physics.py",
@@ -550,6 +650,19 @@
       "current_latest_touch_commit": "cf53c64ec29e4b17540e1fa8c57fde7eca8e82c9"
     },
     {
+      "current_path": "src/hybrid_sensor_sim/tools/autoware_pipeline_bridge.py",
+      "path_kind": "library",
+      "block_ids": [
+        "p_autoware_workspace_ci.data_contract_bridge"
+      ],
+      "project_ids": [
+        "P_Autoware-Workspace-CI-MVP"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12"
+    },
+    {
       "current_path": "src/hybrid_sensor_sim/tools/renderer_backend_package_acquire.py",
       "path_kind": "library",
       "block_ids": [
@@ -595,14 +708,16 @@
       "current_path": "src/hybrid_sensor_sim/tools/scenario_backend_smoke_workflow.py",
       "path_kind": "library",
       "block_ids": [
+        "p_autoware_workspace_ci.data_contract_bridge",
         "p_sim_engine.scenario_runtime_smoke_bridge"
       ],
       "project_ids": [
+        "P_Autoware-Workspace-CI-MVP",
         "P_Sim-Engine"
       ],
       "result_role": "core_logic",
       "current_intro_commit": "b68a77a86aabfd4395e86573848f64d30c9f88cb",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23"
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12"
     },
     {
       "current_path": "src/hybrid_sensor_sim/tools/scenario_batch_comparison.py",
@@ -634,14 +749,16 @@
       "current_path": "src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py",
       "path_kind": "library",
       "block_ids": [
+        "p_autoware_workspace_ci.data_contract_bridge",
         "p_sim_engine.scenario_runtime_smoke_bridge"
       ],
       "project_ids": [
+        "P_Autoware-Workspace-CI-MVP",
         "P_Sim-Engine"
       ],
       "result_role": "core_logic",
       "current_intro_commit": "316deb3f8088b82f3860f1bbff38489fcf7eaac1",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23"
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12"
     },
     {
       "current_path": "src/hybrid_sensor_sim/tools/scenario_runtime_bridge.py",
@@ -965,6 +1082,32 @@
       "current_latest_touch_commit": "1cebf1118eeb8e0a637b30dd0f063b6b866953ec"
     },
     {
+      "current_path": "tests/test_autoware_contracts.py",
+      "path_kind": "test",
+      "block_ids": [
+        "p_autoware_workspace_ci.data_contract_bridge"
+      ],
+      "project_ids": [
+        "P_Autoware-Workspace-CI-MVP"
+      ],
+      "result_role": "regression",
+      "current_intro_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12"
+    },
+    {
+      "current_path": "tests/test_autoware_pipeline_bridge.py",
+      "path_kind": "test",
+      "block_ids": [
+        "p_autoware_workspace_ci.data_contract_bridge"
+      ],
+      "project_ids": [
+        "P_Autoware-Workspace-CI-MVP"
+      ],
+      "result_role": "regression",
+      "current_intro_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12"
+    },
+    {
       "current_path": "tests/test_backend_runner.py",
       "path_kind": "test",
       "block_ids": [
@@ -1094,14 +1237,16 @@
       "current_path": "tests/test_scenario_backend_smoke_workflow.py",
       "path_kind": "test",
       "block_ids": [
+        "p_autoware_workspace_ci.data_contract_bridge",
         "p_sim_engine.scenario_runtime_smoke_bridge"
       ],
       "project_ids": [
+        "P_Autoware-Workspace-CI-MVP",
         "P_Sim-Engine"
       ],
       "result_role": "regression",
       "current_intro_commit": "b68a77a86aabfd4395e86573848f64d30c9f88cb",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23"
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12"
     },
     {
       "current_path": "tests/test_scenario_batch_comparison.py",
@@ -1151,14 +1296,16 @@
       "current_path": "tests/test_scenario_runtime_backend_workflow.py",
       "path_kind": "test",
       "block_ids": [
+        "p_autoware_workspace_ci.data_contract_bridge",
         "p_sim_engine.scenario_runtime_smoke_bridge"
       ],
       "project_ids": [
+        "P_Autoware-Workspace-CI-MVP",
         "P_Sim-Engine"
       ],
       "result_role": "regression",
       "current_intro_commit": "316deb3f8088b82f3860f1bbff38489fcf7eaac1",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23"
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12"
     },
     {
       "current_path": "tests/test_scenario_variant_runner.py",

@@ -1,11 +1,71 @@
 {
   "schema_version": "autonomy_e2e_migration_registry_v0",
-  "generated_at_utc": "2026-03-08T14:38:06+00:00",
+  "generated_at_utc": "2026-03-08T15:46:23+00:00",
   "source_repo_root": "/Users/seongcheoljeong/Documents/Autonomy-E2E/Autonomy-E2E",
   "current_repo_root": "/Users/seongcheoljeong/Documents/Test",
   "integration_baseline_commit": "8d2353f",
-  "current_repo_head_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23",
+  "current_repo_head_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
   "blocks": [
+    {
+      "block_id": "p_autoware_workspace_ci.data_contract_bridge",
+      "project_id": "P_Autoware-Workspace-CI-MVP",
+      "source_kind": "workflow_pattern",
+      "source_paths": [
+        "30_Projects/P_Autoware-Workspace-CI-MVP/prototype/hil_sequence_runner_stub.py",
+        "30_Projects/P_Autoware-Workspace-CI-MVP/prototype/examples/hil_interface_v0.json"
+      ],
+      "source_commits": [
+        "aaf95ebb13fd5a80b67ed5dfae8f2da5eef9ada3",
+        "e654f2bf9349ba4f7b2b6fd475aac048da84c6e8",
+        "5bbcfb3c9d131dd5c7a2397fe94c376e9d3ea5e8",
+        "cc8d4728ca4abf3f3ce130dcf4a169c2f83bd11d"
+      ],
+      "source_evidence_summary": "Autoware-facing data-contract bridge that converts backend smoke outputs into topics, frame-tree, and pipeline manifests.",
+      "migration_status": "partial",
+      "current_paths": [
+        "src/hybrid_sensor_sim/autoware/contracts.py",
+        "src/hybrid_sensor_sim/autoware/frames.py",
+        "src/hybrid_sensor_sim/autoware/topics.py",
+        "src/hybrid_sensor_sim/autoware/pipeline_manifest.py",
+        "src/hybrid_sensor_sim/autoware/export_bridge.py",
+        "src/hybrid_sensor_sim/tools/autoware_pipeline_bridge.py",
+        "src/hybrid_sensor_sim/tools/scenario_backend_smoke_workflow.py",
+        "src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py"
+      ],
+      "current_test_paths": [
+        "tests/test_autoware_contracts.py",
+        "tests/test_autoware_pipeline_bridge.py",
+        "tests/test_scenario_backend_smoke_workflow.py",
+        "tests/test_scenario_runtime_backend_workflow.py"
+      ],
+      "current_fixture_paths": [],
+      "current_script_paths": [
+        "scripts/run_autoware_pipeline_bridge.py",
+        "scripts/run_scenario_backend_smoke_workflow.py",
+        "scripts/run_scenario_runtime_backend_workflow.py"
+      ],
+      "current_doc_paths": [
+        "README.md",
+        "docs/autonomy_e2e_history_integration.md",
+        "docs/p_sim_engine_migration_audit.md",
+        "docs/autonomy_e2e_migration_master_plan.md"
+      ],
+      "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
+      "working_result_kind": [
+        "library",
+        "workflow",
+        "cli",
+        "test",
+        "doc"
+      ],
+      "result_summary": "Autoware-facing data-contract bridge that converts backend smoke outputs into topics, frame-tree, and pipeline manifests.",
+      "open_gaps": [
+        "No ROS2 live publisher or launch integration in the current round.",
+        "Real packaged AWSIM/CARLA exports still need to be validated against this contract."
+      ],
+      "notes": "This is a JSON-first compatibility layer, not a full Autoware stack migration."
+    },
     {
       "block_id": "p_autoware_workspace_ci.hil_sequence_reference",
       "project_id": "P_Autoware-Workspace-CI-MVP",
@@ -29,7 +89,7 @@
         "docs/autonomy_e2e_migration_master_plan.md"
       ],
       "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
       "working_result_kind": [
         "doc"
       ],
@@ -72,7 +132,7 @@
         "docs/autonomy_e2e_migration_master_plan.md"
       ],
       "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
       "working_result_kind": [
         "workflow",
         "cli",
@@ -111,7 +171,7 @@
         "docs/autonomy_e2e_migration_master_plan.md"
       ],
       "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
       "working_result_kind": [
         "doc"
       ],
@@ -158,7 +218,7 @@
         "docs/autonomy_e2e_migration_master_plan.md"
       ],
       "current_intro_commit": "b95cb42a093a638463fac893cb8179f916b135b3",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
       "working_result_kind": [
         "workflow",
         "cli",
@@ -202,7 +262,7 @@
         "docs/autonomy_e2e_migration_master_plan.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
       "working_result_kind": [
         "library",
         "cli",
@@ -247,7 +307,7 @@
         "docs/autonomy_e2e_migration_master_plan.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
       "working_result_kind": [
         "library",
         "cli",
@@ -292,7 +352,7 @@
         "docs/autonomy_e2e_migration_master_plan.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
       "working_result_kind": [
         "library",
         "cli",
@@ -343,7 +403,7 @@
         "docs/autonomy_e2e_migration_master_plan.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
       "working_result_kind": [
         "workflow",
         "cli",
@@ -395,7 +455,7 @@
         "docs/autonomy_e2e_migration_master_plan.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
       "working_result_kind": [
         "library",
         "cli",
@@ -437,7 +497,7 @@
         "docs/p_sim_engine_migration_audit.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
       "working_result_kind": [
         "cli",
         "test",
@@ -477,7 +537,7 @@
         "docs/p_sim_engine_migration_audit.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
       "working_result_kind": [
         "library",
         "cli",
@@ -514,7 +574,7 @@
         "docs/autonomy_e2e_migration_master_plan.md"
       ],
       "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
       "working_result_kind": [
         "doc"
       ],
@@ -562,7 +622,7 @@
         "docs/autonomy_e2e_migration_master_plan.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
       "working_result_kind": [
         "library",
         "cli",
@@ -611,7 +671,7 @@
         "docs/p_sim_engine_migration_audit.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
       "working_result_kind": [
         "library",
         "cli",
@@ -666,7 +726,7 @@
         "docs/autonomy_e2e_migration_master_plan.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
       "working_result_kind": [
         "library",
         "test",
@@ -717,7 +777,7 @@
         "docs/p_sim_engine_migration_audit.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
       "working_result_kind": [
         "workflow",
         "cli",
@@ -768,7 +828,7 @@
         "docs/autonomy_e2e_migration_master_plan.md"
       ],
       "current_intro_commit": "ab390e6725b84f94ebeadfa993b281d2f5d47935",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
       "working_result_kind": [
         "library",
         "workflow",
@@ -820,7 +880,7 @@
         "docs/autonomy_e2e_migration_master_plan.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
       "working_result_kind": [
         "workflow",
         "cli",
@@ -865,7 +925,7 @@
         "docs/p_sim_engine_migration_audit.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
       "working_result_kind": [
         "cli",
         "test",
@@ -907,7 +967,7 @@
         "docs/sensor_sim_master_plan.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
       "working_result_kind": [
         "library",
         "test",
@@ -952,7 +1012,7 @@
         "docs/autonomy_e2e_migration_master_plan.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
       "working_result_kind": [
         "library",
         "cli",
@@ -988,7 +1048,7 @@
         "docs/autonomy_e2e_migration_master_plan.md"
       ],
       "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
       "working_result_kind": [
         "doc"
       ],
@@ -1037,7 +1097,7 @@
         "docs/autonomy_e2e_migration_master_plan.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "6be7dfbf982316fdc14a5806263987d3635e6f23",
+      "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
       "working_result_kind": [
         "library",
         "workflow",

@@ -1,6 +1,6 @@
 {
   "schema_version": "autonomy_e2e_project_inventory_v0",
-  "generated_at_utc": "2026-03-08T14:38:07+00:00",
+  "generated_at_utc": "2026-03-08T15:46:24+00:00",
   "source_repo_root": "/Users/seongcheoljeong/Documents/Autonomy-E2E/Autonomy-E2E",
   "integration_baseline_commit": "8d2353f",
   "projects": [
@@ -58,7 +58,25 @@
         }
       ],
       "current_repo_equivalent_paths": [
-        "docs/autonomy_e2e_migration_master_plan.md"
+        "README.md",
+        "docs/autonomy_e2e_history_integration.md",
+        "docs/autonomy_e2e_migration_master_plan.md",
+        "docs/p_sim_engine_migration_audit.md",
+        "scripts/run_autoware_pipeline_bridge.py",
+        "scripts/run_scenario_backend_smoke_workflow.py",
+        "scripts/run_scenario_runtime_backend_workflow.py",
+        "src/hybrid_sensor_sim/autoware/contracts.py",
+        "src/hybrid_sensor_sim/autoware/export_bridge.py",
+        "src/hybrid_sensor_sim/autoware/frames.py",
+        "src/hybrid_sensor_sim/autoware/pipeline_manifest.py",
+        "src/hybrid_sensor_sim/autoware/topics.py",
+        "src/hybrid_sensor_sim/tools/autoware_pipeline_bridge.py",
+        "src/hybrid_sensor_sim/tools/scenario_backend_smoke_workflow.py",
+        "src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py",
+        "tests/test_autoware_contracts.py",
+        "tests/test_autoware_pipeline_bridge.py",
+        "tests/test_scenario_backend_smoke_workflow.py",
+        "tests/test_scenario_runtime_backend_workflow.py"
       ],
       "current_assessment": "Reference for integration/HIL CI ideas only; no direct migration into this repository.",
       "uncovered_selected_prototype_files": []
