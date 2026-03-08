@@ -403,10 +403,59 @@ def _build_failing_logical_scenario_rows(
     )
 
 
+def _build_workflow_status_summary(
+    *,
+    workflow_status: str,
+    variant_workflow_report: dict[str, Any],
+    matrix_report: dict[str, Any],
+    comparison_summary: dict[str, Any],
+) -> dict[str, Any]:
+    status_reason_codes: list[str] = []
+    if int(variant_workflow_report.get("execution_status_counts", {}).get("FAILED", 0)) > 0:
+        status_reason_codes.append("VARIANT_EXECUTION_FAILURE_PRESENT")
+    if int(matrix_report.get("success_case_count", 0)) <= 0:
+        status_reason_codes.append("MATRIX_NO_SUCCESS_CASES")
+    if comparison_summary["gate"]["status"] == "FAIL":
+        status_reason_codes.append("BATCH_GATE_FAILED")
+    if int(comparison_summary.get("attention_row_count", 0)) > 0:
+        status_reason_codes.append("ATTENTION_ROWS_PRESENT")
+
+    failing_logical_scenario_ids = [
+        str(row["logical_scenario_id"])
+        for row in comparison_summary.get("failing_logical_scenario_rows", [])
+        if row.get("logical_scenario_id")
+    ]
+    attention_logical_scenario_ids = sorted(
+        {
+            str(row.get("group_id"))
+            for row in comparison_summary.get("attention_rows", [])
+            if row.get("source_batch") in {"variant", "variant_workflow"} and row.get("group_id")
+        }
+    )
+    return {
+        "workflow_status": workflow_status,
+        "status_reason_codes": status_reason_codes,
+        "status_reason_count": len(status_reason_codes),
+        "gate_failure_codes": list(comparison_summary["gate"].get("failure_codes", [])),
+        "failing_logical_scenario_ids": failing_logical_scenario_ids,
+        "failing_logical_scenario_count": len(failing_logical_scenario_ids),
+        "attention_logical_scenario_ids": attention_logical_scenario_ids,
+        "attention_logical_scenario_count": len(attention_logical_scenario_ids),
+        "attention_reason_counts": dict(comparison_summary.get("attention_reason_counts", {})),
+        "logical_scenario_health_status_counts": dict(
+            comparison_summary.get("logical_scenario_health_status_counts", {})
+        ),
+        "logical_scenario_health_gate_status_counts": dict(
+            comparison_summary.get("logical_scenario_health_gate_status_counts", {})
+        ),
+    }
+
+
 def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
     variant_summary = workflow_report["variant_summary"]
     matrix_summary = workflow_report["matrix_summary"]
     comparison_summary = workflow_report["comparison_summary"]
+    status_summary = workflow_report["status_summary"]
     gate = comparison_summary["gate"]
     logical_health_rows = comparison_summary["logical_scenario_health_rows"]
     failing_logical_rows = comparison_summary["failing_logical_scenario_rows"]
@@ -424,6 +473,9 @@ def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Gate status: `{gate['status']}`",
         f"- Gate profile: `{gate['policy'].get('profile_path') or '-'}`",
         f"- Gate failure codes: `{','.join(gate['failure_codes']) or '-'}`",
+        f"- Status reason codes: `{','.join(status_summary['status_reason_codes']) or '-'}`",
+        f"- Failing logical scenarios: `{','.join(status_summary['failing_logical_scenario_ids']) or '-'}`",
+        f"- Attention logical scenarios: `{','.join(status_summary['attention_logical_scenario_ids']) or '-'}`",
         "",
         "## Artifacts",
         "",
@@ -857,6 +909,12 @@ def run_scenario_batch_workflow(
             "gate": dict(comparison_report["gate"]),
         },
     }
+    workflow_report["status_summary"] = _build_workflow_status_summary(
+        workflow_status=workflow_status,
+        variant_workflow_report=variant_workflow_report,
+        matrix_report=matrix_report,
+        comparison_summary=workflow_report["comparison_summary"],
+    )
     workflow_report_path = out_root / "scenario_batch_workflow_report_v0.json"
     workflow_report_path.write_text(
         json.dumps(workflow_report, indent=2, ensure_ascii=True) + "\n",
