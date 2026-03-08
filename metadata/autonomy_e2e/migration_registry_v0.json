@@ -1,0 +1,1050 @@
+{
+  "schema_version": "autonomy_e2e_migration_registry_v0",
+  "generated_at_utc": "2026-03-08T13:42:26+00:00",
+  "source_repo_root": "/Users/seongcheoljeong/Documents/Autonomy-E2E/Autonomy-E2E",
+  "current_repo_root": "/Users/seongcheoljeong/Documents/Test",
+  "integration_baseline_commit": "8d2353f",
+  "current_repo_head_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e",
+  "blocks": [
+    {
+      "block_id": "p_autoware_workspace_ci.hil_sequence_reference",
+      "project_id": "P_Autoware-Workspace-CI-MVP",
+      "source_kind": "workflow_pattern",
+      "source_paths": [
+        "30_Projects/P_Autoware-Workspace-CI-MVP/prototype/hil_sequence_runner_stub.py"
+      ],
+      "source_commits": [
+        "aaf95ebb13fd5a80b67ed5dfae8f2da5eef9ada3",
+        "e654f2bf9349ba4f7b2b6fd475aac048da84c6e8",
+        "5bbcfb3c9d131dd5c7a2397fe94c376e9d3ea5e8",
+        "cc8d4728ca4abf3f3ce130dcf4a169c2f83bd11d"
+      ],
+      "source_evidence_summary": "Reference for future integration CI/HIL discussions only.",
+      "migration_status": "reference_only",
+      "current_paths": [],
+      "current_test_paths": [],
+      "current_fixture_paths": [],
+      "current_script_paths": [],
+      "current_doc_paths": [
+        "docs/autonomy_e2e_migration_master_plan.md"
+      ],
+      "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
+      "current_latest_touch_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e",
+      "working_result_kind": [
+        "doc"
+      ],
+      "result_summary": "Reference for future integration CI/HIL discussions only.",
+      "open_gaps": [
+        "HIL/workspace CI is outside current repository scope."
+      ],
+      "notes": ""
+    },
+    {
+      "block_id": "p_cloud_engine.local_batch_pattern",
+      "project_id": "P_Cloud-Engine",
+      "source_kind": "workflow_pattern",
+      "source_paths": [
+        "30_Projects/P_Cloud-Engine/prototype/cloud_batch_runner.py",
+        "30_Projects/P_Cloud-Engine/prototype/generate_batch_from_catalog.py",
+        "30_Projects/P_Cloud-Engine/prototype/check_batch_against_catalog.py"
+      ],
+      "source_commits": [
+        "2e120860549ebf6151fa9c2249d5b9b1e08a7492",
+        "32d91ecf767a5077b81091154cf59e55f6b00a52",
+        "a5e43757f5e706039da3c5f6852839d9148c5fc9",
+        "1f8f384c3fc894830104454378dc8f9b78721988",
+        "0210248abfa0907c1dc0bceefdd905957de5e831"
+      ],
+      "source_evidence_summary": "Local batch execution pattern only; cloud integration not migrated.",
+      "migration_status": "reference_only",
+      "current_paths": [
+        "src/hybrid_sensor_sim/scenarios/matrix_sweep.py",
+        "src/hybrid_sensor_sim/tools/scenario_batch_workflow.py"
+      ],
+      "current_test_paths": [
+        "tests/test_scenario_batch_workflow.py"
+      ],
+      "current_fixture_paths": [],
+      "current_script_paths": [
+        "scripts/run_scenario_batch_workflow.py"
+      ],
+      "current_doc_paths": [
+        "docs/autonomy_e2e_migration_master_plan.md"
+      ],
+      "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
+      "current_latest_touch_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e",
+      "working_result_kind": [
+        "workflow",
+        "cli",
+        "test",
+        "doc"
+      ],
+      "result_summary": "Local batch execution pattern only; cloud integration not migrated.",
+      "open_gaps": [
+        "Cloud orchestration remains out of scope."
+      ],
+      "notes": ""
+    },
+    {
+      "block_id": "p_data_lake.run_ingest_reference",
+      "project_id": "P_Data-Lake-and-Explorer",
+      "source_kind": "prototype_file",
+      "source_paths": [
+        "30_Projects/P_Data-Lake-and-Explorer/prototype/build_dataset_manifest.py",
+        "30_Projects/P_Data-Lake-and-Explorer/prototype/ingest_scenario_runs.py",
+        "30_Projects/P_Data-Lake-and-Explorer/prototype/query_scenario_runs.py"
+      ],
+      "source_commits": [
+        "3fc1a66cb575f280bbcf683d26d154722910468b",
+        "433242539a5d1356836c94f7a6e806d49f5f5cfa",
+        "9040093622d80b9bf4b48a940e2733910c98c240",
+        "e48f596f1477f176f0c385fc3e65d27deb21fcb1",
+        "4a2a9e69efafdb380ada79ca1b0714f0a82a5374"
+      ],
+      "source_evidence_summary": "Tracked provenance only; no direct migration into this repository.",
+      "migration_status": "deferred",
+      "current_paths": [],
+      "current_test_paths": [],
+      "current_fixture_paths": [],
+      "current_script_paths": [],
+      "current_doc_paths": [
+        "docs/autonomy_e2e_migration_master_plan.md"
+      ],
+      "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
+      "current_latest_touch_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e",
+      "working_result_kind": [
+        "doc"
+      ],
+      "result_summary": "Tracked provenance only; no direct migration into this repository.",
+      "open_gaps": [
+        "Analytics/data-lake stack stays outside the repository boundary."
+      ],
+      "notes": ""
+    },
+    {
+      "block_id": "p_e2e_stack.runtime_evidence_compare_reference",
+      "project_id": "P_E2E_Stack",
+      "source_kind": "workflow_pattern",
+      "source_paths": [
+        "30_Projects/P_E2E_Stack/prototype/compare_runtime_evidence.py",
+        "30_Projects/P_E2E_Stack/prototype/compare_runtime_native_summaries.py",
+        "30_Projects/P_E2E_Stack/prototype/run_runtime_available_workflow_dispatch.sh",
+        "30_Projects/P_E2E_Stack/prototype/STACK_MASTER_PLAN.md",
+        "30_Projects/P_E2E_Stack/prototype/REFERENCE_MIGRATION_MAP.md"
+      ],
+      "source_commits": [
+        "d45d6f4136771708abb744ae11335f156c5b71c9",
+        "997754534cdfbd098e67fee48a04aff89e6d6793",
+        "4cc42b53ab86db8b876a86194cd10393b5276a6a",
+        "b69edf7337288f6948e54a536f14622cfbdecb99",
+        "2f9bea840596007bb73dfdd115b9dc86f6275ebb"
+      ],
+      "source_evidence_summary": "Reference for parity/orchestration patterns only.",
+      "migration_status": "reference_only",
+      "current_paths": [
+        "src/hybrid_sensor_sim/tools/renderer_backend_workflow.py",
+        "src/hybrid_sensor_sim/tools/scenario_batch_comparison.py"
+      ],
+      "current_test_paths": [
+        "tests/test_renderer_backend_workflow.py",
+        "tests/test_scenario_batch_comparison.py"
+      ],
+      "current_fixture_paths": [],
+      "current_script_paths": [
+        "scripts/run_renderer_backend_workflow.py",
+        "scripts/run_scenario_batch_comparison.py"
+      ],
+      "current_doc_paths": [
+        "docs/autonomy_e2e_migration_master_plan.md"
+      ],
+      "current_intro_commit": "b95cb42a093a638463fac893cb8179f916b135b3",
+      "current_latest_touch_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e",
+      "working_result_kind": [
+        "workflow",
+        "cli",
+        "test",
+        "doc"
+      ],
+      "result_summary": "Reference for parity/orchestration patterns only.",
+      "open_gaps": [
+        "Full stack orchestration is intentionally excluded."
+      ],
+      "notes": ""
+    },
+    {
+      "block_id": "p_map_toolset.canonical_route",
+      "project_id": "P_Map-Toolset-MVP",
+      "source_kind": "prototype_file",
+      "source_paths": [
+        "30_Projects/P_Map-Toolset-MVP/prototype/compute_canonical_route.py"
+      ],
+      "source_commits": [
+        "3f0cfe5e56033d73313a08636ec3ac4a29d183fb",
+        "64cf13838aa74941556d388b5fb0f40d264c663d",
+        "9697550e7701c9e7ca833fa43c9d8ff5e4b7dd59"
+      ],
+      "source_evidence_summary": "Canonical route computation migrated.",
+      "migration_status": "migrated",
+      "current_paths": [
+        "src/hybrid_sensor_sim/maps/route.py"
+      ],
+      "current_test_paths": [
+        "tests/test_map_tools.py"
+      ],
+      "current_fixture_paths": [
+        "tests/fixtures/autonomy_e2e/p_map_toolset/canonical_lane_graph_v0.json"
+      ],
+      "current_script_paths": [
+        "scripts/run_map_route.py"
+      ],
+      "current_doc_paths": [
+        "README.md",
+        "docs/autonomy_e2e_migration_master_plan.md"
+      ],
+      "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
+      "current_latest_touch_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e",
+      "working_result_kind": [
+        "library",
+        "cli",
+        "test",
+        "fixture",
+        "doc"
+      ],
+      "result_summary": "Canonical route computation migrated.",
+      "open_gaps": [],
+      "notes": ""
+    },
+    {
+      "block_id": "p_map_toolset.convert_map",
+      "project_id": "P_Map-Toolset-MVP",
+      "source_kind": "prototype_file",
+      "source_paths": [
+        "30_Projects/P_Map-Toolset-MVP/prototype/convert_map_format.py"
+      ],
+      "source_commits": [
+        "01b757cc892a0149e52777deee03110b169352e6",
+        "03e4f526d80451c2e0b4ea9adde7695ecb5f11c1",
+        "04bbe332aeb5e49ab7e1e4e3dc09cde6775de698",
+        "eb14820cfd52e1fd9eb0abe9163200d4e6ab6291"
+      ],
+      "source_evidence_summary": "Canonical/simple map conversion helpers migrated.",
+      "migration_status": "migrated",
+      "current_paths": [
+        "src/hybrid_sensor_sim/maps/convert.py"
+      ],
+      "current_test_paths": [
+        "tests/test_map_tools.py"
+      ],
+      "current_fixture_paths": [
+        "tests/fixtures/autonomy_e2e/p_map_toolset/simple_map_v0.json",
+        "tests/fixtures/autonomy_e2e/p_map_toolset/canonical_lane_graph_v0.json"
+      ],
+      "current_script_paths": [
+        "scripts/run_map_convert.py"
+      ],
+      "current_doc_paths": [
+        "README.md",
+        "docs/autonomy_e2e_migration_master_plan.md"
+      ],
+      "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
+      "current_latest_touch_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e",
+      "working_result_kind": [
+        "library",
+        "cli",
+        "test",
+        "fixture",
+        "doc"
+      ],
+      "result_summary": "Canonical/simple map conversion helpers migrated.",
+      "open_gaps": [],
+      "notes": ""
+    },
+    {
+      "block_id": "p_map_toolset.validate_canonical_map",
+      "project_id": "P_Map-Toolset-MVP",
+      "source_kind": "prototype_file",
+      "source_paths": [
+        "30_Projects/P_Map-Toolset-MVP/prototype/validate_canonical_map.py"
+      ],
+      "source_commits": [
+        "6d49c0033c675f38fd832671285b1e5fa0d960f1",
+        "1eeca0cc2f47529730689ba143dd15f7ab74a49f",
+        "01b757cc892a0149e52777deee03110b169352e6",
+        "03e4f526d80451c2e0b4ea9adde7695ecb5f11c1",
+        "04bbe332aeb5e49ab7e1e4e3dc09cde6775de698"
+      ],
+      "source_evidence_summary": "Canonical map validation migrated.",
+      "migration_status": "migrated",
+      "current_paths": [
+        "src/hybrid_sensor_sim/maps/validate.py"
+      ],
+      "current_test_paths": [
+        "tests/test_map_tools.py"
+      ],
+      "current_fixture_paths": [
+        "tests/fixtures/autonomy_e2e/p_map_toolset/canonical_lane_graph_v0.json"
+      ],
+      "current_script_paths": [
+        "scripts/run_map_validate.py"
+      ],
+      "current_doc_paths": [
+        "README.md",
+        "docs/autonomy_e2e_migration_master_plan.md"
+      ],
+      "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
+      "current_latest_touch_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e",
+      "working_result_kind": [
+        "library",
+        "cli",
+        "test",
+        "fixture",
+        "doc"
+      ],
+      "result_summary": "Canonical map validation migrated.",
+      "open_gaps": [],
+      "notes": ""
+    },
+    {
+      "block_id": "p_sim_engine.batch_workflow",
+      "project_id": "P_Sim-Engine",
+      "source_kind": "workflow_pattern",
+      "source_paths": [
+        "30_Projects/P_Sim-Engine/prototype/core_sim_matrix_sweep_runner.py",
+        "30_Projects/P_Sim-Engine/prototype/core_sim_runner.py"
+      ],
+      "source_commits": [
+        "5eb472ac53c7911f6a2e342c32f06b75d1916a0e",
+        "276f1975718a1128325fd1145138cafa3c8788c3",
+        "08849c7c5093999a764b4b870f4b4f8bb7eeae9c",
+        "1a1e6647cf052072d275734133011c9b2b1a1748",
+        "32d91ecf767a5077b81091154cf59e55f6b00a52"
+      ],
+      "source_evidence_summary": "Current batch evaluation, triage, gate preset, and workflow surface.",
+      "migration_status": "migrated",
+      "current_paths": [],
+      "current_test_paths": [
+        "tests/test_scenario_batch_comparison.py",
+        "tests/test_scenario_batch_workflow.py"
+      ],
+      "current_fixture_paths": [
+        "tests/fixtures/autonomy_e2e/p_validation/scenario_batch_gate_strict_v0.json",
+        "tests/fixtures/autonomy_e2e/p_validation/scenario_batch_gate_avoidance_v0.json",
+        "tests/fixtures/autonomy_e2e/p_validation/scenario_batch_gate_avoidance_merge_v0.json",
+        "tests/fixtures/autonomy_e2e/p_validation/scenario_batch_gate_avoidance_downstream_route_v0.json",
+        "tests/fixtures/autonomy_e2e/p_validation/scenario_batch_gate_avoidance_lane_change_v0.json"
+      ],
+      "current_script_paths": [
+        "scripts/run_scenario_batch_comparison.py",
+        "scripts/run_scenario_batch_workflow.py"
+      ],
+      "current_doc_paths": [
+        "README.md",
+        "docs/p_sim_engine_migration_audit.md",
+        "docs/autonomy_e2e_migration_master_plan.md"
+      ],
+      "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
+      "current_latest_touch_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e",
+      "working_result_kind": [
+        "workflow",
+        "cli",
+        "test",
+        "fixture",
+        "doc"
+      ],
+      "result_summary": "Current batch evaluation, triage, gate preset, and workflow surface.",
+      "open_gaps": [
+        "Real backend smoke still needs more direct package-based validation."
+      ],
+      "notes": "Batch workflow is a current-repo synthesis rather than a direct file port."
+    },
+    {
+      "block_id": "p_sim_engine.log_replay",
+      "project_id": "P_Sim-Engine",
+      "source_kind": "prototype_file",
+      "source_paths": [
+        "30_Projects/P_Sim-Engine/prototype/log_replay_runner.py"
+      ],
+      "source_commits": [
+        "7cb25fd1df1f33da7facc3a5e9d46f641f4fdf1b",
+        "6f594d8750172591f2a36f423df1bbd0c54c2c28",
+        "999de844c4e907ee7bea6f70ee44b59ef7682ba6",
+        "04bbe332aeb5e49ab7e1e4e3dc09cde6775de698",
+        "eb14820cfd52e1fd9eb0abe9163200d4e6ab6291"
+      ],
+      "source_evidence_summary": "Log-scene to scenario replay with route-lane propagation.",
+      "migration_status": "migrated",
+      "current_paths": [
+        "src/hybrid_sensor_sim/scenarios/log_scene.py",
+        "src/hybrid_sensor_sim/scenarios/replay.py"
+      ],
+      "current_test_paths": [
+        "tests/test_log_replay.py"
+      ],
+      "current_fixture_paths": [
+        "tests/fixtures/autonomy_e2e/p_sim_engine/log_scene_v0.json",
+        "tests/fixtures/autonomy_e2e/p_sim_engine/log_scene_map_route_v0.json",
+        "tests/fixtures/autonomy_e2e/p_sim_engine/log_scene_map_route_relations_v0.json",
+        "tests/fixtures/autonomy_e2e/p_sim_engine/log_scene_map_lane_change_conflict_v0.json"
+      ],
+      "current_script_paths": [
+        "scripts/run_log_replay.py"
+      ],
+      "current_doc_paths": [
+        "README.md",
+        "docs/p_sim_engine_migration_audit.md",
+        "docs/autonomy_e2e_migration_master_plan.md"
+      ],
+      "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
+      "current_latest_touch_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e",
+      "working_result_kind": [
+        "library",
+        "cli",
+        "test",
+        "fixture",
+        "doc"
+      ],
+      "result_summary": "Log-scene to scenario replay with route-lane propagation.",
+      "open_gaps": [],
+      "notes": "Replay path now serves both direct object-sim and scenario smoke bridging."
+    },
+    {
+      "block_id": "p_sim_engine.log_scene_augment",
+      "project_id": "P_Sim-Engine",
+      "source_kind": "prototype_file",
+      "source_paths": [
+        "30_Projects/P_Sim-Engine/prototype/augment_log_scene.py"
+      ],
+      "source_commits": [
+        "7cb25fd1df1f33da7facc3a5e9d46f641f4fdf1b",
+        "350de65a012f3bb9d9c6530b756652bb16b7cd6f",
+        "04bbe332aeb5e49ab7e1e4e3dc09cde6775de698",
+        "33e6341cbb98801c95b66aa8d028474940654da9"
+      ],
+      "source_evidence_summary": "Pure log-scene augmentation helper exposed through current CLI.",
+      "migration_status": "migrated",
+      "current_paths": [],
+      "current_test_paths": [
+        "tests/test_log_replay.py"
+      ],
+      "current_fixture_paths": [
+        "tests/fixtures/autonomy_e2e/p_sim_engine/log_scene_v0.json"
+      ],
+      "current_script_paths": [
+        "scripts/run_log_scene_augment.py"
+      ],
+      "current_doc_paths": [
+        "README.md",
+        "docs/p_sim_engine_migration_audit.md"
+      ],
+      "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
+      "current_latest_touch_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e",
+      "working_result_kind": [
+        "cli",
+        "test",
+        "fixture",
+        "doc"
+      ],
+      "result_summary": "Pure log-scene augmentation helper exposed through current CLI.",
+      "open_gaps": [],
+      "notes": "Augmentation behavior is preserved through tool surface rather than a standalone scenario module."
+    },
+    {
+      "block_id": "p_sim_engine.matrix_sweep",
+      "project_id": "P_Sim-Engine",
+      "source_kind": "prototype_file",
+      "source_paths": [
+        "30_Projects/P_Sim-Engine/prototype/core_sim_matrix_sweep_runner.py"
+      ],
+      "source_commits": [
+        "5eb472ac53c7911f6a2e342c32f06b75d1916a0e"
+      ],
+      "source_evidence_summary": "Library-first matrix sweep runner with route and avoidance propagation.",
+      "migration_status": "migrated",
+      "current_paths": [
+        "src/hybrid_sensor_sim/scenarios/matrix_sweep.py"
+      ],
+      "current_test_paths": [
+        "tests/test_scenario_matrix_sweep.py"
+      ],
+      "current_fixture_paths": [
+        "tests/fixtures/autonomy_e2e/p_sim_engine/highway_safe_following_v0.json"
+      ],
+      "current_script_paths": [
+        "scripts/run_scenario_matrix_sweep.py"
+      ],
+      "current_doc_paths": [
+        "README.md",
+        "docs/p_sim_engine_migration_audit.md"
+      ],
+      "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
+      "current_latest_touch_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e",
+      "working_result_kind": [
+        "library",
+        "cli",
+        "test",
+        "fixture",
+        "doc"
+      ],
+      "result_summary": "Library-first matrix sweep runner with route and avoidance propagation.",
+      "open_gaps": [],
+      "notes": "Current matrix sweep is the canonical replacement for the subprocess-heavy prototype."
+    },
+    {
+      "block_id": "p_sim_engine.neural_sensor_reference",
+      "project_id": "P_Sim-Engine",
+      "source_kind": "prototype_file",
+      "source_paths": [
+        "30_Projects/P_Sim-Engine/prototype/neural_scene_bridge.py",
+        "30_Projects/P_Sim-Engine/prototype/render_neural_sensor_stub.py"
+      ],
+      "source_commits": [
+        "7cb25fd1df1f33da7facc3a5e9d46f641f4fdf1b",
+        "41e1cb4bbb9a81dbf3871d0fda6b851b459ab9af",
+        "e8cc5899be363a989093353bdddbe8ae32c158b4",
+        "5b34db29d8fd590e139ab2a37c82fd37b6aa02e1",
+        "378c5d0748553c39544f264972ae0eab13e135fc"
+      ],
+      "source_evidence_summary": "Tracked only as future neural-render reference, not implemented here.",
+      "migration_status": "reference_only",
+      "current_paths": [],
+      "current_test_paths": [],
+      "current_fixture_paths": [],
+      "current_script_paths": [],
+      "current_doc_paths": [
+        "docs/autonomy_e2e_migration_master_plan.md"
+      ],
+      "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
+      "current_latest_touch_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e",
+      "working_result_kind": [
+        "doc"
+      ],
+      "result_summary": "Tracked only as future neural-render reference, not implemented here.",
+      "open_gaps": [
+        "Neural scene rendering is out of current repository scope."
+      ],
+      "notes": "Reference only; no direct implementation target currently."
+    },
+    {
+      "block_id": "p_sim_engine.object_sim_core",
+      "project_id": "P_Sim-Engine",
+      "source_kind": "prototype_file",
+      "source_paths": [
+        "30_Projects/P_Sim-Engine/prototype/core_sim_runner.py"
+      ],
+      "source_commits": [
+        "276f1975718a1128325fd1145138cafa3c8788c3",
+        "08849c7c5093999a764b4b870f4b4f8bb7eeae9c",
+        "1a1e6647cf052072d275734133011c9b2b1a1748",
+        "32d91ecf767a5077b81091154cf59e55f6b00a52",
+        "527248e7149f100feaa37683fdb5ee9c9cb1fe42"
+      ],
+      "source_evidence_summary": "Deterministic object-sim baseline with route-aware avoidance, lane-change interaction semantics, and map-aware risk outputs.",
+      "migration_status": "migrated",
+      "current_paths": [
+        "src/hybrid_sensor_sim/scenarios/schema.py",
+        "src/hybrid_sensor_sim/scenarios/object_sim.py"
+      ],
+      "current_test_paths": [
+        "tests/test_object_sim.py"
+      ],
+      "current_fixture_paths": [
+        "tests/fixtures/autonomy_e2e/p_sim_engine/highway_following_v0.json",
+        "tests/fixtures/autonomy_e2e/p_sim_engine/highway_safe_following_v0.json",
+        "tests/fixtures/autonomy_e2e/p_sim_engine/highway_safe_following_vehicle_dynamics_v0.json",
+        "tests/fixtures/autonomy_e2e/p_sim_engine/highway_map_route_following_v0.json"
+      ],
+      "current_script_paths": [
+        "scripts/run_object_sim.py"
+      ],
+      "current_doc_paths": [
+        "README.md",
+        "docs/p_sim_engine_migration_audit.md",
+        "docs/autonomy_e2e_migration_master_plan.md"
+      ],
+      "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
+      "current_latest_touch_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e",
+      "working_result_kind": [
+        "library",
+        "cli",
+        "test",
+        "fixture",
+        "doc"
+      ],
+      "result_summary": "Deterministic object-sim baseline with route-aware avoidance, lane-change interaction semantics, and map-aware risk outputs.",
+      "open_gaps": [
+        "Deeper map-aware runtime behavior beyond current route-interaction tagging."
+      ],
+      "notes": "Current scenario_definition_v0 baseline is the canonical object-sim result."
+    },
+    {
+      "block_id": "p_sim_engine.route_aware_avoidance",
+      "project_id": "P_Sim-Engine",
+      "source_kind": "workflow_pattern",
+      "source_paths": [
+        "30_Projects/P_Sim-Engine/prototype/core_sim_runner.py",
+        "30_Projects/P_Sim-Engine/prototype/vehicle_dynamics_stub.py"
+      ],
+      "source_commits": [
+        "276f1975718a1128325fd1145138cafa3c8788c3",
+        "06ea545214dc7b309bede8278a2061ab713a9687",
+        "ed105dd11b69f57b6b114642439097c2a8d59263",
+        "08849c7c5093999a764b4b870f4b4f8bb7eeae9c",
+        "1a1e6647cf052072d275734133011c9b2b1a1748"
+      ],
+      "source_evidence_summary": "Interaction-specific avoidance with priority, gap, brake-floor, and hold policies plus route-aware target tracing.",
+      "migration_status": "migrated",
+      "current_paths": [
+        "src/hybrid_sensor_sim/scenarios/object_sim.py"
+      ],
+      "current_test_paths": [
+        "tests/test_object_sim.py"
+      ],
+      "current_fixture_paths": [
+        "tests/fixtures/autonomy_e2e/p_sim_engine/highway_map_route_following_v0.json",
+        "tests/fixtures/autonomy_e2e/p_sim_engine/log_scene_map_lane_change_conflict_v0.json"
+      ],
+      "current_script_paths": [
+        "scripts/run_object_sim.py"
+      ],
+      "current_doc_paths": [
+        "README.md",
+        "docs/p_sim_engine_migration_audit.md"
+      ],
+      "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
+      "current_latest_touch_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e",
+      "working_result_kind": [
+        "library",
+        "cli",
+        "test",
+        "fixture",
+        "doc"
+      ],
+      "result_summary": "Interaction-specific avoidance with priority, gap, brake-floor, and hold policies plus route-aware target tracing.",
+      "open_gaps": [
+        "Further merge/diverge runtime decisions are still pending."
+      ],
+      "notes": "Current avoidance logic is stricter and more inspectable than the old core sim behavior."
+    },
+    {
+      "block_id": "p_sim_engine.route_aware_semantics",
+      "project_id": "P_Sim-Engine",
+      "source_kind": "workflow_pattern",
+      "source_paths": [
+        "30_Projects/P_Sim-Engine/prototype/core_sim_runner.py",
+        "30_Projects/P_Sim-Engine/prototype/log_replay_runner.py",
+        "30_Projects/P_Sim-Engine/prototype/core_sim_matrix_sweep_runner.py"
+      ],
+      "source_commits": [
+        "5eb472ac53c7911f6a2e342c32f06b75d1916a0e",
+        "276f1975718a1128325fd1145138cafa3c8788c3",
+        "08849c7c5093999a764b4b870f4b4f8bb7eeae9c",
+        "1a1e6647cf052072d275734133011c9b2b1a1748",
+        "32d91ecf767a5077b81091154cf59e55f6b00a52"
+      ],
+      "source_evidence_summary": "Map/route semantics, route-lane binding, and lane-change route-lane surfaces integrated into scenario flows.",
+      "migration_status": "migrated",
+      "current_paths": [
+        "src/hybrid_sensor_sim/scenarios/schema.py",
+        "src/hybrid_sensor_sim/scenarios/object_sim.py",
+        "src/hybrid_sensor_sim/scenarios/replay.py",
+        "src/hybrid_sensor_sim/scenarios/matrix_sweep.py"
+      ],
+      "current_test_paths": [
+        "tests/test_object_sim.py",
+        "tests/test_log_replay.py",
+        "tests/test_scenario_matrix_sweep.py"
+      ],
+      "current_fixture_paths": [
+        "tests/fixtures/autonomy_e2e/p_sim_engine/highway_map_route_following_v0.json",
+        "tests/fixtures/autonomy_e2e/p_sim_engine/log_scene_map_route_relations_v0.json",
+        "tests/fixtures/autonomy_e2e/p_sim_engine/log_scene_map_lane_change_conflict_v0.json"
+      ],
+      "current_script_paths": [],
+      "current_doc_paths": [
+        "README.md",
+        "docs/p_sim_engine_migration_audit.md",
+        "docs/autonomy_e2e_migration_master_plan.md"
+      ],
+      "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
+      "current_latest_touch_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e",
+      "working_result_kind": [
+        "library",
+        "test",
+        "fixture",
+        "doc"
+      ],
+      "result_summary": "Map/route semantics, route-lane binding, and lane-change route-lane surfaces integrated into scenario flows.",
+      "open_gaps": [
+        "Deeper runtime semantics for merge/diverge decisions remain open."
+      ],
+      "notes": "This is a current-repo expansion beyond the original prototype scope."
+    },
+    {
+      "block_id": "p_sim_engine.runtime_asset_prepare",
+      "project_id": "P_Sim-Engine",
+      "source_kind": "prototype_file",
+      "source_paths": [
+        "30_Projects/P_Sim-Engine/prototype/prepare_runtime_assets.py",
+        "30_Projects/P_Sim-Engine/prototype/sim_runtime_adapter_stub.py"
+      ],
+      "source_commits": [
+        "046bfde2510c18158177bfea96d44113b9bbb344",
+        "e06d1cffa91b89d1ba2b6e324403edd8a66ef799",
+        "705280a03a1ba951fa0fe8cc53f3599a5f01a5c5",
+        "58c8c6e59b1b315cd2d0a8b5e1688f92b73368d5",
+        "369ed69b1e0c0be1b96a6f83f76eacc0ed749340"
+      ],
+      "source_evidence_summary": "Superseded by inspectable package acquire/stage/workflow stack.",
+      "migration_status": "superseded",
+      "current_paths": [
+        "src/hybrid_sensor_sim/tools/renderer_backend_package_acquire.py",
+        "src/hybrid_sensor_sim/tools/renderer_backend_package_stage.py",
+        "src/hybrid_sensor_sim/tools/renderer_backend_workflow.py"
+      ],
+      "current_test_paths": [
+        "tests/test_renderer_backend_package_acquire.py",
+        "tests/test_renderer_backend_package_stage.py",
+        "tests/test_renderer_backend_workflow.py"
+      ],
+      "current_fixture_paths": [],
+      "current_script_paths": [
+        "scripts/acquire_renderer_backend_package.py",
+        "scripts/stage_renderer_backend_package.py",
+        "scripts/run_renderer_backend_workflow.py"
+      ],
+      "current_doc_paths": [
+        "README.md",
+        "docs/p_sim_engine_migration_audit.md"
+      ],
+      "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
+      "current_latest_touch_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e",
+      "working_result_kind": [
+        "workflow",
+        "cli",
+        "test",
+        "doc"
+      ],
+      "result_summary": "Superseded by inspectable package acquire/stage/workflow stack.",
+      "open_gaps": [],
+      "notes": "Current workflow exceeds the old runtime asset scaffolding."
+    },
+    {
+      "block_id": "p_sim_engine.runtime_interop_reference",
+      "project_id": "P_Sim-Engine",
+      "source_kind": "prototype_file",
+      "source_paths": [
+        "30_Projects/P_Sim-Engine/prototype/sim_runtime_interop_contract_runner.py",
+        "30_Projects/P_Sim-Engine/prototype/sim_runtime_interop_export_runner.py",
+        "30_Projects/P_Sim-Engine/prototype/sim_runtime_interop_import_runner.py",
+        "30_Projects/P_Sim-Engine/prototype/sim_runtime_probe_runner.py",
+        "30_Projects/P_Sim-Engine/prototype/sim_runtime_scenario_contract_runner.py",
+        "30_Projects/P_Sim-Engine/prototype/sim_runtime_scene_result_runner.py"
+      ],
+      "source_commits": [
+        "558335a2515abea22a4b675692fc636c804615b0",
+        "b97cc2d25db771c2b88c6cdf3cc57dcf36143f5d",
+        "12610700b5860c0425fcb9cac0479af4dd23ee64",
+        "46d5ed092b03c270d05056ea3c10740ac051e351",
+        "7a2a14f334bc3a9b0c262a26e1574ed48fce6cac"
+      ],
+      "source_evidence_summary": "Partial functional overlap through runtime execution, backend runner, smoke, package, and handoff tooling.",
+      "migration_status": "partial",
+      "current_paths": [
+        "src/hybrid_sensor_sim/renderers/runtime_executor.py",
+        "src/hybrid_sensor_sim/renderers/backend_runner.py",
+        "src/hybrid_sensor_sim/tools/renderer_backend_workflow.py"
+      ],
+      "current_test_paths": [
+        "tests/test_renderer_runtime.py",
+        "tests/test_backend_runner.py",
+        "tests/test_renderer_backend_workflow.py"
+      ],
+      "current_fixture_paths": [],
+      "current_script_paths": [
+        "scripts/run_renderer_backend_workflow.py"
+      ],
+      "current_doc_paths": [
+        "docs/p_sim_engine_migration_audit.md",
+        "docs/autonomy_e2e_migration_master_plan.md"
+      ],
+      "current_intro_commit": "ab390e6725b84f94ebeadfa993b281d2f5d47935",
+      "current_latest_touch_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e",
+      "working_result_kind": [
+        "library",
+        "workflow",
+        "cli",
+        "test",
+        "doc"
+      ],
+      "result_summary": "Partial functional overlap through runtime execution, backend runner, smoke, package, and handoff tooling.",
+      "open_gaps": [
+        "Interop export/import parity is not treated as a concrete deliverable yet."
+      ],
+      "notes": "Tracked as partial overlap and future reference."
+    },
+    {
+      "block_id": "p_sim_engine.scenario_runtime_smoke_bridge",
+      "project_id": "P_Sim-Engine",
+      "source_kind": "workflow_pattern",
+      "source_paths": [
+        "30_Projects/P_Sim-Engine/prototype/sim_runtime_scenario_contract_runner.py",
+        "30_Projects/P_Sim-Engine/prototype/sim_runtime_scene_result_runner.py",
+        "30_Projects/P_Sim-Engine/prototype/sim_runtime_probe_runner.py"
+      ],
+      "source_commits": [
+        "46d5ed092b03c270d05056ea3c10740ac051e351",
+        "54f675e3dd9893c918dbe78f9e44d6f60ff1e4f8",
+        "d78c92cd0b0b028845cae1a1425eee239f891c6c",
+        "da81953c6a5070668aff6e448e5e02a8785b3745",
+        "157855d6ccbe7be8352295ba4df83cf07418edba"
+      ],
+      "source_evidence_summary": "Scenario batch outputs can now bridge into runtime smoke and reuse staged backend selections.",
+      "migration_status": "migrated",
+      "current_paths": [],
+      "current_test_paths": [
+        "tests/test_scenario_backend_smoke_workflow.py",
+        "tests/test_scenario_runtime_backend_workflow.py"
+      ],
+      "current_fixture_paths": [],
+      "current_script_paths": [
+        "scripts/run_scenario_backend_smoke_workflow.py",
+        "scripts/run_scenario_runtime_backend_workflow.py"
+      ],
+      "current_doc_paths": [
+        "README.md",
+        "docs/p_sim_engine_migration_audit.md",
+        "docs/autonomy_e2e_migration_master_plan.md"
+      ],
+      "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
+      "current_latest_touch_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e",
+      "working_result_kind": [
+        "workflow",
+        "cli",
+        "test",
+        "doc"
+      ],
+      "result_summary": "Scenario batch outputs can now bridge into runtime smoke and reuse staged backend selections.",
+      "open_gaps": [
+        "Real packaged AWSIM/CARLA execution still remains to be closed."
+      ],
+      "notes": "This block captures the scenario-to-runtime integration path."
+    },
+    {
+      "block_id": "p_sim_engine.sensor_rig_sweep",
+      "project_id": "P_Sim-Engine",
+      "source_kind": "prototype_file",
+      "source_paths": [
+        "30_Projects/P_Sim-Engine/prototype/sensor_rig_sweep.py"
+      ],
+      "source_commits": [
+        "2cd5299acc0bc5834857c21dc0f75c559a77c6db",
+        "7cb25fd1df1f33da7facc3a5e9d46f641f4fdf1b",
+        "9ba51aa2ce56ee4516d4b44a2a5bdcfed5a70ef9",
+        "04bbe332aeb5e49ab7e1e4e3dc09cde6775de698",
+        "33e6341cbb98801c95b66aa8d028474940654da9"
+      ],
+      "source_evidence_summary": "Rig sweep translated onto current native preview and coverage outputs.",
+      "migration_status": "migrated",
+      "current_paths": [],
+      "current_test_paths": [
+        "tests/test_sensor_rig_sweep.py"
+      ],
+      "current_fixture_paths": [
+        "tests/fixtures/autonomy_e2e/p_sim_engine/rig_sweep_base_config.json",
+        "tests/fixtures/autonomy_e2e/p_sim_engine/rig_sweep_candidates_v1.json"
+      ],
+      "current_script_paths": [
+        "scripts/run_sensor_rig_sweep.py"
+      ],
+      "current_doc_paths": [
+        "README.md",
+        "docs/p_sim_engine_migration_audit.md"
+      ],
+      "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
+      "current_latest_touch_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e",
+      "working_result_kind": [
+        "cli",
+        "test",
+        "fixture",
+        "doc"
+      ],
+      "result_summary": "Rig sweep translated onto current native preview and coverage outputs.",
+      "open_gaps": [],
+      "notes": "Old world-state bridge was intentionally not revived."
+    },
+    {
+      "block_id": "p_sim_engine.sensor_sim_bridge",
+      "project_id": "P_Sim-Engine",
+      "source_kind": "prototype_file",
+      "source_paths": [
+        "30_Projects/P_Sim-Engine/prototype/sensor_sim_bridge.py"
+      ],
+      "source_commits": [
+        "93e1c93745bec19fae770069bd9b7c1ba51c0131",
+        "fefd2a94ef2f75b5c5bd618d8f44f2e7624fe052",
+        "7cb25fd1df1f33da7facc3a5e9d46f641f4fdf1b",
+        "aa110caff9da9ac1dd856802b959a27ad951bd4f",
+        "04bbe332aeb5e49ab7e1e4e3dc09cde6775de698"
+      ],
+      "source_evidence_summary": "Superseded by stronger native-physics and playback-contract surfaces.",
+      "migration_status": "superseded",
+      "current_paths": [
+        "src/hybrid_sensor_sim/backends/native_physics.py",
+        "src/hybrid_sensor_sim/renderers/playback_contract.py"
+      ],
+      "current_test_paths": [
+        "tests/test_camera_physics.py",
+        "tests/test_sensor_config.py"
+      ],
+      "current_fixture_paths": [],
+      "current_script_paths": [],
+      "current_doc_paths": [
+        "docs/p_sim_engine_migration_audit.md",
+        "docs/sensor_sim_master_plan.md"
+      ],
+      "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
+      "current_latest_touch_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e",
+      "working_result_kind": [
+        "library",
+        "test",
+        "doc"
+      ],
+      "result_summary": "Superseded by stronger native-physics and playback-contract surfaces.",
+      "open_gaps": [],
+      "notes": "Old bridge structure is intentionally not revived."
+    },
+    {
+      "block_id": "p_sim_engine.vehicle_dynamics",
+      "project_id": "P_Sim-Engine",
+      "source_kind": "prototype_file",
+      "source_paths": [
+        "30_Projects/P_Sim-Engine/prototype/vehicle_dynamics_stub.py"
+      ],
+      "source_commits": [
+        "06ea545214dc7b309bede8278a2061ab713a9687",
+        "ed105dd11b69f57b6b114642439097c2a8d59263",
+        "c2708cf311e78e8ccb1d1a727522b2af9928aed1",
+        "417bd28750a6daa91efa56bbe427ea0a102e9534",
+        "24899e865834fddf12ba3ab606ac7d4c5860fd97"
+      ],
+      "source_evidence_summary": "Migrated vehicle profile/control sequence validation plus planar and dynamic bicycle trace execution.",
+      "migration_status": "migrated",
+      "current_paths": [
+        "src/hybrid_sensor_sim/physics/vehicle_dynamics.py"
+      ],
+      "current_test_paths": [
+        "tests/test_vehicle_dynamics.py"
+      ],
+      "current_fixture_paths": [
+        "tests/fixtures/autonomy_e2e/p_sim_engine/vehicle_profile_v0.json",
+        "tests/fixtures/autonomy_e2e/p_sim_engine/control_sequence_v0.json"
+      ],
+      "current_script_paths": [
+        "scripts/run_vehicle_dynamics_trace.py"
+      ],
+      "current_doc_paths": [
+        "README.md",
+        "docs/p_sim_engine_migration_audit.md",
+        "docs/autonomy_e2e_migration_master_plan.md"
+      ],
+      "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
+      "current_latest_touch_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e",
+      "working_result_kind": [
+        "library",
+        "cli",
+        "test",
+        "fixture",
+        "doc"
+      ],
+      "result_summary": "Migrated vehicle profile/control sequence validation plus planar and dynamic bicycle trace execution.",
+      "open_gaps": [],
+      "notes": "Canonical current equivalent for the old vehicle dynamics stub."
+    },
+    {
+      "block_id": "p_validation.release_report_reference",
+      "project_id": "P_Validation-Tooling-MVP",
+      "source_kind": "prototype_file",
+      "source_paths": [
+        "30_Projects/P_Validation-Tooling-MVP/prototype/generate_release_report.py"
+      ],
+      "source_commits": [
+        "3ed8fb41162bcc3f14168b4218b29778a2cec652",
+        "a5cb3084af6e84fcee22cfc1aad1528830b07ec0",
+        "1a156d249613a5eca81e5734698e47301046ad85",
+        "fe16d303ffccca6b061bf736d5dcc0936113f040",
+        "44829b314f3f98087a2717ded36cfb1e480a8d41"
+      ],
+      "source_evidence_summary": "Tracked as release/reporting reference only.",
+      "migration_status": "reference_only",
+      "current_paths": [],
+      "current_test_paths": [],
+      "current_fixture_paths": [],
+      "current_script_paths": [],
+      "current_doc_paths": [
+        "docs/autonomy_e2e_migration_master_plan.md"
+      ],
+      "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
+      "current_latest_touch_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e",
+      "working_result_kind": [
+        "doc"
+      ],
+      "result_summary": "Tracked as release/reporting reference only.",
+      "open_gaps": [
+        "Release reporting is outside current repository scope."
+      ],
+      "notes": ""
+    },
+    {
+      "block_id": "p_validation.scenario_variants",
+      "project_id": "P_Validation-Tooling-MVP",
+      "source_kind": "prototype_file",
+      "source_paths": [
+        "30_Projects/P_Validation-Tooling-MVP/prototype/generate_scenario_variants.py"
+      ],
+      "source_commits": [
+        "3ed8fb41162bcc3f14168b4218b29778a2cec652",
+        "433242539a5d1356836c94f7a6e806d49f5f5cfa",
+        "490267cb8493ecddebad850050b5ccbaa548791c",
+        "68363c362ef4d64667324119adbc72263c408992"
+      ],
+      "source_evidence_summary": "Logical scenario expansion plus rendered payload execution workflow migrated.",
+      "migration_status": "migrated",
+      "current_paths": [
+        "src/hybrid_sensor_sim/scenarios/variants.py"
+      ],
+      "current_test_paths": [
+        "tests/test_scenario_variants.py",
+        "tests/test_scenario_variant_runner.py",
+        "tests/test_scenario_variant_workflow.py"
+      ],
+      "current_fixture_paths": [
+        "tests/fixtures/autonomy_e2e/p_validation/highway_cut_in_v0.json",
+        "tests/fixtures/autonomy_e2e/p_validation/highway_map_route_relations_v0.json",
+        "tests/fixtures/autonomy_e2e/p_validation/highway_mixed_payloads_v0.json",
+        "tests/fixtures/autonomy_e2e/p_validation/highway_mixed_payloads_random_v0.json"
+      ],
+      "current_script_paths": [
+        "scripts/run_scenario_variants.py",
+        "scripts/run_scenario_variant_runner.py",
+        "scripts/run_scenario_variant_workflow.py"
+      ],
+      "current_doc_paths": [
+        "README.md",
+        "docs/autonomy_e2e_migration_master_plan.md"
+      ],
+      "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
+      "current_latest_touch_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e",
+      "working_result_kind": [
+        "library",
+        "workflow",
+        "cli",
+        "test",
+        "fixture",
+        "doc"
+      ],
+      "result_summary": "Logical scenario expansion plus rendered payload execution workflow migrated.",
+      "open_gaps": [],
+      "notes": "Release-report generation remains intentionally out of scope."
+    }
+  ]
+}
