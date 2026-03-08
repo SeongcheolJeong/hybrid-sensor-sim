@@ -7,6 +7,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from hybrid_sensor_sim.io.autonomy_e2e_provenance import (
+    AUTONOMY_E2E_RESULT_TRACEABILITY_INDEX_SCHEMA_VERSION_V0,
+)
+
 from hybrid_sensor_sim.tools.scenario_runtime_backend_workflow import (
     SCENARIO_RUNTIME_BACKEND_WORKFLOW_REPORT_SCHEMA_VERSION_V0,
     run_scenario_runtime_backend_workflow,
@@ -68,6 +72,52 @@ PY
         encoding="utf-8",
     )
     path.chmod(0o755)
+
+
+def _init_guard_repo(repo_root: Path) -> None:
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo_root, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=repo_root,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=repo_root,
+        check=True,
+    )
+    (repo_root / "src").mkdir(parents=True, exist_ok=True)
+    (repo_root / "src" / "tracked_module.py").write_text("value = 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo_root, check=True)
+    subprocess.run(["git", "commit", "-m", "baseline"], cwd=repo_root, check=True)
+    subprocess.run(
+        ["git", "update-ref", "refs/remotes/origin/main", "HEAD"],
+        cwd=repo_root,
+        check=True,
+    )
+
+
+def _write_guard_metadata(metadata_root: Path) -> None:
+    metadata_root.mkdir(parents=True, exist_ok=True)
+    traceability_payload = {
+        "schema_version": AUTONOMY_E2E_RESULT_TRACEABILITY_INDEX_SCHEMA_VERSION_V0,
+        "generated_at_utc": "2026-03-08T00:00:00Z",
+        "paths": [
+            {
+                "current_path": "src/tracked_module.py",
+                "path_kind": "library",
+                "block_ids": ["p_sim_engine.object_sim_core"],
+                "project_ids": ["P_Sim-Engine"],
+                "result_role": "core_logic",
+                "current_intro_commit": "1111111",
+                "current_latest_touch_commit": "2222222",
+            }
+        ],
+    }
+    (metadata_root / "result_traceability_index_v0.json").write_text(
+        json.dumps(traceability_payload, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
 
 def _write_smoke_base_config(
@@ -314,6 +364,137 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
             self.assertEqual(report["status"], "BRIDGED_ONLY")
             self.assertEqual(report["backend_smoke_workflow"]["status"], "BRIDGED_ONLY")
             self.assertEqual(report["status_summary"]["final_status_source"], "smoke_skipped")
+
+    def test_run_scenario_runtime_backend_workflow_can_record_history_guard_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            guard_repo = root / "guard_repo"
+            guard_repo.mkdir()
+            _init_guard_repo(guard_repo)
+            _write_guard_metadata(guard_repo / "metadata" / "autonomy_e2e")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+            smoke_config = _write_smoke_base_config(
+                root=root,
+                helios_bin=fake_helios,
+                output_dir=root / "smoke_placeholder",
+            )
+
+            result = run_scenario_runtime_backend_workflow(
+                logical_scenarios_path=str(P_VALIDATION_FIXTURE_ROOT / "highway_mixed_payloads_v0.json"),
+                scenario_language_profile="",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                matrix_scenario_path=P_SIM_ENGINE_FIXTURE_ROOT / "highway_safe_following_v0.json",
+                smoke_config_path=smoke_config,
+                backend="awsim",
+                out_root=root / "runtime_backend_workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=1,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+                matrix_run_id_prefix="RUN_BATCH",
+                traffic_profile_ids=["sumo_highway_balanced_v0"],
+                traffic_actor_pattern_ids=["sumo_platoon_sparse_v0"],
+                traffic_npc_speed_scale_values=[1.0],
+                tire_friction_coeff_values=[1.0],
+                surface_friction_scale_values=[1.0],
+                enable_ego_collision_avoidance=False,
+                avoidance_ttc_threshold_sec=2.5,
+                ego_max_brake_mps2=6.0,
+                max_cases=0,
+                selection_strategy="worst_logical_scenario",
+                selected_variant_id="",
+                lane_spacing_m=4.0,
+                smoke_output_dir="",
+                setup_summary_path="",
+                backend_workflow_summary_path="",
+                backend_bin="",
+                renderer_map="",
+                option_overrides=[],
+                skip_smoke=True,
+                run_history_guard=True,
+                history_guard_metadata_root=guard_repo / "metadata" / "autonomy_e2e",
+                history_guard_current_repo_root=guard_repo,
+                history_guard_compare_ref="origin/main",
+                history_guard_include_untracked=False,
+            )
+
+            report = result["workflow_report"]
+            self.assertEqual(report["status"], "BRIDGED_ONLY")
+            self.assertEqual(report["history_guard"]["status"], "PASS")
+            self.assertTrue(Path(report["artifacts"]["history_guard_report_path"]).is_file())
+
+    def test_run_scenario_runtime_backend_workflow_fails_when_history_guard_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            guard_repo = root / "guard_repo"
+            guard_repo.mkdir()
+            _init_guard_repo(guard_repo)
+            _write_guard_metadata(guard_repo / "metadata" / "autonomy_e2e")
+            (guard_repo / "src" / "tracked_module.py").write_text("value = 2\n", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+            smoke_config = _write_smoke_base_config(
+                root=root,
+                helios_bin=fake_helios,
+                output_dir=root / "smoke_placeholder",
+            )
+
+            result = run_scenario_runtime_backend_workflow(
+                logical_scenarios_path=str(P_VALIDATION_FIXTURE_ROOT / "highway_mixed_payloads_v0.json"),
+                scenario_language_profile="",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                matrix_scenario_path=P_SIM_ENGINE_FIXTURE_ROOT / "highway_safe_following_v0.json",
+                smoke_config_path=smoke_config,
+                backend="awsim",
+                out_root=root / "runtime_backend_workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=1,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+                matrix_run_id_prefix="RUN_BATCH",
+                traffic_profile_ids=["sumo_highway_balanced_v0"],
+                traffic_actor_pattern_ids=["sumo_platoon_sparse_v0"],
+                traffic_npc_speed_scale_values=[1.0],
+                tire_friction_coeff_values=[1.0],
+                surface_friction_scale_values=[1.0],
+                enable_ego_collision_avoidance=False,
+                avoidance_ttc_threshold_sec=2.5,
+                ego_max_brake_mps2=6.0,
+                max_cases=0,
+                selection_strategy="worst_logical_scenario",
+                selected_variant_id="",
+                lane_spacing_m=4.0,
+                smoke_output_dir="",
+                setup_summary_path="",
+                backend_workflow_summary_path="",
+                backend_bin="",
+                renderer_map="",
+                option_overrides=[],
+                skip_smoke=True,
+                run_history_guard=True,
+                history_guard_metadata_root=guard_repo / "metadata" / "autonomy_e2e",
+                history_guard_current_repo_root=guard_repo,
+                history_guard_compare_ref="origin/main",
+                history_guard_include_untracked=False,
+            )
+
+            report = result["workflow_report"]
+            self.assertEqual(report["status"], "FAILED")
+            self.assertEqual(report["history_guard"]["status"], "FAIL")
+            self.assertEqual(report["status_summary"]["final_status_source"], "history_guard")
+            self.assertIn(
+                "AUTONOMY_E2E_HISTORY_GUARD_FAILED",
+                report["status_summary"]["status_reason_codes"],
+            )
 
     def test_run_scenario_runtime_backend_workflow_uses_setup_summary_selection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

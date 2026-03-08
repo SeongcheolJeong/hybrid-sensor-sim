@@ -21,6 +21,9 @@ from hybrid_sensor_sim.tools.scenario_backend_smoke_workflow import (
 from hybrid_sensor_sim.tools.scenario_batch_workflow import (
     run_scenario_batch_workflow,
 )
+from hybrid_sensor_sim.tools.autonomy_e2e_history_guard import (
+    build_autonomy_e2e_history_guard_report,
+)
 from hybrid_sensor_sim.tools.scenario_runtime_bridge import DEFAULT_LANE_SPACING_M
 
 
@@ -124,6 +127,31 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--renderer-map", default="", help="Forwarded to renderer backend smoke")
     parser.add_argument("--set-option", action="append", default=[], help="Forwarded to renderer backend smoke")
     parser.add_argument("--skip-smoke", action="store_true", help="Run batch workflow and bridge only")
+    parser.add_argument(
+        "--run-history-guard",
+        action="store_true",
+        help="Run Autonomy-E2E provenance guard against the canonical baseline after workflow execution",
+    )
+    parser.add_argument(
+        "--history-guard-metadata-root",
+        default="",
+        help="Override metadata root for Autonomy-E2E provenance guard",
+    )
+    parser.add_argument(
+        "--history-guard-current-repo-root",
+        default="",
+        help="Override repo root for Autonomy-E2E provenance guard",
+    )
+    parser.add_argument(
+        "--history-guard-compare-ref",
+        default="origin/main",
+        help="Git compare ref used by Autonomy-E2E provenance guard",
+    )
+    parser.add_argument(
+        "--history-guard-include-untracked",
+        action="store_true",
+        help="Include untracked files in Autonomy-E2E provenance guard evaluation",
+    )
     return parser.parse_args(argv)
 
 
@@ -161,7 +189,10 @@ def _build_workflow_status(
     *,
     batch_status: str,
     backend_status: str,
+    history_guard_status: str | None,
 ) -> str:
+    if history_guard_status == "FAIL":
+        return "FAILED"
     if backend_status == "SMOKE_FAILED":
         return "FAILED"
     if batch_status == "FAILED":
@@ -178,8 +209,18 @@ def _build_status_summary(
     workflow_status: str,
     batch_report: dict[str, Any],
     backend_report: dict[str, Any],
+    history_guard_report: dict[str, Any] | None,
 ) -> dict[str, Any]:
     decision_trace = [
+        {
+            "step_id": "history_guard",
+            "matched": (
+                isinstance(history_guard_report, dict)
+                and str(history_guard_report.get("status", "")).strip() == "FAIL"
+            ),
+            "status_if_matched": "FAILED",
+            "reason_code": "AUTONOMY_E2E_HISTORY_GUARD_FAILED",
+        },
         {
             "step_id": "backend_smoke_status",
             "matched": backend_report["status"] == "SMOKE_FAILED",
@@ -215,6 +256,7 @@ def _build_status_summary(
     batch_status_summary = dict(batch_report.get("status_summary", {}))
     worst_logical_row = dict(batch_status_summary.get("worst_logical_scenario_row", {}))
     smoke_summary = dict(backend_report.get("smoke", {}).get("summary", {}))
+    history_guard_summary = dict(history_guard_report or {})
     return {
         "final_status_source": final_status_source,
         "decision_trace": decision_trace,
@@ -226,6 +268,11 @@ def _build_status_summary(
         "backend_variant_id": backend_report.get("selection", {}).get("variant_id"),
         "backend_output_comparison_status": smoke_summary.get("output_comparison_status"),
         "backend_run_status": smoke_summary.get("run_status"),
+        "history_guard_status": history_guard_summary.get("status"),
+        "history_guard_failure_codes": list(history_guard_summary.get("failure_codes", [])),
+        "history_guard_impacted_block_ids": list(
+            history_guard_summary.get("impacted_block_ids", [])
+        ),
         "workflow_status": workflow_status,
     }
 
@@ -242,6 +289,7 @@ def _build_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Generated at: `{workflow_report['generated_at']}`",
         f"- Final status source: `{summary['final_status_source']}`",
         f"- Status reasons: `{', '.join(summary['status_reason_codes']) or '-'}`",
+        f"- History guard: `{summary.get('history_guard_status') or '-'}`",
         "",
         "## Batch Workflow",
         "",
@@ -259,12 +307,20 @@ def _build_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Output comparison: `{summary['backend_output_comparison_status'] or '-'}`",
         f"- Run status: `{summary['backend_run_status'] or '-'}`",
         "",
+        "## Provenance Guard",
+        "",
+        f"- Requested: `{workflow_report['history_guard']['requested']}`",
+        f"- Status: `{workflow_report['history_guard']['status'] or '-'}`",
+        f"- Failure codes: `{', '.join(workflow_report['history_guard'].get('failure_codes', [])) or '-'}`",
+        f"- Report: `{workflow_report['artifacts'].get('history_guard_report_path') or '-'}`",
+        "",
         "## Artifacts",
         "",
         f"- Batch workflow report: `{workflow_report['artifacts']['batch_workflow_report_path']}`",
         f"- Backend smoke workflow report: `{workflow_report['artifacts']['backend_smoke_workflow_report_path']}`",
         f"- Smoke scenario: `{workflow_report['artifacts']['smoke_scenario_path']}`",
         f"- Smoke input config: `{workflow_report['artifacts']['smoke_input_config_path']}`",
+        f"- History guard report: `{workflow_report['artifacts'].get('history_guard_report_path') or '-'}`",
         "",
     ]
     return "\n".join(lines)
@@ -322,6 +378,11 @@ def run_scenario_runtime_backend_workflow(
     renderer_map: str,
     option_overrides: list[str],
     skip_smoke: bool,
+    run_history_guard: bool = False,
+    history_guard_metadata_root: str | Path | None = None,
+    history_guard_current_repo_root: str | Path | None = None,
+    history_guard_compare_ref: str = "origin/main",
+    history_guard_include_untracked: bool = False,
 ) -> dict[str, Any]:
     out_root = out_root.resolve()
     out_root.mkdir(parents=True, exist_ok=True)
@@ -389,9 +450,39 @@ def run_scenario_runtime_backend_workflow(
 
     batch_report = batch_result["workflow_report"]
     backend_report = backend_result["workflow_report"]
+    history_guard_report = None
+    history_guard_report_path = None
+    if run_history_guard:
+        guard_root = out_root / "history_guard"
+        guard_root.mkdir(parents=True, exist_ok=True)
+        history_guard_report_path = (
+            guard_root / "autonomy_e2e_history_guard_report_v0.json"
+        )
+        metadata_root = (
+            Path(history_guard_metadata_root).resolve()
+            if history_guard_metadata_root
+            else Path(__file__).resolve().parents[3] / "metadata" / "autonomy_e2e"
+        )
+        current_repo_root = (
+            Path(history_guard_current_repo_root).resolve()
+            if history_guard_current_repo_root
+            else Path(__file__).resolve().parents[3]
+        )
+        history_guard_report = build_autonomy_e2e_history_guard_report(
+            current_repo_root=current_repo_root,
+            metadata_root=metadata_root,
+            compare_ref=history_guard_compare_ref,
+            include_untracked=history_guard_include_untracked,
+            json_out=history_guard_report_path,
+        )
     workflow_status = _build_workflow_status(
         batch_status=str(batch_report["status"]),
         backend_status=str(backend_report["status"]),
+        history_guard_status=(
+            str(history_guard_report.get("status", "")).strip()
+            if isinstance(history_guard_report, dict)
+            else None
+        ),
     )
 
     workflow_report = {
@@ -434,11 +525,40 @@ def run_scenario_runtime_backend_workflow(
             },
             "smoke": dict(backend_report.get("smoke", {})),
         },
+        "history_guard": {
+            "requested": bool(run_history_guard),
+            "status": (
+                history_guard_report.get("status")
+                if isinstance(history_guard_report, dict)
+                else None
+            ),
+            "failure_codes": (
+                list(history_guard_report.get("failure_codes", []))
+                if isinstance(history_guard_report, dict)
+                else []
+            ),
+            "warnings": (
+                list(history_guard_report.get("warnings", []))
+                if isinstance(history_guard_report, dict)
+                else []
+            ),
+            "compare_ref": history_guard_compare_ref if run_history_guard else None,
+            "report_path": (
+                str(history_guard_report_path.resolve())
+                if history_guard_report_path is not None
+                else None
+            ),
+        },
         "artifacts": {
             "batch_workflow_report_path": str(Path(batch_result["workflow_report_path"]).resolve()),
             "backend_smoke_workflow_report_path": str(Path(backend_result["workflow_report_path"]).resolve()),
             "smoke_scenario_path": str(Path(backend_report["artifacts"]["smoke_scenario_path"]).resolve()),
             "smoke_input_config_path": str(Path(backend_report["artifacts"]["smoke_input_config_path"]).resolve()),
+            "history_guard_report_path": (
+                str(history_guard_report_path.resolve())
+                if history_guard_report_path is not None
+                else None
+            ),
             "workflow_markdown_path": str(markdown_path.resolve()),
         },
     }
@@ -446,6 +566,7 @@ def run_scenario_runtime_backend_workflow(
         workflow_status=workflow_status,
         batch_report=batch_report,
         backend_report=backend_report,
+        history_guard_report=history_guard_report,
     )
 
     report_path = out_root / "scenario_runtime_backend_workflow_report_v0.json"
@@ -577,6 +698,11 @@ def main(argv: list[str] | None = None) -> int:
             renderer_map=args.renderer_map,
             option_overrides=list(args.set_option),
             skip_smoke=bool(args.skip_smoke),
+            run_history_guard=bool(args.run_history_guard),
+            history_guard_metadata_root=args.history_guard_metadata_root,
+            history_guard_current_repo_root=args.history_guard_current_repo_root,
+            history_guard_compare_ref=args.history_guard_compare_ref,
+            history_guard_include_untracked=bool(args.history_guard_include_untracked),
         )
         workflow_report = result["workflow_report"]
         print(f"[ok] status={workflow_report['status']}")

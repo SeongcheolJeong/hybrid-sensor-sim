@@ -370,15 +370,17 @@ python3 scripts/run_scenario_runtime_backend_workflow.py \
   --traffic-npc-speed-scale-values 1.0 \
   --tire-friction-coeff-values 1.0 \
   --surface-friction-scale-values 1.0 \
-  --skip-smoke
+  --skip-smoke \
+  --run-history-guard
 ```
 
 `scenario_runtime_backend_workflow_report_v0.json` includes:
 
 - `batch_workflow`: embedded batch-workflow status, report paths, and worst logical scenario summary
 - `backend_smoke_workflow`: embedded backend-smoke workflow status, selected variant, runtime selection, bridge summary, and smoke result
-- `status_summary`: final status source, ordered decision trace, batch triage IDs, and backend smoke result summary
-- `artifacts`: top-level report paths plus generated smoke scenario/config paths
+- `history_guard`: optional provenance guard status, failure codes, and report path for publish-time validation against `origin/main`
+- `status_summary`: final status source, ordered decision trace, batch triage IDs, backend smoke result summary, and optional history-guard status
+- `artifacts`: top-level report paths plus generated smoke scenario/config paths and optional history-guard report
 
 Both `run_scenario_variants.py` and `run_scenario_variant_workflow.py` resolve default scenario-language profiles from:
 

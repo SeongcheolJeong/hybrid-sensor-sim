@@ -185,6 +185,9 @@ Implemented in the current repository:
 43. staged-backend selection reuse in scenario smoke workflows
    - `src/hybrid_sensor_sim/tools/scenario_backend_smoke_workflow.py` and `src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py` can now resolve `backend_bin` and renderer map from `renderer_backend_local_setup.json` or `renderer_backend_workflow_summary.json`
    - this lets migrated scenario smoke reuse staged/runtime-discovered backend selections without repeating manual path wiring
+44. provenance-aware runtime smoke governance
+   - `src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py` can now optionally run the checked-in Autonomy-E2E history guard as part of the top-level runtime/backend workflow
+   - this makes publish-time scenario smoke runs report whether migrated result paths were changed without refreshing `metadata/autonomy_e2e`
 
 Still pending from the same migration track:
 
