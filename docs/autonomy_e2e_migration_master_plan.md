@@ -177,6 +177,12 @@ Detailed audit:
 24. lane-change brake floors and stronger worst-case prioritization
    - interaction-specific avoidance policy now supports `min_brake_scale` in addition to `ttc_threshold_sec`, `brake_scale`, `priority`, and `max_gap_m`, which lets `lane_change_conflict` scenarios keep a minimum braking floor without over-tightening the full policy
    - top-level worst-case ranking now treats lane-change gate breaches as an explicit severity layer, so lane-change-heavy failures rank ahead of lighter route-interaction cases even when avoidance counts otherwise tie
+25. hold-aware lane-change avoidance
+   - interaction-specific avoidance policy now also supports `hold_duration_sec`, allowing `lane_change_conflict` braking to persist briefly after the target stops being immediately actionable
+   - object-sim summary and trace now expose hold-event counts, hold-active step counts, hold counts by interaction kind, and selected hold duration for direct triage
+26. hold-aware batch ranking and summaries
+   - batch comparison overview, grouped rows, and workflow status summaries now preserve hold metrics and selected `hold_duration_sec` values
+   - worst-case ranking now treats hold-active steps and hold events as stronger evidence than raw brake totals before applying policy-trace tie-breaks
 11. route-relation-driven replay and sweep generation
    - `log_scene_v0` and matrix actor patterns can now synthesize actor lane assignments from route relations instead of relying only on explicit lane IDs or raw lane slots
 12. rendered payload generation in scenario variants
@@ -452,7 +458,7 @@ Avoid these migration mistakes:
 
 The next concrete code migration should be:
 
-1. add second-wave `vehicle_dynamics` coupling inside object-sim
-2. then connect scenario/object-sim tooling to the canonical map layer
+1. deepen route-aware runtime behavior on top of the new hold-aware avoidance surface
+2. connect scenario batch outputs to runtime/backend smoke so scenario evaluation and backend execution share one end-to-end path
 
 That order increases current feature coverage fastest while keeping repository scope under control.

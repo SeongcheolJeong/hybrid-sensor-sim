@@ -445,8 +445,20 @@ def _build_logical_scenario_health_rows(
                 "lane_change_conflict_row_count": lane_change_conflict_row_count,
                 "ego_avoidance_row_count": ego_avoidance_row_count,
                 "ego_avoidance_brake_event_count_total": ego_avoidance_brake_event_count_total,
+                "ego_avoidance_hold_event_count_total": int(
+                    row.get("ego_avoidance_hold_event_count_total", 0) or 0
+                ),
+                "ego_avoidance_hold_active_step_count_total": int(
+                    row.get("ego_avoidance_hold_active_step_count_total", 0) or 0
+                ),
                 "ego_avoidance_trigger_counts_by_interaction_kind": dict(
                     sorted(ego_avoidance_trigger_counts_by_interaction_kind.items())
+                ),
+                "ego_avoidance_hold_counts_by_interaction_kind": dict(
+                    sorted(dict(row.get("ego_avoidance_hold_counts_by_interaction_kind", {})).items())
+                ),
+                "ego_avoidance_last_trigger_hold_duration_sec_values": list(
+                    row.get("ego_avoidance_last_trigger_hold_duration_sec_values", [])
                 ),
                 "ego_avoidance_last_trigger_priority_values": list(
                     row.get("ego_avoidance_last_trigger_priority_values", [])
@@ -512,10 +524,15 @@ def _sort_float_none_last(value: Any) -> float:
     return float_value if float_value is not None else float("inf")
 
 
-def _avoidance_policy_trace_rank_key(row: dict[str, Any]) -> tuple[float, float]:
+def _avoidance_policy_trace_rank_key(row: dict[str, Any]) -> tuple[float, float, float]:
     priority_values = [
         int(value)
         for value in list(row.get("ego_avoidance_last_trigger_priority_values", []))
+        if value is not None
+    ]
+    hold_duration_values = [
+        float(value)
+        for value in list(row.get("ego_avoidance_last_trigger_hold_duration_sec_values", []))
         if value is not None
     ]
     max_gap_values = [
@@ -524,13 +541,18 @@ def _avoidance_policy_trace_rank_key(row: dict[str, Any]) -> tuple[float, float]
         if value is not None
     ]
     min_priority = min(priority_values) if priority_values else float("inf")
+    max_hold_duration = -max(hold_duration_values) if hold_duration_values else float("inf")
     max_gap = -max(max_gap_values) if max_gap_values else float("inf")
-    return (min_priority, max_gap)
+    return (min_priority, max_hold_duration, max_gap)
 
 
-def _avoidance_rank_key(row: dict[str, Any]) -> tuple[int, int, int, int, int, int, float, float]:
+def _avoidance_rank_key(
+    row: dict[str, Any]
+) -> tuple[int, int, int, int, int, int, int, int, float, float, float]:
     trigger_counts = dict(row.get("ego_avoidance_trigger_counts_by_interaction_kind", {}))
     return (
+        -int(row.get("ego_avoidance_hold_active_step_count_total", 0) or 0),
+        -int(row.get("ego_avoidance_hold_event_count_total", 0) or 0),
         -int(row.get("ego_avoidance_brake_event_count_total", 0) or 0),
         -int(trigger_counts.get("lane_change_conflict", 0) or 0),
         -int(trigger_counts.get("merge_conflict", 0) or 0),
@@ -622,15 +644,27 @@ def _build_workflow_status_summary(
     logical_rows = list(comparison_summary.get("logical_scenario_rows", []))
     matrix_rows = list(comparison_summary.get("matrix_group_rows", []))
     avoidance_trigger_counts_by_interaction_kind: dict[str, int] = {}
+    avoidance_hold_counts_by_interaction_kind: dict[str, int] = {}
     avoidance_brake_event_count_total = 0
     avoidance_row_count = 0
+    avoidance_hold_event_count_total = 0
+    avoidance_hold_active_step_count_total = 0
     for row in logical_rows + matrix_rows:
         avoidance_brake_event_count_total += int(row.get("ego_avoidance_brake_event_count_total", 0) or 0)
         avoidance_row_count += int(row.get("ego_avoidance_row_count", 0) or 0)
+        avoidance_hold_event_count_total += int(row.get("ego_avoidance_hold_event_count_total", 0) or 0)
+        avoidance_hold_active_step_count_total += int(
+            row.get("ego_avoidance_hold_active_step_count_total", 0) or 0
+        )
         for label, count in dict(row.get("ego_avoidance_trigger_counts_by_interaction_kind", {})).items():
             key = str(label)
             avoidance_trigger_counts_by_interaction_kind[key] = (
                 avoidance_trigger_counts_by_interaction_kind.get(key, 0) + int(count)
+            )
+        for label, count in dict(row.get("ego_avoidance_hold_counts_by_interaction_kind", {})).items():
+            key = str(label)
+            avoidance_hold_counts_by_interaction_kind[key] = (
+                avoidance_hold_counts_by_interaction_kind.get(key, 0) + int(count)
             )
 
     def matrix_group_gate_failure_codes(row: dict[str, Any]) -> list[str]:
@@ -785,8 +819,20 @@ def _build_workflow_status_summary(
                     "ego_avoidance_brake_event_count_total": int(
                         row.get("ego_avoidance_brake_event_count_total", 0) or 0
                     ),
+                    "ego_avoidance_hold_event_count_total": int(
+                        row.get("ego_avoidance_hold_event_count_total", 0) or 0
+                    ),
+                    "ego_avoidance_hold_active_step_count_total": int(
+                        row.get("ego_avoidance_hold_active_step_count_total", 0) or 0
+                    ),
                     "ego_avoidance_trigger_counts_by_interaction_kind": dict(
                         sorted(dict(row.get("ego_avoidance_trigger_counts_by_interaction_kind", {})).items())
+                    ),
+                    "ego_avoidance_hold_counts_by_interaction_kind": dict(
+                        sorted(dict(row.get("ego_avoidance_hold_counts_by_interaction_kind", {})).items())
+                    ),
+                    "ego_avoidance_last_trigger_hold_duration_sec_values": list(
+                        row.get("ego_avoidance_last_trigger_hold_duration_sec_values", [])
                     ),
                     "ego_avoidance_last_trigger_priority_values": list(
                         row.get("ego_avoidance_last_trigger_priority_values", [])
@@ -900,8 +946,13 @@ def _build_workflow_status_summary(
         "lane_change_gate_failure_code_counts": dict(sorted(lane_change_gate_failure_code_counts.items())),
         "avoidance_row_count": int(avoidance_row_count),
         "avoidance_brake_event_count_total": int(avoidance_brake_event_count_total),
+        "avoidance_hold_event_count_total": int(avoidance_hold_event_count_total),
+        "avoidance_hold_active_step_count_total": int(avoidance_hold_active_step_count_total),
         "avoidance_trigger_counts_by_interaction_kind": dict(
             sorted(avoidance_trigger_counts_by_interaction_kind.items())
+        ),
+        "avoidance_hold_counts_by_interaction_kind": dict(
+            sorted(avoidance_hold_counts_by_interaction_kind.items())
         ),
         "attention_reason_counts": dict(comparison_summary.get("attention_reason_counts", {})),
         "worst_logical_scenario_row": dict(worst_logical_scenario_row) if worst_logical_scenario_row is not None else None,
@@ -951,7 +1002,10 @@ def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Lane-change gate failure counts: `{_format_counter(status_summary['lane_change_gate_failure_code_counts'])}`",
         f"- Avoidance-active rows: `{status_summary['avoidance_row_count']}`",
         f"- Avoidance brake event count: `{status_summary['avoidance_brake_event_count_total']}`",
+        f"- Avoidance hold event count: `{status_summary['avoidance_hold_event_count_total']}`",
+        f"- Avoidance hold active step count: `{status_summary['avoidance_hold_active_step_count_total']}`",
         f"- Avoidance trigger counts: `{_format_counter(status_summary['avoidance_trigger_counts_by_interaction_kind'])}`",
+        f"- Avoidance hold counts: `{_format_counter(status_summary['avoidance_hold_counts_by_interaction_kind'])}`",
         "",
         "## Worst-Case Rows",
         "",

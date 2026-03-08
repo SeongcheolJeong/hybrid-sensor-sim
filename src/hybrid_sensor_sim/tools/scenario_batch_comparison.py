@@ -425,13 +425,22 @@ def _extract_path_interaction_fields(lane_risk_summary: dict[str, Any]) -> dict[
 def _extract_avoidance_fields(summary: dict[str, Any]) -> dict[str, Any]:
     raw_counts = summary.get("ego_avoidance_trigger_counts_by_interaction_kind", {})
     trigger_counts = dict(raw_counts) if isinstance(raw_counts, dict) else {}
+    raw_hold_counts = summary.get("ego_avoidance_hold_counts_by_interaction_kind", {})
+    hold_counts = dict(raw_hold_counts) if isinstance(raw_hold_counts, dict) else {}
     return {
         "ego_avoidance_brake_event_count": int(summary.get("ego_avoidance_brake_event_count", 0) or 0),
         "ego_avoidance_applied_brake_mps2_max": _coerce_optional_float(
             summary.get("ego_avoidance_applied_brake_mps2_max")
         ),
+        "ego_avoidance_hold_event_count": int(summary.get("ego_avoidance_hold_event_count", 0) or 0),
+        "ego_avoidance_hold_active_step_count": int(
+            summary.get("ego_avoidance_hold_active_step_count", 0) or 0
+        ),
         "ego_avoidance_last_trigger_interaction_kind": (
             str(summary.get("ego_avoidance_last_trigger_interaction_kind", "")).strip() or None
+        ),
+        "ego_avoidance_last_trigger_hold_duration_sec": _coerce_optional_float(
+            summary.get("ego_avoidance_last_trigger_hold_duration_sec")
         ),
         "ego_avoidance_last_trigger_priority": (
             None
@@ -442,6 +451,7 @@ def _extract_avoidance_fields(summary: dict[str, Any]) -> dict[str, Any]:
             summary.get("ego_avoidance_last_trigger_max_gap_m")
         ),
         "ego_avoidance_trigger_counts_by_interaction_kind": trigger_counts,
+        "ego_avoidance_hold_counts_by_interaction_kind": hold_counts,
     }
 
 
@@ -585,8 +595,12 @@ def _build_logical_scenario_rows(variant_rows: list[dict[str, Any]]) -> list[dic
                 "min_ttc_path_conflict_sec_min": None,
                 "ego_avoidance_row_count": 0,
                 "ego_avoidance_brake_event_count_total": 0,
+                "ego_avoidance_hold_event_count_total": 0,
+                "ego_avoidance_hold_active_step_count_total": 0,
                 "ego_avoidance_trigger_counts_by_interaction_kind": Counter(),
+                "ego_avoidance_hold_counts_by_interaction_kind": Counter(),
                 "ego_avoidance_last_trigger_interaction_kind_counts": Counter(),
+                "ego_avoidance_last_trigger_hold_duration_sec_values": set(),
                 "ego_avoidance_last_trigger_priority_values": set(),
                 "ego_avoidance_last_trigger_max_gap_m_values": set(),
                 "ego_route_lane_ids": set(),
@@ -623,11 +637,24 @@ def _build_logical_scenario_rows(variant_rows: list[dict[str, Any]]) -> list[dic
         if brake_event_count > 0:
             group["ego_avoidance_row_count"] += 1
         group["ego_avoidance_brake_event_count_total"] += brake_event_count
+        group["ego_avoidance_hold_event_count_total"] += int(row.get("ego_avoidance_hold_event_count", 0) or 0)
+        group["ego_avoidance_hold_active_step_count_total"] += int(
+            row.get("ego_avoidance_hold_active_step_count", 0) or 0
+        )
         for label, count in dict(row.get("ego_avoidance_trigger_counts_by_interaction_kind", {})).items():
             group["ego_avoidance_trigger_counts_by_interaction_kind"][str(label)] += int(count)
+        for label, count in dict(row.get("ego_avoidance_hold_counts_by_interaction_kind", {})).items():
+            group["ego_avoidance_hold_counts_by_interaction_kind"][str(label)] += int(count)
         last_trigger_kind = str(row.get("ego_avoidance_last_trigger_interaction_kind", "")).strip()
         if last_trigger_kind:
             group["ego_avoidance_last_trigger_interaction_kind_counts"][last_trigger_kind] += 1
+        last_trigger_hold_duration_sec = _coerce_optional_float(
+            row.get("ego_avoidance_last_trigger_hold_duration_sec")
+        )
+        if last_trigger_hold_duration_sec is not None:
+            group["ego_avoidance_last_trigger_hold_duration_sec_values"].add(
+                float(last_trigger_hold_duration_sec)
+            )
         last_trigger_priority = row.get("ego_avoidance_last_trigger_priority")
         if last_trigger_priority is not None:
             group["ego_avoidance_last_trigger_priority_values"].add(int(last_trigger_priority))
@@ -670,11 +697,21 @@ def _build_logical_scenario_rows(variant_rows: list[dict[str, Any]]) -> list[dic
             "min_ttc_path_conflict_sec_min": group["min_ttc_path_conflict_sec_min"],
             "ego_avoidance_row_count": int(group["ego_avoidance_row_count"]),
             "ego_avoidance_brake_event_count_total": int(group["ego_avoidance_brake_event_count_total"]),
+            "ego_avoidance_hold_event_count_total": int(group["ego_avoidance_hold_event_count_total"]),
+            "ego_avoidance_hold_active_step_count_total": int(
+                group["ego_avoidance_hold_active_step_count_total"]
+            ),
             "ego_avoidance_trigger_counts_by_interaction_kind": dict(
                 sorted(group["ego_avoidance_trigger_counts_by_interaction_kind"].items())
             ),
+            "ego_avoidance_hold_counts_by_interaction_kind": dict(
+                sorted(group["ego_avoidance_hold_counts_by_interaction_kind"].items())
+            ),
             "ego_avoidance_last_trigger_interaction_kind_counts": dict(
                 sorted(group["ego_avoidance_last_trigger_interaction_kind_counts"].items())
+            ),
+            "ego_avoidance_last_trigger_hold_duration_sec_values": sorted(
+                group["ego_avoidance_last_trigger_hold_duration_sec_values"]
             ),
             "ego_avoidance_last_trigger_priority_values": sorted(group["ego_avoidance_last_trigger_priority_values"]),
             "ego_avoidance_last_trigger_max_gap_m_values": sorted(
@@ -718,8 +755,12 @@ def _build_matrix_group_rows(matrix_rows: list[dict[str, Any]]) -> list[dict[str
                 "min_ttc_path_conflict_sec_min": None,
                 "ego_avoidance_row_count": 0,
                 "ego_avoidance_brake_event_count_total": 0,
+                "ego_avoidance_hold_event_count_total": 0,
+                "ego_avoidance_hold_active_step_count_total": 0,
                 "ego_avoidance_trigger_counts_by_interaction_kind": Counter(),
+                "ego_avoidance_hold_counts_by_interaction_kind": Counter(),
                 "ego_avoidance_last_trigger_interaction_kind_counts": Counter(),
+                "ego_avoidance_last_trigger_hold_duration_sec_values": set(),
                 "ego_avoidance_last_trigger_priority_values": set(),
                 "ego_avoidance_last_trigger_max_gap_m_values": set(),
                 "ego_route_lane_ids": set(),
@@ -753,11 +794,24 @@ def _build_matrix_group_rows(matrix_rows: list[dict[str, Any]]) -> list[dict[str
         if brake_event_count > 0:
             group["ego_avoidance_row_count"] += 1
         group["ego_avoidance_brake_event_count_total"] += brake_event_count
+        group["ego_avoidance_hold_event_count_total"] += int(row.get("ego_avoidance_hold_event_count", 0) or 0)
+        group["ego_avoidance_hold_active_step_count_total"] += int(
+            row.get("ego_avoidance_hold_active_step_count", 0) or 0
+        )
         for label, count in dict(row.get("ego_avoidance_trigger_counts_by_interaction_kind", {})).items():
             group["ego_avoidance_trigger_counts_by_interaction_kind"][str(label)] += int(count)
+        for label, count in dict(row.get("ego_avoidance_hold_counts_by_interaction_kind", {})).items():
+            group["ego_avoidance_hold_counts_by_interaction_kind"][str(label)] += int(count)
         last_trigger_kind = str(row.get("ego_avoidance_last_trigger_interaction_kind", "")).strip()
         if last_trigger_kind:
             group["ego_avoidance_last_trigger_interaction_kind_counts"][last_trigger_kind] += 1
+        last_trigger_hold_duration_sec = _coerce_optional_float(
+            row.get("ego_avoidance_last_trigger_hold_duration_sec")
+        )
+        if last_trigger_hold_duration_sec is not None:
+            group["ego_avoidance_last_trigger_hold_duration_sec_values"].add(
+                float(last_trigger_hold_duration_sec)
+            )
         last_trigger_priority = row.get("ego_avoidance_last_trigger_priority")
         if last_trigger_priority is not None:
             group["ego_avoidance_last_trigger_priority_values"].add(int(last_trigger_priority))
@@ -809,11 +863,21 @@ def _build_matrix_group_rows(matrix_rows: list[dict[str, Any]]) -> list[dict[str
             "min_ttc_path_conflict_sec_min": group["min_ttc_path_conflict_sec_min"],
             "ego_avoidance_row_count": int(group["ego_avoidance_row_count"]),
             "ego_avoidance_brake_event_count_total": int(group["ego_avoidance_brake_event_count_total"]),
+            "ego_avoidance_hold_event_count_total": int(group["ego_avoidance_hold_event_count_total"]),
+            "ego_avoidance_hold_active_step_count_total": int(
+                group["ego_avoidance_hold_active_step_count_total"]
+            ),
             "ego_avoidance_trigger_counts_by_interaction_kind": dict(
                 sorted(group["ego_avoidance_trigger_counts_by_interaction_kind"].items())
             ),
+            "ego_avoidance_hold_counts_by_interaction_kind": dict(
+                sorted(group["ego_avoidance_hold_counts_by_interaction_kind"].items())
+            ),
             "ego_avoidance_last_trigger_interaction_kind_counts": dict(
                 sorted(group["ego_avoidance_last_trigger_interaction_kind_counts"].items())
+            ),
+            "ego_avoidance_last_trigger_hold_duration_sec_values": sorted(
+                group["ego_avoidance_last_trigger_hold_duration_sec_values"]
             ),
             "ego_avoidance_last_trigger_priority_values": sorted(group["ego_avoidance_last_trigger_priority_values"]),
             "ego_avoidance_last_trigger_max_gap_m_values": sorted(
@@ -897,8 +961,15 @@ def _build_attention_rows(batch_rows: list[dict[str, Any]]) -> list[dict[str, An
                 "failure_reason": str(row.get("failure_reason", "")).strip() or None,
                 "attention_reasons": attention_reasons,
                 "ego_avoidance_brake_event_count": int(row.get("ego_avoidance_brake_event_count", 0) or 0),
+                "ego_avoidance_hold_event_count": int(row.get("ego_avoidance_hold_event_count", 0) or 0),
+                "ego_avoidance_hold_active_step_count": int(
+                    row.get("ego_avoidance_hold_active_step_count", 0) or 0
+                ),
                 "ego_avoidance_last_trigger_interaction_kind": (
                     str(row.get("ego_avoidance_last_trigger_interaction_kind", "")).strip() or None
+                ),
+                "ego_avoidance_last_trigger_hold_duration_sec": _coerce_optional_float(
+                    row.get("ego_avoidance_last_trigger_hold_duration_sec")
                 ),
                 "ego_avoidance_last_trigger_priority": (
                     None
@@ -907,6 +978,9 @@ def _build_attention_rows(batch_rows: list[dict[str, Any]]) -> list[dict[str, An
                 ),
                 "ego_avoidance_last_trigger_max_gap_m": _coerce_optional_float(
                     row.get("ego_avoidance_last_trigger_max_gap_m")
+                ),
+                "ego_avoidance_hold_counts_by_interaction_kind": dict(
+                    row.get("ego_avoidance_hold_counts_by_interaction_kind", {})
                 ),
                 "ego_route_lane_id": str(row.get("ego_route_lane_id", "")).strip() or None,
                 "traffic_npc_route_lane_id_profile": _normalize_text_list(
@@ -947,7 +1021,10 @@ def _build_overview(
     lane_change_conflict_row_count = 0
     ego_avoidance_row_count = 0
     ego_avoidance_brake_event_count_total = 0
+    ego_avoidance_hold_event_count_total = 0
+    ego_avoidance_hold_active_step_count_total = 0
     ego_avoidance_trigger_counts_by_interaction_kind: Counter[str] = Counter()
+    ego_avoidance_hold_counts_by_interaction_kind: Counter[str] = Counter()
     min_ttc_path_conflict_sec_min: float | None = None
     min_ttc_path_conflict_row_id = None
     min_ttc_path_conflict_source_batch = None
@@ -970,8 +1047,14 @@ def _build_overview(
         if brake_event_count > 0:
             ego_avoidance_row_count += 1
         ego_avoidance_brake_event_count_total += brake_event_count
+        ego_avoidance_hold_event_count_total += int(row.get("ego_avoidance_hold_event_count", 0) or 0)
+        ego_avoidance_hold_active_step_count_total += int(
+            row.get("ego_avoidance_hold_active_step_count", 0) or 0
+        )
         for label, count in dict(row.get("ego_avoidance_trigger_counts_by_interaction_kind", {})).items():
             ego_avoidance_trigger_counts_by_interaction_kind[str(label)] += int(count)
+        for label, count in dict(row.get("ego_avoidance_hold_counts_by_interaction_kind", {})).items():
+            ego_avoidance_hold_counts_by_interaction_kind[str(label)] += int(count)
         ttc_value = _coerce_optional_float(row.get("min_ttc_any_lane_sec"))
         if ttc_value is not None and (min_ttc_any_lane_sec_min is None or ttc_value < min_ttc_any_lane_sec_min):
             min_ttc_any_lane_sec_min = ttc_value
@@ -998,8 +1081,13 @@ def _build_overview(
         "lane_change_conflict_row_count": int(lane_change_conflict_row_count),
         "ego_avoidance_row_count": int(ego_avoidance_row_count),
         "ego_avoidance_brake_event_count_total": int(ego_avoidance_brake_event_count_total),
+        "ego_avoidance_hold_event_count_total": int(ego_avoidance_hold_event_count_total),
+        "ego_avoidance_hold_active_step_count_total": int(ego_avoidance_hold_active_step_count_total),
         "ego_avoidance_trigger_counts_by_interaction_kind": dict(
             sorted(ego_avoidance_trigger_counts_by_interaction_kind.items())
+        ),
+        "ego_avoidance_hold_counts_by_interaction_kind": dict(
+            sorted(ego_avoidance_hold_counts_by_interaction_kind.items())
         ),
         "min_ttc_any_lane_sec_min": min_ttc_any_lane_sec_min,
         "min_ttc_any_lane_row_id": min_ttc_any_lane_row_id,
@@ -1245,7 +1333,16 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
                 ["Lane-change conflict row count", str(overview["lane_change_conflict_row_count"])],
                 ["Avoidance-active row count", str(overview["ego_avoidance_row_count"])],
                 ["Avoidance brake event count", str(overview["ego_avoidance_brake_event_count_total"])],
+                ["Avoidance hold event count", str(overview["ego_avoidance_hold_event_count_total"])],
+                [
+                    "Avoidance hold active step count",
+                    str(overview["ego_avoidance_hold_active_step_count_total"]),
+                ],
                 ["Avoidance trigger counts", _format_counter(overview["ego_avoidance_trigger_counts_by_interaction_kind"])],
+                [
+                    "Avoidance hold counts",
+                    _format_counter(overview["ego_avoidance_hold_counts_by_interaction_kind"]),
+                ],
                 ["Minimum TTC any-lane", _format_float(overview["min_ttc_any_lane_sec_min"])],
                 ["Minimum TTC source", str(overview.get("min_ttc_any_lane_source_batch") or "-")],
                 ["Minimum TTC row id", str(overview.get("min_ttc_any_lane_row_id") or "-")],
@@ -1395,6 +1492,8 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
                     "Merge",
                     "Lane Change",
                     "Avoidance",
+                    "Hold Events",
+                    "Hold Steps",
                     "Avoidance Kind",
                     "Reasons",
                     "Failure Code",
@@ -1415,6 +1514,8 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
                         str(row.get("merge_conflict_rows", 0)),
                         str(row.get("lane_change_conflict_rows", 0)),
                         str(row.get("ego_avoidance_brake_event_count", 0)),
+                        str(row.get("ego_avoidance_hold_event_count", 0)),
+                        str(row.get("ego_avoidance_hold_active_step_count", 0)),
                         str(row.get("ego_avoidance_last_trigger_interaction_kind") or "-"),
                         ",".join(row.get("attention_reasons", [])) or "-",
                         str(row["failure_code"] or "-"),

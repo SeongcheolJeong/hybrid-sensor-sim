@@ -160,6 +160,12 @@ Implemented in the current repository:
 38. lane-change brake floors and worst-case ranking escalation
    - interaction-specific avoidance policy now also supports `min_brake_scale`, which is especially useful for `lane_change_conflict` when the scenario should preserve a minimum braking floor despite a small `brake_scale`
    - top-level worst-case ranking now treats lane-change gate breaches as their own severity signal, so explicit `LANE_CHANGE_CONFLICT_ROWS_EXCEEDED` and `AVOIDANCE_LANE_CHANGE_TRIGGER_COUNT_EXCEEDED` cases surface ahead of lighter interaction conflicts
+39. hold-aware lane-change avoidance
+   - interaction-specific avoidance policy now also supports `hold_duration_sec`, allowing `lane_change_conflict` braking to persist briefly after the target stops being immediately actionable
+   - object-sim summary and trace now expose `ego_avoidance_hold_event_count`, `ego_avoidance_hold_active_step_count`, `ego_avoidance_hold_counts_by_interaction_kind`, and `ego_avoidance_target_hold_duration_sec`
+40. hold-aware batch triage
+   - batch comparison overview, logical-scenario rows, matrix-group rows, and workflow worst-case rows now preserve hold metrics and selected `hold_duration_sec` values
+   - worst-case ranking is now explicitly hold-aware: hold-active steps and hold events rank ahead of raw brake totals before policy-trace tie-breaks
 
 Still pending from the same migration track:
 
@@ -273,8 +279,8 @@ Porting them would add duplication, not capability.
 
 The highest-value next migration from `Autonomy-E2E` is now:
 
-1. deepen map-aware behavior on top of the new canonical-map-to-route normalization and propagation path
-2. keep the current longitudinal vehicle-dynamics coupling stable while map-aware behavior is added
+1. deepen map-aware behavior on top of the new route-aware avoidance surface, especially merge/diverge/lane-change runtime decisions
+2. connect scenario batch outputs to runtime/backend smoke so scenario evaluation and backend execution share one end-to-end path
 3. only then deepen map-aware scenario generation and validation
 
 That order increases current feature coverage without destabilizing the newly migrated scenario and rig-sweep blocks.

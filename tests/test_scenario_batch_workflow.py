@@ -162,10 +162,24 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             "npcs": [{"position_m": 20.0, "speed_mps": 4.0, "lane_id": "lane_c"}],
         }
 
-    def _build_lane_change_avoidance_scenario(self) -> dict[str, object]:
+    def _build_lane_change_avoidance_scenario(
+        self,
+        *,
+        scenario_id: str = "scn_lane_change_route_avoidance",
+        npc_position_m: float = 18.0,
+        npc_speed_mps: float = 4.0,
+        ego_speed_mps: float = 10.0,
+        ego_max_brake_mps2: float = 5.0,
+        lane_change_policy: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        avoidance_interaction_policy = (
+            {"lane_change_conflict": dict(lane_change_policy)}
+            if lane_change_policy is not None
+            else None
+        )
         return {
             "scenario_schema_version": "scenario_definition_v0",
-            "scenario_id": "scn_lane_change_route_avoidance",
+            "scenario_id": scenario_id,
             "duration_sec": 0.5,
             "dt_sec": 0.1,
             "canonical_map_path": str((P_MAP_TOOLSET_FIXTURE_ROOT / "canonical_lane_graph_v0.json").resolve()),
@@ -177,16 +191,21 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             },
             "enable_ego_collision_avoidance": True,
             "avoidance_ttc_threshold_sec": 10.0,
-            "ego_max_brake_mps2": 5.0,
-            "ego": {"position_m": 0.0, "speed_mps": 10.0, "lane_id": "lane_a"},
+            "ego_max_brake_mps2": ego_max_brake_mps2,
+            "ego": {"position_m": 0.0, "speed_mps": ego_speed_mps, "lane_id": "lane_a"},
             "npcs": [
                 {
-                    "position_m": 18.0,
-                    "speed_mps": 4.0,
+                    "position_m": npc_position_m,
+                    "speed_mps": npc_speed_mps,
                     "lane_id": "lane_b",
                     "route_lane_id": "lane_a",
                 }
             ],
+            **(
+                {"avoidance_interaction_policy": avoidance_interaction_policy}
+                if avoidance_interaction_policy is not None
+                else {}
+            ),
         }
 
     def _write_downstream_route_avoidance_logical_scenarios(self, path: Path) -> None:
@@ -1140,6 +1159,81 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             }
             self.assertEqual(health_rows["scn_merge_gate_failure"]["lane_change_gate_failure_count"], 0)
             self.assertEqual(health_rows["scn_lane_change_gate_failure"]["lane_change_gate_failure_count"], 1)
+
+    def test_scenario_batch_workflow_propagates_lane_change_hold_metrics(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            logical_path = root / "lane_change_hold_logical_scenarios.json"
+            logical_path.write_text(
+                json.dumps(
+                    {
+                        "logical_scenarios": [
+                            {
+                                "scenario_id": "scn_lane_change_hold",
+                                "parameters": {"scenario_variant": [1]},
+                                "variant_payload_kind": "scenario_definition_v0",
+                                "variant_payload_template": self._build_lane_change_avoidance_scenario(
+                                    scenario_id="scn_lane_change_hold_payload",
+                                    npc_position_m=5.2,
+                                    npc_speed_mps=9.5,
+                                    ego_max_brake_mps2=10.0,
+                                    lane_change_policy={
+                                        "ttc_threshold_sec": 1.0,
+                                        "brake_scale": 1.0,
+                                        "hold_duration_sec": 0.2,
+                                    },
+                                ),
+                            },
+                            {
+                                "scenario_id": "scn_lane_change_no_hold",
+                                "parameters": {"scenario_variant": [1]},
+                                "variant_payload_kind": "scenario_definition_v0",
+                                "variant_payload_template": self._build_lane_change_avoidance_scenario(
+                                    scenario_id="scn_lane_change_no_hold_payload",
+                                ),
+                            },
+                        ]
+                    },
+                    indent=2,
+                    ensure_ascii=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            result = run_scenario_batch_workflow(
+                logical_scenarios_path=str(logical_path),
+                scenario_language_profile="",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                matrix_scenario_path=P_SIM_ENGINE_FIXTURE_ROOT / "highway_safe_following_v0.json",
+                out_root=root / "batch_workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=2,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+                matrix_run_id_prefix="RUN_BATCH_MATRIX",
+                traffic_profile_ids=["sumo_highway_balanced_v0"],
+                traffic_actor_pattern_ids=["sumo_platoon_sparse_v0"],
+                traffic_npc_speed_scale_values=[1.0],
+                tire_friction_coeff_values=[1.0],
+                surface_friction_scale_values=[1.0],
+                enable_ego_collision_avoidance=False,
+                avoidance_ttc_threshold_sec=2.5,
+                ego_max_brake_mps2=6.0,
+                max_cases=0,
+            )
+            worst_row = result["workflow_report"]["status_summary"]["worst_logical_scenario_row"]
+            self.assertEqual(worst_row["logical_scenario_id"], "scn_lane_change_hold")
+            self.assertGreaterEqual(worst_row["ego_avoidance_hold_event_count_total"], 1)
+            self.assertGreaterEqual(worst_row["ego_avoidance_hold_active_step_count_total"], 1)
+            self.assertIn(0.2, worst_row["ego_avoidance_last_trigger_hold_duration_sec_values"])
+            self.assertGreaterEqual(
+                result["workflow_report"]["status_summary"]["avoidance_hold_event_count_total"],
+                1,
+            )
 
     def test_scenario_batch_workflow_cli_can_resolve_gate_profile_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

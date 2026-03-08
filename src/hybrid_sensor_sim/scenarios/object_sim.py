@@ -64,8 +64,13 @@ class CoreSimRunner:
         self.ego_avoidance_last_trigger_ttc_threshold_sec: float | None = None
         self.ego_avoidance_last_trigger_brake_scale: float | None = None
         self.ego_avoidance_last_trigger_min_brake_scale: float | None = None
+        self.ego_avoidance_last_trigger_hold_duration_sec: float | None = None
         self.ego_avoidance_last_trigger_priority: int | None = None
         self.ego_avoidance_last_trigger_max_gap_m: float | None = None
+        self.ego_avoidance_hold_event_count = 0
+        self.ego_avoidance_hold_active_row_count = 0
+        self.ego_avoidance_hold_counts_by_interaction_kind: dict[str, int] = {}
+        self._ego_avoidance_hold_state: dict[str, Any] | None = None
         self.ego_dynamics_longitudinal_force_limited_event_count = 0
         self.route_lane_ids = (
             [str(item) for item in scenario.map_context.route_report.get("route_lane_ids", [])]
@@ -256,8 +261,14 @@ class CoreSimRunner:
                     "ego_avoidance_target_min_brake_scale": avoidance_action.get(
                         "target_min_brake_scale"
                     ),
+                    "ego_avoidance_target_hold_duration_sec": avoidance_action.get(
+                        "target_hold_duration_sec"
+                    ),
                     "ego_avoidance_target_priority": avoidance_action.get("target_priority"),
                     "ego_avoidance_target_max_gap_m": avoidance_action.get("target_max_gap_m"),
+                    "ego_avoidance_hold_active": bool(avoidance_action.get("hold_active", False)),
+                    "ego_avoidance_hold_source": avoidance_action.get("hold_source"),
+                    "ego_avoidance_hold_remaining_sec": avoidance_action.get("hold_remaining_sec"),
                     "ego_surface_friction_scale": round(self.scenario.surface_friction_scale, 6),
                     "ego_dynamics_mode": ego_dynamics_step.get("ego_dynamics_mode"),
                     "ego_dynamics_throttle": ego_dynamics_step.get("throttle"),
@@ -458,6 +469,7 @@ class CoreSimRunner:
             ),
             "brake_scale": float(interaction_policy.get("brake_scale", 1.0)),
             "min_brake_scale": float(interaction_policy.get("min_brake_scale", 0.0)),
+            "hold_duration_sec": float(interaction_policy.get("hold_duration_sec", 0.0)),
             "priority": int(
                 interaction_policy.get(
                     "priority",
@@ -486,8 +498,12 @@ class CoreSimRunner:
             "target_ttc_threshold_sec": None,
             "target_brake_scale": None,
             "target_min_brake_scale": None,
+            "target_hold_duration_sec": None,
             "target_priority": None,
             "target_max_gap_m": None,
+            "hold_active": False,
+            "hold_source": None,
+            "hold_remaining_sec": None,
         }
         if not self.scenario.enable_ego_collision_avoidance:
             return result
@@ -517,6 +533,9 @@ class CoreSimRunner:
                     }
                 )
         if not lead_candidates:
+            held_result = self._apply_avoidance_hold(dt_sec=dt_sec)
+            if held_result is not None:
+                return held_result
             return result
         overall_best = min(
             lead_candidates,
@@ -564,6 +583,9 @@ class CoreSimRunner:
         result["target_min_brake_scale"] = round(
             float(selected_target["avoidance_policy"]["min_brake_scale"]), 6
         )
+        result["target_hold_duration_sec"] = round(
+            float(selected_target["avoidance_policy"]["hold_duration_sec"]), 6
+        )
         result["target_priority"] = int(selected_target["avoidance_policy"]["priority"])
         result["target_max_gap_m"] = (
             round(float(selected_target["avoidance_policy"]["max_gap_m"]), 6)
@@ -573,6 +595,9 @@ class CoreSimRunner:
         ttc_sec = float(selected_target["target_ttc_sec"])
         result["ttc_sec"] = round(ttc_sec, 6)
         if not actionable_candidates:
+            held_result = self._apply_avoidance_hold(dt_sec=dt_sec)
+            if held_result is not None:
+                return held_result
             return result
         friction_brake_limit_mps2 = (
             self.scenario.tire_friction_coeff * self.scenario.surface_friction_scale * 9.80665
@@ -610,6 +635,9 @@ class CoreSimRunner:
         self.ego_avoidance_last_trigger_min_brake_scale = round(
             float(selected_target["avoidance_policy"]["min_brake_scale"]), 6
         )
+        self.ego_avoidance_last_trigger_hold_duration_sec = round(
+            float(selected_target["avoidance_policy"]["hold_duration_sec"]), 6
+        )
         self.ego_avoidance_last_trigger_priority = int(selected_target["avoidance_policy"]["priority"])
         self.ego_avoidance_last_trigger_max_gap_m = (
             round(float(selected_target["avoidance_policy"]["max_gap_m"]), 6)
@@ -619,6 +647,94 @@ class CoreSimRunner:
         self.ego_avoidance_trigger_counts_by_interaction_kind[trigger_interaction_kind] = (
             self.ego_avoidance_trigger_counts_by_interaction_kind.get(trigger_interaction_kind, 0) + 1
         )
+        self._refresh_avoidance_hold(
+            interaction_kind=trigger_interaction_kind,
+            selected_target=selected_target,
+            applied_brake_mps2=effective_brake_limit_mps2,
+        )
+        return result
+
+    def _refresh_avoidance_hold(
+        self,
+        *,
+        interaction_kind: str,
+        selected_target: Mapping[str, Any],
+        applied_brake_mps2: float,
+    ) -> None:
+        hold_duration_sec = float(selected_target["avoidance_policy"]["hold_duration_sec"])
+        if hold_duration_sec <= 0:
+            return
+        active_state = self._ego_avoidance_hold_state
+        actor_id = str(selected_target["npc"].actor_id)
+        should_count_new_event = not (
+            active_state is not None
+            and float(active_state.get("remaining_sec", 0.0) or 0.0) > 0.0
+            and str(active_state.get("interaction_kind", "")) == interaction_kind
+            and str(active_state.get("actor_id", "")) == actor_id
+        )
+        if should_count_new_event:
+            self.ego_avoidance_hold_event_count += 1
+            self.ego_avoidance_hold_counts_by_interaction_kind[interaction_kind] = (
+                self.ego_avoidance_hold_counts_by_interaction_kind.get(interaction_kind, 0) + 1
+            )
+        self._ego_avoidance_hold_state = {
+            "remaining_sec": hold_duration_sec,
+            "actor_id": actor_id,
+            "interaction_kind": interaction_kind,
+            "route_relation": str(selected_target["route_relation"]),
+            "path_conflict_source": str(selected_target["path_conflict_source"]),
+            "gap_m": round(float(selected_target["gap_m"]), 6),
+            "ttc_sec": round(float(selected_target["target_ttc_sec"]), 6),
+            "ttc_threshold_sec": round(float(selected_target["avoidance_policy"]["ttc_threshold_sec"]), 6),
+            "brake_scale": round(float(selected_target["avoidance_policy"]["brake_scale"]), 6),
+            "min_brake_scale": round(float(selected_target["avoidance_policy"]["min_brake_scale"]), 6),
+            "hold_duration_sec": round(hold_duration_sec, 6),
+            "priority": int(selected_target["avoidance_policy"]["priority"]),
+            "max_gap_m": (
+                round(float(selected_target["avoidance_policy"]["max_gap_m"]), 6)
+                if selected_target["avoidance_policy"]["max_gap_m"] is not None
+                else None
+            ),
+            "applied_brake_mps2": round(float(applied_brake_mps2), 6),
+        }
+
+    def _apply_avoidance_hold(self, *, dt_sec: float) -> dict[str, Any] | None:
+        active_state = self._ego_avoidance_hold_state
+        if active_state is None:
+            return None
+        remaining_sec = float(active_state.get("remaining_sec", 0.0) or 0.0)
+        if remaining_sec <= 0:
+            self._ego_avoidance_hold_state = None
+            return None
+        self.ego_avoidance_hold_active_row_count += 1
+        result = {
+            "brake_applied": True,
+            "ttc_sec": active_state.get("ttc_sec"),
+            "applied_brake_mps2": active_state.get("applied_brake_mps2"),
+            "effective_brake_limit_mps2": active_state.get("applied_brake_mps2"),
+            "target_actor_id": active_state.get("actor_id"),
+            "target_interaction_kind": active_state.get("interaction_kind"),
+            "target_route_relation": active_state.get("route_relation"),
+            "target_path_conflict_source": active_state.get("path_conflict_source"),
+            "target_gap_m": active_state.get("gap_m"),
+            "target_ttc_sec": active_state.get("ttc_sec"),
+            "target_ttc_threshold_sec": active_state.get("ttc_threshold_sec"),
+            "target_brake_scale": active_state.get("brake_scale"),
+            "target_min_brake_scale": active_state.get("min_brake_scale"),
+            "target_hold_duration_sec": active_state.get("hold_duration_sec"),
+            "target_priority": active_state.get("priority"),
+            "target_max_gap_m": active_state.get("max_gap_m"),
+            "hold_active": True,
+            "hold_source": "policy_hold",
+            "hold_remaining_sec": round(remaining_sec, 6),
+        }
+        updated_remaining_sec = max(0.0, remaining_sec - dt_sec)
+        if updated_remaining_sec <= 0:
+            self._ego_avoidance_hold_state = None
+        else:
+            updated_state = dict(active_state)
+            updated_state["remaining_sec"] = updated_remaining_sec
+            self._ego_avoidance_hold_state = updated_state
         return result
 
 
@@ -909,6 +1025,11 @@ def run_object_sim(
             "ego_avoidance_trigger_counts_by_interaction_kind": dict(
                 sorted(runner.ego_avoidance_trigger_counts_by_interaction_kind.items())
             ),
+            "ego_avoidance_hold_event_count": int(runner.ego_avoidance_hold_event_count),
+            "ego_avoidance_hold_active_step_count": int(runner.ego_avoidance_hold_active_row_count),
+            "ego_avoidance_hold_counts_by_interaction_kind": dict(
+                sorted(runner.ego_avoidance_hold_counts_by_interaction_kind.items())
+            ),
             "ego_avoidance_last_trigger_actor_id": runner.ego_avoidance_last_trigger_actor_id,
             "ego_avoidance_last_trigger_interaction_kind": runner.ego_avoidance_last_trigger_interaction_kind,
             "ego_avoidance_last_trigger_route_relation": runner.ego_avoidance_last_trigger_route_relation,
@@ -917,6 +1038,7 @@ def run_object_sim(
             "ego_avoidance_last_trigger_ttc_threshold_sec": runner.ego_avoidance_last_trigger_ttc_threshold_sec,
             "ego_avoidance_last_trigger_brake_scale": runner.ego_avoidance_last_trigger_brake_scale,
             "ego_avoidance_last_trigger_min_brake_scale": runner.ego_avoidance_last_trigger_min_brake_scale,
+            "ego_avoidance_last_trigger_hold_duration_sec": runner.ego_avoidance_last_trigger_hold_duration_sec,
             "ego_avoidance_last_trigger_priority": runner.ego_avoidance_last_trigger_priority,
             "ego_avoidance_last_trigger_max_gap_m": runner.ego_avoidance_last_trigger_max_gap_m,
             "traffic_npc_count": int(len(effective_scenario.npcs)),

@@ -157,11 +157,25 @@ class ScenarioBatchComparisonTests(unittest.TestCase):
             "npcs": [{"position_m": 20.0, "speed_mps": 4.0, "lane_id": "lane_c"}],
         }
 
-    def _build_lane_change_avoidance_scenario(self) -> dict[str, object]:
+    def _build_lane_change_avoidance_scenario(
+        self,
+        *,
+        scenario_id: str = "scn_lane_change_route_avoidance",
+        npc_position_m: float = 18.0,
+        npc_speed_mps: float = 4.0,
+        ego_speed_mps: float = 10.0,
+        ego_max_brake_mps2: float = 5.0,
+        lane_change_policy: dict[str, object] | None = None,
+    ) -> dict[str, object]:
         canonical_map_path = str((P_MAP_TOOLSET_FIXTURE_ROOT / "canonical_lane_graph_v0.json").resolve())
+        avoidance_interaction_policy = (
+            {"lane_change_conflict": dict(lane_change_policy)}
+            if lane_change_policy is not None
+            else None
+        )
         return {
             "scenario_schema_version": "scenario_definition_v0",
-            "scenario_id": "scn_lane_change_route_avoidance",
+            "scenario_id": scenario_id,
             "duration_sec": 0.5,
             "dt_sec": 0.1,
             "canonical_map_path": canonical_map_path,
@@ -173,16 +187,21 @@ class ScenarioBatchComparisonTests(unittest.TestCase):
             },
             "enable_ego_collision_avoidance": True,
             "avoidance_ttc_threshold_sec": 10.0,
-            "ego_max_brake_mps2": 5.0,
-            "ego": {"position_m": 0.0, "speed_mps": 10.0, "lane_id": "lane_a"},
+            "ego_max_brake_mps2": ego_max_brake_mps2,
+            "ego": {"position_m": 0.0, "speed_mps": ego_speed_mps, "lane_id": "lane_a"},
             "npcs": [
                 {
-                    "position_m": 18.0,
-                    "speed_mps": 4.0,
+                    "position_m": npc_position_m,
+                    "speed_mps": npc_speed_mps,
                     "lane_id": "lane_b",
                     "route_lane_id": "lane_a",
                 }
             ],
+            **(
+                {"avoidance_interaction_policy": avoidance_interaction_policy}
+                if avoidance_interaction_policy is not None
+                else {}
+            ),
         }
 
     def _write_downstream_route_avoidance_logical_scenarios(self, path: Path) -> None:
@@ -577,6 +596,85 @@ class ScenarioBatchComparisonTests(unittest.TestCase):
             self.assertEqual(report["comparison_tables"]["attention_reason_counts"]["PATH_CONFLICT_PRESENT"], 2)
             self.assertEqual(report["comparison_tables"]["attention_reason_counts"]["MERGE_CONFLICT_PRESENT"], 2)
             self.assertEqual(report["comparison_tables"]["attention_reason_counts"]["PATH_TTC_UNDER_3S"], 2)
+
+    def test_scenario_batch_comparison_propagates_lane_change_hold_metrics(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            logical_path = root / "lane_change_hold_logical_scenarios.json"
+            logical_path.write_text(
+                json.dumps(
+                    {
+                        "logical_scenarios": [
+                            {
+                                "scenario_id": "scn_lane_change_hold",
+                                "parameters": {"scenario_variant": [1]},
+                                "variant_payload_kind": "scenario_definition_v0",
+                                "variant_payload_template": self._build_lane_change_avoidance_scenario(
+                                    scenario_id="scn_lane_change_hold_payload",
+                                    npc_position_m=5.2,
+                                    npc_speed_mps=9.5,
+                                    ego_max_brake_mps2=10.0,
+                                    lane_change_policy={
+                                        "ttc_threshold_sec": 1.0,
+                                        "brake_scale": 1.0,
+                                        "hold_duration_sec": 0.2,
+                                    },
+                                ),
+                            }
+                        ]
+                    },
+                    indent=2,
+                    ensure_ascii=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            workflow_result = run_scenario_variant_workflow(
+                logical_scenarios_path=str(logical_path),
+                scenario_language_profile="",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                out_root=root / "workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=1,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+            )
+            run_scenario_matrix_sweep(
+                scenario_path=P_SIM_ENGINE_FIXTURE_ROOT / "highway_safe_following_v0.json",
+                out_root=root / "matrix_runs",
+                report_out=root / "matrix_report.json",
+                run_id_prefix="RUN_MATRIX_COMPARE",
+                traffic_profile_ids=["sumo_highway_balanced_v0"],
+                traffic_actor_pattern_ids=["sumo_platoon_sparse_v0"],
+                traffic_npc_speed_scale_values=[1.0],
+                tire_friction_coeff_values=[1.0],
+                surface_friction_scale_values=[1.0],
+                enable_ego_collision_avoidance=False,
+                avoidance_ttc_threshold_sec=2.5,
+                ego_max_brake_mps2=6.0,
+                max_cases=0,
+            )
+            report = build_scenario_batch_comparison_report(
+                variant_workflow_report_path=Path(workflow_result["workflow_report_path"]),
+                matrix_sweep_report_path=root / "matrix_report.json",
+                out_report=root / "comparison.json",
+            )
+
+            self.assertGreaterEqual(report["overview"]["ego_avoidance_hold_event_count_total"], 1)
+            self.assertGreaterEqual(report["overview"]["ego_avoidance_hold_active_step_count_total"], 1)
+            self.assertEqual(
+                report["overview"]["ego_avoidance_hold_counts_by_interaction_kind"],
+                {"lane_change_conflict": 1},
+            )
+            logical_row = report["comparison_tables"]["logical_scenario_rows"][0]
+            self.assertGreaterEqual(logical_row["ego_avoidance_hold_event_count_total"], 1)
+            self.assertGreaterEqual(logical_row["ego_avoidance_hold_active_step_count_total"], 1)
+            self.assertIn(0.2, logical_row["ego_avoidance_last_trigger_hold_duration_sec_values"])
+            self.assertEqual(report["comparison_tables"]["attention_rows"], [])
 
     def test_scenario_batch_comparison_avoidance_trigger_gate_can_fail(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

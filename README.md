@@ -239,9 +239,10 @@ python3 scripts/run_scenario_batch_workflow.py \
   - also includes `failing_matrix_group_ids` and `attention_matrix_group_ids` for matrix-side triage
   - also includes `breached_gate_rules`, `breached_gate_metric_ids`, and `matrix_group_gate_failure_code_counts` for top-level gate breach inspection
   - also includes `avoidance_row_count`, `avoidance_brake_event_count_total`, and `avoidance_trigger_counts_by_interaction_kind`
+  - also includes `avoidance_hold_event_count_total`, `avoidance_hold_active_step_count_total`, and `avoidance_hold_counts_by_interaction_kind`
   - also includes compact `worst_logical_scenario_row` and `worst_matrix_group_row`
-  - worst-case ranking is now avoidance-aware: heavy braking and interaction-specific trigger mix are considered before TTC tie-breaks, and preserved avoidance policy traces (`priority`/`max_gap_m`) are used as the next tie-break layer
-  - worst-case rows now also preserve avoidance policy trace values through `ego_avoidance_last_trigger_priority_values` and `ego_avoidance_last_trigger_max_gap_m_values`
+  - worst-case ranking is now avoidance-aware: hold-active steps and hold events are considered before raw brake-event totals, and preserved avoidance policy traces (`priority`/`hold_duration_sec`/`max_gap_m`) are used as the next tie-break layer
+  - worst-case rows now also preserve avoidance policy trace values through `ego_avoidance_last_trigger_priority_values`, `ego_avoidance_last_trigger_hold_duration_sec_values`, and `ego_avoidance_last_trigger_max_gap_m_values`
 - `variant_summary`: selected variant execution summary copied from the variant workflow
 - `matrix_summary`: matrix-sweep case summary
 - `comparison_summary`: cross-batch overview, gate result, and compact attention rows
@@ -249,7 +250,7 @@ python3 scripts/run_scenario_batch_workflow.py \
 - `comparison_summary.logical_scenario_rows` and `comparison_summary.matrix_group_rows` now also carry aggregated route-interaction fields such as `path_conflict_row_count`, `merge_conflict_row_count`, `lane_change_conflict_row_count`, `path_interaction_counts`, and `min_ttc_path_conflict_sec_min`
 - `comparison_summary.logical_scenario_health_rows`: pass/fail/attention logical-scenario health table derived from collisions, timeouts, execution failures, TTC threshold breaches, and route-interaction thresholds, now including per-scenario `gate_status`, `gate_failure_codes`, `gate_evaluated_rules`, `path_conflict_row_count`, `merge_conflict_row_count`, `lane_change_conflict_row_count`, and `min_ttc_path_conflict_sec_min`
 - `comparison_summary.logical_scenario_health_rows`: now also carries `ego_avoidance_row_count`, `ego_avoidance_brake_event_count_total`, and `ego_avoidance_trigger_counts_by_interaction_kind`
-- `comparison_summary.logical_scenario_health_rows`, `comparison_summary.logical_scenario_rows`, and `comparison_summary.matrix_group_rows` now also preserve avoidance policy trace values through `ego_avoidance_last_trigger_priority_values` and `ego_avoidance_last_trigger_max_gap_m_values`
+- `comparison_summary.logical_scenario_health_rows`, `comparison_summary.logical_scenario_rows`, and `comparison_summary.matrix_group_rows` now also preserve hold-aware policy trace values through `ego_avoidance_hold_event_count_total`, `ego_avoidance_hold_active_step_count_total`, `ego_avoidance_hold_counts_by_interaction_kind`, `ego_avoidance_last_trigger_hold_duration_sec_values`, `ego_avoidance_last_trigger_priority_values`, and `ego_avoidance_last_trigger_max_gap_m_values`
 - lane-change route evidence is now connected more directly to triage through `LANE_CHANGE_ROUTE_LANE_TRACE_PRESENT`, plus top-level `status_summary.lane_change_logical_scenario_ids`, `status_summary.failing_lane_change_logical_scenario_ids`, `status_summary.lane_change_matrix_group_ids`, and `status_summary.lane_change_gate_failure_code_counts`
 - top-level worst-case ranking now also treats lane-change gate breaches as their own severity signal, so otherwise similar scenarios with explicit `LANE_CHANGE_CONFLICT_ROWS_EXCEEDED` or `AVOIDANCE_LANE_CHANGE_TRIGGER_COUNT_EXCEEDED` surface ahead of lighter route-interaction cases
 - `comparison_summary.logical_scenario_health_gate_status_counts`: compact `DISABLED|PASS|FAIL` counts for the per-scenario gate surface
@@ -459,13 +460,16 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `avoidance_interaction_policy.merge_conflict.ttc_threshold_sec`
   - `avoidance_interaction_policy.merge_conflict.brake_scale`
   - `avoidance_interaction_policy.merge_conflict.min_brake_scale`
+  - `avoidance_interaction_policy.merge_conflict.hold_duration_sec`
   - `avoidance_interaction_policy.merge_conflict.priority`
   - `avoidance_interaction_policy.merge_conflict.max_gap_m`
   - same shape is also supported for `same_lane_conflict`, `lane_change_conflict`, and `downstream_route_conflict`
   - `min_brake_scale` is useful for `lane_change_conflict` when the scenario should keep a minimum braking floor even if the selected policy uses a small `brake_scale`
-  - applied values are surfaced through `summary.json` as `ego_avoidance_last_trigger_priority` / `ego_avoidance_last_trigger_max_gap_m`
+  - `hold_duration_sec` is useful for `lane_change_conflict` when braking should persist briefly after the conflict stops being immediately actionable
+  - applied values are surfaced through `summary.json` as `ego_avoidance_last_trigger_priority` / `ego_avoidance_last_trigger_hold_duration_sec` / `ego_avoidance_last_trigger_max_gap_m`
   - applied minimum brake floors are surfaced through `summary.json` as `ego_avoidance_last_trigger_min_brake_scale`
-  - and through `trace.csv` as `ego_avoidance_target_priority` / `ego_avoidance_target_max_gap_m` / `ego_avoidance_target_min_brake_scale`
+  - hold metrics are surfaced through `summary.json` as `ego_avoidance_hold_event_count`, `ego_avoidance_hold_active_step_count`, and `ego_avoidance_hold_counts_by_interaction_kind`
+  - and through `trace.csv` as `ego_avoidance_target_priority` / `ego_avoidance_target_hold_duration_sec` / `ego_avoidance_target_max_gap_m` / `ego_avoidance_target_min_brake_scale` / `ego_avoidance_hold_active`
 - The route-aware runtime surface now distinguishes:
   - `same_lane_conflict`
   - `merge_conflict`
