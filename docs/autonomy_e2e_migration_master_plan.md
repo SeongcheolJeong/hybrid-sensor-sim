@@ -22,6 +22,8 @@ Implemented from the first migration wave:
 2. deterministic `scenario_definition_v0` object-sim baseline
 3. `log_scene_v0` replay conversion
 4. `log_scene_v0` augmentation helper
+5. `logical_scenarios_v0` variant generation
+6. object-sim matrix sweep runner
 
 Current repository paths:
 
@@ -30,16 +32,18 @@ Current repository paths:
 - `src/hybrid_sensor_sim/scenarios/object_sim.py`
 - `src/hybrid_sensor_sim/scenarios/log_scene.py`
 - `src/hybrid_sensor_sim/scenarios/replay.py`
+- `src/hybrid_sensor_sim/scenarios/variants.py`
+- `src/hybrid_sensor_sim/scenarios/matrix_sweep.py`
 - `src/hybrid_sensor_sim/tools/object_sim_runner.py`
 - `src/hybrid_sensor_sim/tools/log_replay_runner.py`
 - `src/hybrid_sensor_sim/tools/log_scene_augment.py`
+- `src/hybrid_sensor_sim/tools/scenario_variants.py`
+- `src/hybrid_sensor_sim/tools/scenario_matrix_sweep.py`
 
 Still pending from this master plan:
 
 1. rig sweep migration
-2. scenario variant generation
-3. matrix sweep runner
-4. map convert / validate / route layer
+2. map convert / validate / route layer
 
 ## Boundary
 
@@ -99,9 +103,9 @@ Detailed audit:
      - coverage metrics
      - trajectory sweep artifacts
 3. `log_replay_runner.py`
-   - migrate after current repo gets a canonical object-sim scenario schema
+   - now migrated as the current `log_scene_v0 -> scenario_definition_v0 -> object_sim` replay path
 4. `core_sim_matrix_sweep_runner.py`
-   - migrate after the object-sim runner exists here
+   - now migrated as the current library-first object-sim sweep runner
 
 ### Reference only
 
@@ -141,8 +145,7 @@ Primary source:
 ### Migrate selectively
 
 1. `generate_scenario_variants.py`
-   - reusable for scenario sampling and sweep generation
-   - should be adapted into a current-repo scenario/sweep tool
+   - now migrated into the current repository's `logical_scenarios_v0` utility layer
 
 ### Do not migrate now
 
@@ -248,13 +251,12 @@ Source:
 Work:
 
 1. add rig candidate sweep tool
-2. add logical scenario variant generator
-3. connect these utilities to current camera/lidar/radar coverage outputs
+2. connect rig evaluation to current camera/lidar/radar coverage outputs
 
 Success criteria:
 
 1. rig ranking works on current sensor outputs
-2. scenario sampling is deterministic and scriptable
+2. native preview/coverage outputs can be compared without the old sensor bridge
 
 ## Phase C: Map Layer
 
@@ -289,8 +291,8 @@ Source:
 
 Work:
 
-1. add local batch/matrix sweep runner
-2. standardize per-run summary contracts
+1. extend the migrated matrix sweep runner when scenario/map layers become richer
+2. standardize per-run summary contracts across scenario, sweep, and future rig evaluation
 
 Success criteria:
 
@@ -324,17 +326,16 @@ Avoid these migration mistakes:
 
 ## Current Recommended Execution Order
 
-1. finish `P_Sim-Engine` vehicle dynamics migration
-2. implement `P_Sim-Engine` rig sweep on top of current coverage outputs
-3. add scenario variant generation from `P_Validation-Tooling-MVP`
-4. add map conversion/validation from `P_Map-Toolset-MVP`
-5. only then bring in `P_Cloud-Engine`-style batch sweeps
+1. implement `P_Sim-Engine` rig sweep on top of current coverage outputs
+2. add map conversion/validation from `P_Map-Toolset-MVP`
+3. deepen object-sim with optional `vehicle_dynamics` coupling after the baseline stays stable
+4. only then extend batch/orchestration patterns from `P_Cloud-Engine`
 
 ## Immediate Next Action
 
 The next concrete code migration should be:
 
-1. complete and commit the in-progress `vehicle_dynamics` migration
-2. then start a dedicated `sensor_rig_sweep` migration from `P_Sim-Engine`
+1. start a dedicated `sensor_rig_sweep` migration from `P_Sim-Engine`
+2. then migrate `P_Map-Toolset-MVP` convert/validate/route utilities
 
 That order increases current feature coverage fastest while keeping repository scope under control.

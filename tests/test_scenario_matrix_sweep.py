@@ -1,0 +1,86 @@
+from __future__ import annotations
+
+import contextlib
+import io
+import json
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+from hybrid_sensor_sim.scenarios.matrix_sweep import run_scenario_matrix_sweep
+from hybrid_sensor_sim.tools.scenario_matrix_sweep import main as scenario_matrix_sweep_main
+
+
+FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "autonomy_e2e" / "p_sim_engine"
+
+
+class ScenarioMatrixSweepTests(unittest.TestCase):
+    def test_run_scenario_matrix_sweep_writes_report(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            report = run_scenario_matrix_sweep(
+                scenario_path=FIXTURE_ROOT / "highway_safe_following_v0.json",
+                out_root=root / "runs",
+                report_out=root / "report.json",
+                run_id_prefix="RUN_MATRIX",
+                traffic_profile_ids=["sumo_highway_balanced_v0"],
+                traffic_actor_pattern_ids=["sumo_platoon_sparse_v0"],
+                traffic_npc_speed_scale_values=[1.0],
+                tire_friction_coeff_values=[1.0],
+                surface_friction_scale_values=[1.0],
+                enable_ego_collision_avoidance=False,
+                avoidance_ttc_threshold_sec=2.5,
+                ego_max_brake_mps2=6.0,
+                max_cases=0,
+            )
+            self.assertEqual(report["core_sim_matrix_sweep_schema_version"], "core_sim_matrix_sweep_report_v0")
+            self.assertEqual(report["case_count"], 1)
+            self.assertEqual(report["success_case_count"], 1)
+            self.assertTrue((root / "report.json").exists())
+            self.assertTrue((root / "runs" / "RUN_MATRIX_0001" / "summary.json").exists())
+
+    def test_scenario_matrix_sweep_cli_writes_report(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            report_path = root / "report.json"
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = scenario_matrix_sweep_main(
+                    [
+                        "--scenario",
+                        str(FIXTURE_ROOT / "highway_safe_following_v0.json"),
+                        "--out-root",
+                        str(root / "runs"),
+                        "--report-out",
+                        str(report_path),
+                        "--traffic-profile-ids",
+                        "sumo_highway_balanced_v0",
+                        "--traffic-actor-pattern-ids",
+                        "sumo_platoon_sparse_v0",
+                        "--traffic-npc-speed-scale-values",
+                        "1.0",
+                        "--tire-friction-coeff-values",
+                        "1.0",
+                        "--surface-friction-scale-values",
+                        "1.0",
+                    ]
+                )
+            self.assertEqual(exit_code, 0)
+            payload = json.loads(report_path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["case_count"], 1)
+
+    def test_scenario_matrix_sweep_script_bootstraps_src_path(self) -> None:
+        script_path = Path(__file__).resolve().parents[1] / "scripts" / "run_scenario_matrix_sweep.py"
+        proc = subprocess.run(
+            [sys.executable, str(script_path), "--help"],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("traffic parameter matrix sweep", proc.stdout.lower())
+
+
+if __name__ == "__main__":
+    unittest.main()

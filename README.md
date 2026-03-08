@@ -20,6 +20,8 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `src/hybrid_sensor_sim/scenarios/object_sim.py`: deterministic 1D object-sim core with collision/minTTC/lane-risk outputs.
 - `src/hybrid_sensor_sim/scenarios/log_scene.py`: migrated `log_scene_v0` validation.
 - `src/hybrid_sensor_sim/scenarios/replay.py`: `log_scene_v0` to `scenario_definition_v0` conversion helpers.
+- `src/hybrid_sensor_sim/scenarios/variants.py`: migrated `logical_scenarios_v0` variant generation with deterministic `full` and `random` sampling.
+- `src/hybrid_sensor_sim/scenarios/matrix_sweep.py`: migrated object-sim matrix sweep with traffic actor-pattern synthesis and per-case report aggregation.
 - `src/hybrid_sensor_sim/config.py`: typed Sensor Sim config translation layer for camera/lidar/radar/renderer blocks.
 - `src/hybrid_sensor_sim/io/survey_mapping.py`: scenario JSON to HELIOS survey XML mapper.
 - `src/hybrid_sensor_sim/renderers/playback_contract.py`: renderer playback contract builder for CARLA/AWSIM bridge.
@@ -38,6 +40,8 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `scripts/run_object_sim.py`: runs migrated `scenario_definition_v0` object-sim and writes `summary.json`, `trace.csv`, and `lane_risk_summary.json`.
 - `scripts/run_log_replay.py`: converts `log_scene_v0` into a generated scenario and runs object-sim on it.
 - `scripts/run_log_scene_augment.py`: creates deterministic speed/gap variants from `log_scene_v0`.
+- `scripts/run_scenario_variants.py`: expands `logical_scenarios_v0` inputs into concrete parameter combinations.
+- `scripts/run_scenario_matrix_sweep.py`: runs object-sim over traffic/friction parameter grids and writes a sweep report.
 
 ## Quick start
 
@@ -89,6 +93,29 @@ python3 scripts/run_log_scene_augment.py \
   --suffix aug
 ```
 
+Scenario variants:
+
+```bash
+python3 scripts/run_scenario_variants.py \
+  --logical-scenarios tests/fixtures/autonomy_e2e/p_validation/highway_cut_in_v0.json \
+  --out artifacts/scenario_variants_highway_cut_in_v0.json \
+  --sampling full
+```
+
+Object-sim matrix sweep:
+
+```bash
+python3 scripts/run_scenario_matrix_sweep.py \
+  --scenario tests/fixtures/autonomy_e2e/p_sim_engine/highway_safe_following_v0.json \
+  --out-root artifacts/scenario_matrix_runs \
+  --report-out artifacts/scenario_matrix_report.json \
+  --traffic-profile-ids sumo_highway_balanced_v0 \
+  --traffic-actor-pattern-ids sumo_platoon_sparse_v0,sumo_platoon_balanced_v0 \
+  --traffic-npc-speed-scale-values 0.9,1.0 \
+  --tire-friction-coeff-values 0.7,1.0 \
+  --surface-friction-scale-values 0.8,1.0
+```
+
 Autonomy-E2E fixtures currently mirrored into this repo:
 
 - `tests/fixtures/autonomy_e2e/p_sim_engine/vehicle_profile_v0.json`
@@ -96,6 +123,7 @@ Autonomy-E2E fixtures currently mirrored into this repo:
 - `tests/fixtures/autonomy_e2e/p_sim_engine/highway_following_v0.json`
 - `tests/fixtures/autonomy_e2e/p_sim_engine/highway_safe_following_v0.json`
 - `tests/fixtures/autonomy_e2e/p_sim_engine/log_scene_v0.json`
+- `tests/fixtures/autonomy_e2e/p_validation/highway_cut_in_v0.json`
 
 Survey mapping dry-run demo (no HELIOS execution, plan+mapping artifacts only):
 
@@ -727,5 +755,5 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 
 ## Next implementation target
 
-- Add strict schema mapping from project scenario format to HELIOS survey XML.
-- Add renderer runtime executors (CARLA/AWSIM) that consume playback contracts directly.
+- Rebuild `P_Sim-Engine` rig sweep on top of current coverage/native preview outputs.
+- Migrate `P_Map-Toolset-MVP` convert/validate/route utilities for map-aware scenario tooling.
