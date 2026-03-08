@@ -466,43 +466,59 @@ def _build_workflow_status_summary(
         }
     )
     gate_policy = dict(comparison_summary.get("gate", {}).get("policy", {}))
-    max_collision_rows = gate_policy.get("max_collision_rows")
-    max_timeout_rows = gate_policy.get("max_timeout_rows")
-    max_path_conflict_rows = gate_policy.get("max_path_conflict_rows")
-    max_merge_conflict_rows = gate_policy.get("max_merge_conflict_rows")
-    max_lane_change_conflict_rows = gate_policy.get("max_lane_change_conflict_rows")
-    min_ttc_any_lane_sec = _coerce_optional_float(gate_policy.get("min_min_ttc_any_lane_sec"))
-    min_ttc_path_conflict_sec = _coerce_optional_float(gate_policy.get("min_min_ttc_path_conflict_sec"))
-    failing_matrix_group_ids = []
-    for row in comparison_summary.get("matrix_group_rows", []):
-        if not row.get("matrix_group_id"):
-            continue
-        group_failed = False
+
+    def matrix_group_gate_failure_codes(row: dict[str, Any]) -> list[str]:
+        failure_codes: list[str] = []
         if int(row.get("execution_status_counts", {}).get("FAILED", 0)) > 0:
-            group_failed = True
+            failure_codes.append("EXECUTION_FAILURE_PRESENT")
+        max_collision_rows = gate_policy.get("max_collision_rows")
+        max_timeout_rows = gate_policy.get("max_timeout_rows")
+        max_path_conflict_rows = gate_policy.get("max_path_conflict_rows")
+        max_merge_conflict_rows = gate_policy.get("max_merge_conflict_rows")
+        max_lane_change_conflict_rows = gate_policy.get("max_lane_change_conflict_rows")
+        min_ttc_any_lane_sec = _coerce_optional_float(gate_policy.get("min_min_ttc_any_lane_sec"))
+        min_ttc_path_conflict_sec = _coerce_optional_float(gate_policy.get("min_min_ttc_path_conflict_sec"))
         if max_collision_rows is not None and int(row.get("collision_count", 0)) > int(max_collision_rows):
-            group_failed = True
+            failure_codes.append("COLLISION_ROWS_EXCEEDED")
         if max_timeout_rows is not None and int(row.get("timeout_count", 0)) > int(max_timeout_rows):
-            group_failed = True
+            failure_codes.append("TIMEOUT_ROWS_EXCEEDED")
         if max_path_conflict_rows is not None and int(row.get("path_conflict_row_count", 0)) > int(max_path_conflict_rows):
-            group_failed = True
+            failure_codes.append("PATH_CONFLICT_ROWS_EXCEEDED")
         if max_merge_conflict_rows is not None and int(row.get("merge_conflict_row_count", 0)) > int(max_merge_conflict_rows):
-            group_failed = True
+            failure_codes.append("MERGE_CONFLICT_ROWS_EXCEEDED")
         if max_lane_change_conflict_rows is not None and int(row.get("lane_change_conflict_row_count", 0)) > int(max_lane_change_conflict_rows):
-            group_failed = True
+            failure_codes.append("LANE_CHANGE_CONFLICT_ROWS_EXCEEDED")
         row_min_ttc_any = _coerce_optional_float(row.get("min_ttc_any_lane_sec_min"))
         if min_ttc_any_lane_sec is not None and row_min_ttc_any is not None and row_min_ttc_any < min_ttc_any_lane_sec:
-            group_failed = True
+            failure_codes.append("MIN_TTC_BELOW_THRESHOLD")
         row_min_ttc_path = _coerce_optional_float(row.get("min_ttc_path_conflict_sec_min"))
         if (
             min_ttc_path_conflict_sec is not None
             and row_min_ttc_path is not None
             and row_min_ttc_path < min_ttc_path_conflict_sec
         ):
-            group_failed = True
-        if group_failed:
+            failure_codes.append("MIN_TTC_PATH_CONFLICT_BELOW_THRESHOLD")
+        return failure_codes
+
+    failing_matrix_group_ids = []
+    matrix_group_gate_failure_code_counts: dict[str, int] = {}
+    for row in comparison_summary.get("matrix_group_rows", []):
+        if not row.get("matrix_group_id"):
+            continue
+        failure_codes = matrix_group_gate_failure_codes(row)
+        if failure_codes:
             failing_matrix_group_ids.append(str(row["matrix_group_id"]))
+            for failure_code in failure_codes:
+                matrix_group_gate_failure_code_counts[failure_code] = (
+                    matrix_group_gate_failure_code_counts.get(failure_code, 0) + 1
+                )
     failing_matrix_group_ids = sorted(failing_matrix_group_ids)
+    breached_gate_rules = [
+        dict(rule)
+        for rule in comparison_summary["gate"].get("evaluated_rules", [])
+        if not bool(rule.get("passed", False))
+    ]
+    breached_gate_metric_ids = [str(rule["metric_id"]) for rule in breached_gate_rules if rule.get("metric_id")]
     return {
         "workflow_status": workflow_status,
         "final_status_source": final_status_source,
@@ -510,12 +526,16 @@ def _build_workflow_status_summary(
         "status_reason_count": len(status_reason_codes),
         "decision_trace": decision_trace,
         "gate_failure_codes": list(comparison_summary["gate"].get("failure_codes", [])),
+        "breached_gate_rules": breached_gate_rules,
+        "breached_gate_rule_count": len(breached_gate_rules),
+        "breached_gate_metric_ids": breached_gate_metric_ids,
         "failing_logical_scenario_ids": failing_logical_scenario_ids,
         "failing_logical_scenario_count": len(failing_logical_scenario_ids),
         "attention_logical_scenario_ids": attention_logical_scenario_ids,
         "attention_logical_scenario_count": len(attention_logical_scenario_ids),
         "failing_matrix_group_ids": failing_matrix_group_ids,
         "failing_matrix_group_count": len(failing_matrix_group_ids),
+        "matrix_group_gate_failure_code_counts": dict(sorted(matrix_group_gate_failure_code_counts.items())),
         "attention_matrix_group_ids": attention_matrix_group_ids,
         "attention_matrix_group_count": len(attention_matrix_group_ids),
         "attention_reason_counts": dict(comparison_summary.get("attention_reason_counts", {})),
@@ -550,12 +570,14 @@ def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Gate status: `{gate['status']}`",
         f"- Gate profile: `{gate['policy'].get('profile_path') or '-'}`",
         f"- Gate failure codes: `{','.join(gate['failure_codes']) or '-'}`",
+        f"- Breached gate metrics: `{','.join(status_summary['breached_gate_metric_ids']) or '-'}`",
         f"- Final status source: `{status_summary['final_status_source']}`",
         f"- Status reason codes: `{','.join(status_summary['status_reason_codes']) or '-'}`",
         f"- Failing logical scenarios: `{','.join(status_summary['failing_logical_scenario_ids']) or '-'}`",
         f"- Attention logical scenarios: `{','.join(status_summary['attention_logical_scenario_ids']) or '-'}`",
         f"- Failing matrix groups: `{','.join(status_summary['failing_matrix_group_ids']) or '-'}`",
         f"- Attention matrix groups: `{','.join(status_summary['attention_matrix_group_ids']) or '-'}`",
+        f"- Matrix gate failure counts: `{_format_counter(status_summary['matrix_group_gate_failure_code_counts'])}`",
         "",
         "## Status Decision Trace",
         "",

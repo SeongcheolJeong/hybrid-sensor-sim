@@ -43,6 +43,7 @@ Implemented from the first migration wave:
 23. top-level workflow status summaries for failing and attention logical scenarios
 24. explicit workflow decision traces for batch status selection
 25. matrix-group triage surfaced in top-level batch status summaries
+26. top-level batch gate breach summaries by metric and matrix group
 
 Current repository paths:
 

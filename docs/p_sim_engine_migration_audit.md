@@ -116,6 +116,7 @@ Implemented in the current repository:
    - batch workflow now exposes `status_summary` with `status_reason_codes`, `gate_failure_codes`, `failing_logical_scenario_ids`, and `attention_logical_scenario_ids`
    - `status_summary` now also includes `final_status_source` and ordered `decision_trace`
    - matrix-side triage is now exposed through `failing_matrix_group_ids` and `attention_matrix_group_ids`
+   - top-level gate breach inspection is now exposed through `breached_gate_rules`, `breached_gate_metric_ids`, and `matrix_group_gate_failure_code_counts`
 
 Still pending from the same migration track:
 

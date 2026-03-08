@@ -131,6 +131,9 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             self.assertEqual(workflow_report["status_summary"]["attention_logical_scenario_ids"], [])
             self.assertEqual(workflow_report["status_summary"]["failing_matrix_group_ids"], [])
             self.assertEqual(workflow_report["status_summary"]["attention_matrix_group_ids"], [])
+            self.assertEqual(workflow_report["status_summary"]["breached_gate_rule_count"], 0)
+            self.assertEqual(workflow_report["status_summary"]["breached_gate_metric_ids"], [])
+            self.assertEqual(workflow_report["status_summary"]["matrix_group_gate_failure_code_counts"], {})
             self.assertEqual(
                 [step["step_id"] for step in workflow_report["status_summary"]["decision_trace"]],
                 ["variant_execution_failures", "matrix_success_cases", "comparison_gate", "attention_rows"],
@@ -289,6 +292,8 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
                 ["scn_collision_attention"],
             )
             self.assertEqual(workflow_report["status_summary"]["failing_matrix_group_ids"], [])
+            self.assertIn("collision_row_count", workflow_report["status_summary"]["breached_gate_metric_ids"])
+            self.assertEqual(workflow_report["status_summary"]["breached_gate_rule_count"], 1)
             self.assertEqual(
                 workflow_report["comparison_summary"]["logical_scenario_health_status_counts"]["FAIL"],
                 1,
@@ -431,6 +436,7 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
                 workflow_report["comparison_summary"]["attention_reason_counts"]["PATH_CONFLICT_PRESENT"],
                 1,
             )
+            self.assertIn("merge_conflict_row_count", workflow_report["status_summary"]["breached_gate_metric_ids"])
 
     def test_scenario_batch_workflow_tracks_matrix_group_failure_ids(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -471,6 +477,10 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
                 [expected_group_id],
             )
             self.assertEqual(workflow_report["status_summary"]["attention_matrix_group_ids"], [])
+            self.assertEqual(
+                workflow_report["status_summary"]["matrix_group_gate_failure_code_counts"]["MERGE_CONFLICT_ROWS_EXCEEDED"],
+                1,
+            )
             markdown = Path(result["workflow_markdown_path"]).read_text(encoding="utf-8")
             self.assertIn(expected_group_id, markdown)
 
