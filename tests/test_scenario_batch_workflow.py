@@ -81,6 +81,10 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             self.assertEqual(workflow_report["variant_summary"]["selected_variant_count"], 1)
             self.assertEqual(workflow_report["matrix_summary"]["case_count"], 1)
             self.assertEqual(workflow_report["comparison_summary"]["attention_row_count"], 0)
+            self.assertEqual(workflow_report["comparison_summary"]["logical_scenario_row_count"], 1)
+            self.assertEqual(workflow_report["comparison_summary"]["matrix_group_row_count"], 1)
+            self.assertEqual(len(workflow_report["comparison_summary"]["logical_scenario_rows"]), 1)
+            self.assertEqual(len(workflow_report["comparison_summary"]["matrix_group_rows"]), 1)
             self.assertTrue(Path(result["workflow_report_path"]).is_file())
             self.assertTrue(Path(workflow_report["artifacts"]["variant_workflow_report_path"]).is_file())
             self.assertTrue(Path(workflow_report["artifacts"]["matrix_sweep_report_path"]).is_file())
@@ -88,6 +92,9 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             self.assertTrue(Path(workflow_report["artifacts"]["comparison_markdown_path"]).is_file())
             self.assertTrue(Path(workflow_report["artifacts"]["workflow_markdown_path"]).is_file())
             self.assertEqual(workflow_report["comparison_summary"]["gate"]["status"], "DISABLED")
+            markdown = Path(result["workflow_markdown_path"]).read_text(encoding="utf-8")
+            self.assertIn("## Logical Scenario Summary", markdown)
+            self.assertIn("## Matrix Group Summary", markdown)
 
     def test_scenario_batch_workflow_reports_attention_without_failing_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -199,6 +206,49 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             self.assertEqual(workflow_report["comparison_summary"]["gate"]["status"], "FAIL")
             self.assertIn(
                 "COLLISION_ROWS_EXCEEDED",
+                workflow_report["comparison_summary"]["gate"]["failure_codes"],
+            )
+
+    def test_scenario_batch_workflow_gate_profile_failure_sets_failed_status(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            logical_path = root / "attention_logical_scenarios.json"
+            self._write_attention_logical_scenarios(logical_path)
+            result = run_scenario_batch_workflow(
+                logical_scenarios_path=str(logical_path),
+                scenario_language_profile="",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                matrix_scenario_path=P_SIM_ENGINE_FIXTURE_ROOT / "highway_safe_following_v0.json",
+                out_root=root / "batch_workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=1,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+                matrix_run_id_prefix="RUN_BATCH_MATRIX",
+                traffic_profile_ids=["sumo_highway_balanced_v0"],
+                traffic_actor_pattern_ids=["sumo_platoon_sparse_v0"],
+                traffic_npc_speed_scale_values=[1.0],
+                tire_friction_coeff_values=[1.0],
+                surface_friction_scale_values=[1.0],
+                enable_ego_collision_avoidance=False,
+                avoidance_ttc_threshold_sec=2.5,
+                ego_max_brake_mps2=6.0,
+                max_cases=0,
+                gate_profile_path=P_VALIDATION_FIXTURE_ROOT / "scenario_batch_gate_strict_v0.json",
+            )
+            workflow_report = result["workflow_report"]
+            self.assertEqual(workflow_report["status"], "FAILED")
+            self.assertEqual(workflow_report["comparison_summary"]["gate"]["status"], "FAIL")
+            self.assertEqual(
+                workflow_report["comparison_summary"]["gate"]["policy"]["profile_id"],
+                "scenario_batch_gate_strict_v0",
+            )
+            self.assertIn(
+                "ATTENTION_ROWS_EXCEEDED",
                 workflow_report["comparison_summary"]["gate"]["failure_codes"],
             )
 

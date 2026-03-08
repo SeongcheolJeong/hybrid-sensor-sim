@@ -12,6 +12,7 @@ CORE_SIM_MATRIX_SWEEP_SCHEMA_VERSION_V0 = "core_sim_matrix_sweep_report_v0"
 SCENARIO_VARIANT_RUN_REPORT_SCHEMA_VERSION_V0 = "scenario_variant_run_report_v0"
 SCENARIO_VARIANT_WORKFLOW_REPORT_SCHEMA_VERSION_V0 = "scenario_variant_workflow_report_v0"
 SCENARIO_BATCH_COMPARISON_REPORT_SCHEMA_VERSION_V0 = "scenario_batch_comparison_report_v0"
+SCENARIO_BATCH_GATE_PROFILE_SCHEMA_VERSION_V0 = "scenario_batch_gate_profile_v0"
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -25,6 +26,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--markdown-out",
         default="",
         help="Optional Markdown report path; defaults next to --out-report",
+    )
+    parser.add_argument(
+        "--gate-profile",
+        default="",
+        help="Optional JSON gate profile path; explicit CLI gate args override profile values",
     )
     parser.add_argument(
         "--gate-max-attention-rows",
@@ -112,10 +118,16 @@ def _load_summary_payload(summary_path_value: Any) -> dict[str, Any]:
 def _coerce_optional_float(value: Any) -> float | None:
     if value in (None, ""):
         return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _parse_optional_non_negative_int(raw: Any, *, field: str) -> int | None:
-    value = str(raw or "").strip()
+    if raw is None:
+        return None
+    value = str(raw).strip()
     if not value:
         return None
     try:
@@ -128,7 +140,9 @@ def _parse_optional_non_negative_int(raw: Any, *, field: str) -> int | None:
 
 
 def _parse_optional_non_negative_float(raw: Any, *, field: str) -> float | None:
-    value = str(raw or "").strip()
+    if raw is None:
+        return None
+    value = str(raw).strip()
     if not value:
         return None
     try:
@@ -138,10 +152,81 @@ def _parse_optional_non_negative_float(raw: Any, *, field: str) -> float | None:
     if parsed < 0.0:
         raise ValueError(f"{field} must be >= 0, got: {parsed}")
     return parsed
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+
+
+def _load_gate_profile(path: Path) -> dict[str, Any]:
+    payload = _load_json_dict(path, label="scenario batch gate profile")
+    schema_version = str(payload.get("gate_profile_schema_version", "")).strip()
+    if schema_version != SCENARIO_BATCH_GATE_PROFILE_SCHEMA_VERSION_V0:
+        raise ValueError(
+            "gate_profile_schema_version must be "
+            f"{SCENARIO_BATCH_GATE_PROFILE_SCHEMA_VERSION_V0}"
+        )
+    policy = payload.get("policy")
+    if not isinstance(policy, dict):
+        raise ValueError("scenario batch gate profile missing policy block")
+    return payload
+
+
+def _resolve_gate_policy(
+    *,
+    gate_profile_path: Path | None,
+    gate_max_attention_rows: int | None,
+    gate_max_collision_rows: int | None,
+    gate_max_timeout_rows: int | None,
+    gate_min_min_ttc_any_lane_sec: float | None,
+) -> dict[str, Any]:
+    profile_payload: dict[str, Any] | None = None
+    profile_policy: dict[str, Any] = {}
+    if gate_profile_path is not None:
+        profile_payload = _load_gate_profile(gate_profile_path)
+        raw_policy = profile_payload["policy"]
+        profile_policy = {
+            "max_attention_rows": _parse_optional_non_negative_int(
+                raw_policy.get("max_attention_rows"),
+                field="policy.max_attention_rows",
+            ),
+            "max_collision_rows": _parse_optional_non_negative_int(
+                raw_policy.get("max_collision_rows"),
+                field="policy.max_collision_rows",
+            ),
+            "max_timeout_rows": _parse_optional_non_negative_int(
+                raw_policy.get("max_timeout_rows"),
+                field="policy.max_timeout_rows",
+            ),
+            "min_min_ttc_any_lane_sec": _parse_optional_non_negative_float(
+                raw_policy.get("min_min_ttc_any_lane_sec"),
+                field="policy.min_min_ttc_any_lane_sec",
+            ),
+        }
+    return {
+        "profile_path": str(gate_profile_path.resolve()) if gate_profile_path is not None else None,
+        "profile_id": (
+            str(profile_payload.get("profile_id", "")).strip() or None
+            if profile_payload is not None
+            else None
+        ),
+        "max_attention_rows": (
+            gate_max_attention_rows
+            if gate_max_attention_rows is not None
+            else profile_policy.get("max_attention_rows")
+        ),
+        "max_collision_rows": (
+            gate_max_collision_rows
+            if gate_max_collision_rows is not None
+            else profile_policy.get("max_collision_rows")
+        ),
+        "max_timeout_rows": (
+            gate_max_timeout_rows
+            if gate_max_timeout_rows is not None
+            else profile_policy.get("max_timeout_rows")
+        ),
+        "min_min_ttc_any_lane_sec": (
+            gate_min_min_ttc_any_lane_sec
+            if gate_min_min_ttc_any_lane_sec is not None
+            else profile_policy.get("min_min_ttc_any_lane_sec")
+        ),
+    }
 
 
 def _bool_value(value: Any) -> bool:
@@ -422,16 +507,15 @@ def _build_gate_summary(
     *,
     overview: dict[str, Any],
     comparison_tables: dict[str, Any],
-    gate_max_attention_rows: int | None,
-    gate_max_collision_rows: int | None,
-    gate_max_timeout_rows: int | None,
-    gate_min_min_ttc_any_lane_sec: float | None,
+    gate_policy: dict[str, Any],
 ) -> dict[str, Any]:
     policy = {
-        "max_attention_rows": gate_max_attention_rows,
-        "max_collision_rows": gate_max_collision_rows,
-        "max_timeout_rows": gate_max_timeout_rows,
-        "min_min_ttc_any_lane_sec": gate_min_min_ttc_any_lane_sec,
+        "profile_path": gate_policy.get("profile_path"),
+        "profile_id": gate_policy.get("profile_id"),
+        "max_attention_rows": gate_policy.get("max_attention_rows"),
+        "max_collision_rows": gate_policy.get("max_collision_rows"),
+        "max_timeout_rows": gate_policy.get("max_timeout_rows"),
+        "min_min_ttc_any_lane_sec": gate_policy.get("min_min_ttc_any_lane_sec"),
     }
     evaluated_rules: list[dict[str, Any]] = []
     failure_codes: list[str] = []
@@ -469,28 +553,28 @@ def _build_gate_summary(
     evaluate(
         metric_id="attention_row_count",
         metric_value=comparison_tables["attention_row_count"],
-        threshold_value=gate_max_attention_rows,
+        threshold_value=policy["max_attention_rows"],
         comparison="max_le",
         failure_code="ATTENTION_ROWS_EXCEEDED",
     )
     evaluate(
         metric_id="collision_row_count",
         metric_value=overview["collision_row_count"],
-        threshold_value=gate_max_collision_rows,
+        threshold_value=policy["max_collision_rows"],
         comparison="max_le",
         failure_code="COLLISION_ROWS_EXCEEDED",
     )
     evaluate(
         metric_id="timeout_row_count",
         metric_value=overview["timeout_row_count"],
-        threshold_value=gate_max_timeout_rows,
+        threshold_value=policy["max_timeout_rows"],
         comparison="max_le",
         failure_code="TIMEOUT_ROWS_EXCEEDED",
     )
     evaluate(
         metric_id="min_ttc_any_lane_sec_min",
         metric_value=overview["min_ttc_any_lane_sec_min"],
-        threshold_value=gate_min_min_ttc_any_lane_sec,
+        threshold_value=policy["min_min_ttc_any_lane_sec"],
         comparison="min_ge",
         failure_code="MIN_TTC_BELOW_THRESHOLD",
     )
@@ -574,6 +658,8 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
                 ["Gate status", str(gate["status"])],
                 ["Gate passed", str(gate["passed"])],
                 ["Enabled rule count", str(gate["enabled_rule_count"])],
+                ["Gate profile path", str(gate["policy"].get("profile_path") or "-")],
+                ["Gate profile id", str(gate["policy"].get("profile_id") or "-")],
                 ["Failure codes", ",".join(gate["failure_codes"]) or "-"],
             ],
         )
@@ -719,6 +805,7 @@ def build_scenario_batch_comparison_report(
     matrix_sweep_report_path: Path,
     out_report: Path,
     markdown_out: Path | None = None,
+    gate_profile_path: Path | None = None,
     gate_max_attention_rows: int | None = None,
     gate_max_collision_rows: int | None = None,
     gate_max_timeout_rows: int | None = None,
@@ -737,6 +824,13 @@ def build_scenario_batch_comparison_report(
     logical_scenario_rows = _build_logical_scenario_rows(variant_rows)
     matrix_group_rows = _build_matrix_group_rows(matrix_rows)
     attention_rows = _build_attention_rows(list(variant_rows) + list(matrix_rows))
+    gate_policy = _resolve_gate_policy(
+        gate_profile_path=gate_profile_path,
+        gate_max_attention_rows=gate_max_attention_rows,
+        gate_max_collision_rows=gate_max_collision_rows,
+        gate_max_timeout_rows=gate_max_timeout_rows,
+        gate_min_min_ttc_any_lane_sec=gate_min_min_ttc_any_lane_sec,
+    )
 
     out_report = out_report.resolve()
     markdown_out = markdown_out.resolve() if markdown_out is not None else out_report.with_suffix(".md")
@@ -750,6 +844,7 @@ def build_scenario_batch_comparison_report(
             "variant_workflow_report_path": str(variant_workflow_report_path.resolve()),
             "variant_run_report_path": str(variant_run_report_path),
             "matrix_sweep_report_path": str(matrix_sweep_report_path.resolve()),
+            "gate_profile_path": str(gate_profile_path.resolve()) if gate_profile_path is not None else None,
         },
         "artifacts": {
             "json_report_path": str(out_report),
@@ -791,10 +886,7 @@ def build_scenario_batch_comparison_report(
     report["gate"] = _build_gate_summary(
         overview=report["overview"],
         comparison_tables=report["comparison_tables"],
-        gate_max_attention_rows=gate_max_attention_rows,
-        gate_max_collision_rows=gate_max_collision_rows,
-        gate_max_timeout_rows=gate_max_timeout_rows,
-        gate_min_min_ttc_any_lane_sec=gate_min_min_ttc_any_lane_sec,
+        gate_policy=gate_policy,
     )
 
     markdown_text = _build_markdown_report(report)
@@ -813,6 +905,7 @@ def main(argv: list[str] | None = None) -> int:
             matrix_sweep_report_path=Path(args.matrix_sweep_report).resolve(),
             out_report=out_report,
             markdown_out=markdown_out,
+            gate_profile_path=Path(args.gate_profile).resolve() if str(args.gate_profile).strip() else None,
             gate_max_attention_rows=_parse_optional_non_negative_int(
                 args.gate_max_attention_rows,
                 field="gate-max-attention-rows",

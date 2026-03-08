@@ -31,6 +31,7 @@ Implemented from the first migration wave:
 11. scenario batch comparison surface for `scenario_variant_workflow_report_v0 -> core_sim_matrix_sweep_report_v0`
 12. scenario batch workflow for `logical_scenarios_v0 -> rendered payload execution -> matrix sweep -> batch comparison`
 13. threshold-based batch gate for TTC/collision/timeout policy
+14. reusable batch gate profiles plus richer workflow Markdown tables for logical-scenario and matrix-group triage
 
 Current repository paths:
 

@@ -92,6 +92,7 @@ Implemented in the current repository:
 21. threshold-based batch gate in `src/hybrid_sensor_sim/tools/scenario_batch_comparison.py`
    - cross-batch comparison can now enforce configurable thresholds for attention rows, collisions, timeouts, and minimum TTC
    - top-level batch workflow now forwards this gate and records its result in both JSON and Markdown workflow summaries
+   - gate policy can now be loaded from reusable `scenario_batch_gate_profile_v0` JSON, with explicit CLI thresholds overriding matching profile fields
 
 Still pending from the same migration track:
 

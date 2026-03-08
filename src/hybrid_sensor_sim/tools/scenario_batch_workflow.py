@@ -76,6 +76,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--ego-max-brake-mps2", default="6.0")
     parser.add_argument("--max-cases", default="0")
     parser.add_argument("--fail-on-attention", action="store_true")
+    parser.add_argument("--gate-profile", default="")
     parser.add_argument("--gate-max-attention-rows", default="")
     parser.add_argument("--gate-max-collision-rows", default="")
     parser.add_argument("--gate-max-timeout-rows", default="")
@@ -111,7 +112,9 @@ def _build_workflow_status(
 
 
 def _parse_optional_non_negative_int(raw: Any, *, field: str) -> int | None:
-    value = str(raw or "").strip()
+    if raw is None:
+        return None
+    value = str(raw).strip()
     if not value:
         return None
     try:
@@ -124,7 +127,9 @@ def _parse_optional_non_negative_int(raw: Any, *, field: str) -> int | None:
 
 
 def _parse_optional_non_negative_float(raw: Any, *, field: str) -> float | None:
-    value = str(raw or "").strip()
+    if raw is None:
+        return None
+    value = str(raw).strip()
     if not value:
         return None
     try:
@@ -136,11 +141,43 @@ def _parse_optional_non_negative_float(raw: Any, *, field: str) -> float | None:
     return parsed
 
 
+def _coerce_optional_float(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _format_counter(counter_payload: dict[str, Any]) -> str:
+    items = []
+    for key, value in sorted(counter_payload.items()):
+        items.append(f"{key}={value}")
+    return ", ".join(items) if items else "-"
+
+
+def _format_float(value: Any) -> str:
+    float_value = _coerce_optional_float(value)
+    if float_value is None:
+        return "-"
+    return f"{float_value:.3f}"
+
+
+def _markdown_table(headers: list[str], rows: list[list[str]]) -> str:
+    out = ["| " + " | ".join(headers) + " |", "| " + " | ".join(["---"] * len(headers)) + " |"]
+    for row in rows:
+        out.append("| " + " | ".join(row) + " |")
+    return "\n".join(out)
+
+
 def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
     variant_summary = workflow_report["variant_summary"]
     matrix_summary = workflow_report["matrix_summary"]
     comparison_summary = workflow_report["comparison_summary"]
     gate = comparison_summary["gate"]
+    logical_rows = comparison_summary["logical_scenario_rows"]
+    matrix_rows = comparison_summary["matrix_group_rows"]
     lines = [
         "# Scenario Batch Workflow",
         "",
@@ -151,6 +188,7 @@ def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Matrix cases: `{matrix_summary['case_count']}`",
         f"- Attention rows: `{comparison_summary['attention_row_count']}`",
         f"- Gate status: `{gate['status']}`",
+        f"- Gate profile: `{gate['policy'].get('profile_path') or '-'}`",
         f"- Gate failure codes: `{','.join(gate['failure_codes']) or '-'}`",
         "",
         "## Artifacts",
@@ -160,10 +198,71 @@ def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Matrix sweep report: `{workflow_report['artifacts']['matrix_sweep_report_path']}`",
         f"- Comparison report: `{workflow_report['artifacts']['comparison_report_path']}`",
         f"- Comparison markdown: `{workflow_report['artifacts']['comparison_markdown_path']}`",
+        f"- Workflow markdown: `{workflow_report['artifacts']['workflow_markdown_path']}`",
         "",
-        "## Attention Rows",
+        "## Logical Scenario Summary",
         "",
     ]
+    if logical_rows:
+        lines.append(
+            _markdown_table(
+                [
+                    "Logical Scenario",
+                    "Variants",
+                    "Payload Kinds",
+                    "Execution",
+                    "Object Sim",
+                    "Collisions",
+                    "Timeouts",
+                    "Min TTC Any",
+                ],
+                [
+                    [
+                        str(row["logical_scenario_id"]),
+                        str(row["variant_count"]),
+                        _format_counter(row["payload_kind_counts"]),
+                        _format_counter(row["execution_status_counts"]),
+                        _format_counter(row["object_sim_status_counts"]),
+                        str(row["collision_count"]),
+                        str(row["timeout_count"]),
+                        _format_float(row["min_ttc_any_lane_sec_min"]),
+                    ]
+                    for row in logical_rows
+                ],
+            )
+        )
+    else:
+        lines.append("No logical scenario rows.")
+    lines.extend(["", "## Matrix Group Summary", ""])
+    if matrix_rows:
+        lines.append(
+            _markdown_table(
+                [
+                    "Matrix Group",
+                    "Cases",
+                    "Execution",
+                    "Object Sim",
+                    "Collisions",
+                    "Timeouts",
+                    "Min TTC Any",
+                ],
+                [
+                    [
+                        str(row["matrix_group_id"]),
+                        str(row["case_count"]),
+                        _format_counter(row["execution_status_counts"]),
+                        _format_counter(row["object_sim_status_counts"]),
+                        str(row["collision_count"]),
+                        str(row["timeout_count"]),
+                        _format_float(row["min_ttc_any_lane_sec_min"]),
+                    ]
+                    for row in matrix_rows
+                ],
+            )
+        )
+    else:
+        lines.append("No matrix group rows.")
+    lines.extend(["", "## Attention Rows", ""])
     attention_rows = comparison_summary["attention_rows"]
     if attention_rows:
         lines.append("| Source | Row ID | Group | Execution | Object Sim | Collision | Timeout | Failure Code |")
@@ -216,6 +315,7 @@ def run_scenario_batch_workflow(
     avoidance_ttc_threshold_sec: float,
     ego_max_brake_mps2: float,
     max_cases: int,
+    gate_profile_path: Path | None = None,
     gate_max_attention_rows: int | None = None,
     gate_max_collision_rows: int | None = None,
     gate_max_timeout_rows: int | None = None,
@@ -265,6 +365,7 @@ def run_scenario_batch_workflow(
         matrix_sweep_report_path=matrix_report_path,
         out_report=comparison_report_path,
         markdown_out=comparison_markdown_path,
+        gate_profile_path=gate_profile_path,
         gate_max_attention_rows=gate_max_attention_rows,
         gate_max_collision_rows=gate_max_collision_rows,
         gate_max_timeout_rows=gate_max_timeout_rows,
@@ -324,6 +425,8 @@ def run_scenario_batch_workflow(
             "overview": dict(comparison_report["overview"]),
             "logical_scenario_row_count": int(comparison_report["comparison_tables"]["logical_scenario_row_count"]),
             "matrix_group_row_count": int(comparison_report["comparison_tables"]["matrix_group_row_count"]),
+            "logical_scenario_rows": list(comparison_report["comparison_tables"]["logical_scenario_rows"]),
+            "matrix_group_rows": list(comparison_report["comparison_tables"]["matrix_group_rows"]),
             "attention_row_count": int(comparison_report["comparison_tables"]["attention_row_count"]),
             "attention_rows": list(comparison_report["comparison_tables"]["attention_rows"]),
             "gate": dict(comparison_report["gate"]),
@@ -366,6 +469,7 @@ def main(argv: list[str] | None = None) -> int:
             sim_version=args.sim_version,
             fidelity_profile=args.fidelity_profile,
             matrix_run_id_prefix=str(args.matrix_run_id_prefix).strip() or "RUN_CORE_SIM_SWEEP",
+            gate_profile_path=Path(args.gate_profile).resolve() if str(args.gate_profile).strip() else None,
             traffic_profile_ids=_parse_csv_text_items(args.traffic_profile_ids, field="traffic-profile-ids"),
             traffic_actor_pattern_ids=_parse_csv_text_items(
                 args.traffic_actor_pattern_ids,

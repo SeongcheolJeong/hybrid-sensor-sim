@@ -181,8 +181,8 @@ python3 scripts/run_scenario_batch_comparison.py \
   --variant-workflow-report artifacts/scenario_variant_workflow_runs/scenario_variant_workflow_report_v0.json \
   --matrix-sweep-report artifacts/scenario_matrix_report.json \
   --out-report artifacts/scenario_batch_comparison_report_v0.json \
-  --gate-max-collision-rows 0 \
-  --gate-min-min-ttc-any-lane-sec 0.5
+  --gate-profile tests/fixtures/autonomy_e2e/p_validation/scenario_batch_gate_strict_v0.json \
+  --gate-max-collision-rows 1
 ```
 
 `scenario_batch_comparison_report_v0.json` includes:
@@ -192,6 +192,8 @@ python3 scripts/run_scenario_batch_comparison.py \
 - `comparison_tables.matrix_group_rows`: grouped matrix cases by `traffic_profile_id::traffic_actor_pattern_id`
 - `comparison_tables.attention_rows`: compact rows that need cross-batch triage
 - `gate`: optional threshold-based pass/fail result for attention rows, collisions, timeouts, and minimum TTC
+  - `--gate-profile` loads reusable JSON policy
+  - explicit CLI gate flags override the matching profile fields
 
 The comparison command also writes a Markdown report next to the JSON report by default.
 
@@ -208,7 +210,7 @@ python3 scripts/run_scenario_batch_workflow.py \
   --traffic-npc-speed-scale-values 1.0 \
   --tire-friction-coeff-values 1.0 \
   --surface-friction-scale-values 1.0 \
-  --gate-max-collision-rows 0
+  --gate-profile tests/fixtures/autonomy_e2e/p_validation/scenario_batch_gate_strict_v0.json
 ```
 
 `scenario_batch_workflow_report_v0.json` includes:
@@ -217,6 +219,8 @@ python3 scripts/run_scenario_batch_workflow.py \
 - `variant_summary`: selected variant execution summary copied from the variant workflow
 - `matrix_summary`: matrix-sweep case summary
 - `comparison_summary`: cross-batch overview, gate result, and compact attention rows
+- `comparison_summary.logical_scenario_rows`: compact logical-scenario table reused by workflow Markdown
+- `comparison_summary.matrix_group_rows`: compact matrix-group table reused by workflow Markdown
 - `artifacts`: paths to all underlying workflow, sweep, comparison, and workflow Markdown reports
 
 Use `--fail-on-attention` if attention rows should fail the command.
