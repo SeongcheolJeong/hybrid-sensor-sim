@@ -55,7 +55,7 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `scripts/run_scenario_backend_smoke_workflow.py`: selects a variant from scenario variant/batch workflow reports, materializes a smoke-ready scenario/config, and optionally runs renderer backend smoke.
 - `scripts/run_scenario_runtime_backend_workflow.py`: runs scenario batch workflow first, then feeds the selected result into renderer backend smoke as one top-level workflow.
 - `src/hybrid_sensor_sim/autoware/*.py`: JSON-first Autoware topic/frame/pipeline contract bridge built from backend smoke artifacts.
-- `scripts/run_autoware_pipeline_bridge.py`: builds Autoware-facing sensor contracts, frame tree, pipeline manifest, and dataset manifest from backend smoke workflow reports.
+- `scripts/run_autoware_pipeline_bridge.py`: builds Autoware-facing sensor contracts, frame tree, pipeline manifest, dataset manifest, and consumer input manifest from backend smoke workflow reports.
   - bridge availability modes are now explicit: `runtime`, `planned`, `sidecar`, `mixed`
   - pipeline statuses now distinguish `READY/DEGRADED`, `PLANNED`, `SIDECAR_READY/SIDECAR_DEGRADED`, and `MIXED_READY/MIXED_DEGRADED`
 - `src/hybrid_sensor_sim/tools/scenario_batch_gate_catalog.py`: reusable gate preset catalog and profile-id resolution for batch comparison/workflow tooling.
@@ -422,7 +422,7 @@ The Autoware bundle now also carries run-level lineage:
 - `recording_style`
 - `available_modalities`
 - `data_roots`
-It also materializes a topic-facing export bundle under `autoware/topics/...` together with `autoware_topic_export_index.json`, so downstream consumers can inspect per-topic payload paths without re-reading backend smoke reports.
+It also materializes a topic-facing export bundle under `autoware/topics/...` together with `autoware_topic_export_index.json`, `autoware_topic_catalog.json`, and `autoware_consumer_input_manifest.json`, so downstream consumers can inspect per-topic payload paths and load-ready topic/frame inputs without re-reading backend smoke reports.
 It now also writes `autoware_topic_catalog.json`, which lifts required-topic counts, missing required topics, and available message types into one compact downstream-facing catalog.
 When backend outputs exist only because the runner materialized sidecar exports into the expected layout, the bridge now emits `SIDECAR_READY` or `SIDECAR_DEGRADED` instead of plain `READY`. Mixed runtime-and-sidecar runs are reported as `MIXED_READY` or `MIXED_DEGRADED`.
 

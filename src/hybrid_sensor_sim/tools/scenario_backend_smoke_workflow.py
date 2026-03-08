@@ -1289,6 +1289,7 @@ def run_scenario_backend_smoke_workflow(
             "available_sensor_count": autoware_report.get("available_sensor_count"),
             "missing_required_sensor_count": autoware_report.get("missing_required_sensor_count"),
             "available_topics": list(autoware_report.get("available_topics", [])),
+            "consumer_ready": autoware_report.get("consumer_ready"),
             "topic_export_count": autoware_report.get("topic_export_count"),
             "materialized_topic_export_count": autoware_report.get(
                 "materialized_topic_export_count"
@@ -1314,6 +1315,12 @@ def run_scenario_backend_smoke_workflow(
             "topic_export_index_path": autoware_report.get("artifacts", {}).get(
                 "topic_export_index_path"
             ),
+            "topic_catalog_path": autoware_report.get("artifacts", {}).get(
+                "topic_catalog_path"
+            ),
+            "consumer_input_manifest_path": autoware_report.get("artifacts", {}).get(
+                "consumer_input_manifest_path"
+            ),
             "report_path": (
                 str(Path(str(autoware_result.get("report_path"))).resolve())
                 if autoware_result.get("report_path") is not None
@@ -1325,6 +1332,7 @@ def run_scenario_backend_smoke_workflow(
         workflow_report["artifacts"]["autoware_frame_tree_path"] = autoware_report.get("artifacts", {}).get("frame_tree_path")
         workflow_report["artifacts"]["autoware_pipeline_manifest_path"] = autoware_report.get("artifacts", {}).get("pipeline_manifest_path")
         workflow_report["artifacts"]["autoware_dataset_manifest_path"] = autoware_report.get("artifacts", {}).get("dataset_manifest_path")
+        workflow_report["artifacts"]["autoware_consumer_input_manifest_path"] = autoware_report.get("artifacts", {}).get("consumer_input_manifest_path")
         workflow_report["artifacts"]["autoware_topic_export_root"] = autoware_report.get("artifacts", {}).get("topic_export_root")
         workflow_report["artifacts"]["autoware_topic_export_index_path"] = autoware_report.get("artifacts", {}).get("topic_export_index_path")
         workflow_report["artifacts"]["autoware_topic_catalog_path"] = autoware_report.get("artifacts", {}).get("topic_catalog_path")

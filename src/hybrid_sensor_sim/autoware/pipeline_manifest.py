@@ -5,6 +5,7 @@ from typing import Any
 
 AUTOWARE_PIPELINE_MANIFEST_SCHEMA_VERSION_V0 = "autoware_pipeline_manifest_v0"
 AUTOWARE_DATASET_MANIFEST_SCHEMA_VERSION_V0 = "autoware_dataset_manifest_v0"
+AUTOWARE_CONSUMER_INPUT_MANIFEST_SCHEMA_VERSION_V0 = "autoware_consumer_input_manifest_v0"
 
 
 def _pipeline_status(
@@ -219,4 +220,93 @@ def build_autoware_dataset_manifest(
         "available_modalities": available_modalities,
         "available_topics": list(sensor_contracts.get("available_topics", [])),
         "data_roots": list(data_roots),
+    }
+
+
+def build_autoware_consumer_input_manifest(
+    *,
+    run_id: str,
+    backend: str,
+    scenario_source: dict[str, Any],
+    pipeline_manifest: dict[str, Any],
+    dataset_manifest: dict[str, Any],
+    topic_catalog: dict[str, Any],
+    artifacts: dict[str, str | None],
+) -> dict[str, Any]:
+    topic_entries = list(topic_catalog.get("entries", []) or [])
+    consumer_topics: list[dict[str, Any]] = []
+    required_topics: list[str] = []
+    available_topics: list[str] = []
+    missing_required_topics: list[str] = []
+    for entry in topic_entries:
+        if not isinstance(entry, dict):
+            continue
+        topic = str(entry.get("topic", "")).strip()
+        if not topic:
+            continue
+        required = bool(entry.get("required"))
+        available = bool(entry.get("available"))
+        if required:
+            required_topics.append(topic)
+        if available:
+            available_topics.append(topic)
+        if required and not available:
+            missing_required_topics.append(topic)
+        consumer_topics.append(
+            {
+                "topic": topic,
+                "message_type": str(entry.get("message_type", "")).strip() or None,
+                "frame_id": str(entry.get("frame_id", "")).strip() or None,
+                "sensor_id": str(entry.get("sensor_id", "")).strip() or None,
+                "modality": str(entry.get("modality", "")).strip() or None,
+                "output_role": str(entry.get("output_role", "")).strip() or None,
+                "required": required,
+                "available": available,
+                "availability_mode": str(entry.get("availability_mode", "")).strip() or None,
+                "output_origin": str(entry.get("output_origin", "")).strip() or None,
+                "payload_path": str(entry.get("payload_path", "")).strip() or None,
+                "payload_exists": bool(entry.get("payload_exists")),
+                "payload_materialization_mode": str(
+                    entry.get("payload_materialization_mode", "")
+                ).strip()
+                or None,
+                "export_manifest_path": str(entry.get("export_manifest_path", "")).strip()
+                or None,
+            }
+        )
+    consumer_topics.sort(key=lambda item: item["topic"] or "")
+    return {
+        "schema_version": AUTOWARE_CONSUMER_INPUT_MANIFEST_SCHEMA_VERSION_V0,
+        "run_id": str(run_id).strip(),
+        "backend": str(backend).strip() or None,
+        "status": str(pipeline_manifest.get("status", "")).strip() or None,
+        "availability_mode": str(pipeline_manifest.get("availability_mode", "")).strip()
+        or None,
+        "consumer_ready": bool(
+            pipeline_manifest.get("frame_tree_complete")
+            and dataset_manifest.get("topic_export_count", 0)
+        ),
+        "scenario_id": str(scenario_source.get("scenario_id", "")).strip() or None,
+        "variant_id": str(scenario_source.get("variant_id", "")).strip() or None,
+        "logical_scenario_id": str(scenario_source.get("logical_scenario_id", "")).strip()
+        or None,
+        "source_payload_kind": str(scenario_source.get("source_payload_kind", "")).strip()
+        or None,
+        "required_topic_count": int(topic_catalog.get("required_topic_count", 0) or 0),
+        "missing_required_topic_count": int(
+            topic_catalog.get("missing_required_topic_count", 0) or 0
+        ),
+        "available_topic_count": int(topic_catalog.get("available_topic_count", 0) or 0),
+        "required_topics": sorted(required_topics),
+        "available_topics": sorted(available_topics),
+        "missing_required_topics": sorted(missing_required_topics),
+        "available_message_types": list(topic_catalog.get("available_message_types", [])),
+        "frame_tree_path": artifacts.get("frame_tree_path"),
+        "sensor_contracts_path": artifacts.get("sensor_contracts_path"),
+        "pipeline_manifest_path": artifacts.get("pipeline_manifest_path"),
+        "dataset_manifest_path": artifacts.get("dataset_manifest_path"),
+        "topic_export_root": artifacts.get("topic_export_root"),
+        "topic_export_index_path": artifacts.get("topic_export_index_path"),
+        "topic_catalog_path": artifacts.get("topic_catalog_path"),
+        "consumer_topics": consumer_topics,
     }

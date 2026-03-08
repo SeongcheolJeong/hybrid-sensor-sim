@@ -338,7 +338,7 @@ Full HIL/workspace CI still belongs to stack integration or a separate integrati
 However, this repository now carries a `partial` migration in the form of an Autoware-facing data-contract bridge layered on top of backend smoke artifacts.
 That bridge now also supports `planned` output mode when a staged packaged backend is only handoff-ready, so runtime workflows can expose topic/frame readiness before a real Linux/AWSIM execution occurs.
 It now also distinguishes `runtime`, `sidecar`, and `mixed` backend-export provenance so sidecar-materialized outputs are not reported as plain runtime-ready Autoware data.
-It now also materializes topic-oriented export bundles under `autoware/topics/...` together with `autoware_topic_export_index.json`, so runtime workflows can expose per-topic payload availability and materialization counts without re-reading backend smoke artifacts.
+It now also materializes topic-oriented export bundles under `autoware/topics/...` together with `autoware_topic_export_index.json`, `autoware_topic_catalog.json`, and `autoware_consumer_input_manifest.json`, so runtime workflows can expose per-topic payload availability, materialization counts, and direct downstream-consumer inputs without re-reading backend smoke artifacts.
 It now also emits `autoware_topic_catalog.json`, which gives a compact downstream-ready summary of required topics, missing required topics, and available message types.
 
 ## Phased Migration Order

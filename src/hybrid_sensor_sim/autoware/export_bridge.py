@@ -9,6 +9,7 @@ from hybrid_sensor_sim.config import build_sensor_sim_config
 from hybrid_sensor_sim.autoware.contracts import build_autoware_sensor_contracts
 from hybrid_sensor_sim.autoware.frames import build_autoware_frame_tree
 from hybrid_sensor_sim.autoware.pipeline_manifest import (
+    build_autoware_consumer_input_manifest,
     build_autoware_dataset_manifest,
     build_autoware_pipeline_manifest,
 )
@@ -459,6 +460,7 @@ def write_autoware_export_bundle(
     sensor_contracts_path = autoware_root / "autoware_sensor_contracts.json"
     pipeline_manifest_path = autoware_root / "autoware_pipeline_manifest.json"
     dataset_manifest_path = autoware_root / "autoware_dataset_manifest.json"
+    consumer_input_manifest_path = autoware_root / "autoware_consumer_input_manifest.json"
     _write_json(frame_tree_path, frame_tree)
     _write_json(sensor_contracts_path, sensor_contracts)
     artifacts = {
@@ -466,6 +468,7 @@ def write_autoware_export_bundle(
         "sensor_contracts_path": str(sensor_contracts_path.resolve()),
         "pipeline_manifest_path": str(pipeline_manifest_path.resolve()),
         "dataset_manifest_path": str(dataset_manifest_path.resolve()),
+        "consumer_input_manifest_path": str(consumer_input_manifest_path.resolve()),
         "topic_export_root": str(topic_export_root.resolve()),
         "topic_export_index_path": str(topic_export_index_path.resolve()),
         "topic_catalog_path": str(topic_catalog_path.resolve()),
@@ -514,6 +517,16 @@ def write_autoware_export_bundle(
     )
     _write_json(pipeline_manifest_path, pipeline_manifest)
     _write_json(dataset_manifest_path, dataset_manifest)
+    consumer_input_manifest = build_autoware_consumer_input_manifest(
+        run_id=run_id,
+        backend=backend,
+        scenario_source=scenario_source,
+        pipeline_manifest=pipeline_manifest,
+        dataset_manifest=dataset_manifest,
+        topic_catalog=topic_catalog,
+        artifacts=artifacts,
+    )
+    _write_json(consumer_input_manifest_path, consumer_input_manifest)
     warnings = list(sensor_contracts.get("warnings", []))
     if strict_failed:
         warnings.append("strict_mode_missing_required_sensor_outputs")
@@ -525,6 +538,7 @@ def write_autoware_export_bundle(
         "available_sensor_count": int(sensor_contracts.get("available_sensor_count", 0) or 0),
         "missing_required_sensor_count": int(sensor_contracts.get("missing_required_sensor_count", 0) or 0),
         "available_topics": list(sensor_contracts.get("available_topics", [])),
+        "consumer_ready": bool(consumer_input_manifest.get("consumer_ready")),
         "topic_export_count": int(topic_export_index.get("topic_count", 0) or 0),
         "materialized_topic_export_count": int(
             topic_export_index.get("materialized_payload_count", 0) or 0
@@ -549,6 +563,7 @@ def write_autoware_export_bundle(
             "frame_tree_path": str(frame_tree_path.resolve()),
             "pipeline_manifest_path": str(pipeline_manifest_path.resolve()),
             "dataset_manifest_path": str(dataset_manifest_path.resolve()),
+            "consumer_input_manifest_path": str(consumer_input_manifest_path.resolve()),
             "topic_export_root": str(topic_export_root.resolve()),
             "topic_export_index_path": str(topic_export_index_path.resolve()),
             "topic_catalog_path": str(topic_catalog_path.resolve()),
@@ -559,6 +574,7 @@ def write_autoware_export_bundle(
         "frame_tree": frame_tree,
         "pipeline_manifest": pipeline_manifest,
         "dataset_manifest": dataset_manifest,
+        "consumer_input_manifest": consumer_input_manifest,
     }
 
 
@@ -600,6 +616,7 @@ def write_autoware_planned_export_bundle(
     sensor_contracts_path = autoware_root / "autoware_sensor_contracts.json"
     pipeline_manifest_path = autoware_root / "autoware_pipeline_manifest.json"
     dataset_manifest_path = autoware_root / "autoware_dataset_manifest.json"
+    consumer_input_manifest_path = autoware_root / "autoware_consumer_input_manifest.json"
     _write_json(frame_tree_path, frame_tree)
     _write_json(sensor_contracts_path, sensor_contracts)
     artifacts = {
@@ -607,6 +624,7 @@ def write_autoware_planned_export_bundle(
         "sensor_contracts_path": str(sensor_contracts_path.resolve()),
         "pipeline_manifest_path": str(pipeline_manifest_path.resolve()),
         "dataset_manifest_path": str(dataset_manifest_path.resolve()),
+        "consumer_input_manifest_path": str(consumer_input_manifest_path.resolve()),
         "topic_export_root": str(topic_export_root.resolve()),
         "topic_export_index_path": str(topic_export_index_path.resolve()),
         "topic_catalog_path": str(topic_catalog_path.resolve()),
@@ -659,6 +677,16 @@ def write_autoware_planned_export_bundle(
     )
     _write_json(pipeline_manifest_path, pipeline_manifest)
     _write_json(dataset_manifest_path, dataset_manifest)
+    consumer_input_manifest = build_autoware_consumer_input_manifest(
+        run_id=run_id,
+        backend=backend,
+        scenario_source=scenario_source,
+        pipeline_manifest=pipeline_manifest,
+        dataset_manifest=dataset_manifest,
+        topic_catalog=topic_catalog,
+        artifacts=artifacts,
+    )
+    _write_json(consumer_input_manifest_path, consumer_input_manifest)
     warnings = list(sensor_contracts.get("warnings", []))
     if strict_failed:
         warnings.append("strict_mode_missing_required_sensor_outputs")
@@ -670,6 +698,7 @@ def write_autoware_planned_export_bundle(
         "available_sensor_count": int(sensor_contracts.get("available_sensor_count", 0) or 0),
         "missing_required_sensor_count": int(sensor_contracts.get("missing_required_sensor_count", 0) or 0),
         "available_topics": list(sensor_contracts.get("available_topics", [])),
+        "consumer_ready": bool(consumer_input_manifest.get("consumer_ready")),
         "topic_export_count": int(topic_export_index.get("topic_count", 0) or 0),
         "materialized_topic_export_count": int(
             topic_export_index.get("materialized_payload_count", 0) or 0
@@ -694,6 +723,7 @@ def write_autoware_planned_export_bundle(
             "frame_tree_path": str(frame_tree_path.resolve()),
             "pipeline_manifest_path": str(pipeline_manifest_path.resolve()),
             "dataset_manifest_path": str(dataset_manifest_path.resolve()),
+            "consumer_input_manifest_path": str(consumer_input_manifest_path.resolve()),
             "topic_export_root": str(topic_export_root.resolve()),
             "topic_export_index_path": str(topic_export_index_path.resolve()),
             "topic_catalog_path": str(topic_catalog_path.resolve()),
@@ -708,4 +738,5 @@ def write_autoware_planned_export_bundle(
         "frame_tree": frame_tree,
         "pipeline_manifest": pipeline_manifest,
         "dataset_manifest": dataset_manifest,
+        "consumer_input_manifest": consumer_input_manifest,
     }

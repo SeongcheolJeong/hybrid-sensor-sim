@@ -291,6 +291,7 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
                 "BACKEND_RUNTIME_ONLY",
             )
             self.assertTrue(report["status_summary"]["autoware_dataset_ready"])
+            self.assertTrue(report["status_summary"]["autoware_consumer_ready"])
             self.assertEqual(
                 report["status_summary"]["autoware_recording_style"],
                 "backend_smoke_export",
@@ -317,6 +318,9 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
             self.assertTrue(Path(report["artifacts"]["autoware_pipeline_manifest_path"]).is_file())
             self.assertTrue(Path(report["artifacts"]["autoware_topic_export_index_path"]).is_file())
             self.assertTrue(Path(report["artifacts"]["autoware_topic_catalog_path"]).is_file())
+            self.assertTrue(
+                Path(report["artifacts"]["autoware_consumer_input_manifest_path"]).is_file()
+            )
             self.assertTrue(Path(report["artifacts"]["smoke_scenario_path"]).is_file())
             self.assertTrue(Path(result["workflow_markdown_path"]).is_file())
 
