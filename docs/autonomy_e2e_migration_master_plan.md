@@ -135,6 +135,7 @@ Detailed audit:
    - supported payload kinds now include `log_scene_v0` and `scenario_definition_v0`
 14. scenario variant workflow
    - `src/hybrid_sensor_sim/tools/scenario_variant_workflow.py` now provides a single workflow entry point from logical scenarios to executed rendered payloads
+   - workflow output now includes payload-kind grouping and compact failed/skipped triage rows
 
 ### Reference only
 

@@ -41,6 +41,26 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _build_non_success_variant_rows(variant_runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for run in variant_runs:
+        execution_status = str(run.get("execution_status", "")).strip()
+        if execution_status == "SUCCEEDED":
+            continue
+        rows.append(
+            {
+                "variant_id": str(run.get("variant_id", "")).strip() or None,
+                "logical_scenario_id": str(run.get("logical_scenario_id", "")).strip() or None,
+                "rendered_payload_kind": str(run.get("rendered_payload_kind", "")).strip() or None,
+                "execution_status": execution_status or None,
+                "failure_code": str(run.get("failure_code", "")).strip() or None,
+                "failure_reason": str(run.get("failure_reason", "")).strip() or None,
+                "execution_path": str(run.get("execution_path", "")).strip() or None,
+            }
+        )
+    return rows
+
+
 def run_scenario_variant_workflow(
     *,
     logical_scenarios_path: str,
@@ -117,7 +137,9 @@ def run_scenario_variant_workflow(
         "execution_status_counts": dict(run_report["execution_status_counts"]),
         "object_sim_status_counts": dict(run_report["object_sim_status_counts"]),
         "by_payload_kind": dict(run_report["by_payload_kind"]),
+        "non_success_variant_rows": _build_non_success_variant_rows(run_report["variant_runs"]),
     }
+    workflow_report["non_success_variant_row_count"] = len(workflow_report["non_success_variant_rows"])
     workflow_report_path = out_root / "scenario_variant_workflow_report_v0.json"
     workflow_report_path.write_text(
         json.dumps(workflow_report, indent=2, ensure_ascii=True) + "\n",

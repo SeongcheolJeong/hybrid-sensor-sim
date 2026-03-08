@@ -142,15 +142,25 @@ python3 scripts/run_scenario_variants.py \
   --out artifacts/scenario_variants_highway_map_route_relations_v0.json \
   --sampling full
 
+python3 scripts/run_scenario_variants.py \
+  --logical-scenarios tests/fixtures/autonomy_e2e/p_validation/highway_mixed_payloads_v0.json \
+  --out artifacts/scenario_variants_highway_mixed_payloads_v0.json \
+  --sampling full
+
 python3 scripts/run_scenario_variant_runner.py \
   --variants-report artifacts/scenario_variants_highway_map_route_relations_v0.json \
   --out artifacts/scenario_variant_runs
 
 python3 scripts/run_scenario_variant_workflow.py \
-  --logical-scenarios tests/fixtures/autonomy_e2e/p_validation/highway_map_route_relations_v0.json \
+  --logical-scenarios tests/fixtures/autonomy_e2e/p_validation/highway_mixed_payloads_v0.json \
   --out-root artifacts/scenario_variant_workflow_runs \
   --execution-max-variants 2
 ```
+
+`scenario_variant_workflow_report_v0.json` includes:
+
+- `by_payload_kind`: grouped execution summary for each rendered payload kind
+- `non_success_variant_rows`: compact failed/skipped variant table for quick triage
 
 Object-sim matrix sweep:
 
@@ -210,6 +220,7 @@ Autonomy-E2E fixtures currently mirrored into this repo:
 - `tests/fixtures/autonomy_e2e/p_sim_engine/rig_sweep_candidates_v1.json`
 - `tests/fixtures/autonomy_e2e/p_validation/highway_cut_in_v0.json`
 - `tests/fixtures/autonomy_e2e/p_validation/highway_map_route_relations_v0.json`
+- `tests/fixtures/autonomy_e2e/p_validation/highway_mixed_payloads_v0.json`
 - `tests/fixtures/autonomy_e2e/p_map_toolset/simple_map_v0.json`
 - `tests/fixtures/autonomy_e2e/p_map_toolset/canonical_lane_graph_v0.json`
 
