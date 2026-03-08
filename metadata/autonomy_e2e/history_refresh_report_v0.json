@@ -1,10 +1,10 @@
 {
   "schema_version": "autonomy_e2e_history_refresh_report_v0",
-  "generated_at_utc": "2026-03-08T16:34:23+00:00",
+  "generated_at_utc": "2026-03-08T17:03:26+00:00",
   "source_repo_root": "/Users/seongcheoljeong/Documents/Autonomy-E2E/Autonomy-E2E",
   "current_repo_root": "/Users/seongcheoljeong/Documents/Test",
   "integration_baseline_commit": "8d2353f",
-  "current_repo_head_commit": "5079d7374b2e1f682970a42af3ad9f40bcd4b1c5",
+  "current_repo_head_commit": "4c6f0acc045a2c7ad0da75da6c7c71c52c3b18cc",
   "current_repo_worktree_dirty": true,
   "source_repo_available": true,
   "inventory_status": "generated",
