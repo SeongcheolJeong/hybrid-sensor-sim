@@ -1,6 +1,6 @@
 {
   "schema_version": "autonomy_e2e_result_traceability_index_v0",
-  "generated_at_utc": "2026-03-08T13:42:31+00:00",
+  "generated_at_utc": "2026-03-08T14:06:16+00:00",
   "current_repo_root": "/Users/seongcheoljeong/Documents/Test",
   "paths": [
     {
@@ -30,7 +30,7 @@
       ],
       "result_role": "audit_doc",
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e"
+      "current_latest_touch_commit": "5d2e35431d6510386e83a01bbc14dc7ef1762b73"
     },
     {
       "current_path": "docs/autonomy_e2e_migration_master_plan.md",
@@ -65,7 +65,7 @@
       ],
       "result_role": "audit_doc",
       "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
-      "current_latest_touch_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e"
+      "current_latest_touch_commit": "5d2e35431d6510386e83a01bbc14dc7ef1762b73"
     },
     {
       "current_path": "docs/p_sim_engine_migration_audit.md",
@@ -90,7 +90,7 @@
       ],
       "result_role": "audit_doc",
       "current_intro_commit": "9104dc8429b6e5bd7faac52cbd37a8a8287ff960",
-      "current_latest_touch_commit": "4cecbeac41d9bee899b6a06bb9105b28ab74ef9e"
+      "current_latest_touch_commit": "5d2e35431d6510386e83a01bbc14dc7ef1762b73"
     },
     {
       "current_path": "docs/sensor_sim_master_plan.md",
@@ -592,6 +592,19 @@
       "current_latest_touch_commit": "68541526c842bd793018a602dbfc1b18e2118a2b"
     },
     {
+      "current_path": "src/hybrid_sensor_sim/tools/scenario_backend_smoke_workflow.py",
+      "path_kind": "library",
+      "block_ids": [
+        "p_sim_engine.scenario_runtime_smoke_bridge"
+      ],
+      "project_ids": [
+        "P_Sim-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": "b68a77a86aabfd4395e86573848f64d30c9f88cb",
+      "current_latest_touch_commit": "8d2353f3ef8f684da4eb63bd7b386472f564b4e7"
+    },
+    {
       "current_path": "src/hybrid_sensor_sim/tools/scenario_batch_comparison.py",
       "path_kind": "library",
       "block_ids": [
@@ -616,6 +629,32 @@
       "result_role": "core_logic",
       "current_intro_commit": "42862794ac074d2f2b8d31d5cac8eb267160b684",
       "current_latest_touch_commit": "d10bfb62ac43ae7f7b2de4c67ab444e518470027"
+    },
+    {
+      "current_path": "src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py",
+      "path_kind": "library",
+      "block_ids": [
+        "p_sim_engine.scenario_runtime_smoke_bridge"
+      ],
+      "project_ids": [
+        "P_Sim-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": "316deb3f8088b82f3860f1bbff38489fcf7eaac1",
+      "current_latest_touch_commit": "5d2e35431d6510386e83a01bbc14dc7ef1762b73"
+    },
+    {
+      "current_path": "src/hybrid_sensor_sim/tools/scenario_runtime_bridge.py",
+      "path_kind": "library",
+      "block_ids": [
+        "p_sim_engine.scenario_runtime_smoke_bridge"
+      ],
+      "project_ids": [
+        "P_Sim-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": "b68a77a86aabfd4395e86573848f64d30c9f88cb",
+      "current_latest_touch_commit": "b68a77a86aabfd4395e86573848f64d30c9f88cb"
     },
     {
       "current_path": "tests/fixtures/autonomy_e2e/p_map_toolset/canonical_lane_graph_v0.json",
@@ -1119,7 +1158,7 @@
       ],
       "result_role": "regression",
       "current_intro_commit": "316deb3f8088b82f3860f1bbff38489fcf7eaac1",
-      "current_latest_touch_commit": "8d2353f3ef8f684da4eb63bd7b386472f564b4e7"
+      "current_latest_touch_commit": "5d2e35431d6510386e83a01bbc14dc7ef1762b73"
     },
     {
       "current_path": "tests/test_scenario_variant_runner.py",

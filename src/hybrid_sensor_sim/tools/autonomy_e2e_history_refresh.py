@@ -414,7 +414,11 @@ BLOCK_CATALOG: list[dict[str, Any]] = [
             "30_Projects/P_Sim-Engine/prototype/sim_runtime_probe_runner.py",
         ],
         "migration_status": "migrated",
-        "current_paths": [],
+        "current_paths": [
+            "src/hybrid_sensor_sim/tools/scenario_runtime_bridge.py",
+            "src/hybrid_sensor_sim/tools/scenario_backend_smoke_workflow.py",
+            "src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py",
+        ],
         "current_test_paths": [
             "tests/test_scenario_backend_smoke_workflow.py",
             "tests/test_scenario_runtime_backend_workflow.py",

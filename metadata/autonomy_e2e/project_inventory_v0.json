@@ -1,6 +1,6 @@
 {
   "schema_version": "autonomy_e2e_project_inventory_v0",
-  "generated_at_utc": "2026-03-08T13:42:27+00:00",
+  "generated_at_utc": "2026-03-08T14:06:13+00:00",
   "source_repo_root": "/Users/seongcheoljeong/Documents/Autonomy-E2E/Autonomy-E2E",
   "integration_baseline_commit": "8d2353f",
   "projects": [
@@ -1198,6 +1198,9 @@
         "src/hybrid_sensor_sim/tools/renderer_backend_package_acquire.py",
         "src/hybrid_sensor_sim/tools/renderer_backend_package_stage.py",
         "src/hybrid_sensor_sim/tools/renderer_backend_workflow.py",
+        "src/hybrid_sensor_sim/tools/scenario_backend_smoke_workflow.py",
+        "src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py",
+        "src/hybrid_sensor_sim/tools/scenario_runtime_bridge.py",
         "tests/fixtures/autonomy_e2e/p_sim_engine/control_sequence_v0.json",
         "tests/fixtures/autonomy_e2e/p_sim_engine/highway_following_v0.json",
         "tests/fixtures/autonomy_e2e/p_sim_engine/highway_map_route_following_v0.json",
