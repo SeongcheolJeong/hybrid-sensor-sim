@@ -1,11 +1,11 @@
 {
   "schema_version": "autonomy_e2e_history_refresh_report_v0",
-  "generated_at_utc": "2026-03-08T14:06:16+00:00",
+  "generated_at_utc": "2026-03-08T14:10:19+00:00",
   "source_repo_root": "/Users/seongcheoljeong/Documents/Autonomy-E2E/Autonomy-E2E",
   "current_repo_root": "/Users/seongcheoljeong/Documents/Test",
   "integration_baseline_commit": "8d2353f",
-  "current_repo_head_commit": "5d2e35431d6510386e83a01bbc14dc7ef1762b73",
-  "current_repo_worktree_dirty": true,
+  "current_repo_head_commit": "75d00eba9e356a9fbc4136004f33c371dc1039e1",
+  "current_repo_worktree_dirty": false,
   "source_repo_available": true,
   "inventory_status": "generated",
   "history_snapshot_status": "generated",
@@ -16,8 +16,6 @@
     "new_source_commits": [],
     "new_unmapped_prototype_files": [],
     "orphan_current_paths": [],
-    "changed_registry_blocks": [
-      "p_sim_engine.scenario_runtime_smoke_bridge"
-    ]
+    "changed_registry_blocks": []
   }
 }
