@@ -431,6 +431,7 @@ Consumer profiles now let the same runtime-origin export set be graded against s
 - `tracking_fusion_v0`: requires `camera_visible`, `lidar_point_cloud`, `radar_detections`, and `radar_tracks`
 This means a real backend run can now be `DEGRADED` even when output comparison is `MATCHED` and output smoke is `COMPLETE`, if the chosen downstream consumer profile still lacks a required topic.
 The current AWSIM Linux-handoff path now reproduces that state with runtime-origin outputs as well: using `semantic_perception_v0`, the workflow stays `MATCHED` + `COMPLETE` + `BACKEND_RUNTIME_ONLY` but becomes top-level `DEGRADED` because `/sensing/camera/<sensor>/semantic/image_raw` is still missing.
+The same real AWSIM Linux-handoff path also now reproduces a `tracking_fusion_v0` runtime `READY` case when radar tracks are enabled: the top-level workflow remains `SUCCEEDED`, the Autoware pipeline remains `READY`, and the available topics include `/sensing/radar/<sensor>/tracks`.
 
 Both `run_scenario_variants.py` and `run_scenario_variant_workflow.py` resolve default scenario-language profiles from:
 

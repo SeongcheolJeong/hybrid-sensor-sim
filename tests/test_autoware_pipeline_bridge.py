@@ -16,7 +16,14 @@ def _write_json(path: Path, payload: dict) -> None:
 
 
 class AutowarePipelineBridgeTests(unittest.TestCase):
-    def _write_backend_workflow_fixture(self, root: Path, *, include_lidar: bool) -> Path:
+    def _write_backend_workflow_fixture(
+        self,
+        root: Path,
+        *,
+        include_lidar: bool,
+        include_radar: bool = False,
+        radar_tracks: bool = False,
+    ) -> Path:
         output_root = root / "backend_outputs"
         output_root.mkdir(parents=True, exist_ok=True)
         camera_output = output_root / "sensor_exports" / "cam_front" / "rgb_frame.json"
@@ -26,57 +33,98 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
         if include_lidar:
             lidar_output.parent.mkdir(parents=True, exist_ok=True)
             lidar_output.write_text("{}", encoding="utf-8")
+        radar_detection_output = output_root / "sensor_exports" / "radar_front" / "detections.json"
+        radar_tracks_output = output_root / "sensor_exports" / "radar_front" / "tracks.json"
+        if include_radar:
+            radar_detection_output.parent.mkdir(parents=True, exist_ok=True)
+            radar_detection_output.write_text("{}", encoding="utf-8")
+            if radar_tracks:
+                radar_tracks_output.write_text("{}", encoding="utf-8")
 
         playback_contract_path = root / "renderer_playback_contract.json"
+        sensor_mounts = [
+            {
+                "sensor_id": "cam_front",
+                "sensor_type": "camera",
+                "enabled": True,
+                "attach_to_actor_id": "ego",
+                "extrinsics": {"tx": 1.0, "ty": 0.0, "tz": 1.5},
+            },
+            {
+                "sensor_id": "lidar_top",
+                "sensor_type": "lidar",
+                "enabled": True,
+                "attach_to_actor_id": "ego",
+                "extrinsics": {"tx": 0.0, "ty": 0.0, "tz": 2.0},
+            },
+        ]
+        if include_radar:
+            sensor_mounts.append(
+                {
+                    "sensor_id": "radar_front",
+                    "sensor_type": "radar",
+                    "enabled": True,
+                    "attach_to_actor_id": "ego",
+                    "extrinsics": {"tx": 1.2, "ty": 0.0, "tz": 0.9},
+                }
+            )
         _write_json(
             playback_contract_path,
             {
-                "renderer_sensor_mounts": [
-                    {
-                        "sensor_id": "cam_front",
-                        "sensor_type": "camera",
-                        "enabled": True,
-                        "attach_to_actor_id": "ego",
-                        "extrinsics": {"tx": 1.0, "ty": 0.0, "tz": 1.5},
-                    },
-                    {
-                        "sensor_id": "lidar_top",
-                        "sensor_type": "lidar",
-                        "enabled": True,
-                        "attach_to_actor_id": "ego",
-                        "extrinsics": {"tx": 0.0, "ty": 0.0, "tz": 2.0},
-                    },
-                ]
+                "renderer_sensor_mounts": sensor_mounts,
             },
         )
         backend_output_spec_path = root / "backend_output_spec.json"
+        expected_outputs_by_sensor = [
+            {
+                "sensor_id": "cam_front",
+                "outputs": [
+                    {
+                        "output_role": "camera_visible",
+                        "artifact_type": "awsim_camera_rgb_json",
+                        "data_format": "camera_projection_json",
+                    }
+                ],
+            },
+            {
+                "sensor_id": "lidar_top",
+                "outputs": [
+                    {
+                        "output_role": "lidar_point_cloud",
+                        "artifact_type": "awsim_lidar_json_point_cloud",
+                        "data_format": "lidar_points_json",
+                    }
+                ],
+            },
+        ]
+        if include_radar:
+            radar_expected_outputs = [
+                {
+                    "output_role": "radar_detections",
+                    "artifact_type": "awsim_radar_detections_json",
+                    "data_format": "radar_targets_json",
+                }
+            ]
+            if radar_tracks:
+                radar_expected_outputs.append(
+                    {
+                        "output_role": "radar_tracks",
+                        "artifact_type": "awsim_radar_tracks_json",
+                        "data_format": "radar_tracks_json",
+                    }
+                )
+            expected_outputs_by_sensor.append(
+                {
+                    "sensor_id": "radar_front",
+                    "outputs": radar_expected_outputs,
+                }
+            )
         _write_json(
             backend_output_spec_path,
             {
                 "backend": "awsim",
                 "output_root": str(output_root.resolve()),
-                "expected_outputs_by_sensor": [
-                    {
-                        "sensor_id": "cam_front",
-                        "outputs": [
-                            {
-                                "output_role": "camera_visible",
-                                "artifact_type": "awsim_camera_rgb_json",
-                                "data_format": "camera_projection_json",
-                            }
-                        ],
-                    },
-                    {
-                        "sensor_id": "lidar_top",
-                        "outputs": [
-                            {
-                                "output_role": "lidar_point_cloud",
-                                "artifact_type": "awsim_lidar_json_point_cloud",
-                                "data_format": "lidar_points_json",
-                            }
-                        ],
-                    },
-                ],
+                "expected_outputs_by_sensor": expected_outputs_by_sensor,
             },
         )
         backend_sensor_output_summary_path = root / "backend_sensor_output_summary.json"
@@ -111,6 +159,35 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
                             "exists": True,
                         }
                     ],
+                }
+            )
+        if include_radar:
+            radar_outputs = [
+                {
+                    "output_role": "radar_detections",
+                    "artifact_type": "awsim_radar_detections_json",
+                    "data_format": "radar_targets_json",
+                    "artifact_key": "radar_targets_json",
+                    "resolved_path": str(radar_detection_output.resolve()),
+                    "exists": True,
+                }
+            ]
+            if radar_tracks:
+                radar_outputs.append(
+                    {
+                        "output_role": "radar_tracks",
+                        "artifact_type": "awsim_radar_tracks_json",
+                        "data_format": "radar_tracks_json",
+                        "artifact_key": "radar_tracks_json",
+                        "resolved_path": str(radar_tracks_output.resolve()),
+                        "exists": True,
+                    }
+                )
+            sensors.append(
+                {
+                    "sensor_id": "radar_front",
+                    "modality": "radar",
+                    "outputs": radar_outputs,
                 }
             )
         _write_json(
@@ -216,6 +293,36 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
             self.assertEqual(consumer_manifest["missing_required_topic_count"], 0)
             self.assertEqual(len(consumer_manifest["consumer_topics"]), 2)
             self.assertTrue(consumer_manifest["consumer_topics"][0]["payload_exists"])
+
+    def test_bridge_ready_for_tracking_fusion_consumer_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            backend_report_path = self._write_backend_workflow_fixture(
+                root,
+                include_lidar=True,
+                include_radar=True,
+                radar_tracks=True,
+            )
+            result = run_autoware_pipeline_bridge(
+                backend_smoke_workflow_report_path=str(backend_report_path),
+                runtime_backend_workflow_report_path="",
+                out_root=root / "autoware_bundle",
+                consumer_profile_id="tracking_fusion_v0",
+                strict=False,
+            )
+            report = result["report"]
+            self.assertEqual(report["status"], "READY")
+            self.assertEqual(report["availability_mode"], "runtime")
+            self.assertEqual(report["consumer_profile_id"], "tracking_fusion_v0")
+            self.assertEqual(report["required_topic_count"], 4)
+            self.assertEqual(report["missing_required_topic_count"], 0)
+            self.assertEqual(report["missing_required_sensor_count"], 0)
+            self.assertTrue(report["consumer_ready"])
+            self.assertIn("/sensing/radar/radar_front/tracks", report["available_topics"])
+            self.assertIn(
+                "autoware_auto_perception_msgs/msg/TrackedObjects",
+                report["available_message_types"],
+            )
 
     def test_bridge_marks_sidecar_only_exports(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

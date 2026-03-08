@@ -105,6 +105,7 @@ Still pending from this master plan:
    - the same path now becomes `DEGRADED` when backend-runtime outputs are still complete and matched but the Autoware bridge is runtime `DEGRADED`
    - Autoware consumer profiles now make that downgrade intentional for downstream contracts such as `semantic_perception_v0`, where missing semantic camera topics degrade the run even though backend export comparison still passes
    - that `DEGRADED` classification is now reproduced on the real AWSIM Linux handoff path, not only in mocked tests
+   - the same real AWSIM Linux handoff path now also reproduces a runtime-origin `READY` case for `tracking_fusion_v0` when radar tracks are enabled
    - the Autoware bridge now exposes run-level lineage so the selected variant, scenario source, smoke-ready scenario, and backend-export roots are all visible in one dataset manifest
 3. tighter publish gating that combines scenario/runtime smoke with provenance refresh status
 4. lower-level backend smoke entrypoints should preserve the same provenance-aware publish checks as top-level workflows
