@@ -1286,6 +1286,19 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             attention_row = payload["comparison_summary"]["attention_rows"][0]
             self.assertEqual(attention_row["ego_route_lane_id"], "lane_a")
             self.assertEqual(attention_row["traffic_npc_route_lane_id_profile"], ["lane_a"])
+            self.assertIn("LANE_CHANGE_ROUTE_LANE_TRACE_PRESENT", attention_row["attention_reasons"])
+            self.assertEqual(
+                payload["status_summary"]["lane_change_logical_scenario_ids"],
+                ["scn_lane_change_route_avoidance"],
+            )
+            self.assertEqual(
+                payload["status_summary"]["failing_lane_change_logical_scenario_ids"],
+                ["scn_lane_change_route_avoidance"],
+            )
+            self.assertIn(
+                "AVOIDANCE_LANE_CHANGE_TRIGGER_COUNT_EXCEEDED",
+                payload["status_summary"]["lane_change_gate_failure_code_counts"],
+            )
 
     def test_scenario_batch_workflow_propagates_route_lane_trace_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1324,10 +1337,20 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             )
             logical_row = report["workflow_report"]["comparison_summary"]["logical_scenario_rows"][0]
             worst_row = report["workflow_report"]["status_summary"]["worst_logical_scenario_row"]
+            health_row = report["workflow_report"]["comparison_summary"]["logical_scenario_health_rows"][0]
             self.assertEqual(logical_row["ego_route_lane_ids"], ["lane_a"])
             self.assertEqual(logical_row["traffic_npc_route_lane_id_profiles"], [["lane_a"]])
             self.assertEqual(worst_row["ego_route_lane_ids"], ["lane_a"])
             self.assertEqual(worst_row["traffic_npc_route_lane_id_profiles"], [["lane_a"]])
+            self.assertIn("LANE_CHANGE_ROUTE_LANE_TRACE_PRESENT", health_row["health_reasons"])
+            self.assertEqual(
+                report["workflow_report"]["status_summary"]["lane_change_logical_scenario_ids"],
+                ["scn_lane_change_route_avoidance"],
+            )
+            self.assertEqual(
+                report["workflow_report"]["status_summary"]["lane_change_matrix_group_ids"],
+                ["sumo_highway_balanced_v0::sumo_lane_change_conflict_v0"],
+            )
 
     def test_scenario_batch_workflow_script_bootstraps_src_path(self) -> None:
         script_path = Path(__file__).resolve().parents[1] / "scripts" / "run_scenario_batch_workflow.py"

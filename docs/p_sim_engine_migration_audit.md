@@ -154,6 +154,9 @@ Implemented in the current repository:
 36. lane-change gate preset and route-lane batch triage
    - the gate preset catalog now includes `scenario_batch_gate_avoidance_lane_change_v0`, so lane-change-trigger-heavy scenarios can fail independently of the broader avoidance presets
    - batch comparison attention rows, grouped logical-scenario rows, grouped matrix rows, and workflow health rows now preserve `ego_route_lane_id`, `traffic_npc_route_lane_id_profiles`, and route-binding profiles, which keeps explicit lane-change evidence visible in top-level triage
+37. lane-change evidence promoted into batch status summaries
+   - attention and health reasons now emit `LANE_CHANGE_ROUTE_LANE_TRACE_PRESENT` when explicit route-lane traces back a lane-change conflict
+   - workflow `status_summary` now exposes `lane_change_logical_scenario_ids`, `failing_lane_change_logical_scenario_ids`, `lane_change_matrix_group_ids`, and `lane_change_gate_failure_code_counts` so lane-change-heavy failures can be identified without reading the full row tables
 
 Still pending from the same migration track:
 

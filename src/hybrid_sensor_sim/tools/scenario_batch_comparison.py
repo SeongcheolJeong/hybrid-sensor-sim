@@ -871,6 +871,11 @@ def _build_attention_rows(batch_rows: list[dict[str, Any]]) -> list[dict[str, An
             attention_reasons.append("MERGE_CONFLICT_PRESENT")
         if int(row.get("lane_change_conflict_rows", 0) or 0) > 0:
             attention_reasons.append("LANE_CHANGE_CONFLICT_PRESENT")
+            if (
+                str(row.get("ego_route_lane_id", "")).strip()
+                or _normalize_text_list(row.get("traffic_npc_route_lane_id_profile"))
+            ):
+                attention_reasons.append("LANE_CHANGE_ROUTE_LANE_TRACE_PRESENT")
         if risky_path_conflict:
             attention_reasons.append("PATH_TTC_UNDER_3S")
         rows.append(

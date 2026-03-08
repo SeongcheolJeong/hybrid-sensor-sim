@@ -941,6 +941,11 @@ class ScenarioBatchComparisonTests(unittest.TestCase):
             lane_change_row = payload["comparison_tables"]["attention_rows"][0]
             self.assertEqual(lane_change_row["ego_route_lane_id"], "lane_a")
             self.assertEqual(lane_change_row["traffic_npc_route_lane_id_profile"], ["lane_a"])
+            self.assertIn("LANE_CHANGE_ROUTE_LANE_TRACE_PRESENT", lane_change_row["attention_reasons"])
+            self.assertEqual(
+                payload["comparison_tables"]["attention_reason_counts"]["LANE_CHANGE_ROUTE_LANE_TRACE_PRESENT"],
+                1,
+            )
 
     def test_scenario_batch_comparison_propagates_route_lane_trace_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -988,6 +993,7 @@ class ScenarioBatchComparisonTests(unittest.TestCase):
             self.assertEqual(logical_row["traffic_npc_route_lane_id_profiles"], [["lane_a"]])
             self.assertEqual(matrix_row["ego_route_lane_ids"], ["lane_a"])
             self.assertEqual(matrix_row["traffic_npc_route_lane_id_profiles"], [["lane_a"]])
+            self.assertEqual(report["comparison_tables"]["attention_reason_counts"]["LANE_CHANGE_CONFLICT_PRESENT"], 1)
 
     def test_scenario_batch_comparison_propagates_avoidance_policy_trace_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

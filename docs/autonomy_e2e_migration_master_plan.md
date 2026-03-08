@@ -171,6 +171,9 @@ Detailed audit:
 22. lane-change avoidance preset and triage propagation
    - the gate preset catalog now includes `scenario_batch_gate_avoidance_lane_change_v0` for explicit lane-change-trigger gating
    - batch comparison/workflow triage now preserves route-lane traces through grouped rows, attention rows, and logical-scenario health rows so explicit lane-change evidence survives into top-level batch summaries
+23. lane-change status-summary escalation
+   - batch attention and health reasons now emit `LANE_CHANGE_ROUTE_LANE_TRACE_PRESENT` when a lane-change conflict is backed by explicit route-lane traces
+   - top-level workflow triage now surfaces lane-change-specific logical-scenario IDs, matrix-group IDs, and gate-failure-code counts directly in `status_summary`
 11. route-relation-driven replay and sweep generation
    - `log_scene_v0` and matrix actor patterns can now synthesize actor lane assignments from route relations instead of relying only on explicit lane IDs or raw lane slots
 12. rendered payload generation in scenario variants

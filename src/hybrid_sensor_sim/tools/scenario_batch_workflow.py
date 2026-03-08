@@ -403,6 +403,8 @@ def _build_logical_scenario_health_rows(
             reasons.append("MERGE_CONFLICT_PRESENT")
         if lane_change_conflict_row_count > 0:
             reasons.append("LANE_CHANGE_CONFLICT_PRESENT")
+            if row.get("ego_route_lane_ids") or row.get("traffic_npc_route_lane_id_profiles"):
+                reasons.append("LANE_CHANGE_ROUTE_LANE_TRACE_PRESENT")
         if (
             min_ttc_threshold is not None
             and min_ttc_any_lane_sec is not None
@@ -769,6 +771,58 @@ def _build_workflow_status_summary(
     failing_matrix_group_ids = sorted(failing_matrix_group_ids)
     if matrix_group_rank_rows:
         worst_matrix_group_row = min(matrix_group_rank_rows, key=lambda item: item[0])[1]
+
+    lane_change_gate_failure_codes = {
+        "LANE_CHANGE_CONFLICT_ROWS_EXCEEDED",
+        "AVOIDANCE_LANE_CHANGE_TRIGGER_COUNT_EXCEEDED",
+    }
+    lane_change_logical_scenario_ids = sorted(
+        str(row["logical_scenario_id"])
+        for row in logical_health_rows
+        if row.get("logical_scenario_id")
+        and (
+            int(row.get("lane_change_conflict_row_count", 0) or 0) > 0
+            or int(dict(row.get("ego_avoidance_trigger_counts_by_interaction_kind", {})).get("lane_change_conflict", 0) or 0)
+            > 0
+        )
+    )
+    failing_lane_change_logical_scenario_ids = sorted(
+        str(row["logical_scenario_id"])
+        for row in logical_health_rows
+        if row.get("logical_scenario_id")
+        and (
+            int(row.get("lane_change_conflict_row_count", 0) or 0) > 0
+            or int(dict(row.get("ego_avoidance_trigger_counts_by_interaction_kind", {})).get("lane_change_conflict", 0) or 0)
+            > 0
+        )
+        and (
+            str(row.get("health_status")) == "FAIL"
+            or any(code in lane_change_gate_failure_codes for code in row.get("gate_failure_codes", []))
+        )
+    )
+    lane_change_matrix_group_ids = sorted(
+        str(row["matrix_group_id"])
+        for row in matrix_group_rows
+        if row.get("matrix_group_id")
+        and (
+            int(row.get("lane_change_conflict_row_count", 0) or 0) > 0
+            or int(dict(row.get("ego_avoidance_trigger_counts_by_interaction_kind", {})).get("lane_change_conflict", 0) or 0)
+            > 0
+        )
+    )
+    lane_change_gate_failure_code_counts: dict[str, int] = {}
+    for row in logical_health_rows:
+        for failure_code in row.get("gate_failure_codes", []):
+            if failure_code in lane_change_gate_failure_codes:
+                lane_change_gate_failure_code_counts[failure_code] = (
+                    lane_change_gate_failure_code_counts.get(failure_code, 0) + 1
+                )
+    for failure_code, count in matrix_group_gate_failure_code_counts.items():
+        if failure_code in lane_change_gate_failure_codes:
+            lane_change_gate_failure_code_counts[failure_code] = (
+                lane_change_gate_failure_code_counts.get(failure_code, 0) + int(count)
+            )
+
     breached_gate_rules = [
         dict(rule)
         for rule in comparison_summary["gate"].get("evaluated_rules", [])
@@ -794,6 +848,13 @@ def _build_workflow_status_summary(
         "matrix_group_gate_failure_code_counts": dict(sorted(matrix_group_gate_failure_code_counts.items())),
         "attention_matrix_group_ids": attention_matrix_group_ids,
         "attention_matrix_group_count": len(attention_matrix_group_ids),
+        "lane_change_logical_scenario_ids": lane_change_logical_scenario_ids,
+        "lane_change_logical_scenario_count": len(lane_change_logical_scenario_ids),
+        "failing_lane_change_logical_scenario_ids": failing_lane_change_logical_scenario_ids,
+        "failing_lane_change_logical_scenario_count": len(failing_lane_change_logical_scenario_ids),
+        "lane_change_matrix_group_ids": lane_change_matrix_group_ids,
+        "lane_change_matrix_group_count": len(lane_change_matrix_group_ids),
+        "lane_change_gate_failure_code_counts": dict(sorted(lane_change_gate_failure_code_counts.items())),
         "avoidance_row_count": int(avoidance_row_count),
         "avoidance_brake_event_count_total": int(avoidance_brake_event_count_total),
         "avoidance_trigger_counts_by_interaction_kind": dict(
@@ -838,9 +899,13 @@ def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Status reason codes: `{','.join(status_summary['status_reason_codes']) or '-'}`",
         f"- Failing logical scenarios: `{','.join(status_summary['failing_logical_scenario_ids']) or '-'}`",
         f"- Attention logical scenarios: `{','.join(status_summary['attention_logical_scenario_ids']) or '-'}`",
+        f"- Lane-change logical scenarios: `{','.join(status_summary['lane_change_logical_scenario_ids']) or '-'}`",
+        f"- Failing lane-change logical scenarios: `{','.join(status_summary['failing_lane_change_logical_scenario_ids']) or '-'}`",
         f"- Failing matrix groups: `{','.join(status_summary['failing_matrix_group_ids']) or '-'}`",
         f"- Attention matrix groups: `{','.join(status_summary['attention_matrix_group_ids']) or '-'}`",
+        f"- Lane-change matrix groups: `{','.join(status_summary['lane_change_matrix_group_ids']) or '-'}`",
         f"- Matrix gate failure counts: `{_format_counter(status_summary['matrix_group_gate_failure_code_counts'])}`",
+        f"- Lane-change gate failure counts: `{_format_counter(status_summary['lane_change_gate_failure_code_counts'])}`",
         f"- Avoidance-active rows: `{status_summary['avoidance_row_count']}`",
         f"- Avoidance brake event count: `{status_summary['avoidance_brake_event_count_total']}`",
         f"- Avoidance trigger counts: `{_format_counter(status_summary['avoidance_trigger_counts_by_interaction_kind'])}`",
