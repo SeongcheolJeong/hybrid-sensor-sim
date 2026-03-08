@@ -32,6 +32,60 @@ def _load_json_object(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _detect_repo_root(anchor_path: Path) -> Path | None:
+    current = anchor_path.resolve()
+    if current.is_file():
+        current = current.parent
+    while current.parent != current:
+        if (current / "src" / "hybrid_sensor_sim").exists() and (current / "tests").exists():
+            return current
+        current = current.parent
+    return None
+
+
+def _rebase_workspace_path(path_text: str, *, repo_root: Path | None) -> str:
+    text = str(path_text).strip()
+    if not text:
+        return text
+    if not text.startswith("/workspace"):
+        return text
+    if repo_root is None:
+        return text
+    relative_text = text.removeprefix("/workspace").lstrip("/")
+    if not relative_text:
+        return str(repo_root.resolve())
+    return str((repo_root / relative_text).resolve())
+
+
+def _normalize_workspace_paths(payload: Any, *, repo_root: Path | None) -> Any:
+    if repo_root is None:
+        return payload
+    if isinstance(payload, dict):
+        return {
+            key: _normalize_workspace_paths(value, repo_root=repo_root)
+            for key, value in payload.items()
+        }
+    if isinstance(payload, list):
+        return [
+            _normalize_workspace_paths(value, repo_root=repo_root)
+            for value in payload
+        ]
+    if isinstance(payload, str):
+        return _rebase_workspace_path(payload, repo_root=repo_root)
+    return payload
+
+
+def _load_json_object_with_workspace_rebase(
+    path: Path,
+    *,
+    repo_root: Path | None,
+) -> dict[str, Any]:
+    payload = _load_json_object(path)
+    payload = _normalize_workspace_paths(payload, repo_root=repo_root)
+    payload["__source_path"] = str(path.resolve())
+    return payload
+
+
 def _load_report(path: Path) -> dict[str, Any]:
     payload = _load_json_object(path)
     return payload
@@ -52,7 +106,12 @@ def _load_smoke_summary(backend_workflow_report: dict[str, Any]) -> dict[str, An
     summary_path = str(backend_workflow_report.get("smoke", {}).get("summary_path", "")).strip()
     if not summary_path:
         raise ValueError("backend smoke workflow report missing smoke.summary_path")
-    return _load_json_object(Path(summary_path))
+    summary_path_obj = Path(summary_path).resolve()
+    repo_root = _detect_repo_root(summary_path_obj)
+    return _load_json_object_with_workspace_rebase(
+        summary_path_obj,
+        repo_root=repo_root,
+    )
 
 
 def _load_optional_smoke_summary(backend_workflow_report: dict[str, Any]) -> dict[str, Any] | None:
@@ -60,14 +119,28 @@ def _load_optional_smoke_summary(backend_workflow_report: dict[str, Any]) -> dic
     summary_path = str(raw_summary_path).strip()
     if raw_summary_path is None or not summary_path or summary_path.lower() == "none":
         return None
-    return _load_json_object(Path(summary_path))
+    summary_path_obj = Path(summary_path).resolve()
+    repo_root = _detect_repo_root(summary_path_obj)
+    return _load_json_object_with_workspace_rebase(
+        summary_path_obj,
+        repo_root=repo_root,
+    )
 
 
-def _load_artifact(path_text: str, *, field: str) -> dict[str, Any]:
+def _load_artifact(
+    path_text: str,
+    *,
+    field: str,
+    repo_root: Path | None = None,
+) -> dict[str, Any]:
     text = str(path_text).strip()
     if not text:
         raise ValueError(f"missing required artifact path: {field}")
-    return _load_json_object(Path(text))
+    resolved_text = _rebase_workspace_path(text, repo_root=repo_root)
+    return _load_json_object_with_workspace_rebase(
+        Path(resolved_text).resolve(),
+        repo_root=repo_root,
+    )
 
 
 def _load_smoke_input_config(backend_workflow_report: dict[str, Any]) -> dict[str, Any]:
@@ -110,18 +183,24 @@ def run_autoware_pipeline_bridge(
     }
     smoke_summary = _load_optional_smoke_summary(backend_report)
     if smoke_summary is not None:
+        smoke_repo_root = _detect_repo_root(
+            Path(str(smoke_summary.get("__source_path", "")).strip())
+        )
         smoke_artifacts = dict(smoke_summary.get("artifacts", {}))
         playback_contract = _load_artifact(
             smoke_artifacts.get("renderer_playback_contract", ""),
             field="renderer_playback_contract",
+            repo_root=smoke_repo_root,
         )
         backend_output_spec = _load_artifact(
             smoke_artifacts.get("backend_output_spec", ""),
             field="backend_output_spec",
+            repo_root=smoke_repo_root,
         )
         backend_sensor_output_summary = _load_artifact(
             smoke_artifacts.get("backend_sensor_output_summary", ""),
             field="backend_sensor_output_summary",
+            repo_root=smoke_repo_root,
         )
         bundle = write_autoware_export_bundle(
             out_root=out_root,

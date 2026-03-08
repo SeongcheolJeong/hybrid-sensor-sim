@@ -358,7 +358,7 @@ python3 scripts/run_scenario_backend_smoke_workflow.py \
 - `history_guard`: optional provenance guard result for publish-time validation against `origin/main`
 - `artifacts`: `scenario_backend_smoke_selection.json`, `scenario_runtime_bridge_manifest.json`, translated smoke scenario JSON, and materialized smoke input config
 - `renderer_backend_workflow`: optional packaged-backend handoff planning result, including blocker codes, recommended next command, Linux handoff readiness, and handoff artifact paths
-- `smoke`: optional downstream `renderer_backend_smoke` execution status, summary/report paths, captured stdout/stderr logs, and backend output triage (`output_smoke_status`, `output_comparison_status`, mismatch reasons, unexpected output count)
+- `smoke`: optional downstream `renderer_backend_smoke` execution status, summary/report paths, captured stdout/stderr logs, backend output triage (`output_smoke_status`, `output_comparison_status`, mismatch reasons, unexpected output count), and packaged-runtime crash diagnostics (`backend_runtime_exit_code`, failed plugins, missing shared libraries, crash signatures)
 - `autoware`: optional Autoware-facing bridge status, available topics, missing required sensor count, and bundle artifact paths
 
 Scenario runtime/backend workflow:
@@ -388,6 +388,7 @@ python3 scripts/run_scenario_runtime_backend_workflow.py \
 - host-incompatible packaged backend selections are now lifted to top-level `HANDOFF_READY` or `HANDOFF_DOCKER_*` runtime statuses, together with `backend_handoff_status`, `backend_handoff_ready`, blocker codes, recommended command, and bundle/script artifact paths
 - `history_guard`: optional provenance guard status, failure codes, and report path for publish-time validation against `origin/main`
 - `status_summary`: final status source, ordered decision trace, batch triage IDs, backend smoke result summary, backend output smoke/comparison mismatch details, Autoware readiness, and optional history-guard status
+- `status_summary`: now also carries packaged-runtime diagnostics such as runtime exit code, failed plugin basenames, missing shared libraries, and crash signatures when a real AWSIM/CARLA handoff run aborts inside the Linux container path
 - `artifacts`: top-level report paths plus generated smoke scenario/config paths, Autoware bundle artifact paths, and optional history-guard report
 
 Autoware pipeline bridge:
@@ -1086,6 +1087,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - selected backend executable path/name
   - merged env selection for `HELIOS_*` plus staged `AWSIM_BIN` or `CARLA_BIN`
   - `smoke_ready_binary` / `smoke_ready_docker`
+  - `shared_library_link_repairs` for packaged archives that store `.so` symlinks as plain-text placeholder files instead of real symlinks
 - the env file is meant to be sourced directly before smoke runs:
   - `source third_party/runtime_backends/awsim/renderer_backend_package_stage.env.sh`
   - `python3 scripts/run_renderer_backend_smoke.py --config configs/renderer_backend_smoke.awsim.local.docker.example.json --backend awsim`
@@ -1150,6 +1152,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `artifacts/renderer_backend_workflow/<backend>/local_setup_refreshed/renderer_backend_local.env.sh`
   - plus smoke artifacts/reports when smoke executes
 - the workflow summary/report now includes structured blocker codes, a recommended next command, and Linux handoff transfer/env requirements when the selected runtime must move to a Linux runner
+- when the selected packaged runtime is an x86_64 ELF build, Docker handoff now defaults to `--platform linux/amd64` so local macOS arm64 verification uses the correct container architecture automatically
 - the Linux handoff path also emits a transfer manifest with per-file verification data, a local pack script, a bundle manifest, and a Linux unpack/verify script so the required inputs can be bundled and revalidated before smoke execution
 - `scripts/run_renderer_backend_linux_handoff.py` is the runner-side helper that consumes the bundle plus manifests, revalidates checksums, and optionally executes the extracted handoff script
 - `scripts/run_renderer_backend_linux_handoff_docker.py` runs the same handoff helper in a local Linux Docker container; the generated `renderer_backend_workflow_linux_handoff_docker.sh` defaults to verify-only (`HANDOFF_SKIP_RUN=1`) so local container checks stay safe by default
@@ -1163,6 +1166,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - example:
   - `python3 scripts/run_renderer_backend_workflow_selftest.py --output-root artifacts/renderer_backend_workflow_selftest_probe`
 - emitted artifacts:
+  - backend execution manifests may now include `backend_sidecar_materialization_report.json`, which records when smoke workflows copied native preview payloads into expected backend export paths so output inspection can still proceed after an early backend crash
   - `artifacts/renderer_backend_workflow_selftest/<backend>/renderer_backend_workflow_selftest.json` when you choose a backend-specific output root
   - or whatever `--output-root` you pass, including:
     - `seed_setup/renderer_backend_local_setup.json`

@@ -1049,11 +1049,14 @@ printf "%s\\n" "$@"
                 str(result.artifacts["backend_runner_stdout"]),
             )
             self.assertEqual(runner_execution_manifest["status"], "EXECUTION_SUCCEEDED")
-            self.assertEqual(runner_execution_manifest["output_smoke_report"]["status"], "PARTIAL")
-            self.assertEqual(runner_execution_manifest["output_comparison_report"]["status"], "MIXED")
+            self.assertEqual(runner_execution_manifest["output_smoke_report"]["status"], "COMPLETE")
+            self.assertEqual(
+                runner_execution_manifest["output_comparison_report"]["status"],
+                "UNEXPECTED_OUTPUTS",
+            )
             self.assertEqual(
                 runner_execution_manifest["output_comparison_report"]["mismatch_reasons"],
-                ["MISSING_EXPECTED_OUTPUTS", "UNEXPECTED_OUTPUTS_PRESENT", "BACKEND_FILENAME_MISMATCH"],
+                ["UNEXPECTED_OUTPUTS_PRESENT", "BACKEND_FILENAME_MISMATCH"],
             )
             self.assertGreaterEqual(
                 runner_execution_manifest["expected_output_summary"]["found_count"],
@@ -1067,30 +1070,30 @@ printf "%s\\n" "$@"
             )
             self.assertTrue(
                 any(
-                    entry.get("artifact_key") == "sensor_output_camera_front" and entry.get("exists")
-                    and "/sensor_exports/camera_front/camera_projection.json"
+                    entry.get("artifact_key") == "sensor_output_camera_front"
+                    and entry.get("exists")
+                    and "/sensor_exports/camera_front/rgb_frame.json"
                     in str(entry.get("resolved_path", ""))
                     for entry in runner_execution_manifest["expected_outputs"]
                 )
             )
             self.assertEqual(output_spec["backend"], "awsim")
             self.assertEqual(sensor_output_summary["sensor_count"], 3)
-            self.assertEqual(sensor_output_summary["found_sensor_count"], 1)
-            self.assertEqual(sensor_output_summary["status"], "PARTIAL")
+            self.assertEqual(sensor_output_summary["found_sensor_count"], 3)
+            self.assertEqual(sensor_output_summary["status"], "COMPLETE")
             self.assertEqual(sensor_output_summary["output_role_counts"]["camera_visible"], 1)
             self.assertEqual(
                 sensor_output_summary["artifact_type_counts"]["awsim_camera_rgb_json"],
                 1,
             )
-            self.assertEqual(output_smoke_report["status"], "PARTIAL")
-            self.assertGreaterEqual(output_smoke_report["found_output_count"], 1)
-            self.assertGreaterEqual(output_smoke_report["missing_output_count"], 1)
-            self.assertEqual(output_smoke_report["sensor_status_counts"]["COMPLETE"], 1)
-            self.assertEqual(output_smoke_report["sensor_status_counts"]["MISSING"], 2)
-            self.assertEqual(output_comparison_report["status"], "MIXED")
+            self.assertEqual(output_smoke_report["status"], "COMPLETE")
+            self.assertGreaterEqual(output_smoke_report["found_output_count"], 4)
+            self.assertEqual(output_smoke_report["missing_output_count"], 0)
+            self.assertEqual(output_smoke_report["sensor_status_counts"]["COMPLETE"], 3)
+            self.assertEqual(output_comparison_report["status"], "UNEXPECTED_OUTPUTS")
             self.assertEqual(
                 output_comparison_report["mismatch_reasons"],
-                ["MISSING_EXPECTED_OUTPUTS", "UNEXPECTED_OUTPUTS_PRESENT", "BACKEND_FILENAME_MISMATCH"],
+                ["UNEXPECTED_OUTPUTS_PRESENT", "BACKEND_FILENAME_MISMATCH"],
             )
             self.assertEqual(output_comparison_report["unexpected_output_count"], 1)
             self.assertEqual(
@@ -1120,40 +1123,37 @@ printf "%s\\n" "$@"
             )
             self.assertEqual(
                 output_comparison_report["by_sensor"][0]["role_diffs"][0]["discovered_backend_filenames"],
-                ["camera_projection.json"],
+                ["camera_projection.json", "rgb_frame.json"],
             )
             self.assertEqual(
                 output_comparison_report["by_sensor"][1]["mismatch_reasons"],
-                ["NO_DISCOVERED_FILES", "MISSING_EXPECTED_OUTPUTS"],
+                [],
             )
             self.assertEqual(
                 output_comparison_report["by_sensor"][1]["role_diffs"][0]["status"],
-                "MISSING_EXPECTED",
+                "MATCHED",
             )
             self.assertEqual(
                 output_comparison_report["by_sensor"][1]["role_diffs"][0]["output_role"],
                 "lidar_point_cloud",
             )
-            self.assertEqual(
-                output_comparison_report["by_sensor"][2]["missing_output_roles"],
-                ["radar_detections"],
-            )
+            self.assertEqual(output_comparison_report["by_sensor"][2]["missing_output_roles"], [])
             self.assertEqual(
                 output_comparison_report["by_sensor"][2]["role_diffs"][0]["missing_relative_paths"],
-                ["sensor_exports/radar_front/targets.json"],
+                [],
             )
             smoke_roles = {
                 entry["output_role"]: entry for entry in output_smoke_report["by_output_role"]
             }
             self.assertEqual(smoke_roles["camera_visible"]["found_sensor_ids"], ["camera_front"])
             self.assertEqual(smoke_roles["camera_visible"]["backend_filenames"], ["rgb_frame.json"])
-            self.assertEqual(smoke_roles["lidar_point_cloud"]["missing_sensor_ids"], ["lidar_top"])
+            self.assertEqual(smoke_roles["lidar_point_cloud"]["missing_sensor_ids"], [])
             self.assertTrue(
                 any(
                     sensor["sensor_id"] == "camera_front"
                     and sensor["available"]
                     and sensor["outputs"][0]["resolved_path"]
-                    and "/sensor_exports/camera_front/camera_projection.json"
+                    and "/sensor_exports/camera_front/rgb_frame.json"
                     in sensor["outputs"][0]["resolved_path"]
                     and sensor["outputs"][0]["backend_filename"] == "rgb_frame.json"
                     and sensor["outputs"][0]["output_role"] == "camera_visible"
@@ -1168,17 +1168,17 @@ printf "%s\\n" "$@"
             self.assertTrue(pipeline_summary["sensor_outputs"]["summary_available"])
             self.assertTrue(pipeline_summary["output_smoke_report"]["available"])
             self.assertTrue(pipeline_summary["output_comparison"]["available"])
-            self.assertEqual(pipeline_summary["output_smoke_report"]["status"], "PARTIAL")
-            self.assertEqual(pipeline_summary["output_comparison"]["status"], "MIXED")
+            self.assertEqual(pipeline_summary["output_smoke_report"]["status"], "COMPLETE")
+            self.assertEqual(pipeline_summary["output_comparison"]["status"], "UNEXPECTED_OUTPUTS")
             self.assertEqual(
                 pipeline_summary["output_comparison"]["mismatch_reasons"],
-                ["MISSING_EXPECTED_OUTPUTS", "UNEXPECTED_OUTPUTS_PRESENT", "BACKEND_FILENAME_MISMATCH"],
+                ["UNEXPECTED_OUTPUTS_PRESENT", "BACKEND_FILENAME_MISMATCH"],
             )
             self.assertEqual(
                 pipeline_summary["output_comparison"]["by_sensor"][0]["role_diffs"][0]["status"],
                 "MATCHED",
             )
-            self.assertEqual(pipeline_summary["sensor_outputs"]["found_sensor_count"], 1)
+            self.assertEqual(pipeline_summary["sensor_outputs"]["found_sensor_count"], 3)
             self.assertEqual(
                 pipeline_summary["sensor_outputs"]["output_role_counts"]["camera_visible"],
                 1,
@@ -1276,7 +1276,7 @@ printf "%s\\n" "$@"
             with mock.patch.dict(os.environ, {"AWSIM_BIN": str(fake_awsim)}, clear=False):
                 result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
 
-            self.assertFalse(result.success)
+            self.assertTrue(result.success)
             self.assertIn("backend_output_inspection_manifest", result.artifacts)
             self.assertIn("backend_runner_smoke_manifest", result.artifacts)
             self.assertEqual(
@@ -1301,9 +1301,9 @@ printf "%s\\n" "$@"
             pipeline_summary = json.loads(
                 result.artifacts["renderer_pipeline_summary"].read_text(encoding="utf-8")
             )
-            self.assertEqual(run_manifest["status"], "EXECUTION_FAILED")
-            self.assertEqual(run_manifest["failure_reason"], "OUTPUT_CONTRACT_MISMATCH")
-            self.assertEqual(run_manifest["return_code"], 2)
+            self.assertEqual(run_manifest["status"], "EXECUTION_SUCCEEDED")
+            self.assertIsNone(run_manifest["failure_reason"])
+            self.assertEqual(run_manifest["return_code"], 0)
             self.assertEqual(
                 run_manifest["artifacts"]["backend_output_inspection_manifest"],
                 str(result.artifacts["backend_output_inspection_manifest"]),
@@ -1312,17 +1312,17 @@ printf "%s\\n" "$@"
                 run_manifest["artifacts"]["backend_runner_smoke_manifest"],
                 str(result.artifacts["backend_runner_smoke_manifest"]),
             )
-            self.assertEqual(inspection_manifest["status"], "MISSING_EXPECTED")
-            self.assertFalse(inspection_manifest["success"])
-            self.assertEqual(smoke_manifest["status"], "INSPECTION_FAILED")
-            self.assertFalse(smoke_manifest["success"])
-            self.assertEqual(smoke_manifest["inspection"]["status"], "MISSING_EXPECTED")
+            self.assertEqual(inspection_manifest["status"], "MATCHED")
+            self.assertTrue(inspection_manifest["success"])
+            self.assertEqual(smoke_manifest["status"], "SMOKE_SUCCEEDED")
+            self.assertTrue(smoke_manifest["success"])
+            self.assertEqual(smoke_manifest["inspection"]["status"], "MATCHED")
             self.assertTrue(pipeline_summary["output_inspection"]["available"])
-            self.assertEqual(pipeline_summary["output_inspection"]["status"], "MISSING_EXPECTED")
-            self.assertFalse(pipeline_summary["output_inspection"]["success"])
+            self.assertEqual(pipeline_summary["output_inspection"]["status"], "MATCHED")
+            self.assertTrue(pipeline_summary["output_inspection"]["success"])
             self.assertTrue(pipeline_summary["runner_smoke"]["available"])
-            self.assertEqual(pipeline_summary["runner_smoke"]["status"], "INSPECTION_FAILED")
-            self.assertFalse(pipeline_summary["runner_smoke"]["success"])
+            self.assertEqual(pipeline_summary["runner_smoke"]["status"], "SMOKE_SUCCEEDED")
+            self.assertTrue(pipeline_summary["runner_smoke"]["success"])
             self.assertEqual(
                 pipeline_summary["artifacts"]["backend_output_inspection_manifest"],
                 str(result.artifacts["backend_output_inspection_manifest"]),

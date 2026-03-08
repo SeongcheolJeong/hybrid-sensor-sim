@@ -63,6 +63,9 @@ Implemented from the first migration wave:
 28. scenario-to-runtime smoke bridge for selected migrated scenarios
 29. top-level scenario runtime/backend workflow for `logical_scenarios_v0 -> batch evaluation -> smoke-ready scenario -> renderer backend smoke`
 30. staged backend selection reuse for scenario-driven smoke workflows
+31. backend sidecar materialization for early packaged-backend aborts
+32. packaged-backend archive shared-library link repair during stage
+33. packaged-runtime crash diagnostics surfaced through scenario smoke workflows
 
 Current repository paths:
 
@@ -86,6 +89,7 @@ Current repository paths:
 - `src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py`
 - canonical staged-runtime artifact reuse is now automatic: scenario smoke workflows auto-discover `artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json` and `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_summary.json` when explicit summary paths are not supplied
 - host-incompatible staged packaged backends are now surfaced as `renderer_backend_workflow` Linux handoff plans through the scenario smoke workflows, rather than only as generic smoke failures
+- scenario smoke/runtime workflows now also surface packaged-runtime crash diagnostics such as runtime exit code, failed plugin basenames, missing shared libraries, and crash signatures when nested Linux handoff smoke runs abort
 - `src/hybrid_sensor_sim/tools/sensor_rig_sweep.py`
 - `src/hybrid_sensor_sim/maps/convert.py`
 - `src/hybrid_sensor_sim/maps/validate.py`
@@ -99,6 +103,7 @@ Still pending from this master plan:
 3. tighter publish gating that combines scenario/runtime smoke with provenance refresh status
 4. lower-level backend smoke entrypoints should preserve the same provenance-aware publish checks as top-level workflows
 5. top-level runtime/backend workflow should expose backend output comparison drift without requiring manual drill-down into nested smoke reports
+6. a real packaged AWSIM/CARLA smoke run on native Linux x86_64 is still pending; the current macOS Docker handoff path now exposes the concrete plugin/crash blocker instead of only a generic failure
 
 ## Boundary
 

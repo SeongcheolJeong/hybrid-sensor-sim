@@ -4,6 +4,7 @@ import argparse
 import contextlib
 import io
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -37,6 +38,7 @@ _BACKEND_ENV_VARS = {
     "awsim": ("AWSIM_BIN", "AWSIM_RENDERER_MAP"),
     "carla": ("CARLA_BIN", "CARLA_RENDERER_MAP"),
 }
+_WORKSPACE_ROOT = "/workspace"
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -96,6 +98,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--docker-image",
         default="python:3.11-slim",
         help="Linux Docker image used for renderer backend handoff",
+    )
+    parser.add_argument(
+        "--docker-platform",
+        default="",
+        help="Optional Docker platform (for example linux/amd64) used for renderer backend handoff",
     )
     parser.add_argument(
         "--docker-container-workspace",
@@ -175,6 +182,113 @@ def _selection_value(selection: dict[str, Any], key: str) -> str | None:
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+
+
+def _resolve_nested_handoff_smoke_artifacts(
+    renderer_backend_workflow_summary: dict[str, Any] | None,
+) -> dict[str, Path]:
+    if not isinstance(renderer_backend_workflow_summary, dict):
+        return {}
+    summary_path = str(
+        renderer_backend_workflow_summary.get("artifacts", {}).get("summary_path", "")
+    ).strip()
+    if not summary_path:
+        return {}
+    workflow_root = Path(summary_path).expanduser().resolve().parent
+    smoke_root = workflow_root / "linux_handoff" / "smoke_run"
+    artifacts = {
+        "summary_path": smoke_root / "renderer_backend_smoke_summary.json",
+        "markdown_report_path": smoke_root / "renderer_backend_smoke_report.md",
+        "html_report_path": smoke_root / "renderer_backend_smoke_report.html",
+    }
+    return {key: path for key, path in artifacts.items() if path.exists()}
+
+
+def _resolve_runtime_artifact_path(raw_path: Any, *, repo_root: Path) -> Path | None:
+    path_text = str(raw_path or "").strip()
+    if not path_text:
+        return None
+    candidate = Path(path_text).expanduser()
+    if candidate.exists():
+        return candidate.resolve()
+    if path_text.startswith(f"{_WORKSPACE_ROOT}/"):
+        translated = repo_root / path_text[len(_WORKSPACE_ROOT) + 1 :]
+        if translated.exists():
+            return translated.resolve()
+        return translated.resolve()
+    if candidate.is_absolute():
+        return candidate.resolve()
+    return (repo_root / candidate).resolve()
+
+
+def _extract_backend_runtime_diagnostics(
+    smoke_summary: dict[str, Any],
+    *,
+    repo_root: Path,
+) -> dict[str, Any]:
+    artifacts = dict(smoke_summary.get("artifacts", {}))
+    stdout_path = _resolve_runtime_artifact_path(
+        artifacts.get("backend_runner_stdout") or artifacts.get("renderer_stdout"),
+        repo_root=repo_root,
+    )
+    stderr_path = _resolve_runtime_artifact_path(
+        artifacts.get("backend_runner_stderr") or artifacts.get("renderer_stderr"),
+        repo_root=repo_root,
+    )
+    stdout_text = ""
+    stderr_text = ""
+    if stdout_path is not None and stdout_path.exists():
+        stdout_text = stdout_path.read_text(encoding="utf-8", errors="replace")
+    if stderr_path is not None and stderr_path.exists():
+        stderr_text = stderr_path.read_text(encoding="utf-8", errors="replace")
+    combined_text = "\n".join(part for part in (stdout_text, stderr_text) if part)
+
+    failed_plugin_paths: list[str] = []
+    for line in combined_text.splitlines():
+        if line.startswith("Failed to open plugin: "):
+            failed_plugin_paths.append(line.split(": ", 1)[1].strip())
+    failed_plugin_paths = list(dict.fromkeys(failed_plugin_paths))
+    failed_plugins = [Path(path).name for path in failed_plugin_paths]
+
+    missing_shared_libraries: list[str] = []
+    for match in re.finditer(r"([A-Za-z0-9_./+-]+\.so(?:\.[0-9]+)*) => not found", combined_text):
+        missing_shared_libraries.append(match.group(1))
+    for match in re.finditer(
+        r"error while loading shared libraries: ([A-Za-z0-9_./+-]+\.so(?:\.[0-9]+)*):",
+        combined_text,
+    ):
+        missing_shared_libraries.append(match.group(1))
+    missing_shared_libraries = list(dict.fromkeys(missing_shared_libraries))
+
+    crash_signatures: list[str] = []
+    if "Forcing GfxDevice: Null" in combined_text:
+        crash_signatures.append("NULL_GFX_DEVICE")
+    if "* Assertion: should not be reached at tramp-amd64.c:641" in combined_text:
+        crash_signatures.append("MONO_TRAMP_AMD64_ASSERT")
+    if "monoeg_assert_abort" in combined_text or "mono_assertion_message_unreachable" in combined_text:
+        crash_signatures.append("MONO_ASSERT_ABORT")
+    if "Caught fatal signal - signo:6" in combined_text or "signal 6" in combined_text:
+        crash_signatures.append("SIGABRT")
+    if failed_plugins:
+        crash_signatures.append("PLUGIN_LOAD_FAILURES")
+    crash_signatures = list(dict.fromkeys(crash_signatures))
+
+    runtime_exit_code = None
+    if isinstance(smoke_summary.get("runner_smoke"), dict):
+        runtime_exit_code = smoke_summary["runner_smoke"].get("return_code")
+    if runtime_exit_code is None and isinstance(smoke_summary.get("run"), dict):
+        runtime_exit_code = smoke_summary["run"].get("return_code")
+
+    return {
+        "backend_runtime_exit_code": runtime_exit_code,
+        "backend_runtime_stdout_path": str(stdout_path) if stdout_path is not None else None,
+        "backend_runtime_stderr_path": str(stderr_path) if stderr_path is not None else None,
+        "backend_runtime_failed_plugin_count": len(failed_plugins),
+        "backend_runtime_failed_plugins": failed_plugins,
+        "backend_runtime_failed_plugin_paths": failed_plugin_paths,
+        "backend_runtime_missing_shared_libraries": missing_shared_libraries,
+        "backend_runtime_crash_signatures": crash_signatures,
+    }
 
 
 def _load_variant_workflow_report(path: Path) -> dict[str, Any]:
@@ -608,6 +722,7 @@ def run_scenario_backend_smoke_workflow(
     docker_handoff_execute: bool = False,
     docker_binary: str = "docker",
     docker_image: str = "python:3.11-slim",
+    docker_platform: str | None = None,
     docker_container_workspace: str = "/workspace",
     refresh_docker_handoff_preflight: bool = False,
     skip_smoke: bool = False,
@@ -757,18 +872,31 @@ def run_scenario_backend_smoke_workflow(
             docker_handoff_execute=bool(docker_handoff_execute),
             docker_binary=docker_binary,
             docker_image=docker_image,
+            docker_platform=docker_platform,
             docker_container_workspace=docker_container_workspace,
             refresh_docker_handoff_preflight=bool(refresh_docker_handoff_preflight),
         )
-        if renderer_backend_workflow_summary.get("status") in {
+        renderer_workflow_status = str(renderer_backend_workflow_summary.get("status", "")).strip()
+        if renderer_workflow_status in {
             "HANDOFF_DOCKER_VERIFIED",
             "HANDOFF_DOCKER_EXECUTED",
+            "HANDOFF_DOCKER_FAILED",
+            "HANDOFF_DOCKER_PREFLIGHT_FAILED",
         }:
-            status = str(renderer_backend_workflow_summary["status"])
+            status = renderer_workflow_status
         elif renderer_backend_workflow_summary.get("linux_handoff", {}).get("ready"):
             status = "HANDOFF_READY"
         else:
             status = "SMOKE_FAILED"
+        nested_smoke_artifacts = _resolve_nested_handoff_smoke_artifacts(
+            renderer_backend_workflow_summary
+        )
+        nested_summary_path = nested_smoke_artifacts.get("summary_path")
+        if nested_summary_path is not None:
+            smoke_summary_path = nested_summary_path
+            smoke_markdown_path = nested_smoke_artifacts.get("markdown_report_path", smoke_markdown_path)
+            smoke_html_path = nested_smoke_artifacts.get("html_report_path", smoke_html_path)
+            smoke_summary = _load_json_object(smoke_summary_path)
     elif not skip_smoke:
         smoke_argv = [
             "--config",
@@ -1050,6 +1178,10 @@ def run_scenario_backend_smoke_workflow(
         },
     }
     if isinstance(smoke_summary, dict):
+        runtime_diagnostics = _extract_backend_runtime_diagnostics(
+            smoke_summary,
+            repo_root=Path(__file__).resolve().parents[3],
+        )
         workflow_report["smoke"]["summary"] = {
             "backend": smoke_summary.get("backend"),
             "success": smoke_summary.get("success"),
@@ -1088,6 +1220,7 @@ def run_scenario_backend_smoke_workflow(
                 if isinstance(smoke_summary.get("output_comparison"), dict)
                 else None
             ),
+            **runtime_diagnostics,
         }
 
     report_path = out_root / "scenario_backend_smoke_workflow_report_v0.json"
@@ -1167,6 +1300,7 @@ def main(argv: list[str] | None = None) -> int:
             docker_handoff_execute=bool(args.docker_handoff_execute),
             docker_binary=args.docker_binary,
             docker_image=args.docker_image,
+            docker_platform=args.docker_platform,
             docker_container_workspace=args.docker_container_workspace,
             refresh_docker_handoff_preflight=bool(args.refresh_docker_handoff_preflight),
             skip_smoke=bool(args.skip_smoke),

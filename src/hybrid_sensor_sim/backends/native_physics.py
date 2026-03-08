@@ -96,6 +96,32 @@ class NativePhysicsBackend(SensorBackend):
         extrinsics = config.camera.extrinsics.to_camera_extrinsics()
         config_path = native_output / "sensor_sim_config.json"
         config_path.write_text(json.dumps(config.to_manifest(), indent=2), encoding="utf-8")
+        artifacts: dict[str, Path] = {
+            "sensor_sim_config": config_path,
+        }
+        metrics: dict[str, float] = {}
+        synthetic_point_cloud = self._generate_synthetic_point_cloud_if_available(
+            request=request,
+            output_root=native_output,
+            metrics=metrics,
+        )
+        if synthetic_point_cloud is not None:
+            artifacts["point_cloud_primary"] = synthetic_point_cloud
+        (
+            artifacts,
+            metrics,
+            renderer_runtime_message,
+            renderer_runtime_success,
+        ) = self._augment_with_native_preview_and_renderer(
+            request=request,
+            artifacts=artifacts,
+            output_root=native_output,
+            config=config,
+            intrinsics=intrinsics,
+            distortion=distortion,
+            extrinsics=extrinsics,
+            metrics=metrics,
+        )
         payload = {
             "mode": "native_only",
             "scenario": str(request.scenario_path),
@@ -131,17 +157,31 @@ class NativePhysicsBackend(SensorBackend):
                 "pitch_deg": extrinsics.pitch_deg,
                 "yaw_deg": extrinsics.yaw_deg,
             },
+            "synthetic_point_cloud_generated": synthetic_point_cloud is not None,
+            "source_artifacts": {key: str(path) for key, path in artifacts.items()},
         }
         out_path = native_output / "native_physics.json"
         out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        result_success = True
+        result_message = "Native simulation completed."
+        if renderer_runtime_message:
+            result_message = f"{result_message} {renderer_runtime_message}"
+        if not renderer_runtime_success and bool(request.options.get("renderer_fail_on_error", False)):
+            result_success = False
+            result_message = (
+                "Native simulation completed but renderer runtime failed "
+                "(renderer_fail_on_error=true). "
+                f"{renderer_runtime_message}"
+            )
         return SensorSimResult(
             backend=self.name(),
-            success=True,
+            success=result_success,
             artifacts={
+                **artifacts,
                 "native_physics": out_path,
-                "sensor_sim_config": config_path,
             },
-            message="Native simulation completed.",
+            metrics=metrics,
+            message=result_message,
         )
 
     def enhance_from_helios(
@@ -161,93 +201,21 @@ class NativePhysicsBackend(SensorBackend):
         artifacts = {**helios_result.artifacts}
         metrics = dict(helios_result.metrics)
         artifacts["sensor_sim_config"] = config_path
-        camera_projection_artifact = self._project_xyz_if_available(
+        (
+            artifacts,
+            metrics,
+            renderer_runtime_message,
+            renderer_runtime_success,
+        ) = self._augment_with_native_preview_and_renderer(
             request=request,
             artifacts=artifacts,
-            enhanced_output=enhanced_output,
-            camera_config=config.camera,
+            output_root=enhanced_output,
+            config=config,
             intrinsics=intrinsics,
             distortion=distortion,
             extrinsics=extrinsics,
             metrics=metrics,
         )
-        if camera_projection_artifact is not None:
-            artifacts["camera_projection_preview"] = camera_projection_artifact
-        camera_projection_sweep_artifact = self._project_xyz_trajectory_sweep_if_available(
-            request=request,
-            artifacts=artifacts,
-            enhanced_output=enhanced_output,
-            camera_config=config.camera,
-            intrinsics=intrinsics,
-            distortion=distortion,
-            extrinsics=extrinsics,
-            metrics=metrics,
-        )
-        if camera_projection_sweep_artifact is not None:
-            artifacts["camera_projection_trajectory_sweep"] = camera_projection_sweep_artifact
-        lidar_noisy_artifact, lidar_noisy_metadata_artifact = self._generate_lidar_noisy_pointcloud_if_available(
-            request=request,
-            artifacts=artifacts,
-            enhanced_output=enhanced_output,
-            metrics=metrics,
-        )
-        if lidar_noisy_artifact is not None:
-            artifacts["lidar_noisy_preview"] = lidar_noisy_artifact
-        if lidar_noisy_metadata_artifact is not None:
-            artifacts["lidar_noisy_preview_json"] = lidar_noisy_metadata_artifact
-        lidar_sweep_artifact = self._generate_lidar_trajectory_sweep_if_available(
-            request=request,
-            artifacts=artifacts,
-            enhanced_output=enhanced_output,
-            metrics=metrics,
-        )
-        if lidar_sweep_artifact is not None:
-            artifacts["lidar_trajectory_sweep"] = lidar_sweep_artifact
-        radar_targets_artifact = self._generate_radar_targets_if_available(
-            request=request,
-            artifacts=artifacts,
-            enhanced_output=enhanced_output,
-            metrics=metrics,
-        )
-        if radar_targets_artifact is not None:
-            artifacts["radar_targets_preview"] = radar_targets_artifact
-        radar_targets_sweep_artifact = self._generate_radar_targets_trajectory_sweep_if_available(
-            request=request,
-            artifacts=artifacts,
-            enhanced_output=enhanced_output,
-            metrics=metrics,
-        )
-        if radar_targets_sweep_artifact is not None:
-            artifacts["radar_targets_trajectory_sweep"] = radar_targets_sweep_artifact
-        coverage_summary_artifact = self._generate_sensor_coverage_summary_if_available(
-            request=request,
-            artifacts=artifacts,
-            enhanced_output=enhanced_output,
-            metrics=metrics,
-        )
-        if coverage_summary_artifact is not None:
-            artifacts["sensor_coverage_summary"] = coverage_summary_artifact
-        renderer_contract_artifact = self._generate_renderer_playback_contract_if_available(
-            request=request,
-            artifacts=artifacts,
-            enhanced_output=enhanced_output,
-            metrics=metrics,
-        )
-        if renderer_contract_artifact is not None:
-            artifacts["renderer_playback_contract"] = renderer_contract_artifact
-        renderer_runtime_success = True
-        renderer_runtime_message = ""
-        renderer_runtime_artifacts, renderer_runtime_metrics, renderer_runtime_message, renderer_runtime_success = (
-            self._execute_renderer_runtime_if_available(
-                request=request,
-                artifacts=artifacts,
-                enhanced_output=enhanced_output,
-                metrics=metrics,
-            )
-        )
-        artifacts.update(renderer_runtime_artifacts)
-        metrics.update(renderer_runtime_metrics)
-        metrics["renderer_runtime_success"] = 1.0 if renderer_runtime_success else 0.0
 
         payload = {
             "mode": "hybrid_enhanced",
@@ -317,11 +285,231 @@ class NativePhysicsBackend(SensorBackend):
             message=result_message,
         )
 
+    def _augment_with_native_preview_and_renderer(
+        self,
+        *,
+        request: SensorSimRequest,
+        artifacts: dict[str, Path],
+        output_root: Path,
+        config: SensorSimConfig,
+        intrinsics: CameraIntrinsics,
+        distortion: BrownConradyDistortion,
+        extrinsics: CameraExtrinsics,
+        metrics: dict[str, float],
+    ) -> tuple[dict[str, Path], dict[str, float], str, bool]:
+        camera_projection_artifact = self._project_xyz_if_available(
+            request=request,
+            artifacts=artifacts,
+            enhanced_output=output_root,
+            camera_config=config.camera,
+            intrinsics=intrinsics,
+            distortion=distortion,
+            extrinsics=extrinsics,
+            metrics=metrics,
+        )
+        if camera_projection_artifact is not None:
+            artifacts["camera_projection_preview"] = camera_projection_artifact
+        camera_projection_sweep_artifact = self._project_xyz_trajectory_sweep_if_available(
+            request=request,
+            artifacts=artifacts,
+            enhanced_output=output_root,
+            camera_config=config.camera,
+            intrinsics=intrinsics,
+            distortion=distortion,
+            extrinsics=extrinsics,
+            metrics=metrics,
+        )
+        if camera_projection_sweep_artifact is not None:
+            artifacts["camera_projection_trajectory_sweep"] = camera_projection_sweep_artifact
+        lidar_noisy_artifact, lidar_noisy_metadata_artifact = (
+            self._generate_lidar_noisy_pointcloud_if_available(
+                request=request,
+                artifacts=artifacts,
+                enhanced_output=output_root,
+                metrics=metrics,
+            )
+        )
+        if lidar_noisy_artifact is not None:
+            artifacts["lidar_noisy_preview"] = lidar_noisy_artifact
+        if lidar_noisy_metadata_artifact is not None:
+            artifacts["lidar_noisy_preview_json"] = lidar_noisy_metadata_artifact
+        lidar_sweep_artifact = self._generate_lidar_trajectory_sweep_if_available(
+            request=request,
+            artifacts=artifacts,
+            enhanced_output=output_root,
+            metrics=metrics,
+        )
+        if lidar_sweep_artifact is not None:
+            artifacts["lidar_trajectory_sweep"] = lidar_sweep_artifact
+        radar_targets_artifact = self._generate_radar_targets_if_available(
+            request=request,
+            artifacts=artifacts,
+            enhanced_output=output_root,
+            metrics=metrics,
+        )
+        if radar_targets_artifact is not None:
+            artifacts["radar_targets_preview"] = radar_targets_artifact
+        radar_targets_sweep_artifact = self._generate_radar_targets_trajectory_sweep_if_available(
+            request=request,
+            artifacts=artifacts,
+            enhanced_output=output_root,
+            metrics=metrics,
+        )
+        if radar_targets_sweep_artifact is not None:
+            artifacts["radar_targets_trajectory_sweep"] = radar_targets_sweep_artifact
+        coverage_summary_artifact = self._generate_sensor_coverage_summary_if_available(
+            request=request,
+            artifacts=artifacts,
+            enhanced_output=output_root,
+            metrics=metrics,
+        )
+        if coverage_summary_artifact is not None:
+            artifacts["sensor_coverage_summary"] = coverage_summary_artifact
+        renderer_contract_artifact = self._generate_renderer_playback_contract_if_available(
+            request=request,
+            artifacts=artifacts,
+            enhanced_output=output_root,
+            metrics=metrics,
+        )
+        if renderer_contract_artifact is not None:
+            artifacts["renderer_playback_contract"] = renderer_contract_artifact
+        renderer_runtime_artifacts: dict[str, Path]
+        renderer_runtime_metrics: dict[str, float]
+        renderer_runtime_message: str
+        renderer_runtime_success: bool
+        (
+            renderer_runtime_artifacts,
+            renderer_runtime_metrics,
+            renderer_runtime_message,
+            renderer_runtime_success,
+        ) = self._execute_renderer_runtime_if_available(
+            request=request,
+            artifacts=artifacts,
+            enhanced_output=output_root,
+            metrics=metrics,
+        )
+        artifacts.update(renderer_runtime_artifacts)
+        metrics.update(renderer_runtime_metrics)
+        metrics["renderer_runtime_success"] = 1.0 if renderer_runtime_success else 0.0
+        return artifacts, metrics, renderer_runtime_message, renderer_runtime_success
+
     def _sensor_config_from_request(self, request: SensorSimRequest) -> SensorSimConfig:
         return build_sensor_sim_config(
             sensor_profile=request.sensor_profile,
             options=request.options,
         )
+
+    def _generate_synthetic_point_cloud_if_available(
+        self,
+        *,
+        request: SensorSimRequest,
+        output_root: Path,
+        metrics: dict[str, float],
+    ) -> Path | None:
+        points_xyz = self._synthetic_points_from_request(request)
+        if not points_xyz:
+            metrics["synthetic_point_cloud_generated"] = 0.0
+            metrics["synthetic_point_cloud_point_count"] = 0.0
+            return None
+
+        output_path = output_root / "synthetic_targets.xyz"
+        write_xyz_points(output_path, points_xyz)
+        metrics["synthetic_point_cloud_generated"] = 1.0
+        metrics["synthetic_point_cloud_point_count"] = float(len(points_xyz))
+        return output_path
+
+    def _synthetic_points_from_request(
+        self,
+        request: SensorSimRequest,
+    ) -> list[tuple[float, float, float]]:
+        explicit_points = request.options.get("rig_sweep_target_points_xyz")
+        if isinstance(explicit_points, list):
+            points: list[tuple[float, float, float]] = []
+            for raw_point in explicit_points:
+                if not isinstance(raw_point, (list, tuple)) or len(raw_point) < 3:
+                    continue
+                try:
+                    center = (
+                        float(raw_point[0]),
+                        float(raw_point[1]),
+                        float(raw_point[2]),
+                    )
+                except (TypeError, ValueError):
+                    continue
+                points.extend(self._expand_synthetic_actor_points(center))
+            if points:
+                return points
+
+        if request.scenario_path.suffix.lower() != ".json" or not request.scenario_path.exists():
+            return []
+        try:
+            payload = json.loads(request.scenario_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return []
+        if not isinstance(payload, dict):
+            return []
+
+        points: list[tuple[float, float, float]] = []
+        objects = payload.get("objects")
+        if isinstance(objects, list):
+            for raw_object in objects:
+                if not isinstance(raw_object, dict):
+                    continue
+                actor_id = str(raw_object.get("id", raw_object.get("actor_id", ""))).strip()
+                if actor_id.lower() == "ego":
+                    continue
+                pose_raw = raw_object.get("pose")
+                if not isinstance(pose_raw, list) or len(pose_raw) < 3:
+                    continue
+                try:
+                    center = (
+                        float(pose_raw[0]),
+                        float(pose_raw[1]),
+                        float(pose_raw[2]),
+                    )
+                except (TypeError, ValueError):
+                    continue
+                points.extend(self._expand_synthetic_actor_points(center))
+            if points:
+                return points
+
+        if str(payload.get("scenario_schema_version", "")).strip() == "scenario_definition_v0":
+            lane_width_m = float(payload.get("lane_width_m", 3.5))
+            for index, raw_npc in enumerate(payload.get("npcs", [])):
+                if not isinstance(raw_npc, dict):
+                    continue
+                try:
+                    position_m = float(raw_npc.get("position_m", 0.0))
+                except (TypeError, ValueError):
+                    position_m = 0.0
+                try:
+                    lane_index = int(raw_npc.get("lane_index", 0))
+                except (TypeError, ValueError):
+                    lane_index = 0
+                points.extend(
+                    self._expand_synthetic_actor_points(
+                        (position_m, lane_index * lane_width_m, 0.0)
+                    )
+                )
+            if points:
+                return points
+
+        return []
+
+    def _expand_synthetic_actor_points(
+        self,
+        center: tuple[float, float, float],
+    ) -> list[tuple[float, float, float]]:
+        x, y, z = center
+        base_z = z + 0.75
+        return [
+            (x, y, base_z),
+            (x + 2.2, y, base_z),
+            (x - 2.2, y, base_z),
+            (x, y + 0.9, base_z),
+            (x, y - 0.9, base_z),
+            (x, y, base_z + 0.9),
+        ]
 
     def _camera_intrinsics_from_options(self, request: SensorSimRequest) -> CameraIntrinsics:
         return self._sensor_config_from_request(request).camera.intrinsics.to_camera_intrinsics()

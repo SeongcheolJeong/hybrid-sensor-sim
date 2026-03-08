@@ -335,16 +335,13 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
             workflow_report = result["workflow_report"]
             self.assertEqual(workflow_report["status"], "SMOKE_FAILED")
             summary = workflow_report["smoke"]["summary"]
-            self.assertEqual(summary["output_smoke_status"], "PARTIAL")
-            self.assertEqual(summary["output_comparison_status"], "MISSING_EXPECTED")
-            self.assertIn(
-                "MISSING_EXPECTED_OUTPUTS",
-                summary["output_comparison_mismatch_reasons"],
-            )
+            self.assertEqual(summary["output_smoke_status"], "COMPLETE")
+            self.assertEqual(summary["output_comparison_status"], "MATCHED")
+            self.assertEqual(summary["output_comparison_mismatch_reasons"], [])
             self.assertEqual(summary["output_comparison_unexpected_output_count"], 0)
             self.assertEqual(summary["run_status"], "EXECUTION_FAILED")
-            self.assertEqual(workflow_report["autoware"]["status"], "DEGRADED")
-            self.assertIsNotNone(workflow_report["autoware"]["missing_required_sensor_count"])
+            self.assertEqual(workflow_report["autoware"]["status"], "READY")
+            self.assertEqual(workflow_report["autoware"]["missing_required_sensor_count"], 0)
             self.assertTrue(Path(workflow_report["artifacts"]["autoware_report_path"]).is_file())
 
     def test_run_scenario_backend_smoke_workflow_selects_worst_logical_scenario_from_batch_report(self) -> None:
@@ -843,7 +840,7 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
                         "linux_handoff_bundle_manifest_path": str(bundle_manifest_path),
                     },
                 },
-            ):
+            ) as renderer_workflow:
                 result = run_scenario_backend_smoke_workflow(
                     variant_workflow_report_path=str(variant_result["workflow_report_path"]),
                     batch_workflow_report_path="",
@@ -859,11 +856,13 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
                     backend_bin=str(fake_backend),
                     renderer_map="SampleMap",
                     option_overrides=[],
+                    docker_platform="linux/amd64",
                     skip_smoke=False,
                     skip_autoware_bridge=False,
                 )
 
             workflow_report = result["workflow_report"]
+            self.assertEqual(renderer_workflow.call_args.kwargs["docker_platform"], "linux/amd64")
             self.assertEqual(workflow_report["status"], "HANDOFF_READY")
             self.assertTrue(workflow_report["renderer_backend_workflow"]["requested"])
             self.assertEqual(
@@ -889,6 +888,273 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
             self.assertTrue(
                 workflow_report["artifacts"]["autoware_pipeline_manifest_path"]
             )
+
+    def test_run_scenario_backend_smoke_workflow_propagates_handoff_docker_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            variant_result = run_scenario_variant_workflow(
+                logical_scenarios_path="",
+                scenario_language_profile="highway_mixed_payloads_v0",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                out_root=root / "variant_workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=1,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+            )
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+            fake_backend = root / "AWSIM-Demo-Lightweight.x86_64"
+            fake_backend.write_text("binary\n", encoding="utf-8")
+            smoke_config = _write_smoke_base_config(
+                root=root,
+                helios_bin=fake_helios,
+                output_dir=root / "smoke_placeholder",
+            )
+
+            with patch(
+                "hybrid_sensor_sim.tools.scenario_backend_smoke_workflow._inspect_executable_host_compatibility",
+                return_value={
+                    "host_compatible": False,
+                    "host_compatibility_reason": "EXEC_FORMAT_ERROR",
+                    "binary_format": "ELF",
+                    "binary_architectures": ["x86_64"],
+                    "translation_required": False,
+                    "file_description": "ELF 64-bit LSB executable",
+                },
+            ), patch(
+                "hybrid_sensor_sim.tools.scenario_backend_smoke_workflow.run_renderer_backend_workflow",
+                return_value={
+                    "status": "HANDOFF_DOCKER_FAILED",
+                    "success": False,
+                    "recommended_next_command": "bash handoff.sh",
+                    "blockers": [{"code": "BACKEND_HOST_INCOMPATIBLE"}],
+                    "linux_handoff": {
+                        "ready": True,
+                        "bundle": {"bundle_path": str(root / "handoff_bundle.tar.gz")},
+                    },
+                    "docker_handoff": {"return_code": 1},
+                    "artifacts": {},
+                },
+            ):
+                result = run_scenario_backend_smoke_workflow(
+                    variant_workflow_report_path=str(variant_result["workflow_report_path"]),
+                    batch_workflow_report_path="",
+                    smoke_config_path=smoke_config,
+                    backend="awsim",
+                    out_root=root / "backend_smoke_workflow",
+                    selection_strategy="first_successful_variant",
+                    selected_variant_id="",
+                    lane_spacing_m=4.0,
+                    smoke_output_dir="",
+                    setup_summary_path="",
+                    backend_workflow_summary_path="",
+                    backend_bin=str(fake_backend),
+                    renderer_map="SampleMap",
+                    option_overrides=[],
+                    run_linux_handoff_docker=True,
+                    docker_handoff_execute=True,
+                    skip_smoke=False,
+                )
+
+            workflow_report = result["workflow_report"]
+            self.assertEqual(workflow_report["status"], "HANDOFF_DOCKER_FAILED")
+            self.assertEqual(
+                workflow_report["renderer_backend_workflow"]["docker_handoff_status"],
+                "HANDOFF_DOCKER_FAILED",
+            )
+
+    def test_run_scenario_backend_smoke_workflow_reuses_nested_handoff_smoke_summary(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            variant_result = run_scenario_variant_workflow(
+                logical_scenarios_path="",
+                scenario_language_profile="highway_mixed_payloads_v0",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                out_root=root / "variant_workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=1,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+            )
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+            fake_backend = root / "AWSIM-Demo-Lightweight.x86_64"
+            fake_backend.write_text("binary\n", encoding="utf-8")
+            smoke_config = _write_smoke_base_config(
+                root=root,
+                helios_bin=fake_helios,
+                output_dir=root / "smoke_placeholder",
+            )
+            renderer_workflow_root = root / "renderer_backend_workflow"
+            renderer_summary_path = (
+                renderer_workflow_root / "renderer_backend_workflow_summary.json"
+            )
+            renderer_summary_path.parent.mkdir(parents=True, exist_ok=True)
+            renderer_summary_path.write_text("{}", encoding="utf-8")
+            nested_smoke_root = renderer_workflow_root / "linux_handoff" / "smoke_run"
+            nested_smoke_root.mkdir(parents=True, exist_ok=True)
+            nested_smoke_summary_path = nested_smoke_root / "renderer_backend_smoke_summary.json"
+            backend_runner_stdout = (
+                nested_smoke_root / "native_only" / "renderer_runtime" / "backend_runner_stdout.log"
+            )
+            backend_runner_stdout.parent.mkdir(parents=True, exist_ok=True)
+            backend_runner_stdout.write_text(
+                "\n".join(
+                    [
+                        "Failed to open plugin: /workspace/runtime/libRobotecGPULidar.so",
+                        "Failed to open plugin: /workspace/runtime/libtf2.so",
+                        "Forcing GfxDevice: Null",
+                        "* Assertion: should not be reached at tramp-amd64.c:641",
+                        "Caught fatal signal - signo:6 code:-6 errno:0 addr:0x9",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            nested_smoke_summary_path.write_text(
+                json.dumps(
+                    {
+                        "backend": "awsim",
+                        "success": False,
+                        "run": {
+                            "status": "FAILED",
+                            "failure_reason": "OUTPUT_CONTRACT_MISMATCH",
+                        },
+                        "output_inspection": {"status": "MATCHED"},
+                        "output_smoke_report": {
+                            "status": "PARTIAL",
+                            "coverage_ratio": 0.5,
+                        },
+                        "output_comparison": {
+                            "status": "MISSING_EXPECTED",
+                            "mismatch_reasons": ["MISSING_EXPECTED_OUTPUTS"],
+                            "unexpected_output_count": 0,
+                        },
+                        "runner_smoke": {"status": "SMOKE_FAILED", "return_code": -6},
+                        "artifacts": {
+                            "backend_runner_stdout": str(backend_runner_stdout),
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch(
+                "hybrid_sensor_sim.tools.scenario_backend_smoke_workflow._inspect_executable_host_compatibility",
+                return_value={
+                    "host_compatible": False,
+                    "host_compatibility_reason": "EXEC_FORMAT_ERROR",
+                    "binary_format": "ELF",
+                    "binary_architectures": ["x86_64"],
+                    "translation_required": False,
+                    "file_description": "ELF 64-bit LSB executable",
+                },
+            ), patch(
+                "hybrid_sensor_sim.tools.scenario_backend_smoke_workflow.run_renderer_backend_workflow",
+                return_value={
+                    "status": "HANDOFF_DOCKER_FAILED",
+                    "success": False,
+                    "recommended_next_command": "bash handoff.sh",
+                    "blockers": [{"code": "BACKEND_HOST_INCOMPATIBLE"}],
+                    "linux_handoff": {
+                        "ready": True,
+                        "bundle": {"bundle_path": str(root / "handoff_bundle.tar.gz")},
+                    },
+                    "docker_handoff": {"return_code": 1},
+                    "artifacts": {
+                        "summary_path": str(renderer_summary_path),
+                    },
+                },
+            ), patch(
+                "hybrid_sensor_sim.tools.scenario_backend_smoke_workflow.run_autoware_pipeline_bridge",
+                return_value={
+                    "report_path": str(root / "autoware" / "autoware_pipeline_bridge_report_v0.json"),
+                    "report": {
+                        "status": "READY",
+                        "available_sensor_count": 3,
+                        "missing_required_sensor_count": 0,
+                        "available_topics": ["/sensing/camera/camera_front/image_raw"],
+                        "required_topics_complete": True,
+                        "frame_tree_complete": True,
+                        "warnings": [],
+                        "artifacts": {
+                            "sensor_contracts_path": str(root / "autoware" / "autoware_sensor_contracts.json"),
+                            "frame_tree_path": str(root / "autoware" / "autoware_frame_tree.json"),
+                            "pipeline_manifest_path": str(root / "autoware" / "autoware_pipeline_manifest.json"),
+                            "dataset_manifest_path": str(root / "autoware" / "autoware_dataset_manifest.json"),
+                        },
+                    },
+                },
+            ) as autoware_bridge:
+                result = run_scenario_backend_smoke_workflow(
+                    variant_workflow_report_path=str(variant_result["workflow_report_path"]),
+                    batch_workflow_report_path="",
+                    smoke_config_path=smoke_config,
+                    backend="awsim",
+                    out_root=root / "backend_smoke_workflow",
+                    selection_strategy="first_successful_variant",
+                    selected_variant_id="",
+                    lane_spacing_m=4.0,
+                    smoke_output_dir="",
+                    setup_summary_path="",
+                    backend_workflow_summary_path="",
+                    backend_bin=str(fake_backend),
+                    renderer_map="SampleMap",
+                    option_overrides=[],
+                    run_linux_handoff_docker=True,
+                    docker_handoff_execute=True,
+                    skip_smoke=False,
+                    skip_autoware_bridge=False,
+                )
+
+            workflow_report = result["workflow_report"]
+            self.assertEqual(workflow_report["status"], "HANDOFF_DOCKER_FAILED")
+            self.assertEqual(
+                workflow_report["smoke"]["summary_path"],
+                str(nested_smoke_summary_path.resolve()),
+            )
+            self.assertEqual(
+                workflow_report["smoke"]["summary"]["output_comparison_status"],
+                "MISSING_EXPECTED",
+            )
+            self.assertEqual(
+                workflow_report["smoke"]["summary"]["output_smoke_status"],
+                "PARTIAL",
+            )
+            self.assertEqual(
+                workflow_report["smoke"]["summary"]["backend_runtime_exit_code"],
+                -6,
+            )
+            self.assertEqual(
+                workflow_report["smoke"]["summary"]["backend_runtime_failed_plugin_count"],
+                2,
+            )
+            self.assertEqual(
+                workflow_report["smoke"]["summary"]["backend_runtime_failed_plugins"],
+                ["libRobotecGPULidar.so", "libtf2.so"],
+            )
+            self.assertEqual(
+                workflow_report["smoke"]["summary"]["backend_runtime_crash_signatures"],
+                [
+                    "NULL_GFX_DEVICE",
+                    "MONO_TRAMP_AMD64_ASSERT",
+                    "SIGABRT",
+                    "PLUGIN_LOAD_FAILURES",
+                ],
+            )
+            autoware_bridge.assert_called_once()
+            self.assertEqual(workflow_report["autoware"]["status"], "READY")
 
     def test_scenario_backend_smoke_workflow_script_bootstraps_src_path(self) -> None:
         script_path = Path(__file__).resolve().parents[1] / "scripts" / "run_scenario_backend_smoke_workflow.py"

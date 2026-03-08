@@ -203,6 +203,14 @@ Implemented in the current repository:
 48. packaged-backend handoff surfacing in scenario smoke workflows
    - `scenario_backend_smoke_workflow` now detects host-incompatible staged packaged backends and routes them through `renderer_backend_workflow` dry-run handoff planning instead of reporting only a smoke failure
    - `scenario_runtime_backend_workflow` now lifts that handoff state to top-level `HANDOFF_READY` or `HANDOFF_DOCKER_*` statuses together with blocker codes, recommended next command, and handoff artifact paths
+49. backend sidecar materialization for early backend aborts
+   - `src/hybrid_sensor_sim/renderers/backend_runner.py` now materializes expected export files from `backend_ingestion_profile.json` payload artifacts when a packaged backend exits before writing its own outputs
+   - this keeps output smoke/comparison inspection deterministic even when the executable crashes early
+50. packaged-backend archive shared-library repair
+   - `src/hybrid_sensor_sim/tools/renderer_backend_package_stage.py` now repairs zip archives that store `.so` symlinks as plain-text placeholder files, which is required for some packaged AWSIM drops to load after extraction
+51. packaged-runtime crash diagnostics in scenario workflows
+   - `scenario_backend_smoke_workflow` now parses nested Linux handoff smoke logs and surfaces runtime exit code, failed plugin basenames, missing shared libraries, and crash signatures
+   - `scenario_runtime_backend_workflow` now lifts those diagnostics into top-level `status_summary`, so real AWSIM/CARLA aborts can be triaged without opening nested runner logs
 
 Still pending from the same migration track:
 

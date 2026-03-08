@@ -531,6 +531,7 @@ class RendererBackendWorkflowTests(unittest.TestCase):
                     "host_compatible": False,
                     "host_compatibility_reason": "ELF binary is not supported on Darwin",
                     "binary_format": "elf",
+                    "binary_architectures": ["x86_64"],
                     "file_description": "ELF 64-bit LSB executable",
                 },
             ):
@@ -567,6 +568,7 @@ class RendererBackendWorkflowTests(unittest.TestCase):
             self.assertTrue(docker_run.called)
             self.assertTrue(docker_run.call_args.kwargs["skip_run"])
             self.assertEqual(docker_run.call_args.kwargs["docker_binary"], "docker-test")
+            self.assertEqual(docker_run.call_args.kwargs["docker_platform"], "linux/amd64")
             self.assertEqual(docker_run.call_args.kwargs["container_workspace"], "/repo")
             summary = json.loads(
                 (output_root / "renderer_backend_workflow_summary.json").read_text(encoding="utf-8")
@@ -576,6 +578,7 @@ class RendererBackendWorkflowTests(unittest.TestCase):
             self.assertTrue(summary["docker_handoff"]["requested"])
             self.assertTrue(summary["docker_handoff"]["executed"])
             self.assertEqual(summary["docker_handoff"]["return_code"], 0)
+            self.assertEqual(summary["docker_handoff"]["docker_platform"], "linux/amd64")
             self.assertTrue(summary["docker_handoff"]["preflight"]["available"])
             self.assertTrue(summary["docker_handoff"]["preflight"]["success"])
             self.assertTrue(summary["linux_handoff"]["bundle"]["bundle_generated"])

@@ -199,6 +199,45 @@ class RendererBackendPackageStageTests(unittest.TestCase):
             self.assertIn("Could not locate a supported awsim executable", "\n".join(summary["issues"]))
             self.assertIsNone(summary["staging"]["selected_executable_path"])
 
+    def test_stage_repairs_textual_shared_library_links(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            archive = root / "AWSIM-Demo.zip"
+            _write_zip(
+                archive,
+                {
+                    "AWSIM-Demo/AWSIM-Demo-Lightweight.x86_64": "#!/usr/bin/env bash\nexit 0\n",
+                    "AWSIM-Demo/AWSIM-Demo-Lightweight_Data/Plugins/libfmt.so": "libfmt.so.8.1.1",
+                    "AWSIM-Demo/AWSIM-Demo-Lightweight_Data/Plugins/libfmt.so.8": "libfmt.so.8.1.1",
+                    "AWSIM-Demo/AWSIM-Demo-Lightweight_Data/Plugins/libfmt.so.8.1": "libfmt.so.8.1.1",
+                    "AWSIM-Demo/AWSIM-Demo-Lightweight_Data/Plugins/libfmt.so.8.1.1": "binary-payload",
+                },
+            )
+
+            summary = build_renderer_backend_package_stage(
+                backend="awsim",
+                repo_root=root / "repo",
+                archive=archive,
+                output_root=root / "staged_runtime",
+            )
+
+            plugins_dir = (
+                root
+                / "staged_runtime"
+                / "expanded"
+                / "AWSIM-Demo"
+                / "AWSIM-Demo-Lightweight_Data"
+                / "Plugins"
+            )
+            self.assertEqual(
+                summary["staging"]["shared_library_link_repairs"]["repaired_count"],
+                3,
+            )
+            for name in ("libfmt.so", "libfmt.so.8", "libfmt.so.8.1"):
+                path = plugins_dir / name
+                self.assertTrue(path.is_symlink())
+                self.assertEqual(path.readlink(), Path("libfmt.so.8.1.1"))
+
 
 if __name__ == "__main__":
     unittest.main()

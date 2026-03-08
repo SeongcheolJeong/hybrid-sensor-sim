@@ -387,6 +387,175 @@ printf 'debug\n' > "${BACKEND_OUTPUT_ROOT}/extras/unexpected.log"
             self.assertIn("runner_ok", stdout)
             self.assertIn("runner_warn", stderr)
 
+    def test_execute_backend_runner_request_materializes_sidecar_outputs_from_ingestion_profile(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_backend = root / "fake_backend_fail.sh"
+            fake_backend.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+echo "backend_failed" >&2
+exit 1
+""",
+                encoding="utf-8",
+            )
+            fake_backend.chmod(0o755)
+
+            output_root = root / "backend_outputs" / "awsim"
+            camera_payload = root / "camera_projection_preview.json"
+            lidar_payload = root / "lidar_noisy_preview.xyz"
+            radar_payload = root / "radar_targets_preview.json"
+            camera_payload.write_text('{"kind":"camera"}\n', encoding="utf-8")
+            lidar_payload.write_text("1.0 2.0 3.0\n", encoding="utf-8")
+            radar_payload.write_text('{"kind":"radar"}\n', encoding="utf-8")
+            ingestion_profile_path = root / "backend_ingestion_profile.json"
+            ingestion_profile_path.write_text(
+                json.dumps(
+                    {
+                        "entries": [
+                            {
+                                "sensor_id": "camera_front",
+                                "sensor_name": "camera",
+                                "data_format": "camera_projection_json",
+                                "payload_artifact": str(camera_payload),
+                            },
+                            {
+                                "sensor_id": "lidar_top",
+                                "sensor_name": "lidar",
+                                "data_format": "lidar_points_xyz",
+                                "payload_artifact": str(lidar_payload),
+                            },
+                            {
+                                "sensor_id": "radar_front",
+                                "sensor_name": "radar",
+                                "data_format": "radar_targets_json",
+                                "payload_artifact": str(radar_payload),
+                            },
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            request_path = root / "backend_runner_request.json"
+            request_path.write_text(
+                json.dumps(
+                    {
+                        "backend": "awsim",
+                        "cwd": str(root),
+                        "runner_mode": "direct_backend",
+                        "output_root": str(output_root),
+                        "command": [str(fake_backend)],
+                        "env": {
+                            "BACKEND_OUTPUT_ROOT": str(output_root),
+                        },
+                        "artifacts": {
+                            "backend_ingestion_profile": str(ingestion_profile_path),
+                        },
+                        "expected_outputs": [
+                            {
+                                "artifact_key": "awsim_runtime_state_json",
+                                "path": str(output_root / "awsim_runtime_state.json"),
+                                "kind": "file",
+                                "required": False,
+                                "description": "AWSIM runtime state summary.",
+                            },
+                            {
+                                "artifact_key": "sensor_output_camera_front",
+                                "backend": "awsim",
+                                "sensor_id": "camera_front",
+                                "sensor_name": "camera",
+                                "modality": "camera",
+                                "output_role": "camera_visible",
+                                "artifact_type": "awsim_camera_rgb_json",
+                                "data_format": "camera_projection_json",
+                                "backend_filename": "rgb_frame.json",
+                                "relative_path": "sensor_exports/camera_front/rgb_frame.json",
+                                "path": str(output_root / "sensor_exports" / "camera_front" / "rgb_frame.json"),
+                                "kind": "file",
+                                "required": False,
+                                "description": "Expected exported payload for sensor camera_front.",
+                            },
+                            {
+                                "artifact_key": "sensor_output_lidar_top",
+                                "backend": "awsim",
+                                "sensor_id": "lidar_top",
+                                "sensor_name": "lidar",
+                                "modality": "lidar",
+                                "output_role": "lidar_point_cloud",
+                                "artifact_type": "awsim_lidar_xyz_point_cloud",
+                                "data_format": "lidar_points_xyz",
+                                "backend_filename": "point_cloud.xyz",
+                                "relative_path": "sensor_exports/lidar_top/point_cloud.xyz",
+                                "path": str(output_root / "sensor_exports" / "lidar_top" / "point_cloud.xyz"),
+                                "kind": "file",
+                                "required": False,
+                                "description": "Expected exported payload for sensor lidar_top.",
+                            },
+                            {
+                                "artifact_key": "sensor_output_radar_front",
+                                "backend": "awsim",
+                                "sensor_id": "radar_front",
+                                "sensor_name": "radar",
+                                "modality": "radar",
+                                "output_role": "radar_detections",
+                                "artifact_type": "awsim_radar_detections_json",
+                                "data_format": "radar_targets_json",
+                                "backend_filename": "targets.json",
+                                "relative_path": "sensor_exports/radar_front/targets.json",
+                                "path": str(output_root / "sensor_exports" / "radar_front" / "targets.json"),
+                                "kind": "file",
+                                "required": False,
+                                "description": "Expected exported payload for sensor radar_front.",
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = execute_backend_runner_request(request_path=request_path)
+
+            self.assertFalse(result.success)
+            self.assertEqual(result.return_code, 1)
+            self.assertIn("backend_sidecar_materialization_report", result.artifacts)
+            manifest = json.loads(
+                result.artifacts["backend_runner_execution_manifest"].read_text(encoding="utf-8")
+            )
+            sidecar_report = json.loads(
+                result.artifacts["backend_sidecar_materialization_report"].read_text(
+                    encoding="utf-8"
+                )
+            )
+            comparison_report = json.loads(
+                result.artifacts["backend_output_comparison_report"].read_text(encoding="utf-8")
+            )
+            smoke_report = json.loads(
+                result.artifacts["backend_output_smoke_report"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(manifest["status"], "EXECUTION_FAILED")
+            self.assertEqual(manifest["return_code"], 1)
+            self.assertEqual(manifest["expected_output_summary"]["found_count"], 4)
+            self.assertEqual(manifest["expected_output_summary"]["missing_count"], 0)
+            self.assertEqual(sidecar_report["status"], "MATERIALIZED")
+            self.assertEqual(sidecar_report["materialized_output_count"], 3)
+            self.assertTrue(sidecar_report["runtime_state_materialized"])
+            self.assertEqual(comparison_report["status"], "MATCHED")
+            self.assertEqual(comparison_report["mismatch_reasons"], [])
+            self.assertEqual(smoke_report["status"], "COMPLETE")
+            self.assertEqual(smoke_report["missing_output_count"], 0)
+            self.assertTrue(
+                (output_root / "sensor_exports" / "camera_front" / "rgb_frame.json").is_file()
+            )
+            self.assertTrue(
+                (output_root / "sensor_exports" / "lidar_top" / "point_cloud.xyz").is_file()
+            )
+            self.assertTrue(
+                (output_root / "sensor_exports" / "radar_front" / "targets.json").is_file()
+            )
+            self.assertTrue((output_root / "awsim_runtime_state.json").is_file())
+
     def test_execute_backend_runner_request_rejects_invalid_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -534,7 +703,7 @@ echo "cli_ok"
             self.assertFalse(inspection_manifest["success"])
             self.assertFalse((output_dir / "backend_runner_stdout.log").exists())
 
-    def test_backend_runner_main_execute_and_inspect_returns_nonzero_for_inspection_failure(
+    def test_backend_runner_main_execute_and_inspect_uses_runtime_state_sidecar(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -578,7 +747,7 @@ echo "audit_only"
                 ["--execute-and-inspect", str(request_path), "--output-dir", str(output_dir)]
             )
 
-            self.assertEqual(exit_code, 2)
+            self.assertEqual(exit_code, 0)
             smoke_manifest = json.loads(
                 (output_dir / "backend_runner_smoke_manifest.json").read_text(
                     encoding="utf-8"
@@ -589,12 +758,12 @@ echo "audit_only"
                     encoding="utf-8"
                 )
             )
-            self.assertEqual(smoke_manifest["status"], "INSPECTION_FAILED")
-            self.assertFalse(smoke_manifest["success"])
+            self.assertEqual(smoke_manifest["status"], "SMOKE_SUCCEEDED")
+            self.assertTrue(smoke_manifest["success"])
             self.assertEqual(smoke_manifest["execution"]["status"], "EXECUTION_SUCCEEDED")
-            self.assertEqual(smoke_manifest["inspection"]["status"], "MISSING_EXPECTED")
-            self.assertFalse(inspection_manifest["success"])
-            self.assertEqual(inspection_manifest["status"], "MISSING_EXPECTED")
+            self.assertEqual(smoke_manifest["inspection"]["status"], "MATCHED")
+            self.assertTrue(inspection_manifest["success"])
+            self.assertEqual(inspection_manifest["status"], "MATCHED")
 
 
 if __name__ == "__main__":

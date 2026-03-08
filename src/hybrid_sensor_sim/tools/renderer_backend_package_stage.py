@@ -178,6 +178,58 @@ def _extract_archive(archive_path: Path, extract_dir: Path) -> tuple[bool, str]:
     return True, ""
 
 
+def _looks_like_textual_shared_library_link(path: Path) -> tuple[str | None, str | None]:
+    if path.is_symlink() or not path.is_file():
+        return None, None
+    if ".so" not in path.name:
+        return None, None
+    try:
+        payload = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None, None
+    target_name = payload.strip()
+    if (
+        not target_name
+        or "\n" in target_name
+        or "/" in target_name
+        or len(target_name) > 128
+        or ".so" not in target_name
+    ):
+        return None, None
+    target_path = path.parent / target_name
+    if not target_path.exists():
+        return None, None
+    if target_path.resolve() == path.resolve():
+        return None, None
+    return target_name, str(target_path.resolve())
+
+
+def _repair_textual_shared_library_links(extract_dir: Path) -> dict[str, Any]:
+    repaired_entries: list[dict[str, str]] = []
+    issues: list[str] = []
+    for path in sorted(extract_dir.rglob("*")):
+        target_name, resolved_target = _looks_like_textual_shared_library_link(path)
+        if target_name is None or resolved_target is None:
+            continue
+        try:
+            path.unlink()
+            path.symlink_to(target_name)
+            repaired_entries.append(
+                {
+                    "link_path": str(path),
+                    "target_name": target_name,
+                    "resolved_target_path": resolved_target,
+                }
+            )
+        except OSError as exc:
+            issues.append(f"Failed to repair shared-library link {path}: {exc}")
+    return {
+        "repaired_count": len(repaired_entries),
+        "repaired_entries": repaired_entries,
+        "issues": issues,
+    }
+
+
 def _find_backend_executable(backend: str, extract_dir: Path) -> tuple[Path | None, list[str]]:
     config = _BACKEND_STAGE_CONFIG[backend]
     preferred_names = {name.lower(): index for index, name in enumerate(config["executable_names"])}
@@ -316,6 +368,8 @@ def build_renderer_backend_package_stage(
     if archive_path is not None:
         extraction_succeeded, extraction_message = _extract_archive(archive_path, extracted_dir)
         if extraction_succeeded:
+            link_repair = _repair_textual_shared_library_links(extracted_dir)
+            issues.extend(link_repair["issues"])
             executable_path, executable_candidates = _find_backend_executable(backend, extracted_dir)
             if executable_path is not None:
                 chmod_updated = _ensure_executable(executable_path)
@@ -327,6 +381,11 @@ def build_renderer_backend_package_stage(
             issues.append(extraction_message)
     else:
         extraction_message = "Archive was not resolved."
+        link_repair = {
+            "repaired_count": 0,
+            "repaired_entries": [],
+            "issues": [],
+        }
 
     selection = _merge_selection(
         backend=backend,
@@ -385,6 +444,7 @@ def build_renderer_backend_package_stage(
             "extracted_dir": str(extracted_dir),
             "extraction_message": extraction_message,
             "chmod_updated": chmod_updated,
+            "shared_library_link_repairs": link_repair,
             "selected_executable_path": str(executable_path) if executable_path is not None else None,
             "selected_executable_name": executable_path.name if executable_path is not None else None,
             "selected_env_var": env_var,

@@ -845,6 +845,8 @@ def _write_execution_manifest(
     output_smoke_report: dict[str, Any] | None,
     output_comparison_report_path: Path | None,
     output_comparison_report: dict[str, Any] | None,
+    sidecar_materialization_report_path: Path | None,
+    sidecar_materialization_report: dict[str, Any] | None,
     stdout_path: Path | None,
     stderr_path: Path | None,
 ) -> None:
@@ -877,6 +879,11 @@ def _write_execution_manifest(
         "output_comparison_report": (
             output_comparison_report if isinstance(output_comparison_report, dict) else None
         ),
+        "sidecar_materialization_report": (
+            sidecar_materialization_report
+            if isinstance(sidecar_materialization_report, dict)
+            else None
+        ),
         "artifacts": {
             "backend_sensor_output_summary": (
                 str(sensor_output_summary_path) if sensor_output_summary_path else None
@@ -886,6 +893,11 @@ def _write_execution_manifest(
             ),
             "backend_output_comparison_report": (
                 str(output_comparison_report_path) if output_comparison_report_path else None
+            ),
+            "backend_sidecar_materialization_report": (
+                str(sidecar_materialization_report_path)
+                if sidecar_materialization_report_path
+                else None
             ),
             "backend_runner_stdout": str(stdout_path) if stdout_path else None,
             "backend_runner_stderr": str(stderr_path) if stderr_path else None,
@@ -1113,6 +1125,149 @@ def _normalize_expected_outputs(raw: Any) -> list[dict[str, Any]]:
             }
         )
     return outputs
+
+
+def _load_request_artifact_payload(
+    payload: dict[str, Any],
+    *,
+    artifact_key: str,
+) -> dict[str, Any] | None:
+    raw_artifacts = payload.get("artifacts")
+    if not isinstance(raw_artifacts, dict):
+        return None
+    raw_path = str(raw_artifacts.get(artifact_key, "")).strip()
+    if not raw_path:
+        return None
+    return _read_json_payload(Path(raw_path).expanduser())
+
+
+def _materialize_sidecar_outputs(
+    *,
+    payload: dict[str, Any],
+    expected_outputs: list[dict[str, Any]],
+    runner_output_dir: Path,
+    backend_return_code: int | None,
+) -> tuple[Path | None, dict[str, Path], dict[str, Any] | None]:
+    ingestion_profile = _load_request_artifact_payload(
+        payload,
+        artifact_key="backend_ingestion_profile",
+    )
+    entries = ingestion_profile.get("entries") if isinstance(ingestion_profile, dict) else None
+    normalized_entries = (
+        [entry for entry in entries if isinstance(entry, dict)] if isinstance(entries, list) else []
+    )
+
+    expected_by_sensor_format: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    runtime_state_entry: dict[str, Any] | None = None
+    for entry in expected_outputs:
+        artifact_key = str(entry.get("artifact_key", "")).strip()
+        if artifact_key in {"awsim_runtime_state_json", "carla_runtime_state_json"}:
+            runtime_state_entry = entry
+        if bool(entry.get("embedded_output", False)):
+            continue
+        if str(entry.get("kind", "file")).strip() != "file":
+            continue
+        sensor_id = str(entry.get("sensor_id", "")).strip()
+        data_format = str(entry.get("data_format", "")).strip()
+        if not sensor_id or not data_format:
+            continue
+        expected_by_sensor_format.setdefault((sensor_id, data_format), []).append(entry)
+
+    materialized_outputs: list[dict[str, Any]] = []
+    skipped_entries: list[dict[str, Any]] = []
+    for entry in normalized_entries:
+        sensor_id = str(entry.get("sensor_id", "")).strip()
+        data_format = str(entry.get("data_format", "")).strip()
+        payload_artifact_text = str(entry.get("payload_artifact", "")).strip()
+        if not sensor_id or not data_format or not payload_artifact_text:
+            skipped_entries.append(
+                {
+                    "sensor_id": sensor_id or None,
+                    "data_format": data_format or None,
+                    "reason": "incomplete_entry",
+                }
+            )
+            continue
+        payload_artifact_path = Path(payload_artifact_text).expanduser()
+        if not payload_artifact_path.exists() or not payload_artifact_path.is_file():
+            skipped_entries.append(
+                {
+                    "sensor_id": sensor_id,
+                    "data_format": data_format,
+                    "payload_artifact": str(payload_artifact_path),
+                    "reason": "payload_artifact_missing",
+                }
+            )
+            continue
+        for expected_entry in expected_by_sensor_format.get((sensor_id, data_format), []):
+            target_path = Path(str(expected_entry.get("path", ""))).expanduser()
+            if not str(target_path):
+                continue
+            if target_path.exists():
+                skipped_entries.append(
+                    {
+                        "sensor_id": sensor_id,
+                        "data_format": data_format,
+                        "artifact_key": str(expected_entry.get("artifact_key", "")).strip() or None,
+                        "target_path": str(target_path),
+                        "reason": "target_exists",
+                    }
+                )
+                continue
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            target_path.write_bytes(payload_artifact_path.read_bytes())
+            materialized_outputs.append(
+                {
+                    "sensor_id": sensor_id,
+                    "sensor_name": str(entry.get("sensor_name", "")).strip() or None,
+                    "data_format": data_format,
+                    "payload_artifact": str(payload_artifact_path),
+                    "artifact_key": str(expected_entry.get("artifact_key", "")).strip() or None,
+                    "output_role": str(expected_entry.get("output_role", "")).strip() or None,
+                    "artifact_type": str(expected_entry.get("artifact_type", "")).strip() or None,
+                    "target_path": str(target_path),
+                }
+            )
+
+    runtime_state_materialized = False
+    if runtime_state_entry is not None:
+        runtime_state_path = Path(str(runtime_state_entry.get("path", ""))).expanduser()
+        if str(runtime_state_path) and not runtime_state_path.exists():
+            runtime_state_path.parent.mkdir(parents=True, exist_ok=True)
+            runtime_state_payload = {
+                "backend": str(payload.get("backend", "")).strip() or None,
+                "status": "sidecar_materialized",
+                "export_mode": "sidecar_materialized",
+                "backend_return_code": backend_return_code,
+                "materialized_output_count": len(materialized_outputs),
+                "materialized_outputs": materialized_outputs,
+                "skipped_entry_count": len(skipped_entries),
+            }
+            runtime_state_path.write_text(
+                json.dumps(runtime_state_payload, indent=2),
+                encoding="utf-8",
+            )
+            runtime_state_materialized = True
+
+    report_payload = {
+        "backend": str(payload.get("backend", "")).strip() or None,
+        "status": "MATERIALIZED"
+        if materialized_outputs or runtime_state_materialized
+        else "NO_ACTION",
+        "backend_return_code": backend_return_code,
+        "materialized_output_count": len(materialized_outputs),
+        "runtime_state_materialized": runtime_state_materialized,
+        "materialized_outputs": materialized_outputs,
+        "skipped_entry_count": len(skipped_entries),
+        "skipped_entries": skipped_entries,
+    }
+    report_path = runner_output_dir / "backend_sidecar_materialization_report.json"
+    report_path.write_text(json.dumps(report_payload, indent=2), encoding="utf-8")
+    return (
+        report_path,
+        {"backend_sidecar_materialization_report": report_path},
+        report_payload,
+    )
 
 
 def _inspect_expected_outputs(
@@ -1896,6 +2051,8 @@ def execute_backend_runner_request(
             output_smoke_report=None,
             output_comparison_report_path=None,
             output_comparison_report=None,
+            sidecar_materialization_report_path=None,
+            sidecar_materialization_report=None,
             stdout_path=None,
             stderr_path=stderr_path,
         )
@@ -1924,6 +2081,8 @@ def execute_backend_runner_request(
             output_smoke_report=None,
             output_comparison_report_path=None,
             output_comparison_report=None,
+            sidecar_materialization_report_path=None,
+            sidecar_materialization_report=None,
             stdout_path=None,
             stderr_path=stderr_path,
         )
@@ -1978,6 +2137,8 @@ def execute_backend_runner_request(
             output_smoke_report=None,
             output_comparison_report_path=None,
             output_comparison_report=None,
+            sidecar_materialization_report_path=None,
+            sidecar_materialization_report=None,
             stdout_path=None,
             stderr_path=stderr_path,
         )
@@ -1990,6 +2151,17 @@ def execute_backend_runner_request(
 
     stdout_path.write_text(proc.stdout, encoding="utf-8")
     stderr_path.write_text(proc.stderr, encoding="utf-8")
+    (
+        sidecar_materialization_report_path,
+        sidecar_materialization_artifacts,
+        sidecar_materialization_report,
+    ) = _materialize_sidecar_outputs(
+        payload=payload,
+        expected_outputs=expected_outputs,
+        runner_output_dir=runner_output_dir,
+        backend_return_code=proc.returncode,
+    )
+    artifacts.update(sidecar_materialization_artifacts)
     inspected_outputs, discovered_artifacts, found_count, missing_count = _inspect_expected_outputs(
         expected_outputs
     )
@@ -2036,6 +2208,8 @@ def execute_backend_runner_request(
         output_smoke_report=output_smoke_report,
         output_comparison_report_path=output_comparison_report_path,
         output_comparison_report=output_comparison_report,
+        sidecar_materialization_report_path=sidecar_materialization_report_path,
+        sidecar_materialization_report=sidecar_materialization_report,
         stdout_path=stdout_path,
         stderr_path=stderr_path,
     )

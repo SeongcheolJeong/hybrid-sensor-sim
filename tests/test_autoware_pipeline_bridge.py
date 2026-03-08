@@ -166,6 +166,161 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
             self.assertTrue(Path(report["artifacts"]["pipeline_manifest_path"]).is_file())
             self.assertTrue(Path(report["artifacts"]["dataset_manifest_path"]).is_file())
 
+    def test_bridge_rebases_workspace_paths_from_handoff_smoke_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            (repo_root / "src" / "hybrid_sensor_sim").mkdir(parents=True, exist_ok=True)
+            (repo_root / "tests").mkdir(parents=True, exist_ok=True)
+            smoke_root = repo_root / "artifacts" / "handoff_smoke"
+            output_root = smoke_root / "renderer_runtime" / "backend_outputs"
+            camera_output = output_root / "awsim" / "sensor_exports" / "cam_front" / "rgb_frame.json"
+            lidar_output = output_root / "awsim" / "sensor_exports" / "lidar_top" / "point_cloud.xyz"
+            camera_output.parent.mkdir(parents=True, exist_ok=True)
+            lidar_output.parent.mkdir(parents=True, exist_ok=True)
+            camera_output.write_text("{}", encoding="utf-8")
+            lidar_output.write_text("{}", encoding="utf-8")
+
+            playback_contract_path = smoke_root / "renderer_playback_contract.json"
+            _write_json(
+                playback_contract_path,
+                {
+                    "renderer_sensor_mounts": [
+                        {
+                            "sensor_id": "cam_front",
+                            "sensor_type": "camera",
+                            "enabled": True,
+                            "attach_to_actor_id": "ego",
+                            "extrinsics": {"tx": 1.0, "ty": 0.0, "tz": 1.5},
+                        },
+                        {
+                            "sensor_id": "lidar_top",
+                            "sensor_type": "lidar",
+                            "enabled": True,
+                            "attach_to_actor_id": "ego",
+                            "extrinsics": {"tx": 0.0, "ty": 0.0, "tz": 2.0},
+                        },
+                    ]
+                },
+            )
+
+            backend_output_spec_path = smoke_root / "renderer_runtime" / "backend_output_spec.json"
+            _write_json(
+                backend_output_spec_path,
+                {
+                    "backend": "awsim",
+                    "output_root": "/workspace/artifacts/handoff_smoke/renderer_runtime/backend_outputs/awsim",
+                    "expected_outputs_by_sensor": [
+                        {
+                            "sensor_id": "cam_front",
+                            "outputs": [
+                                {
+                                    "output_role": "camera_visible",
+                                    "artifact_type": "awsim_camera_rgb_json",
+                                    "data_format": "camera_projection_json",
+                                }
+                            ],
+                        },
+                        {
+                            "sensor_id": "lidar_top",
+                            "outputs": [
+                                {
+                                    "output_role": "lidar_point_cloud",
+                                    "artifact_type": "awsim_lidar_xyz_point_cloud",
+                                    "data_format": "lidar_points_xyz",
+                                }
+                            ],
+                        },
+                    ],
+                },
+            )
+            backend_sensor_output_summary_path = smoke_root / "renderer_runtime" / "backend_sensor_output_summary.json"
+            _write_json(
+                backend_sensor_output_summary_path,
+                {
+                    "backend": "awsim",
+                    "sensors": [
+                        {
+                            "sensor_id": "cam_front",
+                            "modality": "camera",
+                            "outputs": [
+                                {
+                                    "output_role": "camera_visible",
+                                    "artifact_type": "awsim_camera_rgb_json",
+                                    "data_format": "camera_projection_json",
+                                    "artifact_key": "sensor_output_camera_front",
+                                    "resolved_path": "/workspace/artifacts/handoff_smoke/renderer_runtime/backend_outputs/awsim/sensor_exports/cam_front/rgb_frame.json",
+                                    "exists": True,
+                                }
+                            ],
+                        },
+                        {
+                            "sensor_id": "lidar_top",
+                            "modality": "lidar",
+                            "outputs": [
+                                {
+                                    "output_role": "lidar_point_cloud",
+                                    "artifact_type": "awsim_lidar_xyz_point_cloud",
+                                    "data_format": "lidar_points_xyz",
+                                    "artifact_key": "sensor_output_lidar_top",
+                                    "resolved_path": "/workspace/artifacts/handoff_smoke/renderer_runtime/backend_outputs/awsim/sensor_exports/lidar_top/point_cloud.xyz",
+                                    "exists": True,
+                                }
+                            ],
+                        },
+                    ],
+                },
+            )
+            smoke_summary_path = smoke_root / "renderer_backend_smoke_summary.json"
+            _write_json(
+                smoke_summary_path,
+                {
+                    "backend": "awsim",
+                    "output_comparison": {"status": "MATCHED", "mismatch_reasons": []},
+                    "output_smoke_report": {"status": "COMPLETE", "coverage_ratio": 1.0},
+                    "artifacts": {
+                        "renderer_playback_contract": "/workspace/artifacts/handoff_smoke/renderer_playback_contract.json",
+                        "backend_output_spec": "/workspace/artifacts/handoff_smoke/renderer_runtime/backend_output_spec.json",
+                        "backend_sensor_output_summary": "/workspace/artifacts/handoff_smoke/renderer_runtime/backend_sensor_output_summary.json",
+                    },
+                },
+            )
+            backend_workflow_report_path = smoke_root / "scenario_backend_smoke_workflow_report_v0.json"
+            _write_json(
+                backend_workflow_report_path,
+                {
+                    "scenario_backend_smoke_workflow_report_schema_version": "scenario_backend_smoke_workflow_report_v0",
+                    "backend": "awsim",
+                    "selection": {"variant_id": "var_handoff", "logical_scenario_id": "scn_handoff"},
+                    "bridge": {"scenario_id": "SCN_HANDOFF", "source_payload_kind": "scenario_definition_v0"},
+                    "smoke": {"summary_path": str(smoke_summary_path.resolve())},
+                    "artifacts": {"smoke_scenario_path": str((smoke_root / "smoke_scenario.json").resolve())},
+                },
+            )
+
+            result = run_autoware_pipeline_bridge(
+                backend_smoke_workflow_report_path=str(backend_workflow_report_path),
+                runtime_backend_workflow_report_path="",
+                out_root=repo_root / "autoware_bundle",
+                strict=False,
+            )
+            report = result["report"]
+            self.assertEqual(report["status"], "READY")
+            contracts_payload = json.loads(
+                Path(report["artifacts"]["sensor_contracts_path"]).read_text(encoding="utf-8")
+            )
+            contract_by_role = {
+                (entry["sensor_id"], entry["output_role"]): entry
+                for entry in contracts_payload["contracts"]
+            }
+            self.assertEqual(
+                contract_by_role[("cam_front", "camera_visible")]["source_resolved_path"],
+                str(camera_output.resolve()),
+            )
+            self.assertEqual(
+                contract_by_role[("lidar_top", "lidar_point_cloud")]["source_resolved_path"],
+                str(lidar_output.resolve()),
+            )
+
     def test_bridge_strict_mode_fails_for_missing_required_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

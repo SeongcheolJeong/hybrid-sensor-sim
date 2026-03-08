@@ -162,6 +162,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Linux Docker image used for packaged-backend handoff",
     )
     parser.add_argument(
+        "--docker-platform",
+        default="",
+        help="Optional Docker platform (for example linux/amd64) used for packaged-backend handoff",
+    )
+    parser.add_argument(
         "--docker-container-workspace",
         default="/workspace",
         help="Workspace mount path inside the Docker container for packaged-backend handoff",
@@ -292,6 +297,12 @@ def _build_status_summary(
             "reason_code": "BACKEND_SMOKE_FAILED",
         },
         {
+            "step_id": "backend_handoff_docker_failed",
+            "matched": backend_report["status"] in {"HANDOFF_DOCKER_FAILED", "HANDOFF_DOCKER_PREFLIGHT_FAILED"},
+            "status_if_matched": "FAILED",
+            "reason_code": "BACKEND_HANDOFF_DOCKER_FAILED",
+        },
+        {
             "step_id": "batch_workflow_status",
             "matched": batch_report["status"] == "FAILED",
             "status_if_matched": "FAILED",
@@ -350,6 +361,21 @@ def _build_status_summary(
         "backend_output_comparison_unexpected_output_count": smoke_summary.get(
             "output_comparison_unexpected_output_count"
         ),
+        "backend_runtime_exit_code": smoke_summary.get("backend_runtime_exit_code"),
+        "backend_runtime_failed_plugin_count": smoke_summary.get(
+            "backend_runtime_failed_plugin_count"
+        ),
+        "backend_runtime_failed_plugins": list(
+            smoke_summary.get("backend_runtime_failed_plugins", [])
+        ),
+        "backend_runtime_missing_shared_libraries": list(
+            smoke_summary.get("backend_runtime_missing_shared_libraries", [])
+        ),
+        "backend_runtime_crash_signatures": list(
+            smoke_summary.get("backend_runtime_crash_signatures", [])
+        ),
+        "backend_runtime_stdout_path": smoke_summary.get("backend_runtime_stdout_path"),
+        "backend_runtime_stderr_path": smoke_summary.get("backend_runtime_stderr_path"),
         "backend_output_smoke_status": smoke_summary.get("output_smoke_status"),
         "backend_output_smoke_coverage_ratio": smoke_summary.get(
             "output_smoke_coverage_ratio"
@@ -418,6 +444,10 @@ def _build_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Output inspection: `{summary['backend_output_inspection_status'] or '-'}`",
         f"- Runner smoke: `{summary['backend_runner_smoke_status'] or '-'}`",
         f"- Run status: `{summary['backend_run_status'] or '-'}`",
+        f"- Runtime exit code: `{summary['backend_runtime_exit_code'] if summary['backend_runtime_exit_code'] is not None else '-'}`",
+        f"- Runtime crash signatures: `{', '.join(summary['backend_runtime_crash_signatures']) or '-'}`",
+        f"- Runtime failed plugins: `{', '.join(summary['backend_runtime_failed_plugins']) or '-'}`",
+        f"- Runtime missing shared libraries: `{', '.join(summary['backend_runtime_missing_shared_libraries']) or '-'}`",
         f"- Handoff status: `{summary['backend_handoff_status'] or '-'}`",
         f"- Handoff ready: `{summary['backend_handoff_ready'] if summary['backend_handoff_ready'] is not None else '-'}`",
         f"- Handoff blockers: `{', '.join(summary.get('backend_handoff_blocker_codes', [])) or '-'}`",
@@ -512,6 +542,7 @@ def run_scenario_runtime_backend_workflow(
     docker_handoff_execute: bool = False,
     docker_binary: str = "docker",
     docker_image: str = "python:3.11-slim",
+    docker_platform: str | None = None,
     docker_container_workspace: str = "/workspace",
     refresh_docker_handoff_preflight: bool = False,
     skip_smoke: bool,
@@ -592,6 +623,7 @@ def run_scenario_runtime_backend_workflow(
         docker_handoff_execute=docker_handoff_execute,
         docker_binary=docker_binary,
         docker_image=docker_image,
+        docker_platform=docker_platform,
         docker_container_workspace=docker_container_workspace,
         refresh_docker_handoff_preflight=refresh_docker_handoff_preflight,
         skip_smoke=skip_smoke,
@@ -869,6 +901,7 @@ def main(argv: list[str] | None = None) -> int:
             docker_handoff_execute=bool(args.docker_handoff_execute),
             docker_binary=args.docker_binary,
             docker_image=args.docker_image,
+            docker_platform=args.docker_platform,
             docker_container_workspace=args.docker_container_workspace,
             refresh_docker_handoff_preflight=bool(args.refresh_docker_handoff_preflight),
             skip_smoke=bool(args.skip_smoke),

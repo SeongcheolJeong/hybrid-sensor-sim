@@ -156,6 +156,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Linux Docker image used for --run-linux-handoff-docker.",
     )
     parser.add_argument(
+        "--docker-platform",
+        default="",
+        help="Optional Docker platform (for example linux/amd64) used for --run-linux-handoff-docker.",
+    )
+    parser.add_argument(
         "--docker-container-workspace",
         default=_DEFAULT_LINUX_HANDOFF_CONTAINER_WORKSPACE,
         help="Workspace mount path inside the Docker container for --run-linux-handoff-docker.",
@@ -241,6 +246,20 @@ def _selection_value(selection: dict[str, Any], key: str) -> str | None:
         return None
     text = str(value).strip()
     return text if text else None
+
+
+def _default_linux_handoff_docker_platform(
+    backend_compatibility: dict[str, Any],
+) -> str | None:
+    binary_format = str(backend_compatibility.get("binary_format") or "").strip().lower()
+    architectures = {
+        str(item).strip().lower()
+        for item in backend_compatibility.get("binary_architectures", [])
+        if str(item).strip()
+    }
+    if binary_format == "elf" and architectures.intersection({"x86_64", "amd64"}):
+        return "linux/amd64"
+    return None
 
 
 def _render_workflow_env_file(summary: dict[str, Any]) -> str:
@@ -1644,6 +1663,7 @@ def build_renderer_backend_workflow(
     docker_handoff_execute: bool = False,
     docker_binary: str = "docker",
     docker_image: str = _DEFAULT_LINUX_HANDOFF_DOCKER_IMAGE,
+    docker_platform: str | None = None,
     docker_container_workspace: str = _DEFAULT_LINUX_HANDOFF_CONTAINER_WORKSPACE,
     docker_handoff_preflight_max_age_seconds: int | None = _DEFAULT_DOCKER_HANDOFF_PREFLIGHT_MAX_AGE_SECONDS,
     refresh_docker_handoff_preflight: bool = False,
@@ -1919,6 +1939,9 @@ def build_renderer_backend_workflow(
         run_linux_handoff_docker=run_linux_handoff_docker,
         docker_handoff_preflight=docker_handoff_preflight,
     )
+    resolved_docker_platform = str(docker_platform or "").strip() or _default_linux_handoff_docker_platform(
+        backend_compatibility
+    )
     linux_handoff = _build_linux_handoff(
         backend=backend,
         repo_root=repo_root,
@@ -2053,6 +2076,7 @@ def build_renderer_backend_workflow(
             "skip_run": not docker_handoff_execute,
             "docker_binary": docker_binary,
             "docker_image": docker_image,
+            "docker_platform": resolved_docker_platform or None,
             "container_workspace": docker_container_workspace,
             "output_root": str(workflow_root / "renderer_backend_linux_handoff_docker_run"),
             "summary_path": str(
@@ -2253,6 +2277,11 @@ def _materialize_renderer_backend_workflow(
                         summary_path=_resolve_path(docker_handoff["summary_path"]),
                         docker_binary=str(docker_handoff["docker_binary"]),
                         docker_image=str(docker_handoff["docker_image"]),
+                        docker_platform=(
+                            str(docker_handoff["docker_platform"])
+                            if docker_handoff.get("docker_platform")
+                            else None
+                        ),
                         container_workspace=str(docker_handoff["container_workspace"]),
                         skip_run=bool(docker_handoff["skip_run"]),
                     )
@@ -2314,6 +2343,7 @@ def run_renderer_backend_workflow(
     docker_handoff_execute: bool = False,
     docker_binary: str = "docker",
     docker_image: str = _DEFAULT_LINUX_HANDOFF_DOCKER_IMAGE,
+    docker_platform: str | None = None,
     docker_container_workspace: str = _DEFAULT_LINUX_HANDOFF_CONTAINER_WORKSPACE,
     docker_handoff_preflight_max_age_seconds: int | None = _DEFAULT_DOCKER_HANDOFF_PREFLIGHT_MAX_AGE_SECONDS,
     refresh_docker_handoff_preflight: bool = False,
@@ -2339,6 +2369,7 @@ def run_renderer_backend_workflow(
         docker_handoff_execute=docker_handoff_execute,
         docker_binary=docker_binary,
         docker_image=docker_image,
+        docker_platform=docker_platform,
         docker_container_workspace=docker_container_workspace,
         docker_handoff_preflight_max_age_seconds=docker_handoff_preflight_max_age_seconds,
         refresh_docker_handoff_preflight=refresh_docker_handoff_preflight,
@@ -2375,6 +2406,7 @@ def main(argv: list[str] | None = None) -> int:
         docker_handoff_execute=args.docker_handoff_execute,
         docker_binary=args.docker_binary,
         docker_image=args.docker_image,
+        docker_platform=getattr(args, "docker_platform", ""),
         docker_container_workspace=args.docker_container_workspace,
         docker_handoff_preflight_max_age_seconds=args.docker_handoff_preflight_max_age_seconds,
         refresh_docker_handoff_preflight=args.refresh_docker_handoff_preflight,

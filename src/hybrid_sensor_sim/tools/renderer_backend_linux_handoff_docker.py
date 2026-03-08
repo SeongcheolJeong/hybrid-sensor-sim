@@ -54,6 +54,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Linux Docker image that will execute run_renderer_backend_linux_handoff.py.",
     )
     parser.add_argument(
+        "--docker-platform",
+        default="",
+        help="Optional Docker platform (for example linux/amd64) used for the handoff container.",
+    )
+    parser.add_argument(
         "--container-workspace",
         default=_DEFAULT_CONTAINER_WORKSPACE,
         help="Workspace mount point inside the container.",
@@ -131,6 +136,7 @@ def run_renderer_backend_linux_handoff_in_docker(
     summary_path: Path | None = None,
     docker_binary: str = "docker",
     docker_image: str = _DEFAULT_DOCKER_IMAGE,
+    docker_platform: str | None = None,
     container_workspace: str = _DEFAULT_CONTAINER_WORKSPACE,
     skip_run: bool = False,
     forward_args: list[str] | None = None,
@@ -202,6 +208,9 @@ def run_renderer_backend_linux_handoff_in_docker(
         "run",
         "--rm",
     ]
+    docker_platform_text = str(docker_platform or "").strip()
+    if docker_platform_text:
+        command.extend(["--platform", docker_platform_text])
     mounts = []
     for mount in mount_table.values():
         mount_arg = f"{mount['host_path']}:{mount['container_path']}"
@@ -259,6 +268,7 @@ def run_renderer_backend_linux_handoff_in_docker(
         "summary_path": str(summary_path),
         "docker_binary": docker_binary,
         "docker_image": docker_image,
+        "docker_platform": docker_platform_text or None,
         "container_workspace": container_workspace,
         "mounts": mounts,
         "container_paths": {
@@ -290,6 +300,7 @@ def main(argv: list[str] | None = None) -> int:
         summary_path=args.summary_path,
         docker_binary=args.docker_binary,
         docker_image=args.docker_image,
+        docker_platform=args.docker_platform,
         container_workspace=args.container_workspace,
         skip_run=args.skip_run,
         forward_args=list(args.forward_arg),

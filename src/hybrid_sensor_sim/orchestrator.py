@@ -32,8 +32,11 @@ class HybridOrchestrator:
         fallback.metrics.update(
             {f"helios_failure_{key}": value for key, value in helios_result.metrics.items()}
         )
+        fallback_detail = str(fallback.message or "").strip()
         fallback.message = (
             "HELIOS failed; fallback to native simulation. "
             f"reason={helios_result.message}"
         )
+        if fallback_detail:
+            fallback.message = f"{fallback.message} Native result: {fallback_detail}"
         return fallback

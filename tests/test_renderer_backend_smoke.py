@@ -182,6 +182,94 @@ PY
             )
             self.assertIn("backend_runner_smoke_manifest", summary["artifacts"])
 
+    def test_renderer_backend_smoke_main_executes_renderer_after_helios_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            scenario = root / "scenario.json"
+            scenario.write_text(
+                json.dumps(
+                    {
+                        "name": "fallback_scene",
+                        "objects": [
+                            {
+                                "id": "ego",
+                                "type": "vehicle",
+                                "pose": [0.0, 0.0, 0.0],
+                            },
+                            {
+                                "id": "lead_vehicle",
+                                "type": "vehicle",
+                                "pose": [18.0, 0.0, 0.0],
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            missing_helios = root / "missing_helios"
+            smoke_output = root / "smoke_fallback"
+            config_path = self._write_base_config(
+                root=root,
+                survey=scenario,
+                helios_bin=missing_helios,
+                output_dir=smoke_output,
+            )
+
+            fake_backend = root / "fake_backend_success.sh"
+            fake_backend.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+spec = json.loads(Path(os.environ["BACKEND_OUTPUT_SPEC_PATH"]).read_text(encoding="utf-8"))
+for entry in spec.get("expected_outputs", []):
+    path = Path(entry["path"])
+    if entry.get("kind") == "directory":
+        path.mkdir(parents=True, exist_ok=True)
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"artifact_key": entry["artifact_key"]}), encoding="utf-8")
+PY
+""",
+                encoding="utf-8",
+            )
+            fake_backend.chmod(0o755)
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = smoke_main(
+                    [
+                        "--config",
+                        str(config_path),
+                        "--backend",
+                        "awsim",
+                        "--backend-bin",
+                        str(fake_backend),
+                        "--output-dir",
+                        str(smoke_output),
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            summary = json.loads(
+                (smoke_output / "renderer_backend_smoke_summary.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertTrue(summary["success"])
+            self.assertEqual(summary["result_backend"], "native_physics")
+            self.assertIn("fallback to native simulation", summary["message"].lower())
+            self.assertIn("native result:", summary["message"].lower())
+            self.assertIn("native simulation completed", summary["message"].lower())
+            self.assertEqual(summary["run"]["status"], "EXECUTION_SUCCEEDED")
+            self.assertEqual(summary["runner_smoke"]["status"], "SMOKE_SUCCEEDED")
+            self.assertEqual(summary["output_comparison"]["status"], "MATCHED")
+            self.assertIn("renderer_pipeline_summary", summary["artifacts"])
+            self.assertIn("camera_projection_preview", summary["artifacts"])
+            self.assertIn("renderer_playback_contract", summary["artifacts"])
+
     def test_renderer_backend_smoke_main_surfaces_contract_mismatch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -241,24 +329,21 @@ printf '{"status":"ok"}\n' > "${BACKEND_OUTPUT_ROOT}/carla_runtime_state.json"
             self.assertEqual(summary["output_comparison"]["status"], "MISSING_EXPECTED")
             self.assertIsNotNone(summary["comparison_table"])
             self.assertEqual(
-                summary["comparison_table"]["sensor_status_counts"]["MISSING_EXPECTED"],
+                summary["comparison_table"]["sensor_status_counts"]["MATCHED"],
                 1,
             )
             self.assertEqual(
-                summary["comparison_table"]["role_status_counts"]["MISSING_EXPECTED"],
+                summary["comparison_table"]["role_status_counts"]["MATCHED"],
                 1,
             )
-            self.assertEqual(
-                summary["comparison_table"]["mismatch_reason_counts"]["MISSING_EXPECTED_OUTPUTS"],
-                2,
-            )
+            self.assertEqual(summary["comparison_table"]["mismatch_reason_counts"], {})
             self.assertEqual(
                 summary["comparison_table"]["role_rows"][0]["output_role"],
                 "camera_visible",
             )
             self.assertEqual(
                 summary["comparison_table"]["role_rows"][0]["status"],
-                "MISSING_EXPECTED",
+                "MATCHED",
             )
             self.assertEqual(summary["reports"]["markdown"], str(markdown_report))
             self.assertEqual(summary["reports"]["html"], str(html_report))

@@ -71,6 +71,8 @@ class RendererBackendLinuxHandoffDockerTests(unittest.TestCase):
                         str(repo_root),
                         "--docker-binary",
                         str(fake_docker),
+                        "--docker-platform",
+                        "linux/amd64",
                         "--output-root",
                         str(root / "output"),
                         "--skip-run",
@@ -82,10 +84,13 @@ class RendererBackendLinuxHandoffDockerTests(unittest.TestCase):
                 (root / "output" / "renderer_backend_linux_handoff_docker_run.json").read_text(encoding="utf-8")
             )
             args_text = log_path.read_text(encoding="utf-8")
+            self.assertIn("--platform", args_text)
+            self.assertIn("linux/amd64", args_text)
             self.assertIn("python:3.11-slim", args_text)
             self.assertIn("/workspace/scripts/run_renderer_backend_linux_handoff.py", args_text)
             self.assertIn("--skip-run", args_text)
             self.assertEqual(summary["return_code"], 0)
+            self.assertEqual(summary["docker_platform"], "linux/amd64")
             self.assertGreaterEqual(len(summary["mounts"]), 2)
 
     def test_linux_handoff_docker_wrapper_propagates_exit_code(self) -> None:
