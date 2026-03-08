@@ -108,6 +108,10 @@ Implemented in the current repository:
    - route-interaction-specific gate thresholds now cover `path_conflict`, `merge_conflict`, `lane_change_conflict`, and `min_ttc_path_conflict_sec`
    - attention rows now carry explicit `attention_reasons` including `PATH_CONFLICT_PRESENT`, `MERGE_CONFLICT_PRESENT`, `LANE_CHANGE_CONFLICT_PRESENT`, and `PATH_TTC_UNDER_3S`
    - logical-scenario health rows now propagate per-scenario gate failures for route-interaction thresholds, not only collision/timeout/TTC-any-lane failures
+25. compact failing-scenario triage for batch workflows
+   - batch comparison now aggregates `attention_reason_counts` across attention rows
+   - batch workflow now exposes `failing_logical_scenario_rows`, `failing_logical_scenario_gate_failure_code_counts`, and `failing_logical_scenario_health_reason_counts`
+   - workflow Markdown now includes a dedicated `Failing Logical Scenarios` table for direct triage
 
 Still pending from the same migration track:
 

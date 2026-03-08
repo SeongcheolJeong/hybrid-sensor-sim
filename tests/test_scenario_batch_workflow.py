@@ -370,6 +370,19 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             self.assertIn("MERGE_CONFLICT_PRESENT", health_row["health_reasons"])
             self.assertIn("PATH_CONFLICT_PRESENT", health_row["health_reasons"])
             self.assertIn("MERGE_CONFLICT_ROWS_EXCEEDED", health_row["gate_failure_codes"])
+            self.assertEqual(workflow_report["comparison_summary"]["failing_logical_scenario_row_count"], 1)
+            failing_row = workflow_report["comparison_summary"]["failing_logical_scenario_rows"][0]
+            self.assertEqual(failing_row["logical_scenario_id"], "scn_route_attention")
+            self.assertEqual(
+                workflow_report["comparison_summary"]["failing_logical_scenario_gate_failure_code_counts"][
+                    "MERGE_CONFLICT_ROWS_EXCEEDED"
+                ],
+                1,
+            )
+            self.assertEqual(
+                workflow_report["comparison_summary"]["attention_reason_counts"]["PATH_CONFLICT_PRESENT"],
+                1,
+            )
 
     def test_scenario_batch_workflow_cli_can_resolve_gate_profile_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

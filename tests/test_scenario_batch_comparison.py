@@ -352,6 +352,9 @@ class ScenarioBatchComparisonTests(unittest.TestCase):
             self.assertIn("MERGE_CONFLICT_PRESENT", attention_row["attention_reasons"])
             self.assertIn("PATH_TTC_UNDER_3S", attention_row["attention_reasons"])
             self.assertGreater(attention_row["merge_conflict_rows"], 0)
+            self.assertEqual(report["comparison_tables"]["attention_reason_counts"]["PATH_CONFLICT_PRESENT"], 1)
+            self.assertEqual(report["comparison_tables"]["attention_reason_counts"]["MERGE_CONFLICT_PRESENT"], 1)
+            self.assertEqual(report["comparison_tables"]["attention_reason_counts"]["PATH_TTC_UNDER_3S"], 1)
 
     def test_scenario_batch_comparison_cli_threshold_can_override_profile(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -643,6 +643,14 @@ def _build_attention_rows(batch_rows: list[dict[str, Any]]) -> list[dict[str, An
     return rows
 
 
+def _build_attention_reason_counts(attention_rows: list[dict[str, Any]]) -> dict[str, int]:
+    counter: Counter[str] = Counter()
+    for row in attention_rows:
+        for reason in row.get("attention_reasons", []):
+            counter[str(reason)] += 1
+    return dict(sorted(counter.items()))
+
+
 def _build_overview(
     *,
     workflow_report: dict[str, Any],
@@ -864,6 +872,7 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
     logical_rows = report["comparison_tables"]["logical_scenario_rows"]
     matrix_rows = report["comparison_tables"]["matrix_group_rows"]
     attention_rows = report["comparison_tables"]["attention_rows"]
+    attention_reason_counts = report["comparison_tables"].get("attention_reason_counts", {})
     gate = report["gate"]
 
     sections: list[str] = []
@@ -1009,6 +1018,8 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
     )
     sections.append("")
     sections.append("## Attention Rows")
+    sections.append("")
+    sections.append(f"- Attention reason counts: `{_format_counter(attention_reason_counts)}`")
     sections.append("")
     if attention_rows:
         sections.append(
@@ -1156,6 +1167,7 @@ def build_scenario_batch_comparison_report(
             "logical_scenario_rows": logical_scenario_rows,
             "matrix_group_rows": matrix_group_rows,
             "attention_rows": attention_rows,
+            "attention_reason_counts": _build_attention_reason_counts(attention_rows),
         },
     }
     report["comparison_tables"]["logical_scenario_row_count"] = len(logical_scenario_rows)

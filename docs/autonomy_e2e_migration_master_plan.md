@@ -39,6 +39,7 @@ Implemented from the first migration wave:
 19. propagation of route interaction summaries into batch comparison and workflow reporting
 20. route-interaction-aware batch gate thresholds and attention reasons
 21. per-scenario route-interaction gate failures in logical-scenario health reporting
+22. compact failing logical-scenario triage and attention-reason aggregation in batch reports
 
 Current repository paths:
 

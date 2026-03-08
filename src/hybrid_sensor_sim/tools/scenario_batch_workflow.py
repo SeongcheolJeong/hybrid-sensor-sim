@@ -379,12 +379,37 @@ def _build_logical_scenario_health_rows(
     return health_rows
 
 
+def _build_failing_logical_scenario_rows(
+    logical_scenario_health_rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, int], dict[str, int]]:
+    failing_rows = [
+        dict(row)
+        for row in logical_scenario_health_rows
+        if row["health_status"] == "FAIL" or row["gate_status"] == "FAIL"
+    ]
+    gate_failure_code_counts: dict[str, int] = {}
+    health_reason_counts: dict[str, int] = {}
+    for row in failing_rows:
+        for code in row.get("gate_failure_codes", []):
+            code_key = str(code)
+            gate_failure_code_counts[code_key] = gate_failure_code_counts.get(code_key, 0) + 1
+        for reason in row.get("health_reasons", []):
+            reason_key = str(reason)
+            health_reason_counts[reason_key] = health_reason_counts.get(reason_key, 0) + 1
+    return (
+        failing_rows,
+        dict(sorted(gate_failure_code_counts.items())),
+        dict(sorted(health_reason_counts.items())),
+    )
+
+
 def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
     variant_summary = workflow_report["variant_summary"]
     matrix_summary = workflow_report["matrix_summary"]
     comparison_summary = workflow_report["comparison_summary"]
     gate = comparison_summary["gate"]
     logical_health_rows = comparison_summary["logical_scenario_health_rows"]
+    failing_logical_rows = comparison_summary["failing_logical_scenario_rows"]
     logical_rows = comparison_summary["logical_scenario_rows"]
     matrix_rows = comparison_summary["matrix_group_rows"]
     lines = [
@@ -446,6 +471,48 @@ def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
         )
     else:
         lines.append("No logical scenario health rows.")
+    lines.extend(
+        [
+            "",
+            "## Failing Logical Scenarios",
+            "",
+            f"- Gate failure code counts: `{_format_counter(comparison_summary['failing_logical_scenario_gate_failure_code_counts'])}`",
+            f"- Health reason counts: `{_format_counter(comparison_summary['failing_logical_scenario_health_reason_counts'])}`",
+            "",
+        ]
+    )
+    if failing_logical_rows:
+        lines.append(
+            _markdown_table(
+                [
+                    "Logical Scenario",
+                    "Health",
+                    "Gate",
+                    "Gate Failure Codes",
+                    "Reasons",
+                    "Path",
+                    "Merge",
+                    "Lane Change",
+                    "Min TTC Path",
+                ],
+                [
+                    [
+                        str(row["logical_scenario_id"] or "-"),
+                        str(row["health_status"]),
+                        str(row["gate_status"]),
+                        ",".join(str(item) for item in row["gate_failure_codes"]) or "-",
+                        ",".join(row["health_reasons"]) or "-",
+                        str(row.get("path_conflict_row_count", 0)),
+                        str(row.get("merge_conflict_row_count", 0)),
+                        str(row.get("lane_change_conflict_row_count", 0)),
+                        _format_float(row.get("min_ttc_path_conflict_sec_min")),
+                    ]
+                    for row in failing_logical_rows
+                ],
+            )
+        )
+    else:
+        lines.append("No failing logical scenarios.")
     lines.extend(
         [
             "",
@@ -705,6 +772,11 @@ def run_scenario_batch_workflow(
         list(comparison_report["comparison_tables"]["logical_scenario_rows"]),
         gate_policy=dict(comparison_report["gate"]["policy"]),
     )
+    (
+        failing_logical_scenario_rows,
+        failing_logical_scenario_gate_failure_code_counts,
+        failing_logical_scenario_health_reason_counts,
+    ) = _build_failing_logical_scenario_rows(logical_scenario_health_rows)
     variant_workflow_report = variant_result["workflow_report"]
     workflow_status = _build_workflow_status(
         variant_workflow_report=variant_workflow_report,
@@ -773,10 +845,15 @@ def run_scenario_batch_workflow(
                 "PASS": sum(1 for row in logical_scenario_health_rows if row["gate_status"] == "PASS"),
                 "FAIL": sum(1 for row in logical_scenario_health_rows if row["gate_status"] == "FAIL"),
             },
+            "failing_logical_scenario_rows": failing_logical_scenario_rows,
+            "failing_logical_scenario_row_count": len(failing_logical_scenario_rows),
+            "failing_logical_scenario_gate_failure_code_counts": failing_logical_scenario_gate_failure_code_counts,
+            "failing_logical_scenario_health_reason_counts": failing_logical_scenario_health_reason_counts,
             "logical_scenario_rows": list(comparison_report["comparison_tables"]["logical_scenario_rows"]),
             "matrix_group_rows": list(comparison_report["comparison_tables"]["matrix_group_rows"]),
             "attention_row_count": int(comparison_report["comparison_tables"]["attention_row_count"]),
             "attention_rows": list(comparison_report["comparison_tables"]["attention_rows"]),
+            "attention_reason_counts": dict(comparison_report["comparison_tables"]["attention_reason_counts"]),
             "gate": dict(comparison_report["gate"]),
         },
     }
