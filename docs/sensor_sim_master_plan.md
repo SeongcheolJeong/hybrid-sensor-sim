@@ -255,6 +255,7 @@ Primary code references:
   - workflow can now optionally execute that Docker handoff path directly and record the Docker handoff result in the workflow summary/report
   - a standalone Docker handoff self-test now exists, so the full `bundle -> Docker verify/run` path can be validated even before AWSIM/CARLA binaries are present
   - local runtime discovery can now run and persist that Docker handoff self-test as a probe, so readiness summaries capture Linux handoff execution health directly
+  - workflow now consumes that probe as Docker handoff preflight and can resolve env-placeholder smoke presets directly from setup-summary selections
   - local runtime discovery can now optionally run a real HELIOS docker demo probe and persist the result for readiness triage
   - local runtime discovery also emits backend acquisition hints so source-only AWSIM/CARLA states map directly to concrete download/build next steps
   - backend package acquire tool now resolves official package URLs from local setup summary, downloads archives, and chains directly into staging

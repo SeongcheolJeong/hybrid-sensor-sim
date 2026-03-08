@@ -556,6 +556,8 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - when `heliosplusplus:cli` is present in Docker Desktop, discovery can mark HELIOS as docker-ready even if `HELIOS_BIN` is unset.
 - `--probe-helios-docker-demo` runs the configured docker demo and records actual HELIOS execution success/failure in `probes.helios_docker_demo`.
 - `--probe-linux-handoff-docker-selftest` runs the synthetic Linux handoff Docker self-test and records the result in `probes.linux_handoff_docker_selftest`.
+- `run_renderer_backend_workflow.py --run-linux-handoff-docker` now reads that probe as a Docker preflight summary; if the probe is failed, workflow reports `HANDOFF_DOCKER_PREFLIGHT_FAILED` before attempting the Docker handoff run.
+- workflow smoke config materialization now uses setup-summary selections as env overrides, so docker presets with `${AWSIM_BIN}` / `${HELIOS_DOCKER_IMAGE}` style placeholders can be resolved without first exporting those variables into the shell.
 - use `--no-default-search-roots` when you want discovery to only scan explicit `--search-root` inputs plus the repo root.
 
 ### Local backend package staging

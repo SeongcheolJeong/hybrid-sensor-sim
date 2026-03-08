@@ -335,6 +335,21 @@ def _render_workflow_markdown_report(summary: dict[str, Any], summary_path: Path
                 "",
             ]
         )
+        preflight = docker_handoff.get("preflight", {})
+        if isinstance(preflight, dict) and preflight:
+            lines.extend(
+                [
+                    "### Docker Preflight",
+                    f"- available: `{_inline(preflight.get('available'))}`",
+                    f"- success: `{_inline(preflight.get('success'))}`",
+                    f"- execute: `{_inline(preflight.get('execute'))}`",
+                    f"- marker_exists: `{_inline(preflight.get('marker_exists'))}`",
+                    f"- docker_return_code: `{_inline(preflight.get('docker_return_code'))}`",
+                    f"- command: `{_inline(preflight.get('command'))}`",
+                    f"- summary_path: `{_inline(preflight.get('summary_path'))}`",
+                    "",
+                ]
+            )
         if docker_handoff.get("error"):
             lines.append(f"- error: `{_inline(docker_handoff.get('error'))}`")
             lines.append("")
@@ -484,6 +499,39 @@ def _refresh_setup_summary(
     return refreshed, summary_path, env_path
 
 
+def _extract_linux_handoff_docker_preflight(setup_summary: dict[str, Any]) -> dict[str, Any]:
+    probes = setup_summary.get("probes", {})
+    probe = probes.get("linux_handoff_docker_selftest", {}) if isinstance(probes, dict) else {}
+    commands = setup_summary.get("commands", {})
+    artifacts = setup_summary.get("artifacts", {})
+    if not isinstance(probe, dict):
+        probe = {}
+    return {
+        "available": bool(probe),
+        "success": probe.get("success"),
+        "execute": probe.get("execute"),
+        "marker_exists": probe.get("marker_exists"),
+        "marker_content": probe.get("marker_content"),
+        "docker_return_code": (
+            probe.get("docker", {}).get("return_code")
+            if isinstance(probe.get("docker"), dict)
+            else None
+        ),
+        "summary_path": probe.get("summary_path")
+        or (
+            artifacts.get("linux_handoff_docker_selftest_probe_path")
+            if isinstance(artifacts, dict)
+            else None
+        ),
+        "command": (
+            commands.get("linux_handoff_docker_selftest")
+            if isinstance(commands, dict)
+            else None
+        ),
+        "probe": probe,
+    }
+
+
 def _build_blockers(
     *,
     backend: str,
@@ -499,6 +547,8 @@ def _build_blockers(
     planned_smoke_config_ready: bool,
     planned_smoke_config_error: str | None,
     recommended_next_command: str | None,
+    run_linux_handoff_docker: bool = False,
+    docker_handoff_preflight: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     blockers: list[dict[str, Any]] = []
     acquisition_hints = setup_summary.get("acquisition_hints", {})
@@ -587,6 +637,20 @@ def _build_blockers(
                 "severity": "blocking",
                 "message": f"Backend smoke exited with code {smoke_exit_code}.",
                 "recommended_command": recommended_next_command,
+            }
+        )
+    if (
+        run_linux_handoff_docker
+        and isinstance(docker_handoff_preflight, dict)
+        and docker_handoff_preflight.get("available")
+        and docker_handoff_preflight.get("success") is False
+    ):
+        blockers.append(
+            {
+                "code": "HANDOFF_DOCKER_PREFLIGHT_FAILED",
+                "severity": "blocking",
+                "message": "Docker handoff preflight probe failed.",
+                "recommended_command": docker_handoff_preflight.get("command"),
             }
         )
     return blockers
@@ -1540,6 +1604,7 @@ def build_renderer_backend_workflow(
     active_setup_summary_path = refreshed_setup_summary_path or resolved_setup_summary_path
     active_setup_selection = dict(active_setup_summary.get("selection", {}))
     active_setup_readiness = active_setup_summary.get("readiness", {})
+    docker_handoff_preflight = _extract_linux_handoff_docker_preflight(active_setup_summary)
 
     smoke_config_path, smoke_config_source = _determine_smoke_config(
         backend=backend,
@@ -1609,6 +1674,7 @@ def build_renderer_backend_workflow(
             renderer_map_override=selected_renderer_map,
             option_overrides=option_overrides,
             repo_root=repo_root,
+            env_overrides=active_setup_selection,
         )
         planned_smoke_config_ready = True
     except Exception as exc:
@@ -1687,6 +1753,8 @@ def build_renderer_backend_workflow(
         planned_smoke_config_ready=planned_smoke_config_ready,
         planned_smoke_config_error=planned_smoke_config_error,
         recommended_next_command=recommended_next_command,
+        run_linux_handoff_docker=run_linux_handoff_docker,
+        docker_handoff_preflight=docker_handoff_preflight,
     )
     linux_handoff = _build_linux_handoff(
         backend=backend,
@@ -1709,6 +1777,12 @@ def build_renderer_backend_workflow(
         and not backend_host_compatible
     ):
         recommended_next_command = linux_handoff.get("script_command") or linux_handoff.get("runner_command")
+        if (
+            run_linux_handoff_docker
+            and docker_handoff_preflight.get("available")
+            and docker_handoff_preflight.get("success") is False
+        ):
+            recommended_next_command = docker_handoff_preflight.get("command") or recommended_next_command
         blockers = _build_blockers(
             backend=backend,
             setup_summary=setup_summary,
@@ -1723,6 +1797,8 @@ def build_renderer_backend_workflow(
             planned_smoke_config_ready=planned_smoke_config_ready,
             planned_smoke_config_error=planned_smoke_config_error,
             recommended_next_command=recommended_next_command,
+            run_linux_handoff_docker=run_linux_handoff_docker,
+            docker_handoff_preflight=docker_handoff_preflight,
         )
     return {
         "backend": backend,
@@ -1738,6 +1814,7 @@ def build_renderer_backend_workflow(
             "summary_path": str(resolved_setup_summary_path),
             "readiness": setup_readiness,
             "selection": setup_selection,
+            "probes": setup_summary.get("probes"),
             "commands": setup_summary.get("commands"),
         },
         "refreshed_setup": (
@@ -1746,6 +1823,7 @@ def build_renderer_backend_workflow(
                 "env_path": str(refreshed_setup_env_path),
                 "readiness": refreshed_setup_summary.get("readiness"),
                 "selection": refreshed_setup_summary.get("selection"),
+                "probes": refreshed_setup_summary.get("probes"),
                 "commands": refreshed_setup_summary.get("commands"),
             }
             if refreshed_setup_summary is not None
@@ -1802,6 +1880,7 @@ def build_renderer_backend_workflow(
         "docker_handoff": {
             "requested": run_linux_handoff_docker,
             "ready": bool(linux_handoff.get("ready")),
+            "preflight": docker_handoff_preflight,
             "execute_in_container": docker_handoff_execute,
             "skip_run": not docker_handoff_execute,
             "docker_binary": docker_binary,
@@ -1981,61 +2060,67 @@ def main(argv: list[str] | None = None) -> int:
                 _write_json(linux_handoff_verification_manifest_path, verification_payload)
     docker_handoff = summary.get("docker_handoff", {})
     if isinstance(docker_handoff, dict) and docker_handoff.get("requested"):
-        bundle_path_value = None
-        if isinstance(bundle_summary, dict):
-            bundle_path_value = bundle_summary.get("bundle_path")
-        if (
-            isinstance(bundle_path_value, str)
-            and summary["linux_handoff"].get("ready")
-            and not _resolve_path(bundle_path_value).exists()
-        ):
-            bundle_result = _pack_linux_handoff_bundle(
-                transfer_manifest=summary["linux_handoff"]["transfer_manifest"],
-                bundle_path=_resolve_path(bundle_path_value),
-                bundle_manifest_path=linux_handoff_bundle_manifest_path,
-            )
-            if isinstance(bundle_summary, dict):
-                bundle_summary.update(bundle_result)
-                bundle_summary["bundle_generated"] = True
-        if not summary["linux_handoff"].get("ready"):
-            docker_handoff["error"] = "Linux handoff is not ready."
-        elif not isinstance(bundle_path_value, str):
-            docker_handoff["error"] = "Linux handoff bundle path is not available."
+        preflight = docker_handoff.get("preflight", {})
+        if isinstance(preflight, dict) and preflight.get("available") and preflight.get("success") is False:
+            docker_handoff["error"] = "Docker handoff preflight probe failed."
+            summary["status"] = "HANDOFF_DOCKER_PREFLIGHT_FAILED"
+            summary["success"] = False
         else:
-            bundle_path = _resolve_path(bundle_path_value)
-            if not bundle_path.exists():
-                docker_handoff["error"] = f"Linux handoff bundle is missing: {bundle_path}"
-            else:
-                docker_result = run_renderer_backend_linux_handoff_in_docker(
-                    bundle_path=bundle_path,
-                    transfer_manifest_path=linux_handoff_transfer_manifest_path,
-                    bundle_manifest_path=(
-                        linux_handoff_bundle_manifest_path
-                        if linux_handoff_bundle_manifest_path.exists()
-                        else None
-                    ),
-                    repo_root=repo_root,
-                    output_root=_resolve_path(docker_handoff["output_root"]),
-                    summary_path=_resolve_path(docker_handoff["summary_path"]),
-                    docker_binary=str(docker_handoff["docker_binary"]),
-                    docker_image=str(docker_handoff["docker_image"]),
-                    container_workspace=str(docker_handoff["container_workspace"]),
-                    skip_run=bool(docker_handoff["skip_run"]),
+            bundle_path_value = None
+            if isinstance(bundle_summary, dict):
+                bundle_path_value = bundle_summary.get("bundle_path")
+            if (
+                isinstance(bundle_path_value, str)
+                and summary["linux_handoff"].get("ready")
+                and not _resolve_path(bundle_path_value).exists()
+            ):
+                bundle_result = _pack_linux_handoff_bundle(
+                    transfer_manifest=summary["linux_handoff"]["transfer_manifest"],
+                    bundle_path=_resolve_path(bundle_path_value),
+                    bundle_manifest_path=linux_handoff_bundle_manifest_path,
                 )
-                docker_handoff["executed"] = True
-                docker_handoff["return_code"] = docker_result.get("return_code")
-                docker_handoff["summary"] = docker_result
-                docker_handoff["error"] = docker_result.get("launch_error")
-                if docker_result.get("return_code") == 0:
-                    summary["status"] = (
-                        "HANDOFF_DOCKER_VERIFIED"
-                        if docker_handoff.get("skip_run")
-                        else "HANDOFF_DOCKER_EXECUTED"
-                    )
-                    summary["success"] = True
+                if isinstance(bundle_summary, dict):
+                    bundle_summary.update(bundle_result)
+                    bundle_summary["bundle_generated"] = True
+            if not summary["linux_handoff"].get("ready"):
+                docker_handoff["error"] = "Linux handoff is not ready."
+            elif not isinstance(bundle_path_value, str):
+                docker_handoff["error"] = "Linux handoff bundle path is not available."
+            else:
+                bundle_path = _resolve_path(bundle_path_value)
+                if not bundle_path.exists():
+                    docker_handoff["error"] = f"Linux handoff bundle is missing: {bundle_path}"
                 else:
-                    summary["status"] = "HANDOFF_DOCKER_FAILED"
-                    summary["success"] = False
+                    docker_result = run_renderer_backend_linux_handoff_in_docker(
+                        bundle_path=bundle_path,
+                        transfer_manifest_path=linux_handoff_transfer_manifest_path,
+                        bundle_manifest_path=(
+                            linux_handoff_bundle_manifest_path
+                            if linux_handoff_bundle_manifest_path.exists()
+                            else None
+                        ),
+                        repo_root=repo_root,
+                        output_root=_resolve_path(docker_handoff["output_root"]),
+                        summary_path=_resolve_path(docker_handoff["summary_path"]),
+                        docker_binary=str(docker_handoff["docker_binary"]),
+                        docker_image=str(docker_handoff["docker_image"]),
+                        container_workspace=str(docker_handoff["container_workspace"]),
+                        skip_run=bool(docker_handoff["skip_run"]),
+                    )
+                    docker_handoff["executed"] = True
+                    docker_handoff["return_code"] = docker_result.get("return_code")
+                    docker_handoff["summary"] = docker_result
+                    docker_handoff["error"] = docker_result.get("launch_error")
+                    if docker_result.get("return_code") == 0:
+                        summary["status"] = (
+                            "HANDOFF_DOCKER_VERIFIED"
+                            if docker_handoff.get("skip_run")
+                            else "HANDOFF_DOCKER_EXECUTED"
+                        )
+                        summary["success"] = True
+                    else:
+                        summary["status"] = "HANDOFF_DOCKER_FAILED"
+                        summary["success"] = False
     _write_json(summary_path, summary)
     _write_text(report_path, _render_workflow_markdown_report(summary, summary_path))
     _write_executable_text(next_step_script_path, _render_next_step_script(summary))

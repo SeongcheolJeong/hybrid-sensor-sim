@@ -88,10 +88,14 @@ def _resolve_runtime_path(raw: Any) -> Path:
     return (Path.cwd() / path).resolve()
 
 
-def _expand_env_string(raw: str) -> str:
+def _expand_env_string(raw: str, env_overrides: dict[str, Any] | None = None) -> str:
     def _replace(match: re.Match[str]) -> str:
         env_name = match.group(1)
         default_value = match.group(2)
+        if isinstance(env_overrides, dict) and env_name in env_overrides:
+            override_value = env_overrides.get(env_name)
+            if override_value is not None:
+                return str(override_value)
         env_value = None
         try:
             from os import environ
@@ -110,13 +114,16 @@ def _expand_env_string(raw: str) -> str:
     return _ENV_PATTERN.sub(_replace, raw)
 
 
-def _resolve_env_payload(payload: Any) -> Any:
+def _resolve_env_payload(payload: Any, env_overrides: dict[str, Any] | None = None) -> Any:
     if isinstance(payload, dict):
-        return {str(key): _resolve_env_payload(value) for key, value in payload.items()}
+        return {
+            str(key): _resolve_env_payload(value, env_overrides)
+            for key, value in payload.items()
+        }
     if isinstance(payload, list):
-        return [_resolve_env_payload(item) for item in payload]
+        return [_resolve_env_payload(item, env_overrides) for item in payload]
     if isinstance(payload, str):
-        return _expand_env_string(payload)
+        return _expand_env_string(payload, env_overrides)
     return payload
 
 
@@ -611,8 +618,9 @@ def _build_effective_config(
     renderer_map_override: str | None,
     option_overrides: list[str],
     repo_root: Path,
+    env_overrides: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    effective = dict(_resolve_env_payload(base_config))
+    effective = dict(_resolve_env_payload(base_config, env_overrides))
     options = dict(effective.get("options", {}))
     forced_options: dict[str, Any] = {
         "renderer_bridge_enabled": True,
