@@ -222,7 +222,8 @@ python3 scripts/run_scenario_batch_workflow.py \
 - `matrix_summary`: matrix-sweep case summary
 - `comparison_summary`: cross-batch overview, gate result, and compact attention rows
 - `comparison_summary.logical_scenario_rows`: compact logical-scenario table reused by workflow Markdown
-- `comparison_summary.logical_scenario_health_rows`: pass/fail/attention logical-scenario health table derived from collisions, timeouts, execution failures, and TTC threshold breaches
+- `comparison_summary.logical_scenario_health_rows`: pass/fail/attention logical-scenario health table derived from collisions, timeouts, execution failures, and TTC threshold breaches, now including per-scenario `gate_status`, `gate_failure_codes`, and `gate_evaluated_rules`
+- `comparison_summary.logical_scenario_health_gate_status_counts`: compact `DISABLED|PASS|FAIL` counts for the per-scenario gate surface
 - `comparison_summary.matrix_group_rows`: compact matrix-group table reused by workflow Markdown
 - `variant_summary.successful_variant_rows`: compact successful variant rows reused by workflow Markdown
 - `variant_summary.non_success_variant_rows`: compact failed/skipped variant rows reused by workflow Markdown
@@ -230,7 +231,7 @@ python3 scripts/run_scenario_batch_workflow.py \
 
 Use `--fail-on-attention` if attention rows should fail the command.
 Use `--gate-profile-id` when you want a preset gate policy without spelling out the JSON path.
-The workflow Markdown report now includes logical-scenario health, logical-scenario summary, matrix-group summary, and successful/non-success variant tables.
+The workflow Markdown report now includes logical-scenario health with per-scenario gate columns, logical-scenario summary, matrix-group summary, and successful/non-success variant tables.
 
 Both `run_scenario_variants.py` and `run_scenario_variant_workflow.py` resolve default scenario-language profiles from:
 

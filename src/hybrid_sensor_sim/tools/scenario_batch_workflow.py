@@ -183,23 +183,105 @@ def _build_logical_scenario_health_rows(
 ) -> list[dict[str, Any]]:
     health_rows: list[dict[str, Any]] = []
     min_ttc_threshold = _coerce_optional_float(gate_policy.get("min_min_ttc_any_lane_sec"))
+    max_attention_rows = gate_policy.get("max_attention_rows")
+    max_collision_rows = gate_policy.get("max_collision_rows")
+    max_timeout_rows = gate_policy.get("max_timeout_rows")
+
+    def evaluate_rule(
+        *,
+        metric_id: str,
+        metric_value: Any,
+        threshold_value: Any,
+        comparison: str,
+        failure_code: str,
+    ) -> dict[str, Any] | None:
+        if threshold_value is None:
+            return None
+        if comparison == "max_le":
+            passed = int(metric_value) <= int(threshold_value)
+        elif comparison == "min_ge":
+            metric_float = _coerce_optional_float(metric_value)
+            threshold_float = float(threshold_value)
+            passed = metric_float is not None and metric_float >= threshold_float
+        else:
+            raise ValueError(f"unsupported gate comparison: {comparison}")
+        return {
+            "metric_id": metric_id,
+            "metric_value": metric_value,
+            "threshold_value": threshold_value,
+            "comparison": comparison,
+            "passed": bool(passed),
+            "failure_code": None if passed else failure_code,
+        }
+
     for row in logical_rows:
         execution_status_counts = dict(row.get("execution_status_counts", {}))
         variant_count = int(row.get("variant_count", 0))
         succeeded_count = int(execution_status_counts.get("SUCCEEDED", 0))
         non_success_variant_count = max(variant_count - succeeded_count, 0)
+        collision_count = int(row.get("collision_count", 0))
+        timeout_count = int(row.get("timeout_count", 0))
+        attention_variant_count = max(non_success_variant_count, collision_count, timeout_count)
+        min_ttc_any_lane_sec = _coerce_optional_float(row.get("min_ttc_any_lane_sec_min"))
+        gate_evaluated_rules = [
+            rule
+            for rule in [
+                evaluate_rule(
+                    metric_id="attention_variant_count",
+                    metric_value=attention_variant_count,
+                    threshold_value=max_attention_rows,
+                    comparison="max_le",
+                    failure_code="ATTENTION_ROWS_EXCEEDED",
+                ),
+                evaluate_rule(
+                    metric_id="collision_count",
+                    metric_value=collision_count,
+                    threshold_value=max_collision_rows,
+                    comparison="max_le",
+                    failure_code="COLLISION_ROWS_EXCEEDED",
+                ),
+                evaluate_rule(
+                    metric_id="timeout_count",
+                    metric_value=timeout_count,
+                    threshold_value=max_timeout_rows,
+                    comparison="max_le",
+                    failure_code="TIMEOUT_ROWS_EXCEEDED",
+                ),
+                evaluate_rule(
+                    metric_id="min_ttc_any_lane_sec_min",
+                    metric_value=min_ttc_any_lane_sec,
+                    threshold_value=min_ttc_threshold,
+                    comparison="min_ge",
+                    failure_code="MIN_TTC_BELOW_THRESHOLD",
+                ),
+            ]
+            if rule is not None
+        ]
+        gate_failure_codes = [
+            str(rule["failure_code"])
+            for rule in gate_evaluated_rules
+            if not bool(rule["passed"]) and rule.get("failure_code")
+        ]
+        if not gate_evaluated_rules:
+            gate_status = "DISABLED"
+            gate_passed = True
+        elif gate_failure_codes:
+            gate_status = "FAIL"
+            gate_passed = False
+        else:
+            gate_status = "PASS"
+            gate_passed = True
         reasons: list[str] = []
-        fail = False
+        fail = gate_status == "FAIL"
         if int(execution_status_counts.get("FAILED", 0)) > 0:
             reasons.append("EXECUTION_FAILURE_PRESENT")
             fail = True
-        if int(row.get("collision_count", 0)) > 0:
+        if collision_count > 0:
             reasons.append("COLLISION_PRESENT")
             fail = True
-        if int(row.get("timeout_count", 0)) > 0:
+        if timeout_count > 0:
             reasons.append("TIMEOUT_PRESENT")
             fail = True
-        min_ttc_any_lane_sec = _coerce_optional_float(row.get("min_ttc_any_lane_sec_min"))
         if (
             min_ttc_threshold is not None
             and min_ttc_any_lane_sec is not None
@@ -209,6 +291,9 @@ def _build_logical_scenario_health_rows(
             fail = True
         if non_success_variant_count > 0 and "NON_SUCCESS_VARIANTS_PRESENT" not in reasons:
             reasons.append("NON_SUCCESS_VARIANTS_PRESENT")
+        for failure_code in gate_failure_codes:
+            if failure_code not in reasons:
+                reasons.append(failure_code)
         if fail:
             health_status = "FAIL"
         elif non_success_variant_count > 0:
@@ -222,10 +307,15 @@ def _build_logical_scenario_health_rows(
                 "health_reasons": reasons,
                 "variant_count": variant_count,
                 "non_success_variant_count": non_success_variant_count,
-                "collision_count": int(row.get("collision_count", 0)),
-                "timeout_count": int(row.get("timeout_count", 0)),
+                "attention_variant_count": attention_variant_count,
+                "collision_count": collision_count,
+                "timeout_count": timeout_count,
                 "min_ttc_any_lane_sec_min": min_ttc_any_lane_sec,
                 "gate_min_min_ttc_any_lane_sec": min_ttc_threshold,
+                "gate_status": gate_status,
+                "gate_passed": gate_passed,
+                "gate_failure_codes": gate_failure_codes,
+                "gate_evaluated_rules": gate_evaluated_rules,
             }
         )
     return health_rows
@@ -270,6 +360,8 @@ def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
                 [
                     "Logical Scenario",
                     "Health",
+                    "Gate",
+                    "Gate Failure Codes",
                     "Reasons",
                     "Variants",
                     "Non-Success",
@@ -281,6 +373,8 @@ def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
                     [
                         str(row["logical_scenario_id"] or "-"),
                         str(row["health_status"]),
+                        str(row["gate_status"]),
+                        ",".join(str(item) for item in row["gate_failure_codes"]) or "-",
                         ",".join(row["health_reasons"]) or "-",
                         str(row["variant_count"]),
                         str(row["non_success_variant_count"]),
@@ -591,6 +685,11 @@ def run_scenario_batch_workflow(
                 "PASS": sum(1 for row in logical_scenario_health_rows if row["health_status"] == "PASS"),
                 "ATTENTION": sum(1 for row in logical_scenario_health_rows if row["health_status"] == "ATTENTION"),
                 "FAIL": sum(1 for row in logical_scenario_health_rows if row["health_status"] == "FAIL"),
+            },
+            "logical_scenario_health_gate_status_counts": {
+                "DISABLED": sum(1 for row in logical_scenario_health_rows if row["gate_status"] == "DISABLED"),
+                "PASS": sum(1 for row in logical_scenario_health_rows if row["gate_status"] == "PASS"),
+                "FAIL": sum(1 for row in logical_scenario_health_rows if row["gate_status"] == "FAIL"),
             },
             "logical_scenario_rows": list(comparison_report["comparison_tables"]["logical_scenario_rows"]),
             "matrix_group_rows": list(comparison_report["comparison_tables"]["matrix_group_rows"]),

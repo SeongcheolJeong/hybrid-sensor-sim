@@ -85,9 +85,21 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             self.assertEqual(workflow_report["comparison_summary"]["matrix_group_row_count"], 1)
             self.assertEqual(workflow_report["comparison_summary"]["logical_scenario_health_row_count"], 1)
             self.assertEqual(workflow_report["comparison_summary"]["logical_scenario_health_status_counts"]["PASS"], 1)
+            self.assertEqual(
+                workflow_report["comparison_summary"]["logical_scenario_health_gate_status_counts"]["DISABLED"],
+                1,
+            )
             self.assertEqual(len(workflow_report["comparison_summary"]["logical_scenario_rows"]), 1)
             self.assertEqual(len(workflow_report["comparison_summary"]["matrix_group_rows"]), 1)
             self.assertEqual(len(workflow_report["comparison_summary"]["logical_scenario_health_rows"]), 1)
+            self.assertEqual(
+                workflow_report["comparison_summary"]["logical_scenario_health_rows"][0]["gate_status"],
+                "DISABLED",
+            )
+            self.assertEqual(
+                workflow_report["comparison_summary"]["logical_scenario_health_rows"][0]["gate_failure_codes"],
+                [],
+            )
             self.assertTrue(Path(result["workflow_report_path"]).is_file())
             self.assertTrue(Path(workflow_report["artifacts"]["variant_workflow_report_path"]).is_file())
             self.assertTrue(Path(workflow_report["artifacts"]["matrix_sweep_report_path"]).is_file())
@@ -101,6 +113,7 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             self.assertIn("## Matrix Group Summary", markdown)
             self.assertIn("## Successful Variants", markdown)
             self.assertIn("## Non-Success Variants", markdown)
+            self.assertIn("Gate Failure Codes", markdown)
             self.assertIn("No non-success variants.", markdown)
 
     def test_scenario_batch_workflow_reports_attention_without_failing_by_default(self) -> None:
@@ -215,9 +228,21 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
                 workflow_report["comparison_summary"]["logical_scenario_health_status_counts"]["FAIL"],
                 1,
             )
+            self.assertEqual(
+                workflow_report["comparison_summary"]["logical_scenario_health_gate_status_counts"]["FAIL"],
+                1,
+            )
             self.assertIn(
                 "COLLISION_PRESENT",
                 workflow_report["comparison_summary"]["logical_scenario_health_rows"][0]["health_reasons"],
+            )
+            self.assertEqual(
+                workflow_report["comparison_summary"]["logical_scenario_health_rows"][0]["gate_status"],
+                "FAIL",
+            )
+            self.assertIn(
+                "COLLISION_ROWS_EXCEEDED",
+                workflow_report["comparison_summary"]["logical_scenario_health_rows"][0]["gate_failure_codes"],
             )
             self.assertIn(
                 "COLLISION_ROWS_EXCEEDED",
@@ -262,9 +287,17 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
                 workflow_report["comparison_summary"]["gate"]["policy"]["profile_id"],
                 "scenario_batch_gate_strict_v0",
             )
+            self.assertEqual(
+                workflow_report["comparison_summary"]["logical_scenario_health_rows"][0]["gate_status"],
+                "FAIL",
+            )
             self.assertIn(
                 "ATTENTION_ROWS_EXCEEDED",
                 workflow_report["comparison_summary"]["gate"]["failure_codes"],
+            )
+            self.assertIn(
+                "ATTENTION_ROWS_EXCEEDED",
+                workflow_report["comparison_summary"]["logical_scenario_health_rows"][0]["gate_failure_codes"],
             )
 
     def test_scenario_batch_workflow_cli_can_resolve_gate_profile_id(self) -> None:

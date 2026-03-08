@@ -96,6 +96,7 @@ Implemented in the current repository:
    - preset selection is now supported through `gate_profile_id + gate_profile_dir` at the CLI layer
    - gate preset discovery and ID resolution now live in `src/hybrid_sensor_sim/tools/scenario_batch_gate_catalog.py`
    - workflow summaries now add logical-scenario health rows so cross-batch failures surface as compact per-scenario `PASS|ATTENTION|FAIL` judgments
+   - each logical-scenario health row now also carries per-scenario gate evaluation with `gate_status`, `gate_failure_codes`, and `gate_evaluated_rules`
 
 Still pending from the same migration track:
 
