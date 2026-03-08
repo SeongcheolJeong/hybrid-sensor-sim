@@ -73,8 +73,18 @@ class ScenarioBatchComparisonTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-    def _build_route_avoidance_scenario(self) -> dict[str, object]:
+    def _build_route_avoidance_scenario(
+        self,
+        *,
+        priority: int | None = None,
+        max_gap_m: float | None = None,
+    ) -> dict[str, object]:
         canonical_map_path = str((P_MAP_TOOLSET_FIXTURE_ROOT / "canonical_lane_graph_v0.json").resolve())
+        merge_policy: dict[str, object] = {"ttc_threshold_sec": 3.5, "brake_scale": 0.5}
+        if priority is not None:
+            merge_policy["priority"] = int(priority)
+        if max_gap_m is not None:
+            merge_policy["max_gap_m"] = float(max_gap_m)
         return {
             "scenario_schema_version": "scenario_definition_v0",
             "scenario_id": "scn_route_avoidance",
@@ -91,13 +101,19 @@ class ScenarioBatchComparisonTests(unittest.TestCase):
             "avoidance_ttc_threshold_sec": 3.5,
             "ego_max_brake_mps2": 5.0,
             "avoidance_interaction_policy": {
-                "merge_conflict": {"ttc_threshold_sec": 3.5, "brake_scale": 0.5},
+                "merge_conflict": merge_policy,
             },
             "ego": {"position_m": 0.0, "speed_mps": 10.0, "lane_id": "lane_a"},
             "npcs": [{"position_m": 18.0, "speed_mps": 4.0, "lane_id": "lane_b"}],
         }
 
-    def _write_route_avoidance_logical_scenarios(self, path: Path) -> None:
+    def _write_route_avoidance_logical_scenarios(
+        self,
+        path: Path,
+        *,
+        priority: int | None = None,
+        max_gap_m: float | None = None,
+    ) -> None:
         path.write_text(
             json.dumps(
                 {
@@ -106,7 +122,10 @@ class ScenarioBatchComparisonTests(unittest.TestCase):
                             "scenario_id": "scn_route_avoidance",
                             "parameters": {"scenario_variant": [1]},
                             "variant_payload_kind": "scenario_definition_v0",
-                            "variant_payload_template": self._build_route_avoidance_scenario(),
+                            "variant_payload_template": self._build_route_avoidance_scenario(
+                                priority=priority,
+                                max_gap_m=max_gap_m,
+                            ),
                         }
                     ]
                 },
@@ -708,6 +727,52 @@ class ScenarioBatchComparisonTests(unittest.TestCase):
             self.assertIn("AVOIDANCE_ROWS_EXCEEDED", payload["gate"]["failure_codes"])
             self.assertIn("AVOIDANCE_BRAKE_EVENTS_EXCEEDED", payload["gate"]["failure_codes"])
             self.assertIn("AVOIDANCE_MERGE_CONFLICT_TRIGGER_COUNT_EXCEEDED", payload["gate"]["failure_codes"])
+
+    def test_scenario_batch_comparison_propagates_avoidance_policy_trace_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            logical_path = root / "route_avoidance_logical_scenarios.json"
+            self._write_route_avoidance_logical_scenarios(logical_path, priority=3, max_gap_m=25.0)
+            workflow_result = run_scenario_variant_workflow(
+                logical_scenarios_path=str(logical_path),
+                scenario_language_profile="",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                out_root=root / "workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=1,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+            )
+            run_scenario_matrix_sweep(
+                scenario_path=P_SIM_ENGINE_FIXTURE_ROOT / "highway_safe_following_v0.json",
+                out_root=root / "matrix_runs",
+                report_out=root / "matrix_report.json",
+                run_id_prefix="RUN_MATRIX_COMPARE",
+                traffic_profile_ids=["sumo_highway_balanced_v0"],
+                traffic_actor_pattern_ids=["sumo_platoon_sparse_v0"],
+                traffic_npc_speed_scale_values=[1.0],
+                tire_friction_coeff_values=[1.0],
+                surface_friction_scale_values=[1.0],
+                enable_ego_collision_avoidance=False,
+                avoidance_ttc_threshold_sec=2.5,
+                ego_max_brake_mps2=6.0,
+                max_cases=0,
+            )
+            report = build_scenario_batch_comparison_report(
+                variant_workflow_report_path=Path(workflow_result["workflow_report_path"]),
+                matrix_sweep_report_path=root / "matrix_report.json",
+                out_report=root / "comparison.json",
+            )
+            logical_row = report["comparison_tables"]["logical_scenario_rows"][0]
+            attention_row = report["comparison_tables"]["attention_rows"][0]
+            self.assertEqual(logical_row["ego_avoidance_last_trigger_priority_values"], [3])
+            self.assertEqual(logical_row["ego_avoidance_last_trigger_max_gap_m_values"], [25.0])
+            self.assertEqual(attention_row["ego_avoidance_last_trigger_priority"], 3)
+            self.assertEqual(attention_row["ego_avoidance_last_trigger_max_gap_m"], 25.0)
 
 
 if __name__ == "__main__":

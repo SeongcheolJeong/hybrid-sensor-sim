@@ -446,6 +446,12 @@ def _build_logical_scenario_health_rows(
                 "ego_avoidance_trigger_counts_by_interaction_kind": dict(
                     sorted(ego_avoidance_trigger_counts_by_interaction_kind.items())
                 ),
+                "ego_avoidance_last_trigger_priority_values": list(
+                    row.get("ego_avoidance_last_trigger_priority_values", [])
+                ),
+                "ego_avoidance_last_trigger_max_gap_m_values": list(
+                    row.get("ego_avoidance_last_trigger_max_gap_m_values", [])
+                ),
                 "min_ttc_any_lane_sec_min": min_ttc_any_lane_sec,
                 "min_ttc_path_conflict_sec_min": min_ttc_path_conflict_sec,
                 "gate_min_min_ttc_any_lane_sec": min_ttc_threshold,
@@ -721,6 +727,12 @@ def _build_workflow_status_summary(
                     ),
                     "ego_avoidance_trigger_counts_by_interaction_kind": dict(
                         sorted(dict(row.get("ego_avoidance_trigger_counts_by_interaction_kind", {})).items())
+                    ),
+                    "ego_avoidance_last_trigger_priority_values": list(
+                        row.get("ego_avoidance_last_trigger_priority_values", [])
+                    ),
+                    "ego_avoidance_last_trigger_max_gap_m_values": list(
+                        row.get("ego_avoidance_last_trigger_max_gap_m_values", [])
                     ),
                     "min_ttc_any_lane_sec_min": _coerce_optional_float(row.get("min_ttc_any_lane_sec_min")),
                     "min_ttc_path_conflict_sec_min": _coerce_optional_float(

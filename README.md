@@ -241,6 +241,7 @@ python3 scripts/run_scenario_batch_workflow.py \
   - also includes `avoidance_row_count`, `avoidance_brake_event_count_total`, and `avoidance_trigger_counts_by_interaction_kind`
   - also includes compact `worst_logical_scenario_row` and `worst_matrix_group_row`
   - worst-case ranking is now avoidance-aware: heavy braking and interaction-specific trigger mix are considered before TTC tie-breaks
+  - worst-case rows now also preserve avoidance policy trace values through `ego_avoidance_last_trigger_priority_values` and `ego_avoidance_last_trigger_max_gap_m_values`
 - `variant_summary`: selected variant execution summary copied from the variant workflow
 - `matrix_summary`: matrix-sweep case summary
 - `comparison_summary`: cross-batch overview, gate result, and compact attention rows
@@ -248,6 +249,7 @@ python3 scripts/run_scenario_batch_workflow.py \
 - `comparison_summary.logical_scenario_rows` and `comparison_summary.matrix_group_rows` now also carry aggregated route-interaction fields such as `path_conflict_row_count`, `merge_conflict_row_count`, `lane_change_conflict_row_count`, `path_interaction_counts`, and `min_ttc_path_conflict_sec_min`
 - `comparison_summary.logical_scenario_health_rows`: pass/fail/attention logical-scenario health table derived from collisions, timeouts, execution failures, TTC threshold breaches, and route-interaction thresholds, now including per-scenario `gate_status`, `gate_failure_codes`, `gate_evaluated_rules`, `path_conflict_row_count`, `merge_conflict_row_count`, `lane_change_conflict_row_count`, and `min_ttc_path_conflict_sec_min`
 - `comparison_summary.logical_scenario_health_rows`: now also carries `ego_avoidance_row_count`, `ego_avoidance_brake_event_count_total`, and `ego_avoidance_trigger_counts_by_interaction_kind`
+- `comparison_summary.logical_scenario_health_rows`, `comparison_summary.logical_scenario_rows`, and `comparison_summary.matrix_group_rows` now also preserve avoidance policy trace values through `ego_avoidance_last_trigger_priority_values` and `ego_avoidance_last_trigger_max_gap_m_values`
 - `comparison_summary.logical_scenario_health_gate_status_counts`: compact `DISABLED|PASS|FAIL` counts for the per-scenario gate surface
 - `comparison_summary.failing_logical_scenario_rows`: compact subset of logical scenarios whose health or gate status is `FAIL`
 - `comparison_summary.failing_logical_scenario_gate_failure_code_counts`: aggregate failing gate reasons such as `MERGE_CONFLICT_ROWS_EXCEEDED`

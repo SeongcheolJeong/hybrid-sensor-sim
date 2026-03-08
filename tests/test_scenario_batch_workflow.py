@@ -89,7 +89,17 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
         scenario_id: str = "scn_route_avoidance",
         merge_ttc_threshold_sec: float = 3.5,
         merge_brake_scale: float = 0.5,
+        merge_priority: int | None = None,
+        merge_max_gap_m: float | None = None,
     ) -> dict[str, object]:
+        merge_policy: dict[str, object] = {
+            "ttc_threshold_sec": merge_ttc_threshold_sec,
+            "brake_scale": merge_brake_scale,
+        }
+        if merge_priority is not None:
+            merge_policy["priority"] = int(merge_priority)
+        if merge_max_gap_m is not None:
+            merge_policy["max_gap_m"] = float(merge_max_gap_m)
         return {
             "scenario_schema_version": "scenario_definition_v0",
             "scenario_id": scenario_id,
@@ -106,10 +116,7 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             "avoidance_ttc_threshold_sec": 3.5,
             "ego_max_brake_mps2": 5.0,
             "avoidance_interaction_policy": {
-                "merge_conflict": {
-                    "ttc_threshold_sec": merge_ttc_threshold_sec,
-                    "brake_scale": merge_brake_scale,
-                },
+                "merge_conflict": merge_policy,
             },
             "ego": {"position_m": 0.0, "speed_mps": 10.0, "lane_id": "lane_a"},
             "npcs": [{"position_m": 18.0, "speed_mps": 4.0, "lane_id": "lane_b"}],
@@ -125,6 +132,30 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
                             "parameters": {"scenario_variant": [1]},
                             "variant_payload_kind": "scenario_definition_v0",
                             "variant_payload_template": self._build_route_avoidance_scenario(),
+                        }
+                    ]
+                },
+                indent=2,
+                ensure_ascii=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    def _write_route_avoidance_policy_trace_logical_scenarios(self, path: Path) -> None:
+        path.write_text(
+            json.dumps(
+                {
+                    "logical_scenarios": [
+                        {
+                            "scenario_id": "scn_route_avoidance_policy_trace",
+                            "parameters": {"scenario_variant": [1]},
+                            "variant_payload_kind": "scenario_definition_v0",
+                            "variant_payload_template": self._build_route_avoidance_scenario(
+                                scenario_id="scn_route_avoidance_policy_trace_payload",
+                                merge_priority=3,
+                                merge_max_gap_m=25.0,
+                            ),
                         }
                     ]
                 },
@@ -802,6 +833,56 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
                 worst_row["ego_avoidance_trigger_counts_by_interaction_kind"]["merge_conflict"],
                 0,
             )
+
+    def test_scenario_batch_workflow_propagates_avoidance_policy_trace_to_worst_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            logical_path = root / "route_avoidance_policy_trace_logical_scenarios.json"
+            self._write_route_avoidance_policy_trace_logical_scenarios(logical_path)
+            matrix_scenario_path = root / "route_avoidance_policy_trace_matrix.json"
+            matrix_scenario_path.write_text(
+                json.dumps(
+                    self._build_route_avoidance_scenario(
+                        merge_priority=3,
+                        merge_max_gap_m=25.0,
+                    ),
+                    indent=2,
+                    ensure_ascii=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            result = run_scenario_batch_workflow(
+                logical_scenarios_path=str(logical_path),
+                scenario_language_profile="",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                matrix_scenario_path=matrix_scenario_path,
+                out_root=root / "batch_workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=1,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+                matrix_run_id_prefix="RUN_BATCH_MATRIX",
+                traffic_profile_ids=["sumo_highway_balanced_v0"],
+                traffic_actor_pattern_ids=["sumo_route_shifted_v0"],
+                traffic_npc_speed_scale_values=[0.5],
+                tire_friction_coeff_values=[1.0],
+                surface_friction_scale_values=[1.0],
+                enable_ego_collision_avoidance=True,
+                avoidance_ttc_threshold_sec=10.0,
+                ego_max_brake_mps2=5.0,
+                max_cases=1,
+            )
+            logical_worst_row = result["workflow_report"]["status_summary"]["worst_logical_scenario_row"]
+            matrix_worst_row = result["workflow_report"]["status_summary"]["worst_matrix_group_row"]
+            self.assertEqual(logical_worst_row["ego_avoidance_last_trigger_priority_values"], [3])
+            self.assertEqual(logical_worst_row["ego_avoidance_last_trigger_max_gap_m_values"], [25.0])
+            self.assertEqual(matrix_worst_row["ego_avoidance_last_trigger_priority_values"], [3])
+            self.assertEqual(matrix_worst_row["ego_avoidance_last_trigger_max_gap_m_values"], [25.0])
 
     def test_scenario_batch_workflow_cli_can_resolve_gate_profile_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

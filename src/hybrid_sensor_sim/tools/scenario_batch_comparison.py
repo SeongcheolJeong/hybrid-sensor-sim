@@ -433,6 +433,14 @@ def _extract_avoidance_fields(summary: dict[str, Any]) -> dict[str, Any]:
         "ego_avoidance_last_trigger_interaction_kind": (
             str(summary.get("ego_avoidance_last_trigger_interaction_kind", "")).strip() or None
         ),
+        "ego_avoidance_last_trigger_priority": (
+            None
+            if summary.get("ego_avoidance_last_trigger_priority") is None
+            else int(summary.get("ego_avoidance_last_trigger_priority"))
+        ),
+        "ego_avoidance_last_trigger_max_gap_m": _coerce_optional_float(
+            summary.get("ego_avoidance_last_trigger_max_gap_m")
+        ),
         "ego_avoidance_trigger_counts_by_interaction_kind": trigger_counts,
     }
 
@@ -547,6 +555,8 @@ def _build_logical_scenario_rows(variant_rows: list[dict[str, Any]]) -> list[dic
                 "ego_avoidance_brake_event_count_total": 0,
                 "ego_avoidance_trigger_counts_by_interaction_kind": Counter(),
                 "ego_avoidance_last_trigger_interaction_kind_counts": Counter(),
+                "ego_avoidance_last_trigger_priority_values": set(),
+                "ego_avoidance_last_trigger_max_gap_m_values": set(),
                 "row_ids": [],
             },
         )
@@ -583,6 +593,12 @@ def _build_logical_scenario_rows(variant_rows: list[dict[str, Any]]) -> list[dic
         last_trigger_kind = str(row.get("ego_avoidance_last_trigger_interaction_kind", "")).strip()
         if last_trigger_kind:
             group["ego_avoidance_last_trigger_interaction_kind_counts"][last_trigger_kind] += 1
+        last_trigger_priority = row.get("ego_avoidance_last_trigger_priority")
+        if last_trigger_priority is not None:
+            group["ego_avoidance_last_trigger_priority_values"].add(int(last_trigger_priority))
+        last_trigger_max_gap_m = _coerce_optional_float(row.get("ego_avoidance_last_trigger_max_gap_m"))
+        if last_trigger_max_gap_m is not None:
+            group["ego_avoidance_last_trigger_max_gap_m_values"].add(float(last_trigger_max_gap_m))
         ttc_value = _coerce_optional_float(row.get("min_ttc_any_lane_sec"))
         current_min = group["min_ttc_any_lane_sec_min"]
         if ttc_value is not None and (current_min is None or ttc_value < current_min):
@@ -615,6 +631,10 @@ def _build_logical_scenario_rows(variant_rows: list[dict[str, Any]]) -> list[dic
             ),
             "ego_avoidance_last_trigger_interaction_kind_counts": dict(
                 sorted(group["ego_avoidance_last_trigger_interaction_kind_counts"].items())
+            ),
+            "ego_avoidance_last_trigger_priority_values": sorted(group["ego_avoidance_last_trigger_priority_values"]),
+            "ego_avoidance_last_trigger_max_gap_m_values": sorted(
+                group["ego_avoidance_last_trigger_max_gap_m_values"]
             ),
             "row_ids": list(group["row_ids"]),
         }
@@ -649,6 +669,8 @@ def _build_matrix_group_rows(matrix_rows: list[dict[str, Any]]) -> list[dict[str
                 "ego_avoidance_brake_event_count_total": 0,
                 "ego_avoidance_trigger_counts_by_interaction_kind": Counter(),
                 "ego_avoidance_last_trigger_interaction_kind_counts": Counter(),
+                "ego_avoidance_last_trigger_priority_values": set(),
+                "ego_avoidance_last_trigger_max_gap_m_values": set(),
                 "traffic_npc_speed_scale_values": set(),
                 "tire_friction_coeff_values": set(),
                 "surface_friction_scale_values": set(),
@@ -682,6 +704,12 @@ def _build_matrix_group_rows(matrix_rows: list[dict[str, Any]]) -> list[dict[str
         last_trigger_kind = str(row.get("ego_avoidance_last_trigger_interaction_kind", "")).strip()
         if last_trigger_kind:
             group["ego_avoidance_last_trigger_interaction_kind_counts"][last_trigger_kind] += 1
+        last_trigger_priority = row.get("ego_avoidance_last_trigger_priority")
+        if last_trigger_priority is not None:
+            group["ego_avoidance_last_trigger_priority_values"].add(int(last_trigger_priority))
+        last_trigger_max_gap_m = _coerce_optional_float(row.get("ego_avoidance_last_trigger_max_gap_m"))
+        if last_trigger_max_gap_m is not None:
+            group["ego_avoidance_last_trigger_max_gap_m_values"].add(float(last_trigger_max_gap_m))
         ttc_value = _coerce_optional_float(row.get("min_ttc_any_lane_sec"))
         current_min = group["min_ttc_any_lane_sec_min"]
         if ttc_value is not None and (current_min is None or ttc_value < current_min):
@@ -723,6 +751,10 @@ def _build_matrix_group_rows(matrix_rows: list[dict[str, Any]]) -> list[dict[str
             ),
             "ego_avoidance_last_trigger_interaction_kind_counts": dict(
                 sorted(group["ego_avoidance_last_trigger_interaction_kind_counts"].items())
+            ),
+            "ego_avoidance_last_trigger_priority_values": sorted(group["ego_avoidance_last_trigger_priority_values"]),
+            "ego_avoidance_last_trigger_max_gap_m_values": sorted(
+                group["ego_avoidance_last_trigger_max_gap_m_values"]
             ),
             "traffic_npc_speed_scale_values": sorted(group["traffic_npc_speed_scale_values"]),
             "tire_friction_coeff_values": sorted(group["tire_friction_coeff_values"]),
@@ -792,6 +824,14 @@ def _build_attention_rows(batch_rows: list[dict[str, Any]]) -> list[dict[str, An
                 "ego_avoidance_brake_event_count": int(row.get("ego_avoidance_brake_event_count", 0) or 0),
                 "ego_avoidance_last_trigger_interaction_kind": (
                     str(row.get("ego_avoidance_last_trigger_interaction_kind", "")).strip() or None
+                ),
+                "ego_avoidance_last_trigger_priority": (
+                    None
+                    if row.get("ego_avoidance_last_trigger_priority") is None
+                    else int(row.get("ego_avoidance_last_trigger_priority"))
+                ),
+                "ego_avoidance_last_trigger_max_gap_m": _coerce_optional_float(
+                    row.get("ego_avoidance_last_trigger_max_gap_m")
                 ),
             }
         )
