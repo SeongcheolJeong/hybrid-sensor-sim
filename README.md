@@ -270,8 +270,13 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `route_definition`
   - `ego_lane_id`
   - `lead_vehicle_lane_id`
+- `log_scene_v0` can also drive lane synthesis from route semantics:
+  - `ego_route_relation`
+  - `lead_vehicle_route_relation`
 - When `log_scene_v0` provides a canonical map but no `route_definition`, replay synthesizes a default route and propagates it into the generated scenario.
+- When explicit lane IDs are omitted, replay can now resolve actor lane IDs from those route relations.
 - `scenario_matrix_sweep` preserves canonical map, route definition, and actor `lane_id` values in each generated `matrix_scenario.json`.
+- `scenario_matrix_sweep` traffic actor patterns can also carry route-relation profiles, so map-aware sweeps can synthesize progression along the route instead of only reusing raw lane slots.
 - `lane_risk_summary.json` now exposes route-aware counters in addition to legacy `same_lane` and `adjacent_lane` counters:
   - `route_relation_counts`
   - `route_same_lane_rows`

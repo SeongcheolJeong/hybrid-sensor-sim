@@ -1,0 +1,20 @@
+{
+  "log_scene_schema_version": "log_scene_v0",
+  "log_id": "LOG_MAP_REL_0001",
+  "map_id": "demo_map_v0",
+  "map_version": "v0",
+  "canonical_map_path": "../p_map_toolset/canonical_lane_graph_v0.json",
+  "route_definition": {
+    "entry_lane_id": "lane_a",
+    "exit_lane_id": "lane_c",
+    "via_lane_ids": ["lane_b"],
+    "cost_mode": "hops"
+  },
+  "ego_route_relation": "downstream",
+  "lead_vehicle_route_relation": "downstream",
+  "ego_initial_speed_mps": 16.0,
+  "lead_vehicle_initial_gap_m": 42.0,
+  "lead_vehicle_speed_mps": 14.0,
+  "duration_sec": 4.0,
+  "dt_sec": 0.1
+}

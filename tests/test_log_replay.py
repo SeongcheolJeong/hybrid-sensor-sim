@@ -62,6 +62,17 @@ class LogReplayTests(unittest.TestCase):
         self.assertEqual(scenario["ego"]["lane_id"], "lane_a")
         self.assertEqual(scenario["npcs"][0]["lane_id"], "lane_a")
 
+    def test_build_scenario_from_log_scene_uses_route_relations_for_lane_assignment(self) -> None:
+        log_scene = load_log_scene(FIXTURE_ROOT / "log_scene_map_route_relations_v0.json")
+        scenario = build_scenario_from_log_scene(
+            log_scene,
+            log_scene_path=FIXTURE_ROOT / "log_scene_map_route_relations_v0.json",
+        )
+
+        self.assertEqual(scenario["route_definition"]["entry_lane_id"], "lane_a")
+        self.assertEqual(scenario["ego"]["lane_id"], "lane_b")
+        self.assertEqual(scenario["npcs"][0]["lane_id"], "lane_c")
+
     def test_augment_log_scene_is_deterministic(self) -> None:
         log_scene = load_log_scene(FIXTURE_ROOT / "log_scene_v0.json")
         augmented = augment_log_scene(
@@ -132,6 +143,32 @@ class LogReplayTests(unittest.TestCase):
             self.assertEqual(summary["scenario_route_lane_ids"], ["lane_a", "lane_b", "lane_c"])
             self.assertEqual(summary["scenario_route_lane_count"], 3)
             self.assertEqual(summary["ego_lane_id"], "lane_a")
+
+    def test_log_replay_main_propagates_route_relation_lane_assignments(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            out_root = root / "runs"
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = log_replay_main(
+                    [
+                        "--log-scene",
+                        str(FIXTURE_ROOT / "log_scene_map_route_relations_v0.json"),
+                        "--run-id",
+                        "LOG_REPLAY_MAP_REL_001",
+                        "--out",
+                        str(out_root),
+                        "--seed",
+                        "42",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            run_dir = out_root / "LOG_REPLAY_MAP_REL_001"
+            scenario = json.loads((run_dir / "replay_scenario.json").read_text(encoding="utf-8"))
+            summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(scenario["ego"]["lane_id"], "lane_b")
+            self.assertEqual(scenario["npcs"][0]["lane_id"], "lane_c")
+            self.assertEqual(summary["ego_lane_id"], "lane_b")
 
     def test_log_scene_augment_main_writes_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

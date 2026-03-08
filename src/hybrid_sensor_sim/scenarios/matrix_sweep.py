@@ -19,6 +19,7 @@ TRAFFIC_ACTOR_PATTERN_LIBRARY_V0: dict[str, dict[str, Any]] = {
         "traffic_npc_gap_step_m": 28.0,
         "traffic_npc_speed_offset_mps": -2.0,
         "traffic_npc_lane_profile": [0, 1],
+        "traffic_npc_route_relation_profile": ["same_lane", "downstream"],
         "gap_step_multipliers": [0.0, 1.8],
         "speed_slot_offsets_mps": [0.0, -0.5],
     },
@@ -28,6 +29,7 @@ TRAFFIC_ACTOR_PATTERN_LIBRARY_V0: dict[str, dict[str, Any]] = {
         "traffic_npc_gap_step_m": 22.0,
         "traffic_npc_speed_offset_mps": 0.0,
         "traffic_npc_lane_profile": [0, 1, -1],
+        "traffic_npc_route_relation_profile": ["same_lane", "downstream", "upstream"],
         "gap_step_multipliers": [0.0, 1.1, 2.4],
         "speed_slot_offsets_mps": [0.4, 0.0, -0.3],
     },
@@ -37,8 +39,19 @@ TRAFFIC_ACTOR_PATTERN_LIBRARY_V0: dict[str, dict[str, Any]] = {
         "traffic_npc_gap_step_m": 16.0,
         "traffic_npc_speed_offset_mps": 3.0,
         "traffic_npc_lane_profile": [0, 1, 0, -1],
+        "traffic_npc_route_relation_profile": ["same_lane", "downstream", "same_lane", "upstream"],
         "gap_step_multipliers": [0.0, 0.9, 2.1, 3.4],
         "speed_slot_offsets_mps": [1.0, 0.7, 0.3, -0.1],
+    },
+    "sumo_route_shifted_v0": {
+        "traffic_npc_count": 2,
+        "traffic_npc_initial_gap_m": 20.0,
+        "traffic_npc_gap_step_m": 12.0,
+        "traffic_npc_speed_offset_mps": -1.0,
+        "traffic_npc_lane_profile": [0, 0],
+        "traffic_npc_route_relation_profile": ["downstream", "downstream"],
+        "gap_step_multipliers": [0.0, 1.0],
+        "speed_slot_offsets_mps": [0.0, -0.2],
     },
 }
 
@@ -132,6 +145,44 @@ def _coerce_int_list(raw: Any) -> list[int]:
     return out
 
 
+def _coerce_text_list(raw: Any) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    for item in raw:
+        value = str(item).strip().lower()
+        if value:
+            out.append(value)
+    return out
+
+
+def _resolve_route_relation_lane_assignment(
+    *,
+    scenario: ScenarioConfig,
+    relation: str | None,
+) -> tuple[int | None, str | None, str]:
+    if relation is None:
+        return None, None, "index_only"
+    if scenario.map_context is None or scenario.map_context.route_report is None:
+        return None, None, "index_only"
+    route_lane_ids = [str(item) for item in scenario.map_context.route_report.get("route_lane_ids", [])]
+    if not route_lane_ids:
+        return None, None, "index_only"
+    if relation == "off_route":
+        return None, None, "index_only"
+    if scenario.ego.lane_id in route_lane_ids:
+        ego_route_index = route_lane_ids.index(str(scenario.ego.lane_id))
+    else:
+        ego_route_index = 0
+    offset = {"same_lane": 0, "downstream": 1, "upstream": -1}.get(relation)
+    if offset is None:
+        return None, None, "index_only"
+    target_route_index = ego_route_index + offset
+    if target_route_index < 0 or target_route_index >= len(route_lane_ids):
+        return None, None, "index_only"
+    return offset, str(route_lane_ids[target_route_index]), "inferred_from_route"
+
+
 def _infer_first_npc_gap_m(scenario: ScenarioConfig) -> float:
     if scenario.npcs:
         first_npc = min(scenario.npcs, key=lambda row: row.position_m)
@@ -164,6 +215,7 @@ def apply_traffic_actor_pattern(
     gap_step_multipliers = _coerce_float_list(actor_pattern_payload.get("gap_step_multipliers"))
     speed_slot_offsets_mps = _coerce_float_list(actor_pattern_payload.get("speed_slot_offsets_mps"))
     lane_slot_profile = _coerce_int_list(actor_pattern_payload.get("traffic_npc_lane_profile"))
+    route_relation_profile = _coerce_text_list(actor_pattern_payload.get("traffic_npc_route_relation_profile"))
 
     synthesized_npcs: list[ActorState] = []
     for idx in range(effective_npc_count):
@@ -180,31 +232,42 @@ def apply_traffic_actor_pattern(
             extension_step=-0.2,
         )
         lane_index = _resolve_cyclic_int_slot(lane_slot_profile, idx, fallback=0)
+        route_relation = (
+            route_relation_profile[idx % len(route_relation_profile)]
+            if route_relation_profile
+            else None
+        )
+        relation_lane_index, relation_lane_id, relation_binding_mode = _resolve_route_relation_lane_assignment(
+            scenario=scenario,
+            relation=route_relation,
+        )
+        effective_lane_index = lane_index if relation_lane_index is None else int(relation_lane_index)
+        effective_lane_id = relation_lane_id
+        effective_lane_binding_mode = relation_binding_mode
+        if effective_lane_id is None:
+            effective_lane_id = (
+                scenario.map_context.route_report["route_lane_ids"][lane_index]
+                if (
+                    scenario.map_context is not None
+                    and scenario.map_context.route_report is not None
+                    and 0 <= lane_index < len(scenario.map_context.route_report.get("route_lane_ids", []))
+                )
+                else None
+            )
+            effective_lane_binding_mode = (
+                "inferred_from_route"
+                if effective_lane_id is not None
+                else "index_only"
+            )
         synthesized_npcs.append(
             ActorState(
                 actor_id=f"traffic_{idx + 1:03d}",
                 position_m=float(scenario.ego.position_m) + base_gap_m + (gap_step_m * gap_multiplier),
                 speed_mps=max(0.0, (base_speed_mps + speed_slot_offset_mps) * traffic_npc_speed_scale),
                 length_m=4.8,
-                lane_index=lane_index,
-                lane_id=(
-                    scenario.map_context.route_report["route_lane_ids"][lane_index]
-                    if (
-                        scenario.map_context is not None
-                        and scenario.map_context.route_report is not None
-                        and 0 <= lane_index < len(scenario.map_context.route_report.get("route_lane_ids", []))
-                    )
-                    else None
-                ),
-                lane_binding_mode=(
-                    "inferred_from_route"
-                    if (
-                        scenario.map_context is not None
-                        and scenario.map_context.route_report is not None
-                        and 0 <= lane_index < len(scenario.map_context.route_report.get("route_lane_ids", []))
-                    )
-                    else "index_only"
-                ),
+                lane_index=effective_lane_index,
+                lane_id=effective_lane_id,
+                lane_binding_mode=effective_lane_binding_mode,
             )
         )
 

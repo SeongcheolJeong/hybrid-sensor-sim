@@ -26,12 +26,12 @@ def _build_route_definition_from_log_scene(
     *,
     normalized: Mapping[str, Any],
     resolved_map_path: str | None,
-) -> tuple[dict[str, Any] | None, str | None]:
+) -> tuple[dict[str, Any] | None, str | None, list[str]]:
     route_definition_raw = normalized.get("route_definition")
     canonical_map = normalized.get("canonical_map")
     canonical_map_path = normalized.get("canonical_map_path")
     if canonical_map is None and canonical_map_path is None:
-        return None, None
+        return None, None, []
     auto_synthesized_route = route_definition_raw is None
     if route_definition_raw is not None:
         route_definition = dict(route_definition_raw)
@@ -62,7 +62,34 @@ def _build_route_definition_from_log_scene(
         "cost_mode": route_report["route_cost_mode"],
     }
     default_lane_id = str(route_report["selected_entry_lane_id"])
-    return normalized_route_definition, default_lane_id
+    return normalized_route_definition, default_lane_id, [str(item) for item in route_report["route_lane_ids"]]
+
+
+def _resolve_lane_id_from_route_relation(
+    *,
+    route_lane_ids: list[str],
+    anchor_lane_id: str | None,
+    relation: str | None,
+) -> str | None:
+    if relation is None:
+        return None
+    if relation == "off_route":
+        return None
+    if not route_lane_ids:
+        return None
+    if anchor_lane_id in route_lane_ids:
+        anchor_index = route_lane_ids.index(str(anchor_lane_id))
+    else:
+        anchor_index = 0
+    offset = {
+        "same_lane": 0,
+        "downstream": 1,
+        "upstream": -1,
+    }[relation]
+    target_index = anchor_index + offset
+    if target_index < 0 or target_index >= len(route_lane_ids):
+        return None
+    return str(route_lane_ids[target_index])
 
 
 def build_scenario_from_log_scene(
@@ -75,7 +102,7 @@ def build_scenario_from_log_scene(
         raw_path=normalized.get("canonical_map_path"),
         source_path=log_scene_path,
     )
-    route_definition, default_lane_id = _build_route_definition_from_log_scene(
+    route_definition, default_lane_id, route_lane_ids = _build_route_definition_from_log_scene(
         normalized=normalized,
         resolved_map_path=resolved_map_path,
     )
@@ -104,10 +131,24 @@ def build_scenario_from_log_scene(
     if route_definition is not None:
         scenario_payload["route_definition"] = route_definition
 
-    ego_lane_id = normalized.get("ego_lane_id") or default_lane_id
+    ego_lane_id = normalized.get("ego_lane_id")
+    if ego_lane_id is None:
+        ego_lane_id = _resolve_lane_id_from_route_relation(
+            route_lane_ids=route_lane_ids,
+            anchor_lane_id=default_lane_id,
+            relation=normalized.get("ego_route_relation"),
+        )
+    ego_lane_id = ego_lane_id or default_lane_id
     if ego_lane_id is not None:
         scenario_payload["ego"]["lane_id"] = ego_lane_id
-    lead_lane_id = normalized.get("lead_vehicle_lane_id") or default_lane_id
+    lead_lane_id = normalized.get("lead_vehicle_lane_id")
+    if lead_lane_id is None:
+        lead_lane_id = _resolve_lane_id_from_route_relation(
+            route_lane_ids=route_lane_ids,
+            anchor_lane_id=ego_lane_id or default_lane_id,
+            relation=normalized.get("lead_vehicle_route_relation"),
+        )
+    lead_lane_id = lead_lane_id or ego_lane_id or default_lane_id
     if lead_lane_id is not None:
         scenario_payload["npcs"][0]["lane_id"] = lead_lane_id
     return scenario_payload

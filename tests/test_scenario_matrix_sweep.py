@@ -75,6 +75,35 @@ class ScenarioMatrixSweepTests(unittest.TestCase):
             self.assertEqual(summary["scenario_route_lane_ids"], ["lane_a", "lane_b", "lane_c"])
             self.assertTrue(summary["traffic_npc_lane_id_profile"])
 
+    def test_run_scenario_matrix_sweep_uses_route_relation_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run_scenario_matrix_sweep(
+                scenario_path=FIXTURE_ROOT / "highway_map_route_following_v0.json",
+                out_root=root / "runs",
+                report_out=root / "report.json",
+                run_id_prefix="RUN_MATRIX_ROUTE_SHIFT",
+                traffic_profile_ids=["sumo_highway_balanced_v0"],
+                traffic_actor_pattern_ids=["sumo_route_shifted_v0"],
+                traffic_npc_speed_scale_values=[1.0],
+                tire_friction_coeff_values=[1.0],
+                surface_friction_scale_values=[1.0],
+                enable_ego_collision_avoidance=False,
+                avoidance_ttc_threshold_sec=2.5,
+                ego_max_brake_mps2=6.0,
+                max_cases=1,
+            )
+            case_scenario = json.loads(
+                (root / "runs" / "RUN_MATRIX_ROUTE_SHIFT_0001" / "matrix_scenario.json").read_text(encoding="utf-8")
+            )
+            summary = json.loads(
+                (root / "runs" / "RUN_MATRIX_ROUTE_SHIFT_0001" / "summary.json").read_text(encoding="utf-8")
+            )
+
+            self.assertEqual([npc["lane_index"] for npc in case_scenario["npcs"]], [1, 1])
+            self.assertEqual([npc["lane_id"] for npc in case_scenario["npcs"]], ["lane_b", "lane_b"])
+            self.assertEqual(summary["traffic_npc_lane_id_profile"], ["lane_b", "lane_b"])
+
     def test_scenario_matrix_sweep_cli_writes_report(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

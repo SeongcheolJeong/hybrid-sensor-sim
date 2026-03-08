@@ -124,6 +124,8 @@ Detailed audit:
    - route-backed scenarios now infer `lane_id` from `lane_index` when possible and expose `*_lane_binding_mode` in summary and trace outputs
 10. route-aware runtime path-conflict handling
    - object-sim now uses route semantics directly for path-conflict TTC and ego avoidance, not only for post-run reporting
+11. route-relation-driven replay and sweep generation
+   - `log_scene_v0` and matrix actor patterns can now synthesize actor lane assignments from route relations instead of relying only on explicit lane IDs or raw lane slots
 
 ### Reference only
 

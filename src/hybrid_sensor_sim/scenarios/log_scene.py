@@ -6,6 +6,7 @@ from typing import Any
 
 
 LOG_SCENE_SCHEMA_VERSION_V0 = "log_scene_v0"
+ROUTE_RELATION_VALUES = {"same_lane", "downstream", "upstream", "off_route"}
 
 
 def _load_json_object(path: Path) -> dict[str, Any]:
@@ -19,6 +20,18 @@ def _require_keys(payload: dict[str, Any], keys: list[str]) -> None:
     missing = [key for key in keys if key not in payload]
     if missing:
         raise ValueError(f"missing required keys: {missing}")
+
+
+def _normalize_optional_route_relation(value: Any, *, field: str) -> str | None:
+    if value is None:
+        return None
+    relation = str(value).strip().lower()
+    if not relation:
+        raise ValueError(f"{field} must be non-empty when provided")
+    if relation not in ROUTE_RELATION_VALUES:
+        allowed = ", ".join(sorted(ROUTE_RELATION_VALUES))
+        raise ValueError(f"{field} must be one of: {allowed}")
+    return relation
 
 
 def validate_log_scene_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -71,6 +84,14 @@ def validate_log_scene_payload(payload: dict[str, Any]) -> dict[str, Any]:
     )
     if lead_vehicle_lane_id == "":
         raise ValueError("lead_vehicle_lane_id must be non-empty when provided")
+    ego_route_relation = _normalize_optional_route_relation(
+        payload.get("ego_route_relation"),
+        field="ego_route_relation",
+    )
+    lead_vehicle_route_relation = _normalize_optional_route_relation(
+        payload.get("lead_vehicle_route_relation"),
+        field="lead_vehicle_route_relation",
+    )
     return {
         "log_scene_schema_version": LOG_SCENE_SCHEMA_VERSION_V0,
         "log_id": log_id,
@@ -85,7 +106,9 @@ def validate_log_scene_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "canonical_map_path": None if canonical_map_path is None else str(canonical_map_path),
         "route_definition": route_definition,
         "ego_lane_id": ego_lane_id,
+        "ego_route_relation": ego_route_relation,
         "lead_vehicle_lane_id": lead_vehicle_lane_id,
+        "lead_vehicle_route_relation": lead_vehicle_route_relation,
     }
 
 
