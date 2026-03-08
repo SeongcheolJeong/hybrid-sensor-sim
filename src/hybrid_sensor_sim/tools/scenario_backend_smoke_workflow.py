@@ -1316,6 +1316,13 @@ def run_scenario_backend_smoke_workflow(
             "subscription_spec_count": autoware_report.get("subscription_spec_count"),
             "sensor_input_count": autoware_report.get("sensor_input_count"),
             "static_transform_count": autoware_report.get("static_transform_count"),
+            "processing_stage_count": autoware_report.get("processing_stage_count"),
+            "ready_processing_stage_count": autoware_report.get(
+                "ready_processing_stage_count"
+            ),
+            "degraded_processing_stage_count": autoware_report.get(
+                "degraded_processing_stage_count"
+            ),
             "available_modalities": list(autoware_report.get("available_modalities", [])),
             "data_roots": list(autoware_report.get("data_roots", [])),
             "recording_style": autoware_report.get("recording_style"),

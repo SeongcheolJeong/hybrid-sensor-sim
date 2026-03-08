@@ -2,10 +2,98 @@ from __future__ import annotations
 
 from typing import Any
 
+from hybrid_sensor_sim.autoware.profiles import resolve_autoware_consumer_profile
+
 
 AUTOWARE_PIPELINE_MANIFEST_SCHEMA_VERSION_V0 = "autoware_pipeline_manifest_v0"
 AUTOWARE_DATASET_MANIFEST_SCHEMA_VERSION_V0 = "autoware_dataset_manifest_v0"
 AUTOWARE_CONSUMER_INPUT_MANIFEST_SCHEMA_VERSION_V0 = "autoware_consumer_input_manifest_v0"
+
+
+def _clean_optional_text(value: Any) -> str | None:
+    text = str(value).strip() if value is not None else ""
+    return text or None
+
+
+def _build_processing_stage_entries(
+    *,
+    consumer_profile_id: str | None,
+    consumer_topics: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    profile = resolve_autoware_consumer_profile(consumer_profile_id)
+    if profile is None:
+        return []
+    topics_by_output_role: dict[str, list[dict[str, Any]]] = {}
+    for topic in consumer_topics:
+        if not isinstance(topic, dict):
+            continue
+        output_role = str(topic.get("output_role", "")).strip()
+        if not output_role:
+            continue
+        topics_by_output_role.setdefault(output_role, []).append(topic)
+    stage_entries: list[dict[str, Any]] = []
+    for stage in list(profile.get("processing_stages", []) or []):
+        if not isinstance(stage, dict):
+            continue
+        stage_id = str(stage.get("stage_id", "")).strip()
+        if not stage_id:
+            continue
+        required_output_roles = [
+            str(role).strip()
+            for role in list(stage.get("required_output_roles", []) or [])
+            if str(role).strip()
+        ]
+        stage_topics: list[dict[str, Any]] = []
+        for output_role in required_output_roles:
+            stage_topics.extend(topics_by_output_role.get(output_role, []))
+        stage_required_topics = sorted(
+            {
+                str(topic.get("topic", "")).strip()
+                for topic in stage_topics
+                if bool(topic.get("required")) and str(topic.get("topic", "")).strip()
+            }
+        )
+        stage_available_topics = sorted(
+            {
+                str(topic.get("topic", "")).strip()
+                for topic in stage_topics
+                if bool(topic.get("available")) and str(topic.get("topic", "")).strip()
+            }
+        )
+        stage_missing_required_topics = sorted(
+            set(stage_required_topics) - set(stage_available_topics)
+        )
+        required_sensor_ids = sorted(
+            {
+                str(topic.get("sensor_id", "")).strip()
+                for topic in stage_topics
+                if bool(topic.get("required")) and str(topic.get("sensor_id", "")).strip()
+            }
+        )
+        available_sensor_ids = sorted(
+            {
+                str(topic.get("sensor_id", "")).strip()
+                for topic in stage_topics
+                if bool(topic.get("available")) and str(topic.get("sensor_id", "")).strip()
+            }
+        )
+        stage_entries.append(
+            {
+                "stage_id": stage_id,
+                "description": str(stage.get("description", "")).strip() or None,
+                "required_output_roles": required_output_roles,
+                "required_topic_count": len(stage_required_topics),
+                "available_topic_count": len(stage_available_topics),
+                "missing_required_topic_count": len(stage_missing_required_topics),
+                "required_topics": stage_required_topics,
+                "available_topics": stage_available_topics,
+                "missing_required_topics": stage_missing_required_topics,
+                "required_sensor_ids": required_sensor_ids,
+                "available_sensor_ids": available_sensor_ids,
+                "ready": bool(stage_required_topics) and not stage_missing_required_topics,
+            }
+        )
+    return stage_entries
 
 
 def _pipeline_status(
@@ -104,12 +192,10 @@ def build_autoware_pipeline_manifest(
         "run_id": str(run_id).strip(),
         "backend": str(backend).strip() or None,
         "availability_mode": normalized_availability_mode,
-        "consumer_profile_id": str(sensor_contracts.get("consumer_profile_id", "")).strip()
-        or None,
-        "consumer_profile_description": str(
-            sensor_contracts.get("consumer_profile_description", "")
-        ).strip()
-        or None,
+        "consumer_profile_id": _clean_optional_text(sensor_contracts.get("consumer_profile_id")),
+        "consumer_profile_description": _clean_optional_text(
+            sensor_contracts.get("consumer_profile_description")
+        ),
         "scenario_source": scenario_source,
         "scenario_id": str(scenario_source.get("scenario_id", "")).strip() or None,
         "variant_id": str(scenario_source.get("variant_id", "")).strip() or None,
@@ -199,12 +285,10 @@ def build_autoware_dataset_manifest(
         "smoke_scenario_path": str(scenario_source.get("smoke_scenario_path", "")).strip() or None,
         "bridge_manifest_path": str(scenario_source.get("bridge_manifest_path", "")).strip() or None,
         "backend": str(backend).strip() or None,
-        "consumer_profile_id": str(sensor_contracts.get("consumer_profile_id", "")).strip()
-        or None,
-        "consumer_profile_description": str(
-            sensor_contracts.get("consumer_profile_description", "")
-        ).strip()
-        or None,
+        "consumer_profile_id": _clean_optional_text(sensor_contracts.get("consumer_profile_id")),
+        "consumer_profile_description": _clean_optional_text(
+            sensor_contracts.get("consumer_profile_description")
+        ),
         "recording_style": str(recording_style).strip() or "backend_smoke_export",
         "sensor_manifest_path": sensor_contracts_path,
         "pipeline_manifest_path": pipeline_manifest_path,
@@ -401,6 +485,14 @@ def build_autoware_consumer_input_manifest(
                 else {},
             }
         )
+    consumer_profile_id = _clean_optional_text(pipeline_manifest.get("consumer_profile_id"))
+    processing_stages = _build_processing_stage_entries(
+        consumer_profile_id=consumer_profile_id,
+        consumer_topics=consumer_topics,
+    )
+    ready_processing_stage_count = sum(
+        1 for stage in processing_stages if bool(stage.get("ready"))
+    )
     return {
         "schema_version": AUTOWARE_CONSUMER_INPUT_MANIFEST_SCHEMA_VERSION_V0,
         "run_id": str(run_id).strip(),
@@ -408,12 +500,10 @@ def build_autoware_consumer_input_manifest(
         "status": str(pipeline_manifest.get("status", "")).strip() or None,
         "availability_mode": str(pipeline_manifest.get("availability_mode", "")).strip()
         or None,
-        "consumer_profile_id": str(pipeline_manifest.get("consumer_profile_id", "")).strip()
-        or None,
-        "consumer_profile_description": str(
-            pipeline_manifest.get("consumer_profile_description", "")
-        ).strip()
-        or None,
+        "consumer_profile_id": consumer_profile_id,
+        "consumer_profile_description": _clean_optional_text(
+            pipeline_manifest.get("consumer_profile_description")
+        ),
         "consumer_ready": bool(
             pipeline_manifest.get("required_topics_complete")
             and pipeline_manifest.get("frame_tree_complete")
@@ -437,6 +527,9 @@ def build_autoware_consumer_input_manifest(
         "subscription_spec_count": len(subscription_specs),
         "sensor_input_count": len(sensor_inputs),
         "static_transform_count": len(static_transforms),
+        "processing_stage_count": len(processing_stages),
+        "ready_processing_stage_count": ready_processing_stage_count,
+        "degraded_processing_stage_count": len(processing_stages) - ready_processing_stage_count,
         "frame_tree_path": artifacts.get("frame_tree_path"),
         "sensor_contracts_path": artifacts.get("sensor_contracts_path"),
         "pipeline_manifest_path": artifacts.get("pipeline_manifest_path"),
@@ -448,4 +541,5 @@ def build_autoware_consumer_input_manifest(
         "subscription_specs": subscription_specs,
         "sensor_inputs": sensor_inputs,
         "static_transforms": static_transforms,
+        "processing_stages": processing_stages,
     }

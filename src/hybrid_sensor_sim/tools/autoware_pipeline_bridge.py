@@ -261,6 +261,11 @@ def run_autoware_pipeline_bridge(
         "subscription_spec_count": bundle.get("subscription_spec_count"),
         "sensor_input_count": bundle.get("sensor_input_count"),
         "static_transform_count": bundle.get("static_transform_count"),
+        "processing_stage_count": bundle.get("processing_stage_count"),
+        "ready_processing_stage_count": bundle.get("ready_processing_stage_count"),
+        "degraded_processing_stage_count": bundle.get(
+            "degraded_processing_stage_count"
+        ),
         "available_modalities": list(bundle.get("available_modalities", [])),
         "data_roots": list(bundle.get("data_roots", [])),
         "recording_style": bundle.get("recording_style"),

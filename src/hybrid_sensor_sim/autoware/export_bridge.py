@@ -562,6 +562,15 @@ def write_autoware_export_bundle(
         "static_transform_count": int(
             consumer_input_manifest.get("static_transform_count", 0) or 0
         ),
+        "processing_stage_count": int(
+            consumer_input_manifest.get("processing_stage_count", 0) or 0
+        ),
+        "ready_processing_stage_count": int(
+            consumer_input_manifest.get("ready_processing_stage_count", 0) or 0
+        ),
+        "degraded_processing_stage_count": int(
+            consumer_input_manifest.get("degraded_processing_stage_count", 0) or 0
+        ),
         "available_modalities": list(dataset_manifest.get("available_modalities", [])),
         "data_roots": list(dataset_manifest.get("data_roots", [])),
         "recording_style": dataset_manifest.get("recording_style"),
@@ -737,6 +746,15 @@ def write_autoware_planned_export_bundle(
         ),
         "static_transform_count": int(
             consumer_input_manifest.get("static_transform_count", 0) or 0
+        ),
+        "processing_stage_count": int(
+            consumer_input_manifest.get("processing_stage_count", 0) or 0
+        ),
+        "ready_processing_stage_count": int(
+            consumer_input_manifest.get("ready_processing_stage_count", 0) or 0
+        ),
+        "degraded_processing_stage_count": int(
+            consumer_input_manifest.get("degraded_processing_stage_count", 0) or 0
         ),
         "available_modalities": list(dataset_manifest.get("available_modalities", [])),
         "data_roots": list(dataset_manifest.get("data_roots", [])),

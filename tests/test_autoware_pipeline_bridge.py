@@ -295,6 +295,9 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
             self.assertEqual(consumer_manifest["subscription_spec_count"], 2)
             self.assertEqual(consumer_manifest["sensor_input_count"], 2)
             self.assertEqual(consumer_manifest["static_transform_count"], 2)
+            self.assertEqual(consumer_manifest["processing_stage_count"], 0)
+            self.assertEqual(consumer_manifest["ready_processing_stage_count"], 0)
+            self.assertEqual(consumer_manifest["degraded_processing_stage_count"], 0)
             self.assertEqual(len(consumer_manifest["subscription_specs"]), 2)
             self.assertEqual(len(consumer_manifest["sensor_inputs"]), 2)
             self.assertEqual(len(consumer_manifest["static_transforms"]), 2)
@@ -334,6 +337,9 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
             self.assertEqual(report["subscription_spec_count"], 4)
             self.assertEqual(report["sensor_input_count"], 3)
             self.assertEqual(report["static_transform_count"], 3)
+            self.assertEqual(report["processing_stage_count"], 4)
+            self.assertEqual(report["ready_processing_stage_count"], 4)
+            self.assertEqual(report["degraded_processing_stage_count"], 0)
             self.assertIn("/sensing/radar/radar_front/tracks", report["available_topics"])
             self.assertIn(
                 "autoware_auto_perception_msgs/msg/TrackedObjects",
@@ -350,9 +356,21 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
                 for item in consumer_manifest["sensor_inputs"]
                 if item["sensor_id"] == "radar_front"
             )
+            self.assertEqual(consumer_manifest["processing_stage_count"], 4)
+            self.assertEqual(consumer_manifest["ready_processing_stage_count"], 4)
+            self.assertEqual(consumer_manifest["degraded_processing_stage_count"], 0)
             self.assertEqual(radar_sensor_input["required_topic_count"], 2)
             self.assertEqual(len(radar_sensor_input["subscriptions"]), 2)
             self.assertEqual(radar_sensor_input["frame_id"], "radar_front")
+            self.assertEqual(
+                [stage["stage_id"] for stage in consumer_manifest["processing_stages"]],
+                [
+                    "camera_preprocess",
+                    "pointcloud_preprocess",
+                    "radar_preprocess",
+                    "tracking_fusion",
+                ],
+            )
 
     def test_bridge_marks_sidecar_only_exports(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -420,6 +438,9 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
             self.assertEqual(report["missing_required_sensor_count"], 1)
             self.assertEqual(report["required_topic_count"], 3)
             self.assertEqual(report["missing_required_topic_count"], 1)
+            self.assertEqual(report["processing_stage_count"], 3)
+            self.assertEqual(report["ready_processing_stage_count"], 2)
+            self.assertEqual(report["degraded_processing_stage_count"], 1)
             self.assertFalse(report["consumer_ready"])
             self.assertEqual(report["topic_export_count"], 3)
             self.assertEqual(report["materialized_topic_export_count"], 2)
@@ -643,6 +664,7 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
                 backend_smoke_workflow_report_path=str(backend_workflow_report_path),
                 runtime_backend_workflow_report_path="",
                 out_root=root / "autoware_bundle",
+                consumer_profile_id="tracking_fusion_v0",
                 strict=False,
             )
             report = result["report"]
@@ -695,6 +717,9 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
             self.assertEqual(consumer_manifest["subscription_spec_count"], 4)
             self.assertEqual(consumer_manifest["sensor_input_count"], 3)
             self.assertEqual(consumer_manifest["static_transform_count"], 3)
+            self.assertEqual(consumer_manifest["processing_stage_count"], 4)
+            self.assertEqual(consumer_manifest["ready_processing_stage_count"], 4)
+            self.assertEqual(consumer_manifest["degraded_processing_stage_count"], 0)
             self.assertTrue(
                 all(
                     transform["parent_frame_id"] == "base_link"

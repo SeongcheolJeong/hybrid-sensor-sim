@@ -520,6 +520,15 @@ def _build_status_summary(
         "autoware_static_transform_count": autoware_summary.get(
             "static_transform_count"
         ),
+        "autoware_processing_stage_count": autoware_summary.get(
+            "processing_stage_count"
+        ),
+        "autoware_ready_processing_stage_count": autoware_summary.get(
+            "ready_processing_stage_count"
+        ),
+        "autoware_degraded_processing_stage_count": autoware_summary.get(
+            "degraded_processing_stage_count"
+        ),
         "autoware_available_message_types": list(
             autoware_summary.get("available_message_types", [])
         ),
@@ -604,6 +613,9 @@ def _build_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Subscription specs: `{summary.get('autoware_subscription_spec_count') if summary.get('autoware_subscription_spec_count') is not None else '-'}`",
         f"- Sensor inputs: `{summary.get('autoware_sensor_input_count') if summary.get('autoware_sensor_input_count') is not None else '-'}`",
         f"- Static transforms: `{summary.get('autoware_static_transform_count') if summary.get('autoware_static_transform_count') is not None else '-'}`",
+        f"- Processing stages: `{summary.get('autoware_processing_stage_count') if summary.get('autoware_processing_stage_count') is not None else '-'}`",
+        f"- Ready processing stages: `{summary.get('autoware_ready_processing_stage_count') if summary.get('autoware_ready_processing_stage_count') is not None else '-'}`",
+        f"- Degraded processing stages: `{summary.get('autoware_degraded_processing_stage_count') if summary.get('autoware_degraded_processing_stage_count') is not None else '-'}`",
         f"- Dataset ready: `{summary.get('autoware_dataset_ready') if summary.get('autoware_dataset_ready') is not None else '-'}`",
         f"- Recording style: `{summary.get('autoware_recording_style') or '-'}`",
         f"- Required topics complete: `{summary.get('autoware_required_topics_complete') if summary.get('autoware_required_topics_complete') is not None else '-'}`",
