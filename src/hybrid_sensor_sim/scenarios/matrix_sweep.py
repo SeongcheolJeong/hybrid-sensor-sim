@@ -53,6 +53,16 @@ TRAFFIC_ACTOR_PATTERN_LIBRARY_V0: dict[str, dict[str, Any]] = {
         "gap_step_multipliers": [0.0, 1.0],
         "speed_slot_offsets_mps": [0.0, -0.2],
     },
+    "sumo_lane_change_conflict_v0": {
+        "traffic_npc_count": 1,
+        "traffic_npc_initial_gap_m": 18.0,
+        "traffic_npc_gap_step_m": 10.0,
+        "traffic_npc_speed_offset_mps": -1.0,
+        "traffic_npc_lane_profile": [1],
+        "traffic_npc_route_lane_profile": [0],
+        "gap_step_multipliers": [0.0],
+        "speed_slot_offsets_mps": [0.0],
+    },
 }
 
 
@@ -215,6 +225,7 @@ def apply_traffic_actor_pattern(
     gap_step_multipliers = _coerce_float_list(actor_pattern_payload.get("gap_step_multipliers"))
     speed_slot_offsets_mps = _coerce_float_list(actor_pattern_payload.get("speed_slot_offsets_mps"))
     lane_slot_profile = _coerce_int_list(actor_pattern_payload.get("traffic_npc_lane_profile"))
+    route_lane_slot_profile = _coerce_int_list(actor_pattern_payload.get("traffic_npc_route_lane_profile"))
     route_relation_profile = _coerce_text_list(actor_pattern_payload.get("traffic_npc_route_relation_profile"))
 
     synthesized_npcs: list[ActorState] = []
@@ -244,6 +255,14 @@ def apply_traffic_actor_pattern(
         effective_lane_index = lane_index if relation_lane_index is None else int(relation_lane_index)
         effective_lane_id = relation_lane_id
         effective_lane_binding_mode = relation_binding_mode
+        route_lane_id = None
+        route_binding_mode = "unavailable"
+        if route_lane_slot_profile and scenario.map_context is not None and scenario.map_context.route_report is not None:
+            route_lane_slot = _resolve_cyclic_int_slot(route_lane_slot_profile, idx, fallback=0)
+            route_lane_ids = [str(item) for item in scenario.map_context.route_report.get("route_lane_ids", [])]
+            if 0 <= route_lane_slot < len(route_lane_ids):
+                route_lane_id = str(route_lane_ids[route_lane_slot])
+                route_binding_mode = "explicit_route_lane_profile"
         if effective_lane_id is None:
             effective_lane_id = (
                 scenario.map_context.route_report["route_lane_ids"][lane_index]
@@ -259,6 +278,9 @@ def apply_traffic_actor_pattern(
                 if effective_lane_id is not None
                 else "index_only"
             )
+        if route_lane_id is None and effective_lane_id is not None:
+            route_lane_id = effective_lane_id
+            route_binding_mode = "current_lane"
         synthesized_npcs.append(
             ActorState(
                 actor_id=f"traffic_{idx + 1:03d}",
@@ -268,6 +290,8 @@ def apply_traffic_actor_pattern(
                 lane_index=effective_lane_index,
                 lane_id=effective_lane_id,
                 lane_binding_mode=effective_lane_binding_mode,
+                route_lane_id=route_lane_id,
+                route_binding_mode=route_binding_mode,
             )
         )
 
@@ -304,6 +328,8 @@ def _serialize_actor(actor: ActorState) -> dict[str, Any]:
     }
     if actor.lane_id is not None:
         payload["lane_id"] = actor.lane_id
+    if actor.route_lane_id is not None and actor.route_lane_id != actor.lane_id:
+        payload["route_lane_id"] = actor.route_lane_id
     return payload
 
 

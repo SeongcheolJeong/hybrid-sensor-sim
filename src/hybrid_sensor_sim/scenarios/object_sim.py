@@ -48,6 +48,8 @@ class CoreSimRunner:
                     lane_index=npc.lane_index,
                     lane_id=npc.lane_id,
                     lane_binding_mode=npc.lane_binding_mode,
+                    route_lane_id=npc.route_lane_id,
+                    route_binding_mode=npc.route_binding_mode,
                 )
 
         self.trace_rows: list[dict[str, Any]] = []
@@ -155,6 +157,8 @@ class CoreSimRunner:
                     lane_index=npc.lane_index,
                     lane_id=npc.lane_id,
                     lane_binding_mode=npc.lane_binding_mode,
+                    route_lane_id=npc.route_lane_id,
+                    route_binding_mode=npc.route_binding_mode,
                 )
             )
         self.npcs = updated_npcs
@@ -206,11 +210,15 @@ class CoreSimRunner:
                     "ego_lane_index": int(self.ego.lane_index),
                     "ego_lane_id": self.ego.lane_id,
                     "ego_lane_binding_mode": self.ego.lane_binding_mode,
+                    "ego_route_lane_id": self.ego.route_lane_id,
+                    "ego_route_binding_mode": self.ego.route_binding_mode,
                     "npc_id": npc.actor_id,
                     "npc_position_m": round(npc.position_m, 6),
                     "npc_lane_index": int(npc.lane_index),
                     "npc_lane_id": npc.lane_id,
                     "npc_lane_binding_mode": npc.lane_binding_mode,
+                    "npc_route_lane_id": npc.route_lane_id,
+                    "npc_route_binding_mode": npc.route_binding_mode,
                     "lane_delta": lane_delta,
                     "same_lane": same_lane,
                     "adjacent_lane": adjacent_lane,
@@ -263,8 +271,8 @@ class CoreSimRunner:
             )
 
     def _classify_route_relation(self, npc: ActorState) -> tuple[int | None, int | None, int | None, str]:
-        ego_route_lane_order = self.route_lane_order_by_id.get(self.ego.lane_id)
-        npc_route_lane_order = self.route_lane_order_by_id.get(npc.lane_id)
+        ego_route_lane_order = self.route_lane_order_by_id.get(self.ego.route_lane_id or self.ego.lane_id)
+        npc_route_lane_order = self.route_lane_order_by_id.get(npc.route_lane_id or npc.lane_id)
         route_lane_delta = (
             None
             if ego_route_lane_order is None or npc_route_lane_order is None
@@ -272,7 +280,10 @@ class CoreSimRunner:
         )
         route_relation = "unavailable"
         if self.route_lane_ids:
-            if self.ego.lane_id in self.route_lane_order_by_id and npc.lane_id in self.route_lane_order_by_id:
+            if (
+                (self.ego.route_lane_id or self.ego.lane_id) in self.route_lane_order_by_id
+                and (npc.route_lane_id or npc.lane_id) in self.route_lane_order_by_id
+            ):
                 if route_lane_delta == 0:
                     route_relation = "same_lane"
                 elif route_lane_delta is not None and route_lane_delta > 0:
@@ -334,6 +345,8 @@ class CoreSimRunner:
             lane_index=self.ego.lane_index,
             lane_id=self.ego.lane_id,
             lane_binding_mode=self.ego.lane_binding_mode,
+            route_lane_id=self.ego.route_lane_id,
+            route_binding_mode=self.ego.route_binding_mode,
         )
         return {
             "ego_dynamics_mode": "kinematic",
@@ -403,6 +416,8 @@ class CoreSimRunner:
             lane_index=self.ego.lane_index,
             lane_id=self.ego.lane_id,
             lane_binding_mode=self.ego.lane_binding_mode,
+            route_lane_id=self.ego.route_lane_id,
+            route_binding_mode=self.ego.route_binding_mode,
         )
         return {
             "ego_dynamics_mode": "vehicle_dynamics",
@@ -891,8 +906,12 @@ def run_object_sim(
             "traffic_npc_lane_profile": [int(npc.lane_index) for npc in effective_scenario.npcs],
             "traffic_npc_lane_id_profile": [npc.lane_id for npc in effective_scenario.npcs],
             "traffic_npc_lane_binding_modes": [npc.lane_binding_mode for npc in effective_scenario.npcs],
+            "traffic_npc_route_lane_id_profile": [npc.route_lane_id for npc in effective_scenario.npcs],
+            "traffic_npc_route_binding_modes": [npc.route_binding_mode for npc in effective_scenario.npcs],
             "ego_lane_id": effective_scenario.ego.lane_id,
             "ego_lane_binding_mode": effective_scenario.ego.lane_binding_mode,
+            "ego_route_lane_id": effective_scenario.ego.route_lane_id,
+            "ego_route_binding_mode": effective_scenario.ego.route_binding_mode,
             "traffic_npc_gap_profile_m": [
                 round(float(npc.position_m - effective_scenario.ego.position_m), 6)
                 for npc in effective_scenario.npcs

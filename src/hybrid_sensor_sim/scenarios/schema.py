@@ -30,6 +30,8 @@ class ActorState:
     lane_index: int = 0
     lane_id: str | None = None
     lane_binding_mode: str = "index_only"
+    route_lane_id: str | None = None
+    route_binding_mode: str = "unavailable"
 
 
 @dataclass(frozen=True)
@@ -110,6 +112,10 @@ def _as_actor(
     lane_id = None if lane_id_raw is None else str(lane_id_raw).strip()
     if lane_id == "":
         raise ScenarioValidationError(f"{fallback_id} lane_id must be a non-empty string when provided")
+    route_lane_id_raw = payload.get("route_lane_id")
+    route_lane_id = None if route_lane_id_raw is None else str(route_lane_id_raw).strip()
+    if route_lane_id == "":
+        raise ScenarioValidationError(f"{fallback_id} route_lane_id must be a non-empty string when provided")
     lane_index_raw = payload.get("lane_index")
     if lane_id is not None:
         if route_lane_ids is None:
@@ -128,6 +134,16 @@ def _as_actor(
             if inferred_lane_id is not None:
                 lane_id = inferred_lane_id
                 lane_binding_mode = "inferred_from_route"
+    if route_lane_id is not None:
+        if route_lane_ids is None:
+            raise ScenarioValidationError(f"{fallback_id} route_lane_id requires route_definition")
+        _resolve_route_lane_index(lane_id=route_lane_id, route_lane_ids=route_lane_ids)
+        route_binding_mode = "explicit_route_lane_id"
+    elif route_lane_ids is not None and lane_id is not None and lane_id in route_lane_ids:
+        route_lane_id = lane_id
+        route_binding_mode = "current_lane"
+    else:
+        route_binding_mode = "unavailable"
     return ActorState(
         actor_id=str(payload.get("actor_id", fallback_id)),
         position_m=float(payload["position_m"]),
@@ -136,6 +152,8 @@ def _as_actor(
         lane_index=lane_index,
         lane_id=lane_id,
         lane_binding_mode=lane_binding_mode,
+        route_lane_id=route_lane_id,
+        route_binding_mode=route_binding_mode,
     )
 
 

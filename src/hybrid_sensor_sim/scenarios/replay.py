@@ -132,25 +132,33 @@ def build_scenario_from_log_scene(
         scenario_payload["route_definition"] = route_definition
 
     ego_lane_id = normalized.get("ego_lane_id")
-    if ego_lane_id is None:
-        ego_lane_id = _resolve_lane_id_from_route_relation(
+    ego_route_lane_id = normalized.get("ego_route_lane_id")
+    if ego_route_lane_id is None:
+        ego_route_lane_id = _resolve_lane_id_from_route_relation(
             route_lane_ids=route_lane_ids,
             anchor_lane_id=default_lane_id,
             relation=normalized.get("ego_route_relation"),
         )
-    ego_lane_id = ego_lane_id or default_lane_id
+    ego_lane_id = ego_lane_id or ego_route_lane_id or default_lane_id
+    ego_route_lane_id = ego_route_lane_id or ego_lane_id or default_lane_id
     if ego_lane_id is not None:
         scenario_payload["ego"]["lane_id"] = ego_lane_id
+    if ego_route_lane_id is not None and ego_route_lane_id != ego_lane_id:
+        scenario_payload["ego"]["route_lane_id"] = ego_route_lane_id
     lead_lane_id = normalized.get("lead_vehicle_lane_id")
-    if lead_lane_id is None:
-        lead_lane_id = _resolve_lane_id_from_route_relation(
+    lead_route_lane_id = normalized.get("lead_vehicle_route_lane_id")
+    if lead_route_lane_id is None:
+        lead_route_lane_id = _resolve_lane_id_from_route_relation(
             route_lane_ids=route_lane_ids,
-            anchor_lane_id=ego_lane_id or default_lane_id,
+            anchor_lane_id=ego_route_lane_id or ego_lane_id or default_lane_id,
             relation=normalized.get("lead_vehicle_route_relation"),
         )
-    lead_lane_id = lead_lane_id or ego_lane_id or default_lane_id
+    lead_lane_id = lead_lane_id or lead_route_lane_id or ego_lane_id or default_lane_id
+    lead_route_lane_id = lead_route_lane_id or lead_lane_id or ego_route_lane_id or ego_lane_id or default_lane_id
     if lead_lane_id is not None:
         scenario_payload["npcs"][0]["lane_id"] = lead_lane_id
+    if lead_route_lane_id is not None and lead_route_lane_id != lead_lane_id:
+        scenario_payload["npcs"][0]["route_lane_id"] = lead_route_lane_id
     return scenario_payload
 
 

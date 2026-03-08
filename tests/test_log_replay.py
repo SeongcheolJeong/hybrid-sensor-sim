@@ -73,6 +73,17 @@ class LogReplayTests(unittest.TestCase):
         self.assertEqual(scenario["ego"]["lane_id"], "lane_b")
         self.assertEqual(scenario["npcs"][0]["lane_id"], "lane_c")
 
+    def test_build_scenario_from_log_scene_preserves_explicit_route_lane_id(self) -> None:
+        log_scene = load_log_scene(FIXTURE_ROOT / "log_scene_map_lane_change_conflict_v0.json")
+        scenario = build_scenario_from_log_scene(
+            log_scene,
+            log_scene_path=FIXTURE_ROOT / "log_scene_map_lane_change_conflict_v0.json",
+        )
+
+        self.assertEqual(scenario["ego"]["lane_id"], "lane_a")
+        self.assertEqual(scenario["npcs"][0]["lane_id"], "lane_b")
+        self.assertEqual(scenario["npcs"][0]["route_lane_id"], "lane_a")
+
     def test_augment_log_scene_is_deterministic(self) -> None:
         log_scene = load_log_scene(FIXTURE_ROOT / "log_scene_v0.json")
         augmented = augment_log_scene(
@@ -169,6 +180,34 @@ class LogReplayTests(unittest.TestCase):
             self.assertEqual(scenario["ego"]["lane_id"], "lane_b")
             self.assertEqual(scenario["npcs"][0]["lane_id"], "lane_c")
             self.assertEqual(summary["ego_lane_id"], "lane_b")
+
+    def test_log_replay_main_emits_lane_change_conflict_from_route_lane_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            out_root = root / "runs"
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = log_replay_main(
+                    [
+                        "--log-scene",
+                        str(FIXTURE_ROOT / "log_scene_map_lane_change_conflict_v0.json"),
+                        "--run-id",
+                        "LOG_REPLAY_LANE_CHANGE_001",
+                        "--out",
+                        str(out_root),
+                        "--seed",
+                        "42",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            run_dir = out_root / "LOG_REPLAY_LANE_CHANGE_001"
+            scenario = json.loads((run_dir / "replay_scenario.json").read_text(encoding="utf-8"))
+            summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+            lane_risk = json.loads((run_dir / "lane_risk_summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(scenario["npcs"][0]["lane_id"], "lane_b")
+            self.assertEqual(scenario["npcs"][0]["route_lane_id"], "lane_a")
+            self.assertEqual(summary["traffic_npc_route_lane_id_profile"], ["lane_a"])
+            self.assertEqual(lane_risk["lane_change_conflict_rows"], 20)
 
     def test_log_scene_augment_main_writes_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -415,23 +415,29 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `ego_target_speed_mps`
   - `ego_road_grade_percent`
 - `scenario_definition_v0` also supports optional canonical-map inputs:
-  - `canonical_map` or `canonical_map_path`
-  - `route_definition`
-  - actor-level `lane_id`
+- `canonical_map` or `canonical_map_path`
+- `route_definition`
+- actor-level `lane_id`
+- actor-level optional `route_lane_id`
 - When a route is provided, actor `lane_id` values are normalized into the existing `lane_index` surface using the route lane order.
 - When a route is provided and an actor only carries `lane_index`, object-sim now infers `lane_id` when that index maps onto the route lane order and exposes the result as `*_lane_binding_mode`.
+- When a route is provided, actors can now also carry `route_lane_id` to separate their current lane from the lane used for route semantics, which opens explicit `lane_change_conflict` scenarios without mutating the current-lane surface.
 - `log_scene_v0` can now optionally carry the same canonical-map inputs:
   - `canonical_map` or `canonical_map_path`
   - `route_definition`
   - `ego_lane_id`
   - `lead_vehicle_lane_id`
+  - `ego_route_lane_id`
+  - `lead_vehicle_route_lane_id`
 - `log_scene_v0` can also drive lane synthesis from route semantics:
   - `ego_route_relation`
   - `lead_vehicle_route_relation`
 - When `log_scene_v0` provides a canonical map but no `route_definition`, replay synthesizes a default route and propagates it into the generated scenario.
 - When explicit lane IDs are omitted, replay can now resolve actor lane IDs from those route relations.
+- When explicit current-lane IDs are present, replay can preserve them and still emit a different `*_route_lane_id`, so generated scenarios can model adjacent-current-lane actors that still conflict with the ego route.
 - `scenario_matrix_sweep` preserves canonical map, route definition, and actor `lane_id` values in each generated `matrix_scenario.json`.
 - `scenario_matrix_sweep` traffic actor patterns can also carry route-relation profiles, so map-aware sweeps can synthesize progression along the route instead of only reusing raw lane slots.
+- `scenario_matrix_sweep` actor patterns can now also carry `traffic_npc_route_lane_profile`; the built-in `sumo_lane_change_conflict_v0` pattern uses that surface to generate explicit `lane_change_conflict` cases.
 - `lane_risk_summary.json` now exposes route-aware counters in addition to legacy `same_lane` and `adjacent_lane` counters:
   - `route_relation_counts`
   - `route_same_lane_rows`

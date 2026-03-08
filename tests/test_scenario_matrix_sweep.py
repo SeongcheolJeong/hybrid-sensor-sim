@@ -106,6 +106,41 @@ class ScenarioMatrixSweepTests(unittest.TestCase):
             self.assertEqual([npc["lane_id"] for npc in case_scenario["npcs"]], ["lane_b", "lane_b"])
             self.assertEqual(summary["traffic_npc_lane_id_profile"], ["lane_b", "lane_b"])
 
+    def test_run_scenario_matrix_sweep_can_generate_lane_change_conflict_pattern(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run_scenario_matrix_sweep(
+                scenario_path=FIXTURE_ROOT / "highway_map_route_following_v0.json",
+                out_root=root / "runs",
+                report_out=root / "report.json",
+                run_id_prefix="RUN_MATRIX_LANE_CHANGE",
+                traffic_profile_ids=["sumo_highway_balanced_v0"],
+                traffic_actor_pattern_ids=["sumo_lane_change_conflict_v0"],
+                traffic_npc_speed_scale_values=[1.0],
+                tire_friction_coeff_values=[1.0],
+                surface_friction_scale_values=[1.0],
+                enable_ego_collision_avoidance=False,
+                avoidance_ttc_threshold_sec=2.5,
+                ego_max_brake_mps2=6.0,
+                max_cases=1,
+            )
+            case_scenario = json.loads(
+                (root / "runs" / "RUN_MATRIX_LANE_CHANGE_0001" / "matrix_scenario.json").read_text(encoding="utf-8")
+            )
+            summary = json.loads(
+                (root / "runs" / "RUN_MATRIX_LANE_CHANGE_0001" / "summary.json").read_text(encoding="utf-8")
+            )
+            lane_risk = json.loads(
+                (root / "runs" / "RUN_MATRIX_LANE_CHANGE_0001" / "lane_risk_summary.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+            self.assertEqual(case_scenario["npcs"][0]["lane_id"], "lane_b")
+            self.assertEqual(case_scenario["npcs"][0]["route_lane_id"], "lane_a")
+            self.assertEqual(summary["traffic_npc_route_lane_id_profile"], ["lane_a"])
+            self.assertEqual(lane_risk["lane_change_conflict_rows"], 61)
+
     def test_scenario_matrix_sweep_cli_writes_report(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

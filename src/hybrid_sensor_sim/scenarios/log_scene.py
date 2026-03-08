@@ -78,12 +78,22 @@ def validate_log_scene_payload(payload: dict[str, Any]) -> dict[str, Any]:
     ego_lane_id = None if ego_lane_id_raw is None else str(ego_lane_id_raw).strip()
     if ego_lane_id == "":
         raise ValueError("ego_lane_id must be non-empty when provided")
+    ego_route_lane_id_raw = payload.get("ego_route_lane_id")
+    ego_route_lane_id = None if ego_route_lane_id_raw is None else str(ego_route_lane_id_raw).strip()
+    if ego_route_lane_id == "":
+        raise ValueError("ego_route_lane_id must be non-empty when provided")
     lead_vehicle_lane_id_raw = payload.get("lead_vehicle_lane_id")
     lead_vehicle_lane_id = (
         None if lead_vehicle_lane_id_raw is None else str(lead_vehicle_lane_id_raw).strip()
     )
     if lead_vehicle_lane_id == "":
         raise ValueError("lead_vehicle_lane_id must be non-empty when provided")
+    lead_vehicle_route_lane_id_raw = payload.get("lead_vehicle_route_lane_id")
+    lead_vehicle_route_lane_id = (
+        None if lead_vehicle_route_lane_id_raw is None else str(lead_vehicle_route_lane_id_raw).strip()
+    )
+    if lead_vehicle_route_lane_id == "":
+        raise ValueError("lead_vehicle_route_lane_id must be non-empty when provided")
     ego_route_relation = _normalize_optional_route_relation(
         payload.get("ego_route_relation"),
         field="ego_route_relation",
@@ -106,8 +116,10 @@ def validate_log_scene_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "canonical_map_path": None if canonical_map_path is None else str(canonical_map_path),
         "route_definition": route_definition,
         "ego_lane_id": ego_lane_id,
+        "ego_route_lane_id": ego_route_lane_id,
         "ego_route_relation": ego_route_relation,
         "lead_vehicle_lane_id": lead_vehicle_lane_id,
+        "lead_vehicle_route_lane_id": lead_vehicle_route_lane_id,
         "lead_vehicle_route_relation": lead_vehicle_route_relation,
     }
 

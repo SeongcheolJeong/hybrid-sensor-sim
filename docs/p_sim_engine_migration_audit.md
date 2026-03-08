@@ -147,6 +147,10 @@ Implemented in the current repository:
 34. interaction-specific avoidance gate presets
    - the gate preset catalog now includes dedicated `scenario_batch_gate_avoidance_merge_v0` and `scenario_batch_gate_avoidance_downstream_route_v0` profiles in addition to the broader avoidance preset
    - comparison and workflow CLIs now have regression coverage for resolving the downstream-route preset and failing specifically on `AVOIDANCE_DOWNSTREAM_ROUTE_TRIGGER_COUNT_EXCEEDED`
+35. explicit route-lane semantics for lane-change conflicts
+   - scenario actors can now carry `route_lane_id` in addition to their current `lane_id`, so route semantics no longer need to be collapsed onto the current-lane surface
+   - replay now supports `ego_route_lane_id` and `lead_vehicle_route_lane_id`, and matrix actor patterns can synthesize `route_lane_id` through `traffic_npc_route_lane_profile`
+   - this opens direct `lane_change_conflict` generation in object-sim, replay, and matrix-sweep outputs without breaking legacy current-lane behavior
 
 Still pending from the same migration track:
 

@@ -166,6 +166,8 @@ Detailed audit:
    - batch comparison and workflow worst-case rows now preserve interaction-policy traces such as selected avoidance `priority` and `max_gap_m`, so top-level triage can explain not only that braking happened but under which route-interaction policy it happened
 20. interaction-specific avoidance gate presets
    - the batch gate preset catalog now includes dedicated merge-conflict and downstream-route avoidance profiles so route-interaction-heavy scenarios can be gated without turning on the broader avoidance-wide preset
+21. explicit route-lane surface for lane-change conflicts
+   - scenario actors can now carry `route_lane_id` separately from their current `lane_id`, replay can emit `ego_route_lane_id` / `lead_vehicle_route_lane_id`, and matrix patterns can synthesize `traffic_npc_route_lane_profile`, which together open direct `lane_change_conflict` generation without rewriting the current-lane surface
 11. route-relation-driven replay and sweep generation
    - `log_scene_v0` and matrix actor patterns can now synthesize actor lane assignments from route relations instead of relying only on explicit lane IDs or raw lane slots
 12. rendered payload generation in scenario variants
