@@ -95,6 +95,7 @@ Still pending from this master plan:
 2. real packaged backend smoke execution against AWSIM/CARLA binaries
 3. tighter publish gating that combines scenario/runtime smoke with provenance refresh status
 4. lower-level backend smoke entrypoints should preserve the same provenance-aware publish checks as top-level workflows
+5. top-level runtime/backend workflow should expose backend output comparison drift without requiring manual drill-down into nested smoke reports
 
 ## Boundary
 

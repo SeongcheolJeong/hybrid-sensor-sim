@@ -82,6 +82,33 @@ PY
     path.chmod(0o755)
 
 
+def _write_fake_backend_unexpected(path: Path) -> None:
+    path.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+spec = json.loads(Path(os.environ["BACKEND_OUTPUT_SPEC_PATH"]).read_text(encoding="utf-8"))
+output_root = Path(os.environ["BACKEND_OUTPUT_ROOT"])
+for entry in spec.get("expected_outputs", []):
+    path = Path(entry["path"])
+    if entry.get("kind") == "directory":
+        path.mkdir(parents=True, exist_ok=True)
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"artifact_key": entry["artifact_key"]}), encoding="utf-8")
+(output_root / "extras").mkdir(parents=True, exist_ok=True)
+(output_root / "extras" / "unexpected.log").write_text("unexpected\n", encoding="utf-8")
+PY
+""",
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+
+
 def _write_smoke_base_config(
     *,
     root: Path,
@@ -254,6 +281,63 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
             )
             self.assertEqual(smoke_scenario["objects"][0]["id"], "ego")
             self.assertTrue(Path(workflow_report["smoke"]["summary_path"]).is_file())
+
+    def test_run_scenario_backend_smoke_workflow_exposes_output_mismatch_details(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            variant_result = run_scenario_variant_workflow(
+                logical_scenarios_path="",
+                scenario_language_profile="highway_mixed_payloads_v0",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                out_root=root / "variant_workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=2,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+            )
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+            fake_backend = root / "fake_backend_unexpected.sh"
+            _write_fake_backend_unexpected(fake_backend)
+            smoke_config = _write_smoke_base_config(
+                root=root,
+                helios_bin=fake_helios,
+                output_dir=root / "smoke_placeholder",
+            )
+
+            result = run_scenario_backend_smoke_workflow(
+                variant_workflow_report_path=str(variant_result["workflow_report_path"]),
+                batch_workflow_report_path="",
+                smoke_config_path=smoke_config,
+                backend="awsim",
+                out_root=root / "backend_smoke_workflow",
+                selection_strategy="first_successful_variant",
+                selected_variant_id="",
+                lane_spacing_m=4.0,
+                smoke_output_dir="",
+                setup_summary_path="",
+                backend_workflow_summary_path="",
+                backend_bin=str(fake_backend),
+                renderer_map="Town07",
+                option_overrides=[],
+                skip_smoke=False,
+            )
+
+            workflow_report = result["workflow_report"]
+            self.assertEqual(workflow_report["status"], "SMOKE_FAILED")
+            summary = workflow_report["smoke"]["summary"]
+            self.assertEqual(summary["output_smoke_status"], "PARTIAL")
+            self.assertEqual(summary["output_comparison_status"], "MISSING_EXPECTED")
+            self.assertIn(
+                "MISSING_EXPECTED_OUTPUTS",
+                summary["output_comparison_mismatch_reasons"],
+            )
+            self.assertEqual(summary["output_comparison_unexpected_output_count"], 0)
+            self.assertEqual(summary["run_status"], "EXECUTION_FAILED")
 
     def test_run_scenario_backend_smoke_workflow_selects_worst_logical_scenario_from_batch_report(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

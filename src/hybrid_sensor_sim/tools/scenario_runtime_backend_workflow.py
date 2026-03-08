@@ -267,6 +267,18 @@ def _build_status_summary(
         "batch_attention_logical_scenario_ids": list(batch_status_summary.get("attention_logical_scenario_ids", [])),
         "backend_variant_id": backend_report.get("selection", {}).get("variant_id"),
         "backend_output_comparison_status": smoke_summary.get("output_comparison_status"),
+        "backend_output_comparison_mismatch_reasons": list(
+            smoke_summary.get("output_comparison_mismatch_reasons", [])
+        ),
+        "backend_output_comparison_unexpected_output_count": smoke_summary.get(
+            "output_comparison_unexpected_output_count"
+        ),
+        "backend_output_smoke_status": smoke_summary.get("output_smoke_status"),
+        "backend_output_smoke_coverage_ratio": smoke_summary.get(
+            "output_smoke_coverage_ratio"
+        ),
+        "backend_output_inspection_status": smoke_summary.get("output_inspection_status"),
+        "backend_runner_smoke_status": smoke_summary.get("runner_smoke_status"),
         "backend_run_status": smoke_summary.get("run_status"),
         "history_guard_status": history_guard_summary.get("status"),
         "history_guard_failure_codes": list(history_guard_summary.get("failure_codes", [])),
@@ -304,7 +316,13 @@ def _build_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Status: `{backend['status']}`",
         f"- Report: `{backend['workflow_report_path']}`",
         f"- Variant ID: `{summary['backend_variant_id'] or '-'}`",
+        f"- Output smoke: `{summary['backend_output_smoke_status'] or '-'}`",
+        f"- Output smoke coverage ratio: `{summary['backend_output_smoke_coverage_ratio'] if summary['backend_output_smoke_coverage_ratio'] is not None else '-'}`",
         f"- Output comparison: `{summary['backend_output_comparison_status'] or '-'}`",
+        f"- Output comparison mismatch reasons: `{', '.join(summary['backend_output_comparison_mismatch_reasons']) or '-'}`",
+        f"- Output comparison unexpected count: `{summary['backend_output_comparison_unexpected_output_count'] if summary['backend_output_comparison_unexpected_output_count'] is not None else '-'}`",
+        f"- Output inspection: `{summary['backend_output_inspection_status'] or '-'}`",
+        f"- Runner smoke: `{summary['backend_runner_smoke_status'] or '-'}`",
         f"- Run status: `{summary['backend_run_status'] or '-'}`",
         "",
         "## Provenance Guard",

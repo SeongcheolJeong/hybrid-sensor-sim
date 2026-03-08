@@ -596,9 +596,35 @@ def run_scenario_backend_smoke_workflow(
             "failure_reason": (smoke_summary.get("run") or {}).get("failure_reason")
             if isinstance(smoke_summary.get("run"), dict)
             else None,
+            "runner_smoke_status": (smoke_summary.get("runner_smoke") or {}).get("status")
+            if isinstance(smoke_summary.get("runner_smoke"), dict)
+            else None,
+            "output_inspection_status": (
+                (smoke_summary.get("output_inspection") or {}).get("status")
+                if isinstance(smoke_summary.get("output_inspection"), dict)
+                else None
+            ),
+            "output_smoke_status": (smoke_summary.get("output_smoke_report") or {}).get("status")
+            if isinstance(smoke_summary.get("output_smoke_report"), dict)
+            else None,
+            "output_smoke_coverage_ratio": (
+                (smoke_summary.get("output_smoke_report") or {}).get("coverage_ratio")
+                if isinstance(smoke_summary.get("output_smoke_report"), dict)
+                else None
+            ),
             "output_comparison_status": (smoke_summary.get("output_comparison") or {}).get("status")
             if isinstance(smoke_summary.get("output_comparison"), dict)
             else None,
+            "output_comparison_mismatch_reasons": (
+                list((smoke_summary.get("output_comparison") or {}).get("mismatch_reasons", []))
+                if isinstance(smoke_summary.get("output_comparison"), dict)
+                else []
+            ),
+            "output_comparison_unexpected_output_count": (
+                (smoke_summary.get("output_comparison") or {}).get("unexpected_output_count")
+                if isinstance(smoke_summary.get("output_comparison"), dict)
+                else None
+            ),
         }
 
     report_path = out_root / "scenario_backend_smoke_workflow_report_v0.json"

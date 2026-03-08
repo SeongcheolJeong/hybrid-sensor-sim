@@ -74,6 +74,33 @@ PY
     path.chmod(0o755)
 
 
+def _write_fake_backend_unexpected(path: Path) -> None:
+    path.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+spec = json.loads(Path(os.environ["BACKEND_OUTPUT_SPEC_PATH"]).read_text(encoding="utf-8"))
+output_root = Path(os.environ["BACKEND_OUTPUT_ROOT"])
+for entry in spec.get("expected_outputs", []):
+    path = Path(entry["path"])
+    if entry.get("kind") == "directory":
+        path.mkdir(parents=True, exist_ok=True)
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"artifact_key": entry["artifact_key"]}), encoding="utf-8")
+(output_root / "extras").mkdir(parents=True, exist_ok=True)
+(output_root / "extras" / "unexpected.log").write_text("unexpected\n", encoding="utf-8")
+PY
+""",
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+
+
 def _init_guard_repo(repo_root: Path) -> None:
     subprocess.run(["git", "init", "-b", "main"], cwd=repo_root, check=True)
     subprocess.run(
@@ -251,6 +278,77 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
             self.assertEqual(report["status_summary"]["final_status_source"], "default_success")
             self.assertTrue(Path(report["artifacts"]["smoke_scenario_path"]).is_file())
             self.assertTrue(Path(result["workflow_markdown_path"]).is_file())
+
+    def test_run_scenario_runtime_backend_workflow_surfaces_backend_output_mismatch_details(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+            fake_backend = root / "fake_backend_unexpected.sh"
+            _write_fake_backend_unexpected(fake_backend)
+            smoke_config = _write_smoke_base_config(
+                root=root,
+                helios_bin=fake_helios,
+                output_dir=root / "smoke_placeholder",
+            )
+
+            result = run_scenario_runtime_backend_workflow(
+                logical_scenarios_path=str(P_VALIDATION_FIXTURE_ROOT / "highway_mixed_payloads_v0.json"),
+                scenario_language_profile="",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                matrix_scenario_path=P_SIM_ENGINE_FIXTURE_ROOT / "highway_safe_following_v0.json",
+                smoke_config_path=smoke_config,
+                backend="awsim",
+                out_root=root / "runtime_backend_workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=2,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+                matrix_run_id_prefix="RUN_BATCH",
+                traffic_profile_ids=["sumo_highway_balanced_v0"],
+                traffic_actor_pattern_ids=["sumo_platoon_sparse_v0"],
+                traffic_npc_speed_scale_values=[1.0],
+                tire_friction_coeff_values=[1.0],
+                surface_friction_scale_values=[1.0],
+                enable_ego_collision_avoidance=False,
+                avoidance_ttc_threshold_sec=2.5,
+                ego_max_brake_mps2=6.0,
+                max_cases=0,
+                selection_strategy="worst_logical_scenario",
+                selected_variant_id="",
+                lane_spacing_m=4.0,
+                smoke_output_dir="",
+                setup_summary_path="",
+                backend_workflow_summary_path="",
+                backend_bin=str(fake_backend),
+                renderer_map="Town07",
+                option_overrides=[],
+                skip_smoke=False,
+            )
+
+            report = result["workflow_report"]
+            self.assertEqual(report["status"], "FAILED")
+            self.assertEqual(report["backend_smoke_workflow"]["status"], "SMOKE_FAILED")
+            self.assertEqual(
+                report["status_summary"]["backend_output_smoke_status"],
+                "PARTIAL",
+            )
+            self.assertEqual(
+                report["status_summary"]["backend_output_comparison_status"],
+                "MISSING_EXPECTED",
+            )
+            self.assertIn(
+                "MISSING_EXPECTED_OUTPUTS",
+                report["status_summary"]["backend_output_comparison_mismatch_reasons"],
+            )
+            self.assertEqual(
+                report["status_summary"]["backend_output_comparison_unexpected_output_count"],
+                0,
+            )
 
     def test_run_scenario_runtime_backend_workflow_keeps_attention_status(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

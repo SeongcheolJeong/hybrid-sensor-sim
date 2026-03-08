@@ -191,6 +191,9 @@ Implemented in the current repository:
 45. provenance-aware backend smoke governance
    - `src/hybrid_sensor_sim/tools/scenario_backend_smoke_workflow.py` can now also run the checked-in Autonomy-E2E history guard directly
    - this gives the lower-level smoke bridge the same publish-time provenance check even when the top-level runtime workflow is not used
+46. backend smoke mismatch triage propagation
+   - `scenario_backend_smoke_workflow` now preserves backend output smoke/comparison details including mismatch reasons and unexpected output count
+   - `scenario_runtime_backend_workflow` now lifts those details into top-level `status_summary` and Markdown so real package smoke drift is visible without opening nested reports
 
 Still pending from the same migration track:
 
