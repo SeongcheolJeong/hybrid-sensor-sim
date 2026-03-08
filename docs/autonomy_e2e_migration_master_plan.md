@@ -154,6 +154,10 @@ Detailed audit:
    - scenario batch comparison and workflow now propagate object-sim avoidance trigger counts, last-trigger interaction kinds, and grouped avoidance counters into overview, logical-scenario, matrix-group, attention, and top-level status-summary surfaces
 14. avoidance-aware gate policy
    - batch gate policy now supports direct thresholds for avoidance activity and interaction-specific trigger counts, and the same failure codes are reused in logical-scenario health and matrix-group triage
+15. full-stack avoidance gate reuse
+   - avoidance thresholds now flow consistently through comparison gate evaluation, logical-scenario health, matrix-group triage, and top-level batch status summaries
+16. richer interaction-specific avoidance selection
+   - object-sim avoidance policy now supports interaction-specific `priority` and `max_gap_m`, making target selection and actionable filtering more controllable without coupling to vehicle dynamics
 11. route-relation-driven replay and sweep generation
    - `log_scene_v0` and matrix actor patterns can now synthesize actor lane assignments from route relations instead of relying only on explicit lane IDs or raw lane slots
 12. rendered payload generation in scenario variants

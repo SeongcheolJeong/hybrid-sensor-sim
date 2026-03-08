@@ -105,6 +105,8 @@ def write_object_sim_artifacts(
                 "ego_avoidance_target_ttc_sec",
                 "ego_avoidance_target_ttc_threshold_sec",
                 "ego_avoidance_target_brake_scale",
+                "ego_avoidance_target_priority",
+                "ego_avoidance_target_max_gap_m",
                 "ego_surface_friction_scale",
                 "ego_dynamics_mode",
                 "ego_dynamics_throttle",

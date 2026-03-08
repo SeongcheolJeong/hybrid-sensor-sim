@@ -130,6 +130,10 @@ Implemented in the current repository:
 28. avoidance-aware batch gate thresholds
    - batch gate policy now supports direct thresholds for avoidance-active rows, aggregated avoidance brake events, and interaction-specific avoidance trigger counts
    - per-scenario logical health and matrix-group triage now reuse the same avoidance failure codes such as `AVOIDANCE_MERGE_CONFLICT_TRIGGER_COUNT_EXCEEDED`
+29. avoidance thresholds wired through the full batch stack
+   - top-level batch gate, per-scenario logical health, and matrix-group triage now all evaluate the same avoidance metrics and reuse the same failure codes
+30. richer interaction-specific avoidance policy
+   - object-sim avoidance policy now supports `priority` and `max_gap_m` per interaction kind, and the selected policy values are emitted in summary and trace artifacts
 
 Still pending from the same migration track:
 

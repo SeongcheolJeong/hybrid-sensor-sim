@@ -52,7 +52,7 @@ class ScenarioConfig:
     enable_ego_collision_avoidance: bool = False
     avoidance_ttc_threshold_sec: float = 0.0
     ego_max_brake_mps2: float = 0.0
-    avoidance_interaction_policy: dict[str, dict[str, float]] | None = None
+    avoidance_interaction_policy: dict[str, dict[str, float | int]] | None = None
     tire_friction_coeff: float = 1.0
     surface_friction_scale: float = 1.0
     wall_timeout_sec: float | None = None
@@ -152,7 +152,7 @@ def _resolve_optional_path(raw_path: Any, *, source_path: Path | None, field: st
     return candidate
 
 
-def _parse_avoidance_interaction_policy(raw_value: Any) -> dict[str, dict[str, float]] | None:
+def _parse_avoidance_interaction_policy(raw_value: Any) -> dict[str, dict[str, float | int]] | None:
     if raw_value is None:
         return None
     if not isinstance(raw_value, dict):
@@ -163,7 +163,7 @@ def _parse_avoidance_interaction_policy(raw_value: Any) -> dict[str, dict[str, f
         "lane_change_conflict",
         "downstream_route_conflict",
     }
-    normalized: dict[str, dict[str, float]] = {}
+    normalized: dict[str, dict[str, float | int]] = {}
     for interaction_kind, interaction_policy_raw in raw_value.items():
         interaction_key = str(interaction_kind).strip()
         if interaction_key not in allowed_kinds:
@@ -175,7 +175,7 @@ def _parse_avoidance_interaction_policy(raw_value: Any) -> dict[str, dict[str, f
             raise ScenarioValidationError(
                 f"avoidance_interaction_policy.{interaction_key} must be an object"
             )
-        normalized_policy: dict[str, float] = {}
+        normalized_policy: dict[str, float | int] = {}
         if "ttc_threshold_sec" in interaction_policy_raw:
             ttc_threshold_sec = float(interaction_policy_raw["ttc_threshold_sec"])
             if ttc_threshold_sec < 0:
@@ -190,6 +190,20 @@ def _parse_avoidance_interaction_policy(raw_value: Any) -> dict[str, dict[str, f
                     f"avoidance_interaction_policy.{interaction_key}.brake_scale must be between 0 and 1"
                 )
             normalized_policy["brake_scale"] = brake_scale
+        if "priority" in interaction_policy_raw:
+            priority = int(interaction_policy_raw["priority"])
+            if priority < 0:
+                raise ScenarioValidationError(
+                    f"avoidance_interaction_policy.{interaction_key}.priority must be >= 0"
+                )
+            normalized_policy["priority"] = priority
+        if "max_gap_m" in interaction_policy_raw:
+            max_gap_m = float(interaction_policy_raw["max_gap_m"])
+            if max_gap_m < 0:
+                raise ScenarioValidationError(
+                    f"avoidance_interaction_policy.{interaction_key}.max_gap_m must be >= 0"
+                )
+            normalized_policy["max_gap_m"] = max_gap_m
         if normalized_policy:
             normalized[interaction_key] = normalized_policy
     return normalized

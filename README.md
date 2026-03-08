@@ -252,6 +252,13 @@ python3 scripts/run_scenario_batch_workflow.py \
 - `comparison_summary.failing_logical_scenario_gate_failure_code_counts`: aggregate failing gate reasons such as `MERGE_CONFLICT_ROWS_EXCEEDED`
 - `comparison_summary.attention_reason_counts`: aggregate attention reason counts propagated from the comparison layer
 - batch gate policy can now optionally cover `path_conflict`, `merge_conflict`, `lane_change_conflict`, and `min_ttc_path_conflict_sec` in addition to the existing attention/collision/timeout/TTC-any-lane rules
+- the same batch gate surface can now also enforce avoidance activity thresholds:
+  - `--gate-max-avoidance-rows`
+  - `--gate-max-avoidance-brake-events`
+  - `--gate-max-avoidance-same-lane-conflict-triggers`
+  - `--gate-max-avoidance-merge-conflict-triggers`
+  - `--gate-max-avoidance-lane-change-conflict-triggers`
+  - `--gate-max-avoidance-downstream-route-conflict-triggers`
 - batch gate policy can also cover avoidance activity and interaction-kind trigger counts
 - `comparison_summary.matrix_group_rows`: compact matrix-group table reused by workflow Markdown
 - `variant_summary.successful_variant_rows`: compact successful variant rows reused by workflow Markdown
@@ -431,7 +438,11 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - Scenario inputs can optionally override avoidance policy per interaction kind:
   - `avoidance_interaction_policy.merge_conflict.ttc_threshold_sec`
   - `avoidance_interaction_policy.merge_conflict.brake_scale`
+  - `avoidance_interaction_policy.merge_conflict.priority`
+  - `avoidance_interaction_policy.merge_conflict.max_gap_m`
   - same shape is also supported for `same_lane_conflict`, `lane_change_conflict`, and `downstream_route_conflict`
+  - applied values are surfaced through `summary.json` as `ego_avoidance_last_trigger_priority` / `ego_avoidance_last_trigger_max_gap_m`
+  - and through `trace.csv` as `ego_avoidance_target_priority` / `ego_avoidance_target_max_gap_m`
 - The route-aware runtime surface now distinguishes:
   - `same_lane_conflict`
   - `merge_conflict`

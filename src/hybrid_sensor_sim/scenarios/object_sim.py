@@ -61,6 +61,8 @@ class CoreSimRunner:
         self.ego_avoidance_last_trigger_gap_m: float | None = None
         self.ego_avoidance_last_trigger_ttc_threshold_sec: float | None = None
         self.ego_avoidance_last_trigger_brake_scale: float | None = None
+        self.ego_avoidance_last_trigger_priority: int | None = None
+        self.ego_avoidance_last_trigger_max_gap_m: float | None = None
         self.ego_dynamics_longitudinal_force_limited_event_count = 0
         self.route_lane_ids = (
             [str(item) for item in scenario.map_context.route_report.get("route_lane_ids", [])]
@@ -242,6 +244,8 @@ class CoreSimRunner:
                     "ego_avoidance_target_ttc_sec": avoidance_action.get("target_ttc_sec"),
                     "ego_avoidance_target_ttc_threshold_sec": avoidance_action.get("target_ttc_threshold_sec"),
                     "ego_avoidance_target_brake_scale": avoidance_action.get("target_brake_scale"),
+                    "ego_avoidance_target_priority": avoidance_action.get("target_priority"),
+                    "ego_avoidance_target_max_gap_m": avoidance_action.get("target_max_gap_m"),
                     "ego_surface_friction_scale": round(self.scenario.surface_friction_scale, 6),
                     "ego_dynamics_mode": ego_dynamics_step.get("ego_dynamics_mode"),
                     "ego_dynamics_throttle": ego_dynamics_step.get("throttle"),
@@ -415,7 +419,7 @@ class CoreSimRunner:
         }
 
     @staticmethod
-    def _avoidance_interaction_priority(interaction_kind: str) -> int:
+    def _default_avoidance_interaction_priority(interaction_kind: str) -> int:
         if interaction_kind == "same_lane_conflict":
             return 0
         if interaction_kind == "merge_conflict":
@@ -426,7 +430,7 @@ class CoreSimRunner:
             return 3
         return 4
 
-    def _resolve_avoidance_policy(self, interaction_kind: str) -> dict[str, float]:
+    def _resolve_avoidance_policy(self, interaction_kind: str) -> dict[str, float | int | None]:
         normalized_policy = dict(self.scenario.avoidance_interaction_policy or {})
         interaction_policy = dict(normalized_policy.get(interaction_kind, {}))
         return {
@@ -434,6 +438,17 @@ class CoreSimRunner:
                 interaction_policy.get("ttc_threshold_sec", self.scenario.avoidance_ttc_threshold_sec)
             ),
             "brake_scale": float(interaction_policy.get("brake_scale", 1.0)),
+            "priority": int(
+                interaction_policy.get(
+                    "priority",
+                    self._default_avoidance_interaction_priority(interaction_kind),
+                )
+            ),
+            "max_gap_m": (
+                float(interaction_policy["max_gap_m"])
+                if "max_gap_m" in interaction_policy
+                else None
+            ),
         }
 
     def _apply_ego_collision_avoidance(self, dt_sec: float) -> dict[str, Any]:
@@ -450,6 +465,8 @@ class CoreSimRunner:
             "target_ttc_sec": None,
             "target_ttc_threshold_sec": None,
             "target_brake_scale": None,
+            "target_priority": None,
+            "target_max_gap_m": None,
         }
         if not self.scenario.enable_ego_collision_avoidance:
             return result
@@ -484,7 +501,7 @@ class CoreSimRunner:
             lead_candidates,
             key=lambda row: (
                 round(float(row["target_ttc_sec"]), 6),
-                self._avoidance_interaction_priority(str(row["path_interaction_kind"])),
+                int(row["avoidance_policy"]["priority"]),
                 round(float(row["gap_m"]), 6),
                 str(row["npc"].actor_id),
             ),
@@ -495,13 +512,17 @@ class CoreSimRunner:
             if float(row["avoidance_policy"]["ttc_threshold_sec"]) > 0
             and float(row["avoidance_policy"]["brake_scale"]) > 0
             and float(row["target_ttc_sec"]) <= float(row["avoidance_policy"]["ttc_threshold_sec"])
+            and (
+                row["avoidance_policy"]["max_gap_m"] is None
+                or float(row["gap_m"]) <= float(row["avoidance_policy"]["max_gap_m"])
+            )
         ]
         selected_target = (
             min(
                 actionable_candidates,
                 key=lambda row: (
                     round(float(row["target_ttc_sec"]), 6),
-                    self._avoidance_interaction_priority(str(row["path_interaction_kind"])),
+                    int(row["avoidance_policy"]["priority"]),
                     round(float(row["gap_m"]), 6),
                     str(row["npc"].actor_id),
                 ),
@@ -519,6 +540,12 @@ class CoreSimRunner:
             float(selected_target["avoidance_policy"]["ttc_threshold_sec"]), 6
         )
         result["target_brake_scale"] = round(float(selected_target["avoidance_policy"]["brake_scale"]), 6)
+        result["target_priority"] = int(selected_target["avoidance_policy"]["priority"])
+        result["target_max_gap_m"] = (
+            round(float(selected_target["avoidance_policy"]["max_gap_m"]), 6)
+            if selected_target["avoidance_policy"]["max_gap_m"] is not None
+            else None
+        )
         ttc_sec = float(selected_target["target_ttc_sec"])
         result["ttc_sec"] = round(ttc_sec, 6)
         if not actionable_candidates:
@@ -551,6 +578,12 @@ class CoreSimRunner:
         )
         self.ego_avoidance_last_trigger_brake_scale = round(
             float(selected_target["avoidance_policy"]["brake_scale"]), 6
+        )
+        self.ego_avoidance_last_trigger_priority = int(selected_target["avoidance_policy"]["priority"])
+        self.ego_avoidance_last_trigger_max_gap_m = (
+            round(float(selected_target["avoidance_policy"]["max_gap_m"]), 6)
+            if selected_target["avoidance_policy"]["max_gap_m"] is not None
+            else None
         )
         self.ego_avoidance_trigger_counts_by_interaction_kind[trigger_interaction_kind] = (
             self.ego_avoidance_trigger_counts_by_interaction_kind.get(trigger_interaction_kind, 0) + 1
@@ -852,6 +885,8 @@ def run_object_sim(
             "ego_avoidance_last_trigger_gap_m": runner.ego_avoidance_last_trigger_gap_m,
             "ego_avoidance_last_trigger_ttc_threshold_sec": runner.ego_avoidance_last_trigger_ttc_threshold_sec,
             "ego_avoidance_last_trigger_brake_scale": runner.ego_avoidance_last_trigger_brake_scale,
+            "ego_avoidance_last_trigger_priority": runner.ego_avoidance_last_trigger_priority,
+            "ego_avoidance_last_trigger_max_gap_m": runner.ego_avoidance_last_trigger_max_gap_m,
             "traffic_npc_count": int(len(effective_scenario.npcs)),
             "traffic_npc_lane_profile": [int(npc.lane_index) for npc in effective_scenario.npcs],
             "traffic_npc_lane_id_profile": [npc.lane_id for npc in effective_scenario.npcs],
