@@ -3,6 +3,7 @@ from __future__ import annotations
 import itertools
 import json
 import random
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,7 @@ from typing import Any
 
 LOGICAL_SCENARIOS_SCHEMA_VERSION_V0 = "logical_scenarios_v0"
 SCENARIO_VARIANTS_REPORT_SCHEMA_VERSION_V0 = "scenario_variants_report_v0"
+_PLACEHOLDER_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 
 def _must_be_dict(value: Any, label: str) -> dict[str, Any]:
@@ -84,16 +86,45 @@ def validate_logical_scenarios_payload(payload: dict[str, Any]) -> dict[str, Any
         if not logical_id:
             raise ValueError("logical scenario entry missing scenario_id")
         parameters = _must_be_dict(logical_obj.get("parameters"), "logical scenario parameters")
+        variant_payload_template = logical_obj.get("variant_payload_template")
+        if variant_payload_template is not None and not isinstance(variant_payload_template, dict):
+            raise ValueError("logical scenario variant_payload_template must be a JSON object")
+        variant_payload_kind = str(logical_obj.get("variant_payload_kind", "")).strip() or None
         normalized_rows.append(
             {
                 "scenario_id": logical_id,
                 "parameters": parameters,
+                "variant_payload_template": variant_payload_template,
+                "variant_payload_kind": variant_payload_kind,
             }
         )
     return {
         "logical_scenarios_schema_version": LOGICAL_SCENARIOS_SCHEMA_VERSION_V0,
         "logical_scenarios": normalized_rows,
     }
+
+
+def _render_template_value(value: Any, *, context: dict[str, Any]) -> Any:
+    if isinstance(value, dict):
+        return {str(key): _render_template_value(item, context=context) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_render_template_value(item, context=context) for item in value]
+    if not isinstance(value, str):
+        return value
+    exact_match = _PLACEHOLDER_PATTERN.fullmatch(value)
+    if exact_match is not None:
+        key = exact_match.group(1)
+        if key not in context:
+            raise ValueError(f"template placeholder is not defined: {key}")
+        return context[key]
+
+    def _replace(match: re.Match[str]) -> str:
+        key = match.group(1)
+        if key not in context:
+            raise ValueError(f"template placeholder is not defined: {key}")
+        return str(context[key])
+
+    return _PLACEHOLDER_PATTERN.sub(_replace, value)
 
 
 def load_logical_scenarios_source(
@@ -142,6 +173,8 @@ def generate_variants(
     for logical in normalized["logical_scenarios"]:
         logical_id = str(logical["scenario_id"])
         parameters = dict(logical["parameters"])
+        variant_payload_template = logical.get("variant_payload_template")
+        variant_payload_kind = logical.get("variant_payload_kind")
         base_rows = _build_combinations(parameters)
         selected_rows = _sample_rows(
             base_rows,
@@ -151,12 +184,23 @@ def generate_variants(
             rng=rng,
         )
         for idx, row in enumerate(selected_rows, start=1):
+            variant_id = f"{logical_id}_{idx:04d}"
+            payload = {
+                "scenario_id": variant_id,
+                "logical_scenario_id": logical_id,
+                "parameters": row,
+            }
+            if variant_payload_template is not None:
+                render_context = dict(row)
+                render_context["variant_id"] = variant_id
+                render_context["logical_scenario_id"] = logical_id
+                payload["rendered_payload"] = _render_template_value(
+                    variant_payload_template,
+                    context=render_context,
+                )
+                payload["rendered_payload_kind"] = variant_payload_kind
             variants.append(
-                {
-                    "scenario_id": f"{logical_id}_{idx:04d}",
-                    "logical_scenario_id": logical_id,
-                    "parameters": row,
-                }
+                payload
             )
     return variants
 

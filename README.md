@@ -44,6 +44,7 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `scripts/run_log_replay.py`: converts `log_scene_v0` into a generated scenario and runs object-sim on it.
 - `scripts/run_log_scene_augment.py`: creates deterministic speed/gap variants from `log_scene_v0`.
 - `scripts/run_scenario_variants.py`: expands `logical_scenarios_v0` inputs into concrete parameter combinations.
+  - optional `variant_payload_template` lets the report carry rendered concrete payloads such as `log_scene_v0` variants
 - `scripts/run_scenario_matrix_sweep.py`: runs object-sim over traffic/friction parameter grids and writes a sweep report.
 - `scripts/run_sensor_rig_sweep.py`: evaluates rig candidates against current native preview and coverage outputs.
 - `scripts/run_map_convert.py`: converts `simple_map_v0` and `canonical_lane_graph_v0`.
@@ -131,6 +132,11 @@ Scenario variants:
 python3 scripts/run_scenario_variants.py \
   --logical-scenarios tests/fixtures/autonomy_e2e/p_validation/highway_cut_in_v0.json \
   --out artifacts/scenario_variants_highway_cut_in_v0.json \
+  --sampling full
+
+python3 scripts/run_scenario_variants.py \
+  --logical-scenarios tests/fixtures/autonomy_e2e/p_validation/highway_map_route_relations_v0.json \
+  --out artifacts/scenario_variants_highway_map_route_relations_v0.json \
   --sampling full
 ```
 

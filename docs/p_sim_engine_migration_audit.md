@@ -74,10 +74,11 @@ Implemented in the current repository:
 13. route-driven `lane_index -> lane_id` inference and `lane_binding_mode` exposure in `src/hybrid_sensor_sim/scenarios/schema.py` and `src/hybrid_sensor_sim/scenarios/object_sim.py`
 14. route-aware runtime path-conflict handling for collision avoidance and TTC in `src/hybrid_sensor_sim/scenarios/object_sim.py`
 15. route-relation-driven lane synthesis in `src/hybrid_sensor_sim/scenarios/replay.py` and `src/hybrid_sensor_sim/scenarios/matrix_sweep.py`
+16. route-relation-driven rendered payload generation in `src/hybrid_sensor_sim/scenarios/variants.py`
 
 Still pending from the same migration track:
 
-1. deeper map-aware behavior beyond lane-id normalization, lane-binding inference, route synthesis, route-relation-driven scenario generation, route-aware runtime path-conflict handling, route summary wiring, and route-aware lane-risk aggregation
+1. deeper map-aware behavior beyond lane-id normalization, lane-binding inference, route synthesis, route-relation-driven scenario generation, rendered payload generation, route-aware runtime path-conflict handling, route summary wiring, and route-aware lane-risk aggregation
 
 ## Block Mapping
 

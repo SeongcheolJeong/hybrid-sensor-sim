@@ -71,6 +71,49 @@ class ScenarioVariantsTests(unittest.TestCase):
         self.assertEqual(source_path.name, "highway_cut_in_v0.json")
         self.assertEqual(payload["logical_scenarios_schema_version"], "logical_scenarios_v0")
 
+    def test_generate_variants_renders_route_relation_payload_templates(self) -> None:
+        payload, source_path, source_kind = load_logical_scenarios_source(
+            logical_scenarios_path=str(FIXTURE_ROOT / "highway_map_route_relations_v0.json"),
+        )
+        report = build_scenario_variants_report(
+            payload=payload,
+            source_path=source_path,
+            source_kind=source_kind,
+            sampling="full",
+            sample_size=0,
+            max_variants_per_scenario=1000,
+            seed=0,
+        )
+
+        self.assertEqual(report["variant_count"], 4)
+        first_variant = report["variants"][0]
+        last_variant = report["variants"][-1]
+        self.assertEqual(first_variant["rendered_payload_kind"], "log_scene_v0")
+        self.assertEqual(first_variant["rendered_payload"]["log_id"], "scn_log_route_relations_0001")
+        self.assertEqual(first_variant["rendered_payload"]["ego_route_relation"], "same_lane")
+        self.assertEqual(first_variant["rendered_payload"]["lead_vehicle_route_relation"], "downstream")
+        self.assertEqual(first_variant["rendered_payload"]["ego_initial_speed_mps"], 16.0)
+        self.assertEqual(last_variant["rendered_payload"]["ego_route_relation"], "downstream")
+        self.assertEqual(last_variant["rendered_payload"]["lead_vehicle_route_relation"], "off_route")
+
+    def test_generate_variants_rejects_unknown_template_placeholders(self) -> None:
+        with self.assertRaisesRegex(ValueError, "template placeholder is not defined"):
+            generate_variants(
+                {
+                    "logical_scenarios": [
+                        {
+                            "scenario_id": "bad_template",
+                            "parameters": {"speed": [1]},
+                            "variant_payload_template": {"value": "${missing_key}"},
+                        }
+                    ]
+                },
+                sampling="full",
+                sample_size=0,
+                max_variants_per_scenario=1000,
+                seed=0,
+            )
+
     def test_scenario_variants_cli_writes_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             out_path = Path(tmp) / "variants.json"
@@ -86,6 +129,24 @@ class ScenarioVariantsTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             payload = json.loads(out_path.read_text(encoding="utf-8"))
             self.assertEqual(payload["variant_count"], 8)
+
+    def test_scenario_variants_cli_writes_rendered_payloads(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            out_path = Path(tmp) / "route_variants.json"
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = scenario_variants_main(
+                    [
+                        "--logical-scenarios",
+                        str(FIXTURE_ROOT / "highway_map_route_relations_v0.json"),
+                        "--out",
+                        str(out_path),
+                    ]
+                )
+            self.assertEqual(exit_code, 0)
+            payload = json.loads(out_path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["variant_count"], 4)
+            self.assertEqual(payload["variants"][1]["rendered_payload_kind"], "log_scene_v0")
+            self.assertIn("rendered_payload", payload["variants"][1])
 
     def test_scenario_variants_script_bootstraps_src_path(self) -> None:
         script_path = Path(__file__).resolve().parents[1] / "scripts" / "run_scenario_variants.py"

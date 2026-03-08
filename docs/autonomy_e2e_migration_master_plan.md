@@ -126,6 +126,8 @@ Detailed audit:
    - object-sim now uses route semantics directly for path-conflict TTC and ego avoidance, not only for post-run reporting
 11. route-relation-driven replay and sweep generation
    - `log_scene_v0` and matrix actor patterns can now synthesize actor lane assignments from route relations instead of relying only on explicit lane IDs or raw lane slots
+12. rendered payload generation in scenario variants
+   - `logical_scenarios_v0` can now emit rendered concrete payloads, including route-relation-driven `log_scene_v0` variants
 
 ### Reference only
 

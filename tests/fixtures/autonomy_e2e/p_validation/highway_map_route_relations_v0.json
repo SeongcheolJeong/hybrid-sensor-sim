@@ -1,0 +1,36 @@
+{
+  "profile_id": "highway_map_route_relations_v0",
+  "logical_scenarios": [
+    {
+      "scenario_id": "scn_log_route_relations",
+      "parameters": {
+        "ego_route_relation": ["same_lane", "downstream"],
+        "lead_vehicle_route_relation": ["downstream", "off_route"],
+        "ego_initial_speed_mps": [16.0],
+        "lead_vehicle_initial_gap_m": [42.0],
+        "lead_vehicle_speed_mps": [14.0]
+      },
+      "variant_payload_kind": "log_scene_v0",
+      "variant_payload_template": {
+        "log_scene_schema_version": "log_scene_v0",
+        "log_id": "${variant_id}",
+        "map_id": "demo_map_v0",
+        "map_version": "v0",
+        "canonical_map_path": "../p_map_toolset/canonical_lane_graph_v0.json",
+        "route_definition": {
+          "entry_lane_id": "lane_a",
+          "exit_lane_id": "lane_c",
+          "via_lane_ids": ["lane_b"],
+          "cost_mode": "hops"
+        },
+        "ego_route_relation": "${ego_route_relation}",
+        "lead_vehicle_route_relation": "${lead_vehicle_route_relation}",
+        "ego_initial_speed_mps": "${ego_initial_speed_mps}",
+        "lead_vehicle_initial_gap_m": "${lead_vehicle_initial_gap_m}",
+        "lead_vehicle_speed_mps": "${lead_vehicle_speed_mps}",
+        "duration_sec": 4.0,
+        "dt_sec": 0.1
+      }
+    }
+  ]
+}
