@@ -452,6 +452,7 @@ BLOCK_CATALOG: list[dict[str, Any]] = [
         ],
         "migration_status": "superseded",
         "current_paths": [
+            "src/hybrid_sensor_sim/orchestrator.py",
             "src/hybrid_sensor_sim/backends/native_physics.py",
             "src/hybrid_sensor_sim/renderers/playback_contract.py",
         ],
@@ -480,11 +481,13 @@ BLOCK_CATALOG: list[dict[str, Any]] = [
         ],
         "migration_status": "superseded",
         "current_paths": [
+            "src/hybrid_sensor_sim/tools/renderer_backend_linux_handoff_docker.py",
             "src/hybrid_sensor_sim/tools/renderer_backend_package_acquire.py",
             "src/hybrid_sensor_sim/tools/renderer_backend_package_stage.py",
             "src/hybrid_sensor_sim/tools/renderer_backend_workflow.py",
         ],
         "current_test_paths": [
+            "tests/test_renderer_backend_linux_handoff_docker.py",
             "tests/test_renderer_backend_package_acquire.py",
             "tests/test_renderer_backend_package_stage.py",
             "tests/test_renderer_backend_workflow.py",
@@ -541,15 +544,18 @@ BLOCK_CATALOG: list[dict[str, Any]] = [
         "current_paths": [
             "src/hybrid_sensor_sim/renderers/runtime_executor.py",
             "src/hybrid_sensor_sim/renderers/backend_runner.py",
+            "src/hybrid_sensor_sim/tools/renderer_backend_smoke.py",
             "src/hybrid_sensor_sim/tools/renderer_backend_workflow.py",
         ],
         "current_test_paths": [
             "tests/test_renderer_runtime.py",
             "tests/test_backend_runner.py",
+            "tests/test_renderer_backend_smoke.py",
             "tests/test_renderer_backend_workflow.py",
         ],
         "current_fixture_paths": [],
         "current_script_paths": [
+            "scripts/run_renderer_backend_smoke.py",
             "scripts/run_renderer_backend_workflow.py",
         ],
         "current_doc_paths": [
