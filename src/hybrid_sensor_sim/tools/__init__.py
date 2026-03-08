@@ -20,6 +20,9 @@ from hybrid_sensor_sim.tools.renderer_backend_linux_handoff import (
 from hybrid_sensor_sim.tools.renderer_backend_linux_handoff_docker import (
     run_renderer_backend_linux_handoff_in_docker,
 )
+from hybrid_sensor_sim.tools.renderer_backend_linux_handoff_selftest import (
+    run_renderer_backend_linux_handoff_selftest,
+)
 
 __all__ = [
     "build_renderer_backend_local_setup",
@@ -28,6 +31,7 @@ __all__ = [
     "build_renderer_backend_workflow",
     "run_renderer_backend_linux_handoff",
     "run_renderer_backend_linux_handoff_in_docker",
+    "run_renderer_backend_linux_handoff_selftest",
     "build_renderer_backend_smoke_summary",
     "main",
 ]

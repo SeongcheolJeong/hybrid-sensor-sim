@@ -595,6 +595,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - `python3 scripts/run_renderer_backend_workflow.py --backend awsim --setup-summary artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json --dry-run --pack-linux-handoff --verify-linux-handoff-bundle`
 - `python3 scripts/run_renderer_backend_workflow.py --backend awsim --setup-summary artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json --dry-run --run-linux-handoff-docker`
 - `python3 scripts/run_renderer_backend_linux_handoff.py --bundle <handoff_bundle.tar.gz> --transfer-manifest <renderer_backend_workflow_linux_handoff_transfer_manifest.json> --bundle-manifest <renderer_backend_workflow_linux_handoff_bundle_manifest.json> --repo-root <linux_repo_checkout>`
+- `python3 scripts/run_renderer_backend_linux_handoff_selftest.py --output-root artifacts/renderer_backend_linux_handoff_selftest --execute`
 - behavior:
   - loads or generates local setup summary
   - reuses resolved `HELIOS_*`, backend binary, and renderer map selections
@@ -630,6 +631,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - `scripts/run_renderer_backend_linux_handoff.py` is the runner-side helper that consumes the bundle plus manifests, revalidates checksums, and optionally executes the extracted handoff script
 - `scripts/run_renderer_backend_linux_handoff_docker.py` runs the same handoff helper in a local Linux Docker container; the generated `renderer_backend_workflow_linux_handoff_docker.sh` defaults to verify-only (`HANDOFF_SKIP_RUN=1`) so local container checks stay safe by default
 - both handoff runner scripts now bootstrap `src/` themselves, so `python3 scripts/run_renderer_backend_linux_handoff*.py ...` works without manually exporting `PYTHONPATH`
+- `scripts/run_renderer_backend_linux_handoff_selftest.py` builds a synthetic handoff bundle and runs it through the Docker helper, so the full `bundle -> container verify/run` path can be smoke-tested without AWSIM/CARLA
 
 ## Next implementation target
 
