@@ -81,6 +81,7 @@ def write_object_sim_artifacts(
                 "adjacent_lane",
                 "path_conflict",
                 "path_conflict_source",
+                "path_interaction_kind",
                 "ego_route_lane_order",
                 "npc_route_lane_order",
                 "route_lane_delta",

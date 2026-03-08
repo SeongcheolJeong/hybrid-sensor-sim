@@ -395,8 +395,15 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `ttc_under_3s_route_downstream_count`
 - Object-sim runtime now also uses route semantics directly for path-conflict TTC and ego avoidance:
   - `summary.json`: `route_aware_runtime_enabled`, `min_ttc_path_conflict_sec`
-  - `trace.csv`: `path_conflict`, `path_conflict_source`, `path_ttc_sec`
-  - `lane_risk_summary.json`: `path_conflict_rows`, `min_ttc_path_conflict_sec`
+  - `trace.csv`: `path_conflict`, `path_conflict_source`, `path_interaction_kind`, `path_ttc_sec`
+  - `lane_risk_summary.json`: `path_conflict_rows`, `min_ttc_path_conflict_sec`, `path_interaction_counts`, `merge_conflict_rows`, `lane_change_clear_rows`, `diverge_clear_rows`
+- The route-aware runtime surface now distinguishes:
+  - `same_lane_conflict`
+  - `merge_conflict`
+  - `lane_change_conflict`
+  - `lane_change_clear`
+  - `diverge_clear`
+  - `downstream_route_conflict`
 - Default behavior remains the historical fixed-speed kinematic core.
 - Vehicle-dynamics coupling is currently longitudinal only; lane handling remains `1D + lane_index`.
 

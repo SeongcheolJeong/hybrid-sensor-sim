@@ -97,10 +97,14 @@ Implemented in the current repository:
    - gate preset discovery and ID resolution now live in `src/hybrid_sensor_sim/tools/scenario_batch_gate_catalog.py`
    - workflow summaries now add logical-scenario health rows so cross-batch failures surface as compact per-scenario `PASS|ATTENTION|FAIL` judgments
    - each logical-scenario health row now also carries per-scenario gate evaluation with `gate_status`, `gate_failure_codes`, and `gate_evaluated_rules`
+22. deeper map-aware object-sim interaction semantics in `src/hybrid_sensor_sim/scenarios/object_sim.py`
+   - route-aware runtime reporting now distinguishes `same_lane_conflict`, `merge_conflict`, `lane_change_conflict`, `lane_change_clear`, `diverge_clear`, and `downstream_route_conflict`
+   - `trace.csv` now exposes `path_interaction_kind`
+   - `lane_risk_summary.json` now aggregates `path_interaction_counts` plus merge/diverge/lane-change summary rows and TTCs
 
 Still pending from the same migration track:
 
-1. deeper map-aware behavior beyond lane-id normalization, lane-binding inference, route synthesis, route-relation-driven scenario generation, rendered payload generation, rendered variant execution, route-aware runtime path-conflict handling, route summary wiring, route-aware lane-risk aggregation, and cross-batch comparison reporting
+1. deeper map-aware behavior beyond current lane-id normalization, lane-binding inference, route synthesis, route-relation-driven scenario generation, rendered payload generation, rendered variant execution, route-aware runtime path-conflict handling, merge/diverge/lane-change interaction tagging, route summary wiring, route-aware lane-risk aggregation, and cross-batch comparison reporting
 
 ## Block Mapping
 

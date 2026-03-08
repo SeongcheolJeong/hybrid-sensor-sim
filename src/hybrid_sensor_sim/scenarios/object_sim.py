@@ -163,8 +163,9 @@ class CoreSimRunner:
             ego_route_lane_order, npc_route_lane_order, route_lane_delta, route_relation = self._classify_route_relation(
                 npc
             )
-            path_conflict, path_conflict_source = self._classify_path_conflict(
+            path_conflict, path_conflict_source, path_interaction_kind = self._classify_path_interaction(
                 same_lane=same_lane,
+                adjacent_lane=adjacent_lane,
                 route_relation=route_relation,
             )
 
@@ -205,6 +206,7 @@ class CoreSimRunner:
                     "adjacent_lane": adjacent_lane,
                     "path_conflict": path_conflict,
                     "path_conflict_source": path_conflict_source,
+                    "path_interaction_kind": path_interaction_kind,
                     "ego_route_lane_order": ego_route_lane_order,
                     "npc_route_lane_order": npc_route_lane_order,
                     "route_lane_delta": route_lane_delta,
@@ -259,15 +261,33 @@ class CoreSimRunner:
                 route_relation = "off_route"
         return ego_route_lane_order, npc_route_lane_order, route_lane_delta, route_relation
 
-    def _classify_path_conflict(self, *, same_lane: bool, route_relation: str) -> tuple[bool, str]:
+    def _classify_path_interaction(
+        self,
+        *,
+        same_lane: bool,
+        adjacent_lane: bool,
+        route_relation: str,
+    ) -> tuple[bool, str, str]:
         route_path_conflict = route_relation in {"same_lane", "downstream"}
         if route_path_conflict and same_lane:
-            return True, "combined"
-        if route_path_conflict:
-            return True, "route"
+            return True, "combined", "same_lane_conflict"
         if same_lane:
-            return True, "lane_index"
-        return False, "none"
+            return True, "lane_index", "same_lane_conflict"
+        if adjacent_lane and route_relation == "downstream":
+            return True, "route", "merge_conflict"
+        if adjacent_lane and route_relation == "same_lane":
+            return True, "route", "lane_change_conflict"
+        if route_relation == "downstream":
+            return True, "route", "downstream_route_conflict"
+        if adjacent_lane and route_relation in {"off_route", "upstream"}:
+            return False, "none", "diverge_clear"
+        if adjacent_lane:
+            return False, "none", "lane_change_clear"
+        if route_relation == "upstream":
+            return False, "none", "upstream_clear"
+        if route_relation == "off_route":
+            return False, "none", "off_route_clear"
+        return False, "none", "none"
 
     def _update_ego(self, dt_sec: float, avoidance_action: Mapping[str, Any]) -> dict[str, Any]:
         if self.scenario.ego_dynamics_mode == "vehicle_dynamics":
@@ -391,7 +411,11 @@ class CoreSimRunner:
         for npc in self.npcs:
             same_lane = bool(int(npc.lane_index) == int(self.ego.lane_index))
             _, _, _, route_relation = self._classify_route_relation(npc)
-            path_conflict, _ = self._classify_path_conflict(same_lane=same_lane, route_relation=route_relation)
+            path_conflict, _, _ = self._classify_path_interaction(
+                same_lane=same_lane,
+                adjacent_lane=bool(abs(int(npc.lane_index) - int(self.ego.lane_index)) == 1),
+                route_relation=route_relation,
+            )
             if path_conflict and npc.position_m > self.ego.position_m:
                 lead_candidates.append(npc)
         if not lead_candidates:
@@ -451,6 +475,29 @@ def build_lane_risk_summary(*, run_id: str, summary: Mapping[str, Any], trace_ro
     ttc_same_lane = _collect_numeric(same_lane_rows, "ttc_same_lane_sec")
     ttc_adjacent_lane = _collect_numeric(adjacent_lane_rows, "ttc_adjacent_lane_sec")
     ttc_path_conflict = _collect_numeric(path_conflict_rows, "path_ttc_sec")
+    path_interaction_labels = [
+        "same_lane_conflict",
+        "merge_conflict",
+        "lane_change_conflict",
+        "downstream_route_conflict",
+        "lane_change_clear",
+        "diverge_clear",
+        "upstream_clear",
+        "off_route_clear",
+        "none",
+    ]
+    path_interaction_rows = {
+        label: [row for row in trace_rows if str(row.get("path_interaction_kind", "none")) == label]
+        for label in path_interaction_labels
+    }
+    merge_conflict_rows = path_interaction_rows["merge_conflict"]
+    lane_change_conflict_rows = path_interaction_rows["lane_change_conflict"]
+    lane_change_clear_rows = path_interaction_rows["lane_change_clear"]
+    diverge_clear_rows = path_interaction_rows["diverge_clear"]
+    downstream_route_conflict_rows = path_interaction_rows["downstream_route_conflict"]
+    ttc_merge_conflict = _collect_numeric(merge_conflict_rows, "path_ttc_sec")
+    ttc_lane_change_conflict = _collect_numeric(lane_change_conflict_rows, "path_ttc_sec")
+    ttc_downstream_route_conflict = _collect_numeric(downstream_route_conflict_rows, "path_ttc_sec")
     route_relation_labels = ["same_lane", "downstream", "upstream", "off_route", "unavailable"]
     route_relation_rows = {
         label: [row for row in trace_rows if str(row.get("route_relation", "unavailable")) == label]
@@ -486,6 +533,14 @@ def build_lane_risk_summary(*, run_id: str, summary: Mapping[str, Any], trace_ro
         "path_conflict_collision_rows": sum(
             1 for row in path_conflict_rows if bool(row.get("collision", False))
         ),
+        "path_interaction_counts": {
+            label: len(path_interaction_rows[label]) for label in path_interaction_labels
+        },
+        "merge_conflict_rows": len(merge_conflict_rows),
+        "lane_change_conflict_rows": len(lane_change_conflict_rows),
+        "lane_change_clear_rows": len(lane_change_clear_rows),
+        "diverge_clear_rows": len(diverge_clear_rows),
+        "downstream_route_conflict_rows": len(downstream_route_conflict_rows),
         "min_gap_same_lane_m": None if not min_gap_same_lane else round(min(min_gap_same_lane), 6),
         "min_gap_adjacent_lane_m": None if not min_gap_adjacent_lane else round(min(min_gap_adjacent_lane), 6),
         "min_gap_path_conflict_m": (
@@ -494,10 +549,26 @@ def build_lane_risk_summary(*, run_id: str, summary: Mapping[str, Any], trace_ro
         "min_ttc_same_lane_sec": summary.get("min_ttc_same_lane_sec"),
         "min_ttc_adjacent_lane_sec": summary.get("min_ttc_adjacent_lane_sec"),
         "min_ttc_path_conflict_sec": summary.get("min_ttc_path_conflict_sec"),
+        "min_ttc_merge_conflict_sec": (
+            None if not ttc_merge_conflict else round(min(ttc_merge_conflict), 6)
+        ),
+        "min_ttc_lane_change_conflict_sec": (
+            None if not ttc_lane_change_conflict else round(min(ttc_lane_change_conflict), 6)
+        ),
+        "min_ttc_downstream_route_conflict_sec": (
+            None if not ttc_downstream_route_conflict else round(min(ttc_downstream_route_conflict), 6)
+        ),
         "min_ttc_any_lane_sec": summary.get("min_ttc_any_lane_sec"),
         "ttc_under_3s_same_lane_count": sum(1 for value in ttc_same_lane if value <= 3.0),
         "ttc_under_3s_adjacent_lane_count": sum(1 for value in ttc_adjacent_lane if value <= 3.0),
         "ttc_under_3s_path_conflict_count": sum(1 for value in ttc_path_conflict if value <= 3.0),
+        "ttc_under_3s_merge_conflict_count": sum(1 for value in ttc_merge_conflict if value <= 3.0),
+        "ttc_under_3s_lane_change_conflict_count": sum(
+            1 for value in ttc_lane_change_conflict if value <= 3.0
+        ),
+        "ttc_under_3s_downstream_route_conflict_count": sum(
+            1 for value in ttc_downstream_route_conflict if value <= 3.0
+        ),
         "route_semantics_enabled": bool(route_lane_ids),
         "route_lane_ids": list(route_lane_ids),
         "route_relation_counts": {

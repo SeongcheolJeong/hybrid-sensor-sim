@@ -201,6 +201,8 @@ class ObjectSimTests(unittest.TestCase):
         self.assertEqual(result.trace_rows[0]["npc_lane_binding_mode"], "explicit_lane_id")
         self.assertEqual(result.trace_rows[0]["route_relation"], "downstream")
         self.assertEqual(result.trace_rows[1]["route_relation"], "same_lane")
+        self.assertEqual(result.trace_rows[0]["path_interaction_kind"], "merge_conflict")
+        self.assertEqual(result.trace_rows[1]["path_interaction_kind"], "same_lane_conflict")
         self.assertIsNotNone(result.summary["min_ttc_adjacent_lane_sec"])
         self.assertTrue(result.summary["route_aware_runtime_enabled"])
         self.assertAlmostEqual(result.summary["min_ttc_path_conflict_sec"], 0.1, places=6)
@@ -210,8 +212,13 @@ class ObjectSimTests(unittest.TestCase):
         self.assertEqual(result.lane_risk_summary["route_downstream_rows"], 32)
         self.assertEqual(result.lane_risk_summary["route_upstream_rows"], 0)
         self.assertEqual(result.lane_risk_summary["path_conflict_rows"], 64)
+        self.assertEqual(result.lane_risk_summary["merge_conflict_rows"], 32)
+        self.assertEqual(result.lane_risk_summary["path_interaction_counts"]["merge_conflict"], 32)
+        self.assertEqual(result.lane_risk_summary["path_interaction_counts"]["same_lane_conflict"], 32)
         self.assertAlmostEqual(result.lane_risk_summary["min_ttc_path_conflict_sec"], 0.1, places=6)
+        self.assertAlmostEqual(result.lane_risk_summary["min_ttc_merge_conflict_sec"], 0.1, places=6)
         self.assertGreater(result.lane_risk_summary["ttc_under_3s_path_conflict_count"], 0)
+        self.assertGreater(result.lane_risk_summary["ttc_under_3s_merge_conflict_count"], 0)
         self.assertEqual(result.lane_risk_summary["route_relation_counts"]["off_route"], 0)
         self.assertIsNone(result.lane_risk_summary["min_ttc_route_same_lane_sec"])
         self.assertAlmostEqual(result.lane_risk_summary["min_ttc_route_downstream_sec"], 0.1, places=6)
@@ -255,6 +262,64 @@ class ObjectSimTests(unittest.TestCase):
         self.assertEqual(result.trace_rows[0]["route_relation"], "downstream")
         self.assertTrue(result.trace_rows[0]["path_conflict"])
         self.assertEqual(result.trace_rows[0]["path_conflict_source"], "route")
+
+    def test_run_object_sim_exposes_lane_change_clear_semantics_without_route(self) -> None:
+        scenario = load_scenario(
+            {
+                "scenario_schema_version": "scenario_definition_v0",
+                "scenario_id": "lane_change_clear",
+                "duration_sec": 0.2,
+                "dt_sec": 0.1,
+                "ego": {"position_m": 0.0, "speed_mps": 8.0, "lane_index": 0},
+                "npcs": [{"position_m": 15.0, "speed_mps": 7.0, "lane_index": 1}],
+            }
+        )
+        result = run_object_sim(scenario, seed=42, metadata={"run_id": "LANE_CHANGE_CLEAR_001"})
+
+        self.assertFalse(result.trace_rows[0]["path_conflict"])
+        self.assertEqual(result.trace_rows[0]["path_conflict_source"], "none")
+        self.assertEqual(result.trace_rows[0]["path_interaction_kind"], "lane_change_clear")
+        self.assertEqual(result.lane_risk_summary["lane_change_clear_rows"], 2)
+        self.assertEqual(result.lane_risk_summary["path_interaction_counts"]["lane_change_clear"], 2)
+
+    def test_run_object_sim_exposes_diverge_clear_semantics_with_route(self) -> None:
+        canonical_map = {
+            "map_schema_version": "canonical_lane_graph_v0",
+            "map_id": "diverge_demo_map_v0",
+            "lanes": [
+                {
+                    "lane_id": "lane_a",
+                    "centerline_m": [{"x_m": 0.0, "y_m": 0.0}, {"x_m": 10.0, "y_m": 0.0}],
+                    "predecessor_lane_ids": [],
+                    "successor_lane_ids": [],
+                },
+                {
+                    "lane_id": "lane_b",
+                    "centerline_m": [{"x_m": 0.0, "y_m": 3.5}, {"x_m": 10.0, "y_m": 3.5}],
+                    "predecessor_lane_ids": [],
+                    "successor_lane_ids": [],
+                },
+            ],
+        }
+        scenario = load_scenario(
+            {
+                "scenario_schema_version": "scenario_definition_v0",
+                "scenario_id": "diverge_clear_route",
+                "duration_sec": 0.2,
+                "dt_sec": 0.1,
+                "canonical_map": canonical_map,
+                "route_definition": {"entry_lane_id": "lane_a", "exit_lane_id": "lane_a", "cost_mode": "hops"},
+                "ego": {"position_m": 0.0, "speed_mps": 8.0, "lane_id": "lane_a"},
+                "npcs": [{"position_m": 15.0, "speed_mps": 7.0, "lane_index": 1}],
+            }
+        )
+        result = run_object_sim(scenario, seed=42, metadata={"run_id": "DIVERGE_CLEAR_001"})
+
+        self.assertEqual(result.trace_rows[0]["route_relation"], "off_route")
+        self.assertFalse(result.trace_rows[0]["path_conflict"])
+        self.assertEqual(result.trace_rows[0]["path_interaction_kind"], "diverge_clear")
+        self.assertEqual(result.lane_risk_summary["diverge_clear_rows"], 2)
+        self.assertEqual(result.lane_risk_summary["path_interaction_counts"]["diverge_clear"], 2)
 
     def test_route_aware_avoidance_brakes_for_downstream_route_conflict(self) -> None:
         canonical_map = json.loads((MAP_FIXTURE_ROOT / "canonical_lane_graph_v0.json").read_text(encoding="utf-8"))

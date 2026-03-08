@@ -35,6 +35,7 @@ Implemented from the first migration wave:
 15. gate preset selection by profile id plus workflow Markdown variant triage tables
 16. logical-scenario health summaries for batch workflow triage
 17. per-scenario gate evaluation inside logical-scenario health summaries
+18. merge/diverge/lane-change interaction tagging inside route-aware object sim
 
 Current repository paths:
 
