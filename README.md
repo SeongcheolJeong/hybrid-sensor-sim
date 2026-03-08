@@ -240,7 +240,7 @@ python3 scripts/run_scenario_batch_workflow.py \
   - also includes `breached_gate_rules`, `breached_gate_metric_ids`, and `matrix_group_gate_failure_code_counts` for top-level gate breach inspection
   - also includes `avoidance_row_count`, `avoidance_brake_event_count_total`, and `avoidance_trigger_counts_by_interaction_kind`
   - also includes compact `worst_logical_scenario_row` and `worst_matrix_group_row`
-  - worst-case ranking is now avoidance-aware: heavy braking and interaction-specific trigger mix are considered before TTC tie-breaks
+  - worst-case ranking is now avoidance-aware: heavy braking and interaction-specific trigger mix are considered before TTC tie-breaks, and preserved avoidance policy traces (`priority`/`max_gap_m`) are used as the next tie-break layer
   - worst-case rows now also preserve avoidance policy trace values through `ego_avoidance_last_trigger_priority_values` and `ego_avoidance_last_trigger_max_gap_m_values`
 - `variant_summary`: selected variant execution summary copied from the variant workflow
 - `matrix_summary`: matrix-sweep case summary

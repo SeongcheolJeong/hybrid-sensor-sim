@@ -494,7 +494,23 @@ def _sort_float_none_last(value: Any) -> float:
     return float_value if float_value is not None else float("inf")
 
 
-def _avoidance_rank_key(row: dict[str, Any]) -> tuple[int, int, int, int, int, int]:
+def _avoidance_policy_trace_rank_key(row: dict[str, Any]) -> tuple[float, float]:
+    priority_values = [
+        int(value)
+        for value in list(row.get("ego_avoidance_last_trigger_priority_values", []))
+        if value is not None
+    ]
+    max_gap_values = [
+        float(value)
+        for value in list(row.get("ego_avoidance_last_trigger_max_gap_m_values", []))
+        if value is not None
+    ]
+    min_priority = min(priority_values) if priority_values else float("inf")
+    max_gap = -max(max_gap_values) if max_gap_values else float("inf")
+    return (min_priority, max_gap)
+
+
+def _avoidance_rank_key(row: dict[str, Any]) -> tuple[int, int, int, int, int, int, float, float]:
     trigger_counts = dict(row.get("ego_avoidance_trigger_counts_by_interaction_kind", {}))
     return (
         -int(row.get("ego_avoidance_brake_event_count_total", 0) or 0),
@@ -503,6 +519,7 @@ def _avoidance_rank_key(row: dict[str, Any]) -> tuple[int, int, int, int, int, i
         -int(trigger_counts.get("downstream_route_conflict", 0) or 0),
         -int(trigger_counts.get("same_lane_conflict", 0) or 0),
         -int(row.get("ego_avoidance_row_count", 0) or 0),
+        *_avoidance_policy_trace_rank_key(row),
     )
 
 

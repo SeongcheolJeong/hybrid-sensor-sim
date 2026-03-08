@@ -159,7 +159,7 @@ Detailed audit:
 16. richer interaction-specific avoidance selection
    - object-sim avoidance policy now supports interaction-specific `priority` and `max_gap_m`, making target selection and actionable filtering more controllable without coupling to vehicle dynamics
 17. avoidance-aware worst-case batch triage
-   - batch workflow worst-case logical-scenario and matrix-group ranking now considers avoidance brake-event totals and interaction-specific trigger mix before TTC-only tie-breaks, so avoidance-heavy route interactions remain visible in top-level triage
+   - batch workflow worst-case logical-scenario and matrix-group ranking now considers avoidance brake-event totals and interaction-specific trigger mix before TTC-only tie-breaks, then uses preserved avoidance policy traces (`priority` and `max_gap_m`) as the next tie-break layer so avoidance-heavy route interactions remain visible and deterministic in top-level triage
 18. avoidance-focused gate preset catalog
    - the batch gate preset catalog now includes an avoidance-specific profile for route-interaction-heavy scenarios, and both comparison/workflow CLIs are covered for preset-id resolution
 19. avoidance policy trace surfaced in batch triage

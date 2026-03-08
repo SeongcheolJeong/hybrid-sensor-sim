@@ -136,6 +136,7 @@ Implemented in the current repository:
    - object-sim avoidance policy now supports `priority` and `max_gap_m` per interaction kind, and the selected policy values are emitted in summary and trace artifacts
 31. avoidance-aware worst-case batch ranking
    - `status_summary.worst_logical_scenario_row` and `status_summary.worst_matrix_group_row` are now ranked with avoidance brake-event totals and interaction-specific trigger mix ahead of TTC tie-breaks
+   - when those counts stay tied, preserved avoidance policy traces (`priority` and `max_gap_m`) are used as the next tie-break layer so policy-heavy scenarios still surface deterministically
    - worst matrix-group rows now also carry `ego_avoidance_row_count`, `ego_avoidance_brake_event_count_total`, and `ego_avoidance_trigger_counts_by_interaction_kind`
 32. reusable avoidance-focused gate preset
    - fixture gate catalog now includes `scenario_batch_gate_avoidance_v0`, which fails on any avoidance-active row, avoidance brake event, or merge-conflict avoidance trigger

@@ -206,6 +206,40 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def _write_ranked_avoidance_policy_trace_logical_scenarios(self, path: Path) -> None:
+        path.write_text(
+            json.dumps(
+                {
+                    "logical_scenarios": [
+                        {
+                            "scenario_id": "scn_route_policy_low_priority_wide_gap",
+                            "parameters": {"scenario_variant": [1]},
+                            "variant_payload_kind": "scenario_definition_v0",
+                            "variant_payload_template": self._build_route_avoidance_scenario(
+                                scenario_id="scn_route_policy_low_priority_wide_gap_payload",
+                                merge_priority=0,
+                                merge_max_gap_m=25.0,
+                            ),
+                        },
+                        {
+                            "scenario_id": "scn_route_policy_high_priority_tight_gap",
+                            "parameters": {"scenario_variant": [1]},
+                            "variant_payload_kind": "scenario_definition_v0",
+                            "variant_payload_template": self._build_route_avoidance_scenario(
+                                scenario_id="scn_route_policy_high_priority_tight_gap_payload",
+                                merge_priority=4,
+                                merge_max_gap_m=20.0,
+                            ),
+                        },
+                    ]
+                },
+                indent=2,
+                ensure_ascii=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
     def _write_ranked_avoidance_logical_scenarios(self, path: Path) -> None:
         path.write_text(
             json.dumps(
@@ -923,6 +957,70 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             self.assertEqual(logical_worst_row["ego_avoidance_last_trigger_max_gap_m_values"], [25.0])
             self.assertEqual(matrix_worst_row["ego_avoidance_last_trigger_priority_values"], [3])
             self.assertEqual(matrix_worst_row["ego_avoidance_last_trigger_max_gap_m_values"], [25.0])
+
+    def test_scenario_batch_workflow_ranks_policy_trace_in_worst_logical_scenario(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            logical_path = root / "ranked_route_avoidance_policy_trace_logical_scenarios.json"
+            self._write_ranked_avoidance_policy_trace_logical_scenarios(logical_path)
+            result = run_scenario_batch_workflow(
+                logical_scenarios_path=str(logical_path),
+                scenario_language_profile="",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                matrix_scenario_path=P_SIM_ENGINE_FIXTURE_ROOT / "highway_safe_following_v0.json",
+                out_root=root / "batch_workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=2,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+                matrix_run_id_prefix="RUN_BATCH_MATRIX",
+                traffic_profile_ids=["sumo_highway_balanced_v0"],
+                traffic_actor_pattern_ids=["sumo_platoon_sparse_v0"],
+                traffic_npc_speed_scale_values=[1.0],
+                tire_friction_coeff_values=[1.0],
+                surface_friction_scale_values=[1.0],
+                enable_ego_collision_avoidance=False,
+                avoidance_ttc_threshold_sec=2.5,
+                ego_max_brake_mps2=6.0,
+                max_cases=0,
+            )
+            worst_row = result["workflow_report"]["status_summary"]["worst_logical_scenario_row"]
+            self.assertEqual(
+                worst_row["logical_scenario_id"],
+                "scn_route_policy_low_priority_wide_gap",
+            )
+            health_rows = {
+                row["logical_scenario_id"]: row
+                for row in result["workflow_report"]["comparison_summary"]["logical_scenario_health_rows"]
+            }
+            self.assertEqual(
+                health_rows["scn_route_policy_low_priority_wide_gap"]["ego_avoidance_brake_event_count_total"],
+                health_rows["scn_route_policy_high_priority_tight_gap"]["ego_avoidance_brake_event_count_total"],
+            )
+            self.assertEqual(
+                health_rows["scn_route_policy_low_priority_wide_gap"]["merge_conflict_row_count"],
+                health_rows["scn_route_policy_high_priority_tight_gap"]["merge_conflict_row_count"],
+            )
+            self.assertEqual(
+                health_rows["scn_route_policy_low_priority_wide_gap"]["ego_avoidance_last_trigger_priority_values"],
+                [0],
+            )
+            self.assertEqual(
+                health_rows["scn_route_policy_low_priority_wide_gap"]["ego_avoidance_last_trigger_max_gap_m_values"],
+                [25.0],
+            )
+            self.assertEqual(
+                health_rows["scn_route_policy_high_priority_tight_gap"]["ego_avoidance_last_trigger_priority_values"],
+                [4],
+            )
+            self.assertEqual(
+                health_rows["scn_route_policy_high_priority_tight_gap"]["ego_avoidance_last_trigger_max_gap_m_values"],
+                [20.0],
+            )
 
     def test_scenario_batch_workflow_cli_can_resolve_gate_profile_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
