@@ -1,0 +1,76 @@
+{
+  "profile_id": "highway_mixed_payloads_random_v0",
+  "logical_scenarios": [
+    {
+      "scenario_id": "scn_log_route_relations_random",
+      "parameters": {
+        "ego_route_relation": ["same_lane", "downstream"],
+        "lead_vehicle_route_relation": ["downstream", "off_route"],
+        "ego_initial_speed_mps": [16.0],
+        "lead_vehicle_initial_gap_m": [42.0],
+        "lead_vehicle_speed_mps": [14.0]
+      },
+      "variant_payload_kind": "log_scene_v0",
+      "variant_payload_template": {
+        "log_scene_schema_version": "log_scene_v0",
+        "log_id": "${variant_id}",
+        "map_id": "demo_map_v0",
+        "map_version": "v0",
+        "canonical_map_path": "../p_map_toolset/canonical_lane_graph_v0.json",
+        "route_definition": {
+          "entry_lane_id": "lane_a",
+          "exit_lane_id": "lane_c",
+          "via_lane_ids": ["lane_b"],
+          "cost_mode": "hops"
+        },
+        "ego_route_relation": "${ego_route_relation}",
+        "lead_vehicle_route_relation": "${lead_vehicle_route_relation}",
+        "ego_initial_speed_mps": "${ego_initial_speed_mps}",
+        "lead_vehicle_initial_gap_m": "${lead_vehicle_initial_gap_m}",
+        "lead_vehicle_speed_mps": "${lead_vehicle_speed_mps}",
+        "duration_sec": 4.0,
+        "dt_sec": 0.1
+      }
+    },
+    {
+      "scenario_id": "scn_direct_object_sim_random",
+      "parameters": {
+        "ego_position_m": [0.0],
+        "ego_speed_mps": [10.0, 12.0],
+        "npc_position_m": [30.0],
+        "npc_speed_mps": [8.0, 9.0]
+      },
+      "variant_payload_kind": "scenario_definition_v0",
+      "variant_payload_template": {
+        "scenario_schema_version": "scenario_definition_v0",
+        "scenario_id": "${variant_id}",
+        "duration_sec": 2.0,
+        "dt_sec": 0.1,
+        "canonical_map_path": "../p_map_toolset/canonical_lane_graph_v0.json",
+        "route_definition": {
+          "entry_lane_id": "lane_a",
+          "exit_lane_id": "lane_c",
+          "via_lane_ids": ["lane_b"],
+          "cost_mode": "hops"
+        },
+        "ego": {
+          "actor_id": "ego",
+          "position_m": "${ego_position_m}",
+          "speed_mps": "${ego_speed_mps}",
+          "lane_id": "lane_a"
+        },
+        "npcs": [
+          {
+            "actor_id": "npc_1",
+            "position_m": "${npc_position_m}",
+            "speed_mps": "${npc_speed_mps}",
+            "lane_id": "lane_b"
+          }
+        ],
+        "enable_ego_collision_avoidance": true,
+        "avoidance_ttc_threshold_sec": 3.0,
+        "ego_max_brake_mps2": 4.0
+      }
+    }
+  ]
+}

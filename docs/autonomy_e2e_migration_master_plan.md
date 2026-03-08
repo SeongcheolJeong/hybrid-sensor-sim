@@ -133,10 +133,12 @@ Detailed audit:
 13. rendered variant execution
    - `scenario_variants_report_v0` can now drive replay/object-sim execution directly through `src/hybrid_sensor_sim/tools/scenario_variant_runner.py`
    - supported payload kinds now include `log_scene_v0` and `scenario_definition_v0`
+   - runner output now includes compact successful and non-success triage rows
 14. scenario variant workflow
    - `src/hybrid_sensor_sim/tools/scenario_variant_workflow.py` now provides a single workflow entry point from logical scenarios to executed rendered payloads
    - workflow output now includes payload-kind grouping plus compact successful and failed/skipped triage rows
    - scenario-language profile execution now resolves through the repo-local `tests/fixtures/autonomy_e2e/p_validation` directory
+   - random sampling is now validated for mixed-payload scenario-language profiles
 
 ### Reference only
 

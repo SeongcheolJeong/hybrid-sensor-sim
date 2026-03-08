@@ -59,6 +59,8 @@ class ScenarioVariantRunnerTests(unittest.TestCase):
             )
             self.assertEqual(report["selected_variant_count"], 2)
             self.assertEqual(report["execution_status_counts"]["SUCCEEDED"], 2)
+            self.assertEqual(report["successful_variant_row_count"], 2)
+            self.assertEqual(report["non_success_variant_row_count"], 0)
             self.assertTrue(report["variant_runs"])
             first_run = report["variant_runs"][0]
             self.assertEqual(first_run["rendered_payload_kind"], "log_scene_v0")
@@ -99,7 +101,10 @@ class ScenarioVariantRunnerTests(unittest.TestCase):
                 fidelity_profile="dev-fast",
             )
             self.assertEqual(report["execution_status_counts"]["SKIPPED"], 1)
+            self.assertEqual(report["successful_variant_row_count"], 0)
+            self.assertEqual(report["non_success_variant_row_count"], 1)
             self.assertEqual(report["variant_runs"][0]["failure_code"], "MISSING_RENDERED_PAYLOAD")
+            self.assertEqual(report["non_success_variant_rows"][0]["failure_code"], "MISSING_RENDERED_PAYLOAD")
 
     def test_run_scenario_variant_report_marks_unsupported_payload_kind_failed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -134,6 +139,8 @@ class ScenarioVariantRunnerTests(unittest.TestCase):
                 fidelity_profile="dev-fast",
             )
             self.assertEqual(report["execution_status_counts"]["FAILED"], 1)
+            self.assertEqual(report["successful_variant_row_count"], 0)
+            self.assertEqual(report["non_success_variant_row_count"], 1)
             self.assertEqual(report["variant_runs"][0]["failure_code"], "UNSUPPORTED_RENDERED_PAYLOAD_KIND")
 
     def test_run_scenario_variant_report_executes_rendered_scenario_definition_variants(self) -> None:
@@ -205,6 +212,7 @@ class ScenarioVariantRunnerTests(unittest.TestCase):
                 fidelity_profile="dev-fast",
             )
             self.assertEqual(report["execution_status_counts"]["SUCCEEDED"], 1)
+            self.assertEqual(report["successful_variant_row_count"], 1)
             self.assertEqual(report["variant_runs"][0]["execution_path"], "direct_object_sim")
             self.assertIsNone(report["variant_runs"][0]["manifest_path"])
             self.assertIsNone(report["variant_runs"][0]["replay_scenario_path"])
@@ -316,6 +324,13 @@ class ScenarioVariantRunnerTests(unittest.TestCase):
                 1,
             )
             self.assertEqual(report["by_payload_kind"]["world_state_v0"]["execution_status_counts"]["FAILED"], 1)
+            self.assertEqual(report["successful_variant_row_count"], 2)
+            self.assertEqual(report["non_success_variant_row_count"], 1)
+            self.assertEqual(
+                {row["rendered_payload_kind"] for row in report["successful_variant_rows"]},
+                {"log_scene_v0", "scenario_definition_v0"},
+            )
+            self.assertEqual(report["non_success_variant_rows"][0]["rendered_payload_kind"], "world_state_v0")
 
     def test_scenario_variant_runner_cli_writes_report(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

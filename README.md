@@ -47,6 +47,7 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
   - optional `variant_payload_template` lets the report carry rendered concrete payloads such as `log_scene_v0` variants
 - `scripts/run_scenario_variant_runner.py`: executes rendered payloads from `scenario_variants_report_v0` and writes a single variant-run report.
   - supports `rendered_payload_kind=log_scene_v0` via replay and `rendered_payload_kind=scenario_definition_v0` via direct object-sim execution
+  - report includes `successful_variant_rows` and `non_success_variant_rows` for quick triage
 - `scripts/run_scenario_variant_workflow.py`: generates variants and immediately executes rendered payloads, writing a workflow report plus the underlying variant/run reports.
 - `scripts/run_scenario_matrix_sweep.py`: runs object-sim over traffic/friction parameter grids and writes a sweep report.
 - `scripts/run_sensor_rig_sweep.py`: evaluates rig candidates against current native preview and coverage outputs.
@@ -147,6 +148,13 @@ python3 scripts/run_scenario_variants.py \
   --out artifacts/scenario_variants_highway_mixed_payloads_v0.json \
   --sampling full
 
+python3 scripts/run_scenario_variant_workflow.py \
+  --scenario-language-profile highway_mixed_payloads_random_v0 \
+  --out-root artifacts/scenario_variant_workflow_random_runs \
+  --sampling random \
+  --sample-size 1 \
+  --execution-max-variants 0
+
 python3 scripts/run_scenario_variant_runner.py \
   --variants-report artifacts/scenario_variants_highway_map_route_relations_v0.json \
   --out artifacts/scenario_variant_runs
@@ -226,6 +234,7 @@ Autonomy-E2E fixtures currently mirrored into this repo:
 - `tests/fixtures/autonomy_e2e/p_validation/highway_cut_in_v0.json`
 - `tests/fixtures/autonomy_e2e/p_validation/highway_map_route_relations_v0.json`
 - `tests/fixtures/autonomy_e2e/p_validation/highway_mixed_payloads_v0.json`
+- `tests/fixtures/autonomy_e2e/p_validation/highway_mixed_payloads_random_v0.json`
 - `tests/fixtures/autonomy_e2e/p_map_toolset/simple_map_v0.json`
 - `tests/fixtures/autonomy_e2e/p_map_toolset/canonical_lane_graph_v0.json`
 

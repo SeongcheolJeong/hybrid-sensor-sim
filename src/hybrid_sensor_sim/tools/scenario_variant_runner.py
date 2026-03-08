@@ -244,6 +244,47 @@ def _build_by_payload_kind_summary(variant_runs: list[dict[str, Any]]) -> dict[s
     }
 
 
+def _build_successful_variant_rows(variant_runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for run in variant_runs:
+        execution_status = str(run.get("execution_status", "")).strip()
+        if execution_status != "SUCCEEDED":
+            continue
+        rows.append(
+            {
+                "variant_id": str(run.get("variant_id", "")).strip() or None,
+                "logical_scenario_id": str(run.get("logical_scenario_id", "")).strip() or None,
+                "rendered_payload_kind": str(run.get("rendered_payload_kind", "")).strip() or None,
+                "execution_status": execution_status,
+                "object_sim_status": str(run.get("object_sim_status", "")).strip() or None,
+                "termination_reason": str(run.get("termination_reason", "")).strip() or None,
+                "execution_path": str(run.get("execution_path", "")).strip() or None,
+                "summary_path": str(run.get("summary_path", "")).strip() or None,
+            }
+        )
+    return rows
+
+
+def _build_non_success_variant_rows(variant_runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for run in variant_runs:
+        execution_status = str(run.get("execution_status", "")).strip()
+        if execution_status == "SUCCEEDED":
+            continue
+        rows.append(
+            {
+                "variant_id": str(run.get("variant_id", "")).strip() or None,
+                "logical_scenario_id": str(run.get("logical_scenario_id", "")).strip() or None,
+                "rendered_payload_kind": str(run.get("rendered_payload_kind", "")).strip() or None,
+                "execution_status": execution_status or None,
+                "failure_code": str(run.get("failure_code", "")).strip() or None,
+                "failure_reason": str(run.get("failure_reason", "")).strip() or None,
+                "execution_path": str(run.get("execution_path", "")).strip() or None,
+            }
+        )
+    return rows
+
+
 def run_scenario_variant_report(
     *,
     variants_report_path: Path,
@@ -341,7 +382,7 @@ def run_scenario_variant_report(
         execution_status_counts[str(entry["execution_status"])] += 1
         variant_runs.append(entry)
 
-    return {
+    report = {
         "scenario_variant_run_report_schema_version": SCENARIO_VARIANT_RUN_REPORT_SCHEMA_VERSION_V0,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "variants_report_path": str(variants_report_path.resolve()),
@@ -360,6 +401,11 @@ def run_scenario_variant_report(
         "by_payload_kind": _build_by_payload_kind_summary(variant_runs),
         "variant_runs": variant_runs,
     }
+    report["successful_variant_rows"] = _build_successful_variant_rows(variant_runs)
+    report["non_success_variant_rows"] = _build_non_success_variant_rows(variant_runs)
+    report["successful_variant_row_count"] = len(report["successful_variant_rows"])
+    report["non_success_variant_row_count"] = len(report["non_success_variant_rows"])
+    return report
 
 
 def main(argv: list[str] | None = None) -> int:

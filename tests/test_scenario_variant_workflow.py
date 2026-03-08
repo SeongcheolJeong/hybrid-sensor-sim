@@ -84,6 +84,49 @@ class ScenarioVariantWorkflowTests(unittest.TestCase):
             self.assertEqual(workflow_report["selected_variant_count"], 2)
             self.assertEqual(workflow_report["execution_status_counts"]["SUCCEEDED"], 2)
 
+    def test_run_scenario_variant_workflow_random_sampling_is_seeded_for_mixed_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            result_a = run_scenario_variant_workflow(
+                logical_scenarios_path="",
+                scenario_language_profile="highway_mixed_payloads_random_v0",
+                scenario_language_dir=FIXTURE_ROOT,
+                out_root=root / "workflow_a",
+                sampling="random",
+                sample_size=1,
+                seed=11,
+                max_variants_per_scenario=1000,
+                execution_max_variants=0,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+            )
+            result_b = run_scenario_variant_workflow(
+                logical_scenarios_path="",
+                scenario_language_profile="highway_mixed_payloads_random_v0",
+                scenario_language_dir=FIXTURE_ROOT,
+                out_root=root / "workflow_b",
+                sampling="random",
+                sample_size=1,
+                seed=11,
+                max_variants_per_scenario=1000,
+                execution_max_variants=0,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+            )
+            report_a = result_a["variants_report"]
+            report_b = result_b["variants_report"]
+            self.assertEqual(report_a["variant_count"], 2)
+            self.assertEqual(report_b["variant_count"], 2)
+            self.assertEqual(report_a["variants"], report_b["variants"])
+            self.assertEqual(result_a["workflow_report"]["selected_variant_count"], 2)
+            self.assertEqual(result_a["workflow_report"]["execution_status_counts"]["SUCCEEDED"], 2)
+            self.assertEqual(
+                {row["rendered_payload_kind"] for row in result_a["workflow_report"]["successful_variant_rows"]},
+                {"log_scene_v0", "scenario_definition_v0"},
+            )
+
     def test_run_scenario_variant_workflow_emits_non_success_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
