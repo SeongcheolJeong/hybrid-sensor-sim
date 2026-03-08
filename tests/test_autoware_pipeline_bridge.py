@@ -21,14 +21,23 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
         root: Path,
         *,
         include_lidar: bool,
+        include_camera_visible: bool = True,
+        include_camera_semantic: bool = False,
         include_radar: bool = False,
         radar_tracks: bool = False,
     ) -> Path:
         output_root = root / "backend_outputs"
         output_root.mkdir(parents=True, exist_ok=True)
         camera_output = output_root / "sensor_exports" / "cam_front" / "rgb_frame.json"
-        camera_output.parent.mkdir(parents=True, exist_ok=True)
-        camera_output.write_text("{}", encoding="utf-8")
+        camera_semantic_output = (
+            output_root / "sensor_exports" / "cam_front" / "semantic_frame.json"
+        )
+        if include_camera_visible:
+            camera_output.parent.mkdir(parents=True, exist_ok=True)
+            camera_output.write_text("{}", encoding="utf-8")
+        if include_camera_semantic:
+            camera_semantic_output.parent.mkdir(parents=True, exist_ok=True)
+            camera_semantic_output.write_text("{}", encoding="utf-8")
         lidar_output = output_root / "sensor_exports" / "lidar_top" / "points.json"
         if include_lidar:
             lidar_output.parent.mkdir(parents=True, exist_ok=True)
@@ -78,13 +87,7 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
         expected_outputs_by_sensor = [
             {
                 "sensor_id": "cam_front",
-                "outputs": [
-                    {
-                        "output_role": "camera_visible",
-                        "artifact_type": "awsim_camera_rgb_json",
-                        "data_format": "camera_projection_json",
-                    }
-                ],
+                "outputs": [],
             },
             {
                 "sensor_id": "lidar_top",
@@ -97,6 +100,22 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
                 ],
             },
         ]
+        if include_camera_visible:
+            expected_outputs_by_sensor[0]["outputs"].append(
+                {
+                    "output_role": "camera_visible",
+                    "artifact_type": "awsim_camera_rgb_json",
+                    "data_format": "camera_projection_json",
+                }
+            )
+        if include_camera_semantic:
+            expected_outputs_by_sensor[0]["outputs"].append(
+                {
+                    "output_role": "camera_semantic",
+                    "artifact_type": "awsim_camera_semantic_json",
+                    "data_format": "camera_semantic_json",
+                }
+            )
         if include_radar:
             radar_expected_outputs = [
                 {
@@ -132,18 +151,31 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
             {
                 "sensor_id": "cam_front",
                 "modality": "camera",
-                "outputs": [
-                    {
-                        "output_role": "camera_visible",
-                        "artifact_type": "awsim_camera_rgb_json",
-                        "data_format": "camera_projection_json",
-                        "artifact_key": "camera_projection_json",
-                        "resolved_path": str(camera_output.resolve()),
-                        "exists": True,
-                    }
-                ],
+                "outputs": [],
             }
         ]
+        if include_camera_visible:
+            sensors[0]["outputs"].append(
+                {
+                    "output_role": "camera_visible",
+                    "artifact_type": "awsim_camera_rgb_json",
+                    "data_format": "camera_projection_json",
+                    "artifact_key": "camera_projection_json",
+                    "resolved_path": str(camera_output.resolve()),
+                    "exists": True,
+                }
+            )
+        if include_camera_semantic:
+            sensors[0]["outputs"].append(
+                {
+                    "output_role": "camera_semantic",
+                    "artifact_type": "awsim_camera_semantic_json",
+                    "data_format": "camera_semantic_json",
+                    "artifact_key": "camera_semantic_json",
+                    "resolved_path": str(camera_semantic_output.resolve()),
+                    "exists": True,
+                }
+            )
         if include_lidar:
             sensors.append(
                 {
@@ -451,6 +483,51 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
                         encoding="utf-8"
                     )
                 )["missing_required_topics"],
+            )
+
+    def test_bridge_merges_supplemental_semantic_runtime_report(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            primary_report_path = self._write_backend_workflow_fixture(
+                root / "primary",
+                include_lidar=True,
+                include_camera_visible=True,
+                include_camera_semantic=False,
+            )
+            supplemental_report_path = self._write_backend_workflow_fixture(
+                root / "supplemental",
+                include_lidar=False,
+                include_camera_visible=False,
+                include_camera_semantic=True,
+            )
+            result = run_autoware_pipeline_bridge(
+                backend_smoke_workflow_report_path=str(primary_report_path),
+                supplemental_backend_smoke_workflow_report_paths=[
+                    str(supplemental_report_path)
+                ],
+                runtime_backend_workflow_report_path="",
+                out_root=root / "autoware_bundle",
+                consumer_profile_id="semantic_perception_v0",
+                strict=False,
+            )
+            report = result["report"]
+            self.assertEqual(report["status"], "READY")
+            self.assertEqual(report["merged_report_count"], 2)
+            self.assertEqual(report["missing_required_sensor_count"], 0)
+            self.assertEqual(report["missing_required_topic_count"], 0)
+            self.assertIn(
+                "/sensing/camera/cam_front/semantic/image_raw",
+                report["available_topics"],
+            )
+            topic_catalog = json.loads(
+                Path(report["artifacts"]["topic_catalog_path"]).read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(topic_catalog["missing_required_topic_count"], 0)
+            self.assertEqual(
+                sorted(report["supplemental_backend_smoke_workflow_report_paths"]),
+                [str(supplemental_report_path.resolve())],
             )
 
     def test_bridge_rebases_workspace_paths_from_handoff_smoke_summary(self) -> None:

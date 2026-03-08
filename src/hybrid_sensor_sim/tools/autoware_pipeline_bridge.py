@@ -17,6 +17,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Build an Autoware-facing sensor/data contract bundle from backend smoke workflow reports."
     )
     parser.add_argument("--backend-smoke-workflow-report", default="", help="Path to scenario_backend_smoke_workflow_report_v0.json")
+    parser.add_argument(
+        "--supplemental-backend-smoke-workflow-report",
+        action="append",
+        default=[],
+        help="Optional supplemental scenario_backend_smoke_workflow_report_v0.json paths merged into the Autoware bridge",
+    )
     parser.add_argument("--runtime-backend-workflow-report", default="", help="Path to scenario_runtime_backend_workflow_report_v0.json")
     parser.add_argument("--out-root", required=True, help="Output root for the Autoware export bundle")
     parser.add_argument("--base-frame", default="base_link", help="Base frame ID for generated frame tree")
@@ -35,6 +41,14 @@ def _load_json_object(path: Path) -> dict[str, Any]:
         raise ValueError(f"{path} must contain a JSON object")
     payload["__source_path"] = str(path.resolve())
     return payload
+
+
+def _write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 def _detect_repo_root(anchor_path: Path) -> Path | None:
@@ -155,9 +169,349 @@ def _load_smoke_input_config(backend_workflow_report: dict[str, Any]) -> dict[st
     )
 
 
+def _has_runtime_smoke_summary(backend_workflow_report: dict[str, Any]) -> bool:
+    summary_path = str(backend_workflow_report.get("smoke", {}).get("summary_path", "")).strip()
+    return bool(summary_path)
+
+
+def _load_runtime_bridge_inputs(
+    backend_workflow_report: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    smoke_summary = _load_smoke_summary(backend_workflow_report)
+    smoke_repo_root = _detect_repo_root(
+        Path(str(smoke_summary.get("__source_path", "")).strip())
+    )
+    smoke_artifacts = dict(smoke_summary.get("artifacts", {}))
+    playback_contract = _load_artifact(
+        smoke_artifacts.get("renderer_playback_contract", ""),
+        field="renderer_playback_contract",
+        repo_root=smoke_repo_root,
+    )
+    backend_output_spec = _load_artifact(
+        smoke_artifacts.get("backend_output_spec", ""),
+        field="backend_output_spec",
+        repo_root=smoke_repo_root,
+    )
+    backend_sensor_output_summary = _load_artifact(
+        smoke_artifacts.get("backend_sensor_output_summary", ""),
+        field="backend_sensor_output_summary",
+        repo_root=smoke_repo_root,
+    )
+    return smoke_summary, playback_contract, backend_output_spec, backend_sensor_output_summary
+
+
+def _best_entry(*entries: dict[str, Any] | None) -> dict[str, Any]:
+    best: dict[str, Any] = {}
+    best_score = -1
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        score = 0
+        if bool(entry.get("exists")):
+            score += 4
+        if str(entry.get("resolved_path", "")).strip():
+            score += 2
+        if str(entry.get("output_origin", "")).strip() == "backend_runtime":
+            score += 1
+        if score >= best_score:
+            best = dict(entry)
+            best_score = score
+    return best
+
+
+def _merge_backend_sensor_output_summaries(
+    summaries: list[dict[str, Any]],
+) -> dict[str, Any]:
+    backend = ""
+    merged_sensors: dict[str, dict[str, Any]] = {}
+    for summary in summaries:
+        backend = backend or str(summary.get("backend", "")).strip()
+        for sensor in summary.get("sensors", []) or []:
+            if not isinstance(sensor, dict):
+                continue
+            sensor_id = str(sensor.get("sensor_id", "")).strip()
+            if not sensor_id:
+                continue
+            target = merged_sensors.setdefault(
+                sensor_id,
+                {
+                    "sensor_id": sensor_id,
+                    "modality": str(sensor.get("modality", "")).strip() or None,
+                    "outputs": {},
+                },
+            )
+            if not target.get("modality"):
+                target["modality"] = str(sensor.get("modality", "")).strip() or None
+            for output in sensor.get("outputs", []) or []:
+                if not isinstance(output, dict):
+                    continue
+                output_role = str(output.get("output_role", "")).strip()
+                if not output_role:
+                    continue
+                target["outputs"][output_role] = _best_entry(
+                    target["outputs"].get(output_role),
+                    output,
+                )
+    return {
+        "backend": backend or None,
+        "sensors": [
+            {
+                "sensor_id": sensor_id,
+                "modality": sensor.get("modality"),
+                "outputs": [
+                    sensor["outputs"][output_role]
+                    for output_role in sorted(sensor["outputs"])
+                ],
+            }
+            for sensor_id, sensor in sorted(merged_sensors.items())
+        ],
+    }
+
+
+def _merge_backend_output_specs(specs: list[dict[str, Any]]) -> dict[str, Any]:
+    backend = ""
+    output_root = ""
+    merged_expected_outputs: dict[tuple[str, str], dict[str, Any]] = {}
+    merged_sensors: dict[str, dict[str, Any]] = {}
+    for spec in specs:
+        backend = backend or str(spec.get("backend", "")).strip()
+        output_root = output_root or str(spec.get("output_root", "")).strip()
+        for sensor in spec.get("expected_outputs_by_sensor", []) or []:
+            if not isinstance(sensor, dict):
+                continue
+            sensor_id = str(sensor.get("sensor_id", "")).strip()
+            if not sensor_id:
+                continue
+            target = merged_sensors.setdefault(sensor_id, {"sensor_id": sensor_id, "outputs": {}})
+            for output in sensor.get("outputs", []) or []:
+                if not isinstance(output, dict):
+                    continue
+                output_role = str(output.get("output_role", "")).strip()
+                if not output_role:
+                    continue
+                target["outputs"][output_role] = _best_entry(
+                    target["outputs"].get(output_role),
+                    output,
+                )
+        for output in spec.get("expected_outputs", []) or []:
+            if not isinstance(output, dict):
+                continue
+            sensor_id = str(output.get("sensor_id", "")).strip()
+            output_role = str(output.get("output_role", "")).strip()
+            if not sensor_id or not output_role:
+                continue
+            merged_expected_outputs[(sensor_id, output_role)] = _best_entry(
+                merged_expected_outputs.get((sensor_id, output_role)),
+                output,
+            )
+    return {
+        "backend": backend or None,
+        "output_root": output_root or None,
+        "expected_outputs": [
+            merged_expected_outputs[key]
+            for key in sorted(merged_expected_outputs)
+        ],
+        "expected_outputs_by_sensor": [
+            {
+                "sensor_id": sensor_id,
+                "outputs": [
+                    sensor["outputs"][output_role]
+                    for output_role in sorted(sensor["outputs"])
+                ],
+            }
+            for sensor_id, sensor in sorted(merged_sensors.items())
+        ],
+    }
+
+
+def _merge_playback_contracts(playback_contracts: list[dict[str, Any]]) -> dict[str, Any]:
+    merged_mounts: dict[str, dict[str, Any]] = {}
+    for contract in playback_contracts:
+        for mount in contract.get("renderer_sensor_mounts", []) or []:
+            if not isinstance(mount, dict):
+                continue
+            sensor_id = str(mount.get("sensor_id", "")).strip()
+            if not sensor_id:
+                continue
+            merged_mounts[sensor_id] = _best_entry(merged_mounts.get(sensor_id), mount)
+    return {
+        "renderer_sensor_mounts": [
+            merged_mounts[sensor_id]
+            for sensor_id in sorted(merged_mounts)
+        ]
+    }
+
+
+def _merge_output_origin_counts(smoke_summaries: list[dict[str, Any]]) -> dict[str, int]:
+    counts = {"backend_runtime": 0, "sidecar_materialized": 0, "missing": 0}
+    for smoke_summary in smoke_summaries:
+        output_smoke = (
+            dict(smoke_summary.get("output_smoke_report", {}))
+            if isinstance(smoke_summary.get("output_smoke_report"), dict)
+            else {}
+        )
+        source_counts = dict(output_smoke.get("output_origin_counts", {}))
+        if source_counts:
+            for key in counts:
+                counts[key] += int(source_counts.get(key, 0) or 0)
+            continue
+        source_status = str(output_smoke.get("output_origin_status", "")).strip()
+        if source_status == "BACKEND_RUNTIME_ONLY":
+            counts["backend_runtime"] += 1
+        elif source_status == "SIDECAR_ONLY":
+            counts["sidecar_materialized"] += 1
+        elif source_status == "MIXED":
+            counts["backend_runtime"] += 1
+            counts["sidecar_materialized"] += 1
+    return counts
+
+
+def _output_origin_status_from_counts(counts: dict[str, int]) -> str | None:
+    runtime_count = int(counts.get("backend_runtime", 0) or 0)
+    sidecar_count = int(counts.get("sidecar_materialized", 0) or 0)
+    if runtime_count > 0 and sidecar_count == 0:
+        return "BACKEND_RUNTIME_ONLY"
+    if runtime_count == 0 and sidecar_count > 0:
+        return "SIDECAR_ONLY"
+    if runtime_count > 0 and sidecar_count > 0:
+        return "MIXED"
+    return None
+
+
+def _merge_smoke_summaries(smoke_summaries: list[dict[str, Any]]) -> dict[str, Any]:
+    backend = str(smoke_summaries[0].get("backend", "")).strip() if smoke_summaries else ""
+    comparison_statuses = [
+        str((summary.get("output_comparison") or {}).get("status", "")).strip()
+        for summary in smoke_summaries
+        if isinstance(summary.get("output_comparison"), dict)
+    ]
+    smoke_statuses = [
+        str((summary.get("output_smoke_report") or {}).get("status", "")).strip()
+        for summary in smoke_summaries
+        if isinstance(summary.get("output_smoke_report"), dict)
+    ]
+    mismatch_reasons = sorted(
+        {
+            str(reason).strip()
+            for summary in smoke_summaries
+            for reason in list((summary.get("output_comparison") or {}).get("mismatch_reasons", []) or [])
+            if str(reason).strip()
+        }
+    )
+    unexpected_output_count = sum(
+        int((summary.get("output_comparison") or {}).get("unexpected_output_count", 0) or 0)
+        for summary in smoke_summaries
+        if isinstance(summary.get("output_comparison"), dict)
+    )
+    output_origin_counts = _merge_output_origin_counts(smoke_summaries)
+    output_origin_status = _output_origin_status_from_counts(output_origin_counts)
+    output_origin_reasons = sorted(
+        {
+            str(reason).strip()
+            for summary in smoke_summaries
+            for reason in list((summary.get("output_smoke_report") or {}).get("output_origin_reasons", []) or [])
+            if str(reason).strip()
+        }
+    )
+    coverage_ratios = [
+        float((summary.get("output_smoke_report") or {}).get("coverage_ratio"))
+        for summary in smoke_summaries
+        if isinstance(summary.get("output_smoke_report"), dict)
+        and (summary.get("output_smoke_report") or {}).get("coverage_ratio") is not None
+    ]
+    output_smoke_status = (
+        "COMPLETE"
+        if smoke_statuses and all(status == "COMPLETE" for status in smoke_statuses)
+        else (next((status for status in smoke_statuses if status), None) or None)
+    )
+    output_comparison_status = (
+        "MATCHED"
+        if comparison_statuses and all(status == "MATCHED" for status in comparison_statuses)
+        else (
+            next((status for status in comparison_statuses if status and status != "MATCHED"), None)
+            or next((status for status in comparison_statuses if status), None)
+        )
+    )
+    return {
+        "backend": backend or None,
+        "success": all(bool(summary.get("success", True)) for summary in smoke_summaries),
+        "run": {"status": "MERGED", "failure_reason": None},
+        "output_smoke_report": {
+            "status": output_smoke_status,
+            "coverage_ratio": min(coverage_ratios) if coverage_ratios else None,
+            "output_origin_status": output_origin_status,
+            "output_origin_counts": output_origin_counts,
+            "output_origin_reasons": output_origin_reasons,
+        },
+        "output_comparison": {
+            "status": output_comparison_status,
+            "mismatch_reasons": mismatch_reasons,
+            "unexpected_output_count": unexpected_output_count,
+            "output_origin_status": output_origin_status,
+            "output_origin_counts": output_origin_counts,
+        },
+        "artifacts": {},
+    }
+
+
+def _write_merged_runtime_inputs(
+    *,
+    out_root: Path,
+    smoke_summaries: list[dict[str, Any]],
+    playback_contracts: list[dict[str, Any]],
+    backend_output_specs: list[dict[str, Any]],
+    backend_sensor_output_summaries: list[dict[str, Any]],
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    merged_root = out_root / "_merged_runtime_inputs"
+    merged_root.mkdir(parents=True, exist_ok=True)
+    merged_smoke_summary = _merge_smoke_summaries(smoke_summaries)
+    merged_playback_contract = _merge_playback_contracts(playback_contracts)
+    merged_backend_output_spec = _merge_backend_output_specs(backend_output_specs)
+    merged_backend_sensor_output_summary = _merge_backend_sensor_output_summaries(
+        backend_sensor_output_summaries
+    )
+    merged_smoke_summary_path = merged_root / "merged_renderer_backend_smoke_summary.json"
+    merged_playback_contract_path = merged_root / "merged_renderer_playback_contract.json"
+    merged_backend_output_spec_path = merged_root / "merged_backend_output_spec.json"
+    merged_backend_sensor_output_summary_path = (
+        merged_root / "merged_backend_sensor_output_summary.json"
+    )
+    merged_smoke_summary["artifacts"] = {
+        "renderer_playback_contract": str(merged_playback_contract_path.resolve()),
+        "backend_output_spec": str(merged_backend_output_spec_path.resolve()),
+        "backend_sensor_output_summary": str(
+            merged_backend_sensor_output_summary_path.resolve()
+        ),
+    }
+    _write_json(merged_smoke_summary_path, merged_smoke_summary)
+    _write_json(merged_playback_contract_path, merged_playback_contract)
+    _write_json(merged_backend_output_spec_path, merged_backend_output_spec)
+    _write_json(
+        merged_backend_sensor_output_summary_path,
+        merged_backend_sensor_output_summary,
+    )
+    merged_smoke_summary["__source_path"] = str(merged_smoke_summary_path.resolve())
+    merged_playback_contract["__source_path"] = str(
+        merged_playback_contract_path.resolve()
+    )
+    merged_backend_output_spec["__source_path"] = str(
+        merged_backend_output_spec_path.resolve()
+    )
+    merged_backend_sensor_output_summary["__source_path"] = str(
+        merged_backend_sensor_output_summary_path.resolve()
+    )
+    return (
+        merged_smoke_summary,
+        merged_playback_contract,
+        merged_backend_output_spec,
+        merged_backend_sensor_output_summary,
+    )
+
+
 def run_autoware_pipeline_bridge(
     *,
     backend_smoke_workflow_report_path: str,
+    supplemental_backend_smoke_workflow_report_paths: list[str] | None = None,
     runtime_backend_workflow_report_path: str,
     out_root: Path,
     base_frame: str = "base_link",
@@ -171,6 +525,16 @@ def run_autoware_pipeline_bridge(
         raise ValueError("provide exactly one of backend or runtime workflow report path")
     input_report = _load_report(Path(report_path_text))
     backend_report = _resolve_backend_smoke_report(input_report)
+    supplemental_report_paths = [
+        str(path).strip()
+        for path in list(supplemental_backend_smoke_workflow_report_paths or [])
+        if str(path).strip()
+    ]
+    supplemental_backend_reports = [
+        _resolve_backend_smoke_report(_load_report(Path(path)))
+        for path in supplemental_report_paths
+    ]
+    backend_reports = [backend_report, *supplemental_backend_reports]
     selection = dict(backend_report.get("selection", {}))
     bridge = dict(backend_report.get("bridge", {}))
     run_id = (
@@ -189,25 +553,50 @@ def run_autoware_pipeline_bridge(
     }
     smoke_summary = _load_optional_smoke_summary(backend_report)
     if smoke_summary is not None:
-        smoke_repo_root = _detect_repo_root(
-            Path(str(smoke_summary.get("__source_path", "")).strip())
-        )
-        smoke_artifacts = dict(smoke_summary.get("artifacts", {}))
-        playback_contract = _load_artifact(
-            smoke_artifacts.get("renderer_playback_contract", ""),
-            field="renderer_playback_contract",
-            repo_root=smoke_repo_root,
-        )
-        backend_output_spec = _load_artifact(
-            smoke_artifacts.get("backend_output_spec", ""),
-            field="backend_output_spec",
-            repo_root=smoke_repo_root,
-        )
-        backend_sensor_output_summary = _load_artifact(
-            smoke_artifacts.get("backend_sensor_output_summary", ""),
-            field="backend_sensor_output_summary",
-            repo_root=smoke_repo_root,
-        )
+        if len(backend_reports) > 1:
+            runtime_reports = [
+                report for report in backend_reports if _has_runtime_smoke_summary(report)
+            ]
+            if len(runtime_reports) != len(backend_reports):
+                raise ValueError(
+                    "supplemental backend smoke workflow reports require runtime smoke summaries"
+                )
+            smoke_summaries: list[dict[str, Any]] = []
+            playback_contracts: list[dict[str, Any]] = []
+            backend_output_specs: list[dict[str, Any]] = []
+            backend_sensor_output_summaries: list[dict[str, Any]] = []
+            for report in runtime_reports:
+                (
+                    runtime_smoke_summary,
+                    runtime_playback_contract,
+                    runtime_backend_output_spec,
+                    runtime_backend_sensor_output_summary,
+                ) = _load_runtime_bridge_inputs(report)
+                smoke_summaries.append(runtime_smoke_summary)
+                playback_contracts.append(runtime_playback_contract)
+                backend_output_specs.append(runtime_backend_output_spec)
+                backend_sensor_output_summaries.append(
+                    runtime_backend_sensor_output_summary
+                )
+            (
+                smoke_summary,
+                playback_contract,
+                backend_output_spec,
+                backend_sensor_output_summary,
+            ) = _write_merged_runtime_inputs(
+                out_root=out_root,
+                smoke_summaries=smoke_summaries,
+                playback_contracts=playback_contracts,
+                backend_output_specs=backend_output_specs,
+                backend_sensor_output_summaries=backend_sensor_output_summaries,
+            )
+        else:
+            (
+                smoke_summary,
+                playback_contract,
+                backend_output_spec,
+                backend_sensor_output_summary,
+            ) = _load_runtime_bridge_inputs(backend_report)
         bundle = write_autoware_export_bundle(
             out_root=out_root,
             backend=str(backend_report.get("backend", "")).strip(),
@@ -271,6 +660,10 @@ def run_autoware_pipeline_bridge(
         "recording_style": bundle.get("recording_style"),
         "dataset_ready": bool(bundle.get("dataset_ready")),
         "scenario_source": dict(bundle.get("scenario_source", {})),
+        "merged_report_count": len(backend_reports),
+        "supplemental_backend_smoke_workflow_report_paths": [
+            str(Path(path).resolve()) for path in supplemental_report_paths
+        ],
         "required_topics_complete": bundle["required_topics_complete"],
         "frame_tree_complete": bundle["frame_tree_complete"],
         "warnings": list(bundle["warnings"]),
@@ -291,6 +684,9 @@ def main(argv: list[str] | None = None) -> int:
         args = _parse_args(argv)
         result = run_autoware_pipeline_bridge(
             backend_smoke_workflow_report_path=args.backend_smoke_workflow_report,
+            supplemental_backend_smoke_workflow_report_paths=list(
+                args.supplemental_backend_smoke_workflow_report
+            ),
             runtime_backend_workflow_report_path=args.runtime_backend_workflow_report,
             out_root=Path(args.out_root).resolve(),
             base_frame=args.base_frame,

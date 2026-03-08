@@ -1321,6 +1321,175 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
                 "semantic_perception_v0",
             )
 
+    def test_run_scenario_backend_smoke_workflow_runs_semantic_supplemental_bridge(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            variant_result = run_scenario_variant_workflow(
+                logical_scenarios_path="",
+                scenario_language_profile="highway_mixed_payloads_v0",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                out_root=root / "variant_workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=1,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+            )
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+            fake_backend = root / "fake_backend_success.sh"
+            _write_fake_backend_success(fake_backend)
+            smoke_config = _write_smoke_base_config(
+                root=root,
+                helios_bin=fake_helios,
+                output_dir=root / "smoke_placeholder",
+            )
+            first_topic_catalog = root / "autoware_first" / "autoware_topic_catalog.json"
+            first_topic_catalog.parent.mkdir(parents=True, exist_ok=True)
+            first_topic_catalog.write_text(
+                json.dumps(
+                    {
+                        "missing_required_topics": [
+                            "/sensing/camera/camera_front/semantic/image_raw"
+                        ]
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            first_report = {
+                "status": "DEGRADED",
+                "availability_mode": "runtime",
+                "consumer_profile_id": "semantic_perception_v0",
+                "consumer_profile_description": "semantic perception",
+                "available_sensor_count": 2,
+                "missing_required_sensor_count": 1,
+                "available_topics": ["/sensing/camera/camera_front/image_raw"],
+                "required_topics_complete": False,
+                "frame_tree_complete": True,
+                "warnings": [],
+                "artifacts": {
+                    "sensor_contracts_path": str(root / "autoware_first" / "autoware_sensor_contracts.json"),
+                    "frame_tree_path": str(root / "autoware_first" / "autoware_frame_tree.json"),
+                    "pipeline_manifest_path": str(root / "autoware_first" / "autoware_pipeline_manifest.json"),
+                    "dataset_manifest_path": str(root / "autoware_first" / "autoware_dataset_manifest.json"),
+                    "topic_catalog_path": str(first_topic_catalog),
+                },
+            }
+            second_report = {
+                "status": "READY",
+                "availability_mode": "runtime",
+                "consumer_profile_id": "semantic_perception_v0",
+                "consumer_profile_description": "semantic perception",
+                "available_sensor_count": 2,
+                "missing_required_sensor_count": 0,
+                "available_topics": [
+                    "/sensing/camera/camera_front/image_raw",
+                    "/sensing/camera/camera_front/semantic/image_raw",
+                ],
+                "required_topics_complete": True,
+                "frame_tree_complete": True,
+                "warnings": [],
+                "merged_report_count": 2,
+                "supplemental_backend_smoke_workflow_report_paths": [
+                    str(
+                        (
+                            root
+                            / "backend_smoke_workflow"
+                            / "supplemental_semantic"
+                            / "scenario_backend_smoke_workflow_report_v0.json"
+                        ).resolve()
+                    )
+                ],
+                "artifacts": {
+                    "sensor_contracts_path": str(root / "autoware" / "autoware_sensor_contracts.json"),
+                    "frame_tree_path": str(root / "autoware" / "autoware_frame_tree.json"),
+                    "pipeline_manifest_path": str(root / "autoware" / "autoware_pipeline_manifest.json"),
+                    "dataset_manifest_path": str(root / "autoware" / "autoware_dataset_manifest.json"),
+                    "topic_catalog_path": str(root / "autoware" / "autoware_topic_catalog.json"),
+                },
+            }
+
+            with patch(
+                "hybrid_sensor_sim.tools.scenario_backend_smoke_workflow.run_autoware_pipeline_bridge",
+                side_effect=[
+                    {
+                        "report_path": str(
+                            root
+                            / "autoware_first"
+                            / "autoware_pipeline_bridge_report_v0.json"
+                        ),
+                        "report": first_report,
+                    },
+                    {
+                        "report_path": str(
+                            root / "autoware" / "autoware_pipeline_bridge_report_v0.json"
+                        ),
+                        "report": second_report,
+                    },
+                ],
+            ) as autoware_bridge:
+                result = run_scenario_backend_smoke_workflow(
+                    variant_workflow_report_path=str(
+                        variant_result["workflow_report_path"]
+                    ),
+                    batch_workflow_report_path="",
+                    smoke_config_path=smoke_config,
+                    backend="awsim",
+                    out_root=root / "backend_smoke_workflow",
+                    selection_strategy="first_successful_variant",
+                    selected_variant_id="",
+                    lane_spacing_m=4.0,
+                    smoke_output_dir="",
+                    setup_summary_path="",
+                    backend_workflow_summary_path="",
+                    backend_bin=str(fake_backend),
+                    renderer_map="Town07",
+                    option_overrides=[],
+                    skip_smoke=False,
+                    autoware_consumer_profile="semantic_perception_v0",
+                )
+
+            workflow_report = result["workflow_report"]
+            self.assertEqual(workflow_report["status"], "SMOKE_SUCCEEDED")
+            self.assertEqual(autoware_bridge.call_count, 2)
+            self.assertEqual(workflow_report["autoware"]["status"], "READY")
+            self.assertEqual(workflow_report["autoware"]["merged_report_count"], 2)
+            self.assertTrue(workflow_report["autoware"]["supplemental_semantic_requested"])
+            self.assertEqual(
+                workflow_report["autoware"]["supplemental_semantic_status"],
+                "SMOKE_SUCCEEDED",
+            )
+            supplemental_report_path = Path(
+                workflow_report["artifacts"][
+                    "supplemental_semantic_backend_smoke_workflow_report_path"
+                ]
+            )
+            self.assertTrue(supplemental_report_path.is_file())
+            second_call = autoware_bridge.call_args_list[1]
+            self.assertTrue(
+                second_call.kwargs["supplemental_backend_smoke_workflow_report_paths"]
+            )
+            supplemental_config = json.loads(
+                Path(
+                    workflow_report["artifacts"][
+                        "supplemental_semantic_smoke_config_path"
+                    ]
+                ).read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                supplemental_config["options"]["camera_sensor_type"],
+                "SEMANTIC_SEGMENTATION",
+            )
+            self.assertFalse(supplemental_config["options"]["lidar_postprocess_enabled"])
+            self.assertFalse(supplemental_config["options"]["radar_postprocess_enabled"])
+
     def test_scenario_backend_smoke_workflow_script_bootstraps_src_path(self) -> None:
         script_path = Path(__file__).resolve().parents[1] / "scripts" / "run_scenario_backend_smoke_workflow.py"
         completed = subprocess.run(
