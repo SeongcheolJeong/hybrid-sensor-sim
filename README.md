@@ -539,6 +539,8 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `artifacts/renderer_backend_local_setup/renderer_backend_local.env.sh`
 - `python3 scripts/discover_renderer_backend_local_env.py --probe-helios-docker-demo` also writes:
   - `artifacts/renderer_backend_local_setup/helios_docker_probe.json`
+- `python3 scripts/discover_renderer_backend_local_env.py --probe-linux-handoff-docker-selftest --probe-linux-handoff-docker-selftest-execute` also writes:
+  - `artifacts/renderer_backend_local_setup/linux_handoff_docker_selftest_probe/renderer_backend_linux_handoff_selftest.json`
 - the summary reports:
   - selected `HELIOS_BIN`, `AWSIM_BIN`, `CARLA_BIN`
   - selected `HELIOS_DOCKER_IMAGE`
@@ -553,6 +555,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - staged runtime metadata under `third_party/runtime_backends/<backend>/renderer_backend_package_stage.json` is also reused, so a previously staged backend is rediscovered without re-entering the path manually
 - when `heliosplusplus:cli` is present in Docker Desktop, discovery can mark HELIOS as docker-ready even if `HELIOS_BIN` is unset.
 - `--probe-helios-docker-demo` runs the configured docker demo and records actual HELIOS execution success/failure in `probes.helios_docker_demo`.
+- `--probe-linux-handoff-docker-selftest` runs the synthetic Linux handoff Docker self-test and records the result in `probes.linux_handoff_docker_selftest`.
 - use `--no-default-search-roots` when you want discovery to only scan explicit `--search-root` inputs plus the repo root.
 
 ### Local backend package staging

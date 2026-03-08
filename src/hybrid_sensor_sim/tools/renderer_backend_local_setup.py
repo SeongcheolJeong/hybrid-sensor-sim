@@ -12,6 +12,9 @@ from typing import Any
 from hybrid_sensor_sim.backends.helios_adapter import HeliosAdapter
 from hybrid_sensor_sim.backends.native_physics import NativePhysicsBackend
 from hybrid_sensor_sim.orchestrator import HybridOrchestrator
+from hybrid_sensor_sim.tools.renderer_backend_linux_handoff_selftest import (
+    run_renderer_backend_linux_handoff_selftest,
+)
 from hybrid_sensor_sim.types import BackendMode, SensorSimRequest
 
 
@@ -80,6 +83,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         default=Path("configs/hybrid_sensor_sim.helios_docker.json"),
         help="Config to use when --probe-helios-docker-demo is enabled.",
+    )
+    parser.add_argument(
+        "--probe-linux-handoff-docker-selftest",
+        action="store_true",
+        help="Run the synthetic Linux handoff Docker self-test and store the result summary.",
+    )
+    parser.add_argument(
+        "--probe-linux-handoff-docker-selftest-execute",
+        action="store_true",
+        help="When probing the Linux handoff Docker self-test, execute the extracted handoff script too.",
     )
     return parser.parse_args(argv)
 
@@ -667,6 +680,7 @@ def _render_env_file(summary: dict[str, Any]) -> str:
             "# Example:",
             "# source artifacts/renderer_backend_local_setup/renderer_backend_local.env.sh",
             "# python3 scripts/discover_renderer_backend_local_env.py --probe-helios-docker-demo",
+            "# python3 scripts/discover_renderer_backend_local_env.py --probe-linux-handoff-docker-selftest --probe-linux-handoff-docker-selftest-execute",
             "# python3 scripts/run_renderer_backend_smoke.py --config configs/renderer_backend_smoke.awsim.local.example.json --backend awsim",
             "# python3 scripts/run_renderer_backend_smoke.py --config configs/renderer_backend_smoke.awsim.local.docker.example.json --backend awsim",
             "",
@@ -901,6 +915,8 @@ def build_renderer_backend_local_setup(
     include_default_search_roots: bool = True,
     probe_helios_docker_demo: bool = False,
     helios_docker_probe_config: Path | None = None,
+    probe_linux_handoff_docker_selftest: bool = False,
+    probe_linux_handoff_docker_selftest_execute: bool = False,
 ) -> dict[str, Any]:
     repo_root = repo_root.resolve()
     extra_roots = [_resolve_runtime_path(path) for path in (search_roots or [])]
@@ -1011,8 +1027,16 @@ def build_renderer_backend_local_setup(
     env_path = output_root / "renderer_backend_local.env.sh"
     summary_path = output_root / "renderer_backend_local_setup.json"
     probe_path = output_root / "helios_docker_probe.json"
+    handoff_selftest_output_root = output_root / "linux_handoff_docker_selftest_probe"
+    handoff_selftest_summary_path = (
+        handoff_selftest_output_root / "renderer_backend_linux_handoff_selftest.json"
+    )
     commands = {
         "helios_docker_demo": "python3 scripts/discover_renderer_backend_local_env.py --probe-helios-docker-demo",
+        "linux_handoff_docker_selftest": (
+            "python3 scripts/discover_renderer_backend_local_env.py "
+            "--probe-linux-handoff-docker-selftest"
+        ),
         "awsim_acquire": (
             "python3 scripts/acquire_renderer_backend_package.py "
             f"--backend awsim --setup-summary {shlex.quote(str(summary_path))}"
@@ -1087,6 +1111,27 @@ def build_renderer_backend_local_setup(
             )
         _write_json(probe_path, probe_summary)
         probes["helios_docker_demo"] = probe_summary
+    if probe_linux_handoff_docker_selftest:
+        try:
+            probe_summary = run_renderer_backend_linux_handoff_selftest(
+                repo_root=repo_root,
+                output_root=handoff_selftest_output_root,
+                summary_path=handoff_selftest_summary_path,
+                execute=probe_linux_handoff_docker_selftest_execute,
+            )
+        except Exception as exc:
+            probe_summary = {
+                "repo_root": str(repo_root),
+                "output_root": str(handoff_selftest_output_root),
+                "summary_path": str(handoff_selftest_summary_path),
+                "execute": probe_linux_handoff_docker_selftest_execute,
+                "success": False,
+                "error": str(exc),
+            }
+            _write_json(handoff_selftest_summary_path, probe_summary)
+        probes["linux_handoff_docker_selftest"] = probe_summary
+        if not probe_summary.get("success", False):
+            issues.append("Linux handoff Docker self-test failed.")
     acquisition_hints = _build_acquisition_hints(
         repo_root=repo_root,
         search_roots=all_search_roots,
@@ -1120,6 +1165,7 @@ def build_renderer_backend_local_setup(
             "summary_path": str(summary_path),
             "env_path": str(env_path),
             "helios_docker_probe_path": str(probe_path),
+            "linux_handoff_docker_selftest_probe_path": str(handoff_selftest_summary_path),
         },
     }
 
@@ -1135,6 +1181,8 @@ def main(argv: list[str] | None = None) -> int:
         include_default_search_roots=not args.no_default_search_roots,
         probe_helios_docker_demo=args.probe_helios_docker_demo,
         helios_docker_probe_config=_resolve_runtime_path(args.helios_docker_probe_config),
+        probe_linux_handoff_docker_selftest=args.probe_linux_handoff_docker_selftest,
+        probe_linux_handoff_docker_selftest_execute=args.probe_linux_handoff_docker_selftest_execute,
     )
     summary_path = (
         _resolve_runtime_path(args.summary_path)
