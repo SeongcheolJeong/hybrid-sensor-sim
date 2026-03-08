@@ -3,6 +3,8 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -24,6 +26,22 @@ def _write_fake_docker(path: Path, log_path: Path, exit_code: int) -> None:
 
 
 class RendererBackendLinuxHandoffDockerTests(unittest.TestCase):
+    def test_linux_handoff_docker_script_bootstraps_src_path(self) -> None:
+        script_path = (
+            Path(__file__).resolve().parents[1]
+            / "scripts"
+            / "run_renderer_backend_linux_handoff_docker.py"
+        )
+        proc = subprocess.run(
+            [sys.executable, str(script_path), "--help"],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("handoff bundle tar.gz", proc.stdout)
+
     def test_linux_handoff_docker_wrapper_builds_expected_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

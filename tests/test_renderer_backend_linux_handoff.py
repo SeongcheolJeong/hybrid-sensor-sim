@@ -3,6 +3,8 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -113,6 +115,18 @@ def _build_test_bundle(
 
 
 class RendererBackendLinuxHandoffTests(unittest.TestCase):
+    def test_linux_handoff_script_bootstraps_src_path(self) -> None:
+        script_path = Path(__file__).resolve().parents[1] / "scripts" / "run_renderer_backend_linux_handoff.py"
+        proc = subprocess.run(
+            [sys.executable, str(script_path), "--help"],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("renderer_backend_workflow_linux_handoff_bundle.tar.gz", proc.stdout)
+
     def test_linux_handoff_can_verify_without_execution(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
