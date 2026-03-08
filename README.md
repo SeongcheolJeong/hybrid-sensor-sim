@@ -49,6 +49,7 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
   - supports `rendered_payload_kind=log_scene_v0` via replay and `rendered_payload_kind=scenario_definition_v0` via direct object-sim execution
   - report includes `successful_variant_rows` and `non_success_variant_rows` for quick triage
 - `scripts/run_scenario_variant_workflow.py`: generates variants and immediately executes rendered payloads, writing a workflow report plus the underlying variant/run reports.
+- `scripts/run_scenario_batch_comparison.py`: compares a scenario variant workflow report against a matrix-sweep report and writes JSON plus Markdown comparison artifacts.
 - `scripts/run_scenario_matrix_sweep.py`: runs object-sim over traffic/friction parameter grids and writes a sweep report.
 - `scripts/run_sensor_rig_sweep.py`: evaluates rig candidates against current native preview and coverage outputs.
 - `scripts/run_map_convert.py`: converts `simple_map_v0` and `canonical_lane_graph_v0`.
@@ -172,6 +173,24 @@ python3 scripts/run_scenario_variant_workflow.py \
 - `successful_variant_rows`: compact successful variant table with execution path and summary artifact
 - `non_success_variant_rows`: compact failed/skipped variant table for quick triage
 
+Scenario batch comparison:
+
+```bash
+python3 scripts/run_scenario_batch_comparison.py \
+  --variant-workflow-report artifacts/scenario_variant_workflow_runs/scenario_variant_workflow_report_v0.json \
+  --matrix-sweep-report artifacts/scenario_matrix_report.json \
+  --out-report artifacts/scenario_batch_comparison_report_v0.json
+```
+
+`scenario_batch_comparison_report_v0.json` includes:
+
+- `overview`: combined variant/matrix counts, collision/timeout totals, and minimum-TTC hotspot
+- `comparison_tables.logical_scenario_rows`: grouped variant execution results by logical scenario
+- `comparison_tables.matrix_group_rows`: grouped matrix cases by `traffic_profile_id::traffic_actor_pattern_id`
+- `comparison_tables.attention_rows`: compact rows that need cross-batch triage
+
+The comparison command also writes a Markdown report next to the JSON report by default.
+
 Both `run_scenario_variants.py` and `run_scenario_variant_workflow.py` resolve default scenario-language profiles from:
 
 - `tests/fixtures/autonomy_e2e/p_validation`
@@ -228,6 +247,8 @@ Autonomy-E2E fixtures currently mirrored into this repo:
 - `tests/fixtures/autonomy_e2e/p_sim_engine/highway_safe_following_vehicle_dynamics_v0.json`
 - `tests/fixtures/autonomy_e2e/p_sim_engine/highway_map_route_following_v0.json`
 - `tests/fixtures/autonomy_e2e/p_sim_engine/log_scene_v0.json`
+- `tests/fixtures/autonomy_e2e/p_validation/highway_mixed_payloads_v0.json`
+- `tests/fixtures/autonomy_e2e/p_validation/highway_mixed_payloads_random_v0.json`
 - `tests/fixtures/autonomy_e2e/p_sim_engine/log_scene_map_route_v0.json`
 - `tests/fixtures/autonomy_e2e/p_sim_engine/log_scene_map_route_relations_v0.json`
 - `tests/fixtures/autonomy_e2e/p_sim_engine/rig_sweep_base_config.json`

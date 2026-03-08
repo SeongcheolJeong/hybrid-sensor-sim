@@ -42,6 +42,9 @@ from hybrid_sensor_sim.tools.scenario_variant_runner import (
 from hybrid_sensor_sim.tools.scenario_variant_workflow import (
     run_scenario_variant_workflow,
 )
+from hybrid_sensor_sim.tools.scenario_batch_comparison import (
+    build_scenario_batch_comparison_report,
+)
 from hybrid_sensor_sim.tools.log_scene_augment import (
     augment_log_scene,
 )
@@ -67,6 +70,7 @@ __all__ = [
     "run_log_replay",
     "run_scenario_variant_report",
     "run_scenario_variant_workflow",
+    "build_scenario_batch_comparison_report",
     "augment_log_scene",
     "run_vehicle_dynamics_trace",
     "run_sensor_rig_sweep",

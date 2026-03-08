@@ -83,10 +83,13 @@ Implemented in the current repository:
    - workflow reports now include `by_payload_kind`, `by_logical_scenario_id`, compact `successful_variant_rows`, and compact `non_success_variant_rows` triage output
    - scenario-language profile execution is now validated against the repo-local fixture directory
    - random-sampling execution is now validated for a mixed-payload scenario-language profile
+19. cross-batch comparison surface in `src/hybrid_sensor_sim/tools/scenario_batch_comparison.py`
+   - `scenario_variant_workflow_report_v0` and `core_sim_matrix_sweep_report_v0` can now be compared through one JSON and Markdown surface
+   - comparison output now includes grouped logical-scenario rows, grouped matrix-group rows, and compact cross-batch attention rows
 
 Still pending from the same migration track:
 
-1. deeper map-aware behavior beyond lane-id normalization, lane-binding inference, route synthesis, route-relation-driven scenario generation, rendered payload generation, rendered variant execution, route-aware runtime path-conflict handling, route summary wiring, and route-aware lane-risk aggregation
+1. deeper map-aware behavior beyond lane-id normalization, lane-binding inference, route synthesis, route-relation-driven scenario generation, rendered payload generation, rendered variant execution, route-aware runtime path-conflict handling, route summary wiring, route-aware lane-risk aggregation, and cross-batch comparison reporting
 
 ## Block Mapping
 
