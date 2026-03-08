@@ -282,6 +282,10 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
             self.assertEqual(workflow_report["autoware"]["availability_mode"], "runtime")
             self.assertTrue(workflow_report["autoware"]["dataset_ready"])
             self.assertEqual(workflow_report["autoware"]["recording_style"], "backend_smoke_export")
+            self.assertGreater(workflow_report["autoware"]["topic_export_count"], 0)
+            self.assertGreater(
+                workflow_report["autoware"]["materialized_topic_export_count"], 0
+            )
             self.assertIn("camera", workflow_report["autoware"]["available_modalities"])
             self.assertEqual(
                 workflow_report["autoware"]["scenario_source"]["variant_id"],
@@ -290,6 +294,10 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
             self.assertIsNotNone(workflow_report["autoware"]["missing_required_sensor_count"])
             self.assertIn("/sensing/camera/camera_front/image_raw", workflow_report["autoware"]["available_topics"])
             self.assertTrue(Path(workflow_report["artifacts"]["autoware_pipeline_manifest_path"]).is_file())
+            self.assertTrue(
+                Path(workflow_report["artifacts"]["autoware_topic_export_index_path"]).is_file()
+            )
+            self.assertTrue(workflow_report["autoware"]["topic_export_root"])
             smoke_scenario = json.loads(
                 Path(workflow_report["artifacts"]["smoke_scenario_path"]).read_text(encoding="utf-8")
             )
@@ -895,9 +903,17 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
             )
             self.assertEqual(workflow_report["autoware"]["status"], "PLANNED")
             self.assertEqual(workflow_report["autoware"]["availability_mode"], "planned")
+            self.assertGreater(workflow_report["autoware"]["topic_export_count"], 0)
+            self.assertEqual(
+                workflow_report["autoware"]["materialized_topic_export_count"], 0
+            )
             self.assertTrue(
                 workflow_report["artifacts"]["autoware_pipeline_manifest_path"]
             )
+            self.assertTrue(
+                workflow_report["artifacts"]["autoware_topic_export_index_path"]
+            )
+            self.assertTrue(workflow_report["autoware"]["topic_export_root"])
 
     def test_run_scenario_backend_smoke_workflow_propagates_handoff_docker_failure(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

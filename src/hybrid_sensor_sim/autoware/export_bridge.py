@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,100 @@ from hybrid_sensor_sim.renderers.backend_runner import _build_sensor_expected_ou
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+
+
+def _topic_export_relative_path(topic: str) -> Path:
+    topic_text = str(topic).strip().strip("/")
+    if not topic_text:
+        return Path("_root")
+    parts = [part for part in topic_text.split("/") if part]
+    return Path(*parts)
+
+
+def _materialize_topic_payload(
+    *,
+    source_path: Path,
+    export_dir: Path,
+) -> tuple[str | None, str | None]:
+    if not source_path.exists() or not source_path.is_file():
+        return None, None
+    export_dir.mkdir(parents=True, exist_ok=True)
+    destination = export_dir / source_path.name
+    destination_path_text = str(destination.parent.resolve() / destination.name)
+    if destination.exists() or destination.is_symlink():
+        destination.unlink()
+    try:
+        destination.symlink_to(source_path)
+        return destination_path_text, "symlink"
+    except OSError:
+        shutil.copy2(source_path, destination)
+        return destination_path_text, "copy"
+
+
+def _build_topic_export_bundle(
+    *,
+    autoware_root: Path,
+    sensor_contracts: dict[str, Any],
+) -> tuple[dict[str, Any], Path, Path]:
+    topic_root = autoware_root / "topics"
+    topic_root.mkdir(parents=True, exist_ok=True)
+    topic_entries: list[dict[str, Any]] = []
+    materialized_payload_count = 0
+
+    for contract in sensor_contracts.get("contracts", []) or []:
+        if not isinstance(contract, dict):
+            continue
+        topic = str(contract.get("autoware_topic", "")).strip()
+        sensor_id = str(contract.get("sensor_id", "")).strip()
+        output_role = str(contract.get("output_role", "")).strip()
+        if not topic or not sensor_id or not output_role:
+            continue
+        export_dir = topic_root / _topic_export_relative_path(topic)
+        export_manifest_path = export_dir / "topic_export.json"
+        source_resolved_path = str(contract.get("source_resolved_path", "")).strip() or None
+        payload_path = None
+        payload_materialization_mode = None
+        if source_resolved_path:
+            payload_path, payload_materialization_mode = _materialize_topic_payload(
+                source_path=Path(source_resolved_path),
+                export_dir=export_dir,
+            )
+        if payload_path:
+            materialized_payload_count += 1
+        topic_entry = {
+            "topic": topic,
+            "sensor_id": sensor_id,
+            "modality": contract.get("modality"),
+            "output_role": output_role,
+            "artifact_type": contract.get("artifact_type"),
+            "message_type": contract.get("message_type"),
+            "frame_id": contract.get("frame_id"),
+            "encoding": contract.get("encoding"),
+            "data_format": contract.get("data_format"),
+            "required": bool(contract.get("required")),
+            "available": bool(contract.get("available")),
+            "availability_mode": contract.get("availability_mode"),
+            "output_origin": contract.get("output_origin"),
+            "source_artifact_key": contract.get("source_artifact_key"),
+            "source_resolved_path": source_resolved_path,
+            "export_dir": str(export_dir.resolve()),
+            "export_manifest_path": str(export_manifest_path.resolve()),
+            "payload_path": payload_path,
+            "payload_materialization_mode": payload_materialization_mode,
+        }
+        _write_json(export_manifest_path, topic_entry)
+        topic_entries.append(topic_entry)
+
+    topic_entries.sort(key=lambda item: item["topic"])
+    topic_index = {
+        "schema_version": "autoware_topic_export_index_v0",
+        "topic_count": len(topic_entries),
+        "materialized_payload_count": materialized_payload_count,
+        "topics": topic_entries,
+    }
+    topic_index_path = autoware_root / "autoware_topic_export_index.json"
+    _write_json(topic_index_path, topic_index)
+    return topic_index, topic_root, topic_index_path
 
 
 def _sensor_mount(
@@ -270,6 +365,10 @@ def write_autoware_export_bundle(
         sensor_mounts=sensor_mounts,
         availability_mode=availability_mode,
     )
+    topic_export_index, topic_export_root, topic_export_index_path = _build_topic_export_bundle(
+        autoware_root=autoware_root,
+        sensor_contracts=sensor_contracts,
+    )
     strict_failed = bool(strict and int(sensor_contracts.get("missing_required_sensor_count", 0) or 0) > 0)
     frame_tree_path = autoware_root / "autoware_frame_tree.json"
     sensor_contracts_path = autoware_root / "autoware_sensor_contracts.json"
@@ -282,6 +381,8 @@ def write_autoware_export_bundle(
         "sensor_contracts_path": str(sensor_contracts_path.resolve()),
         "pipeline_manifest_path": str(pipeline_manifest_path.resolve()),
         "dataset_manifest_path": str(dataset_manifest_path.resolve()),
+        "topic_export_root": str(topic_export_root.resolve()),
+        "topic_export_index_path": str(topic_export_index_path.resolve()),
         "backend_output_spec_path": str((backend_output_spec.get("__source_path") or "")),
         "backend_sensor_output_summary_path": str((backend_sensor_output_summary.get("__source_path") or "")),
     }
@@ -306,6 +407,12 @@ def write_autoware_export_bundle(
         frame_tree_path=str(frame_tree_path.resolve()),
         pipeline_manifest_path=str(pipeline_manifest_path.resolve()),
         sensor_contracts_path=str(sensor_contracts_path.resolve()),
+        topic_export_root=str(topic_export_root.resolve()),
+        topic_export_index_path=str(topic_export_index_path.resolve()),
+        topic_export_count=int(topic_export_index.get("topic_count", 0) or 0),
+        materialized_topic_export_count=int(
+            topic_export_index.get("materialized_payload_count", 0) or 0
+        ),
         data_roots=sorted(
             {
                 str(backend_output_spec.get("output_root", "")).strip(),
@@ -328,6 +435,10 @@ def write_autoware_export_bundle(
         "available_sensor_count": int(sensor_contracts.get("available_sensor_count", 0) or 0),
         "missing_required_sensor_count": int(sensor_contracts.get("missing_required_sensor_count", 0) or 0),
         "available_topics": list(sensor_contracts.get("available_topics", [])),
+        "topic_export_count": int(topic_export_index.get("topic_count", 0) or 0),
+        "materialized_topic_export_count": int(
+            topic_export_index.get("materialized_payload_count", 0) or 0
+        ),
         "available_modalities": list(dataset_manifest.get("available_modalities", [])),
         "data_roots": list(dataset_manifest.get("data_roots", [])),
         "recording_style": dataset_manifest.get("recording_style"),
@@ -345,7 +456,10 @@ def write_autoware_export_bundle(
             "frame_tree_path": str(frame_tree_path.resolve()),
             "pipeline_manifest_path": str(pipeline_manifest_path.resolve()),
             "dataset_manifest_path": str(dataset_manifest_path.resolve()),
+            "topic_export_root": str(topic_export_root.resolve()),
+            "topic_export_index_path": str(topic_export_index_path.resolve()),
         },
+        "topic_export_index": topic_export_index,
         "sensor_contracts": sensor_contracts,
         "frame_tree": frame_tree,
         "pipeline_manifest": pipeline_manifest,
@@ -377,6 +491,10 @@ def write_autoware_planned_export_bundle(
         sensor_mounts=sensor_mounts,
         availability_mode="planned",
     )
+    topic_export_index, topic_export_root, topic_export_index_path = _build_topic_export_bundle(
+        autoware_root=autoware_root,
+        sensor_contracts=sensor_contracts,
+    )
     strict_failed = bool(strict and int(sensor_contracts.get("missing_required_sensor_count", 0) or 0) > 0)
     frame_tree_path = autoware_root / "autoware_frame_tree.json"
     sensor_contracts_path = autoware_root / "autoware_sensor_contracts.json"
@@ -389,6 +507,8 @@ def write_autoware_planned_export_bundle(
         "sensor_contracts_path": str(sensor_contracts_path.resolve()),
         "pipeline_manifest_path": str(pipeline_manifest_path.resolve()),
         "dataset_manifest_path": str(dataset_manifest_path.resolve()),
+        "topic_export_root": str(topic_export_root.resolve()),
+        "topic_export_index_path": str(topic_export_index_path.resolve()),
         "backend_output_spec_path": str(backend_output_spec.get("__source_path", "")),
         "backend_sensor_output_summary_path": str(
             backend_sensor_output_summary.get("__source_path", "")
@@ -415,6 +535,12 @@ def write_autoware_planned_export_bundle(
         frame_tree_path=str(frame_tree_path.resolve()),
         pipeline_manifest_path=str(pipeline_manifest_path.resolve()),
         sensor_contracts_path=str(sensor_contracts_path.resolve()),
+        topic_export_root=str(topic_export_root.resolve()),
+        topic_export_index_path=str(topic_export_index_path.resolve()),
+        topic_export_count=int(topic_export_index.get("topic_count", 0) or 0),
+        materialized_topic_export_count=int(
+            topic_export_index.get("materialized_payload_count", 0) or 0
+        ),
         data_roots=sorted(
             {
                 str(backend_output_spec.get("output_root", "")).strip(),
@@ -439,6 +565,10 @@ def write_autoware_planned_export_bundle(
         "available_sensor_count": int(sensor_contracts.get("available_sensor_count", 0) or 0),
         "missing_required_sensor_count": int(sensor_contracts.get("missing_required_sensor_count", 0) or 0),
         "available_topics": list(sensor_contracts.get("available_topics", [])),
+        "topic_export_count": int(topic_export_index.get("topic_count", 0) or 0),
+        "materialized_topic_export_count": int(
+            topic_export_index.get("materialized_payload_count", 0) or 0
+        ),
         "available_modalities": list(dataset_manifest.get("available_modalities", [])),
         "data_roots": list(dataset_manifest.get("data_roots", [])),
         "recording_style": dataset_manifest.get("recording_style"),
@@ -456,11 +586,14 @@ def write_autoware_planned_export_bundle(
             "frame_tree_path": str(frame_tree_path.resolve()),
             "pipeline_manifest_path": str(pipeline_manifest_path.resolve()),
             "dataset_manifest_path": str(dataset_manifest_path.resolve()),
+            "topic_export_root": str(topic_export_root.resolve()),
+            "topic_export_index_path": str(topic_export_index_path.resolve()),
             "backend_output_spec_path": str(backend_output_spec.get("__source_path", "")),
             "backend_sensor_output_summary_path": str(
                 backend_sensor_output_summary.get("__source_path", "")
             ),
         },
+        "topic_export_index": topic_export_index,
         "sensor_contracts": sensor_contracts,
         "frame_tree": frame_tree,
         "pipeline_manifest": pipeline_manifest,

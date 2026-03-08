@@ -162,6 +162,8 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
             self.assertEqual(report["status"], "READY")
             self.assertEqual(report["available_sensor_count"], 2)
             self.assertEqual(report["missing_required_sensor_count"], 0)
+            self.assertEqual(report["topic_export_count"], 2)
+            self.assertEqual(report["materialized_topic_export_count"], 2)
             self.assertTrue(report["dataset_ready"])
             self.assertEqual(report["recording_style"], "backend_smoke_export")
             self.assertEqual(report["available_modalities"], ["camera", "lidar"])
@@ -169,6 +171,13 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
             self.assertIn("/sensing/camera/cam_front/image_raw", report["available_topics"])
             self.assertTrue(Path(report["artifacts"]["pipeline_manifest_path"]).is_file())
             self.assertTrue(Path(report["artifacts"]["dataset_manifest_path"]).is_file())
+            topic_index = json.loads(
+                Path(report["artifacts"]["topic_export_index_path"]).read_text(encoding="utf-8")
+            )
+            self.assertEqual(topic_index["topic_count"], 2)
+            self.assertEqual(topic_index["materialized_payload_count"], 2)
+            self.assertTrue(Path(topic_index["topics"][0]["export_manifest_path"]).is_file())
+            self.assertTrue(Path(topic_index["topics"][0]["payload_path"]).exists())
             dataset_manifest = json.loads(
                 Path(report["artifacts"]["dataset_manifest_path"]).read_text(encoding="utf-8")
             )
@@ -177,6 +186,8 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
             self.assertEqual(dataset_manifest["pipeline_status"], "READY")
             self.assertEqual(dataset_manifest["recording_style"], "backend_smoke_export")
             self.assertEqual(dataset_manifest["available_sensor_ids"], ["cam_front", "lidar_top"])
+            self.assertEqual(dataset_manifest["topic_export_count"], 2)
+            self.assertEqual(dataset_manifest["materialized_topic_export_count"], 2)
 
     def test_bridge_marks_sidecar_only_exports(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -443,16 +454,27 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
             self.assertEqual(report["status"], "PLANNED")
             self.assertEqual(report["availability_mode"], "planned")
             self.assertEqual(report["missing_required_sensor_count"], 0)
+            self.assertEqual(report["topic_export_count"], 4)
+            self.assertEqual(report["materialized_topic_export_count"], 0)
             self.assertTrue(report["required_topics_complete"])
             self.assertTrue(report["frame_tree_complete"])
             self.assertIn("/sensing/camera/cam_front/image_raw", report["available_topics"])
             self.assertIn("/sensing/lidar/lidar_top/pointcloud", report["available_topics"])
             self.assertIn("/sensing/radar/radar_front/tracks", report["available_topics"])
             self.assertIn("/sensing/radar/radar_front/detections", report["available_topics"])
+            topic_index = json.loads(
+                Path(report["artifacts"]["topic_export_index_path"]).read_text(encoding="utf-8")
+            )
+            self.assertEqual(topic_index["topic_count"], 4)
+            self.assertEqual(topic_index["materialized_payload_count"], 0)
+            self.assertTrue(
+                all(entry["payload_path"] is None for entry in topic_index["topics"])
+            )
             dataset_manifest = json.loads(
                 Path(report["artifacts"]["dataset_manifest_path"]).read_text(encoding="utf-8")
             )
             self.assertEqual(dataset_manifest["recording_style"], "planned_backend_export")
+            self.assertEqual(dataset_manifest["topic_export_count"], 4)
 
     def test_script_bootstraps_src_path(self) -> None:
         script_path = Path(__file__).resolve().parents[1] / "scripts" / "run_autoware_pipeline_bridge.py"

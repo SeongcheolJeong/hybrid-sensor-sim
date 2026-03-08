@@ -242,6 +242,8 @@ def run_autoware_pipeline_bridge(
         "available_sensor_count": bundle["available_sensor_count"],
         "missing_required_sensor_count": bundle["missing_required_sensor_count"],
         "available_topics": bundle["available_topics"],
+        "topic_export_count": bundle.get("topic_export_count"),
+        "materialized_topic_export_count": bundle.get("materialized_topic_export_count"),
         "available_modalities": list(bundle.get("available_modalities", [])),
         "data_roots": list(bundle.get("data_roots", [])),
         "recording_style": bundle.get("recording_style"),

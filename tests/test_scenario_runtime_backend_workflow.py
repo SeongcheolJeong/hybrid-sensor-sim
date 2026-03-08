@@ -299,6 +299,10 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
                 "camera",
                 report["status_summary"]["autoware_available_modalities"],
             )
+            self.assertGreater(report["status_summary"]["autoware_topic_export_count"], 0)
+            self.assertGreater(
+                report["status_summary"]["autoware_materialized_topic_export_count"], 0
+            )
             self.assertTrue(report["status_summary"]["autoware_data_roots"])
             self.assertEqual(
                 report["status_summary"]["backend_logical_scenario_id"],
@@ -306,6 +310,7 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
             )
             self.assertIsNotNone(report["status_summary"]["autoware_missing_required_sensor_count"])
             self.assertTrue(Path(report["artifacts"]["autoware_pipeline_manifest_path"]).is_file())
+            self.assertTrue(Path(report["artifacts"]["autoware_topic_export_index_path"]).is_file())
             self.assertTrue(Path(report["artifacts"]["smoke_scenario_path"]).is_file())
             self.assertTrue(Path(result["workflow_markdown_path"]).is_file())
 

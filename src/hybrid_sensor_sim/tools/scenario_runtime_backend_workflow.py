@@ -495,6 +495,10 @@ def _build_status_summary(
         "autoware_available_sensor_count": autoware_summary.get("available_sensor_count"),
         "autoware_missing_required_sensor_count": autoware_summary.get("missing_required_sensor_count"),
         "autoware_available_topics": list(autoware_summary.get("available_topics", [])),
+        "autoware_topic_export_count": autoware_summary.get("topic_export_count"),
+        "autoware_materialized_topic_export_count": autoware_summary.get(
+            "materialized_topic_export_count"
+        ),
         "autoware_available_modalities": list(autoware_summary.get("available_modalities", [])),
         "autoware_data_roots": list(autoware_summary.get("data_roots", [])),
         "autoware_recording_style": autoware_summary.get("recording_style"),
@@ -568,6 +572,8 @@ def _build_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Availability mode: `{summary.get('autoware_availability_mode') or '-'}`",
         f"- Available sensors: `{summary.get('autoware_available_sensor_count') if summary.get('autoware_available_sensor_count') is not None else '-'}`",
         f"- Missing required sensors: `{summary.get('autoware_missing_required_sensor_count') if summary.get('autoware_missing_required_sensor_count') is not None else '-'}`",
+        f"- Topic exports: `{summary.get('autoware_topic_export_count') if summary.get('autoware_topic_export_count') is not None else '-'}`",
+        f"- Materialized topic exports: `{summary.get('autoware_materialized_topic_export_count') if summary.get('autoware_materialized_topic_export_count') is not None else '-'}`",
         f"- Dataset ready: `{summary.get('autoware_dataset_ready') if summary.get('autoware_dataset_ready') is not None else '-'}`",
         f"- Recording style: `{summary.get('autoware_recording_style') or '-'}`",
         f"- Required topics complete: `{summary.get('autoware_required_topics_complete') if summary.get('autoware_required_topics_complete') is not None else '-'}`",
@@ -594,6 +600,8 @@ def _build_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Smoke input config: `{workflow_report['artifacts']['smoke_input_config_path']}`",
         f"- Autoware pipeline manifest: `{workflow_report['artifacts'].get('autoware_pipeline_manifest_path') or '-'}`",
         f"- Autoware dataset manifest: `{workflow_report['artifacts'].get('autoware_dataset_manifest_path') or '-'}`",
+        f"- Autoware topic export root: `{workflow_report['artifacts'].get('autoware_topic_export_root') or '-'}`",
+        f"- Autoware topic export index: `{workflow_report['artifacts'].get('autoware_topic_export_index_path') or '-'}`",
         f"- History guard report: `{workflow_report['artifacts'].get('history_guard_report_path') or '-'}`",
         "",
     ]
@@ -864,6 +872,8 @@ def run_scenario_runtime_backend_workflow(
             "autoware_frame_tree_path": backend_report["artifacts"].get("autoware_frame_tree_path"),
             "autoware_pipeline_manifest_path": backend_report["artifacts"].get("autoware_pipeline_manifest_path"),
             "autoware_dataset_manifest_path": backend_report["artifacts"].get("autoware_dataset_manifest_path"),
+            "autoware_topic_export_root": backend_report["artifacts"].get("autoware_topic_export_root"),
+            "autoware_topic_export_index_path": backend_report["artifacts"].get("autoware_topic_export_index_path"),
             "renderer_backend_workflow_summary_path": backend_report["artifacts"].get("renderer_backend_workflow_summary_path"),
             "renderer_backend_workflow_report_path": backend_report["artifacts"].get("renderer_backend_workflow_report_path"),
             "renderer_backend_linux_handoff_script_path": backend_report["artifacts"].get("renderer_backend_linux_handoff_script_path"),
