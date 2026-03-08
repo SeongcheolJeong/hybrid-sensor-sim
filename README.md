@@ -226,6 +226,7 @@ python3 scripts/run_scenario_batch_workflow.py \
 - `status`: `SUCCEEDED|ATTENTION|FAILED`
 - `status_summary`: top-level triage summary with `status_reason_codes`, `gate_failure_codes`, `failing_logical_scenario_ids`, and `attention_logical_scenario_ids`
   - also includes `final_status_source` and ordered `decision_trace` so the `FAILED|ATTENTION|SUCCEEDED` decision path is explicit
+  - also includes `failing_matrix_group_ids` and `attention_matrix_group_ids` for matrix-side triage
 - `variant_summary`: selected variant execution summary copied from the variant workflow
 - `matrix_summary`: matrix-sweep case summary
 - `comparison_summary`: cross-batch overview, gate result, and compact attention rows

@@ -115,6 +115,7 @@ Implemented in the current repository:
 26. top-level batch status summary
    - batch workflow now exposes `status_summary` with `status_reason_codes`, `gate_failure_codes`, `failing_logical_scenario_ids`, and `attention_logical_scenario_ids`
    - `status_summary` now also includes `final_status_source` and ordered `decision_trace`
+   - matrix-side triage is now exposed through `failing_matrix_group_ids` and `attention_matrix_group_ids`
 
 Still pending from the same migration track:
 

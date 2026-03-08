@@ -71,6 +71,18 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def _write_route_attention_scenario(self, path: Path) -> None:
+        route_scenario = json.loads(
+            (P_SIM_ENGINE_FIXTURE_ROOT / "highway_map_route_following_v0.json").read_text(encoding="utf-8")
+        )
+        route_scenario["canonical_map_path"] = str(
+            (P_MAP_TOOLSET_FIXTURE_ROOT / "canonical_lane_graph_v0.json").resolve()
+        )
+        path.write_text(
+            json.dumps(route_scenario, indent=2, ensure_ascii=True) + "\n",
+            encoding="utf-8",
+        )
+
     def test_run_scenario_batch_workflow_writes_all_reports(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -117,6 +129,8 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             self.assertEqual(workflow_report["status_summary"]["status_reason_codes"], [])
             self.assertEqual(workflow_report["status_summary"]["failing_logical_scenario_ids"], [])
             self.assertEqual(workflow_report["status_summary"]["attention_logical_scenario_ids"], [])
+            self.assertEqual(workflow_report["status_summary"]["failing_matrix_group_ids"], [])
+            self.assertEqual(workflow_report["status_summary"]["attention_matrix_group_ids"], [])
             self.assertEqual(
                 [step["step_id"] for step in workflow_report["status_summary"]["decision_trace"]],
                 ["variant_execution_failures", "matrix_success_cases", "comparison_gate", "attention_rows"],
@@ -192,6 +206,7 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
                 workflow_report["status_summary"]["attention_logical_scenario_ids"],
                 ["scn_collision_attention"],
             )
+            self.assertEqual(workflow_report["status_summary"]["attention_matrix_group_ids"], [])
             self.assertEqual(workflow_report["variant_summary"]["selected_variant_count"], 1)
             self.assertEqual(workflow_report["matrix_summary"]["case_count"], 1)
             markdown = Path(result["workflow_markdown_path"]).read_text(encoding="utf-8")
@@ -273,6 +288,7 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
                 workflow_report["status_summary"]["failing_logical_scenario_ids"],
                 ["scn_collision_attention"],
             )
+            self.assertEqual(workflow_report["status_summary"]["failing_matrix_group_ids"], [])
             self.assertEqual(
                 workflow_report["comparison_summary"]["logical_scenario_health_status_counts"]["FAIL"],
                 1,
@@ -396,6 +412,7 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
                 workflow_report["status_summary"]["attention_logical_scenario_ids"],
                 ["scn_route_attention"],
             )
+            self.assertEqual(workflow_report["status_summary"]["attention_matrix_group_ids"], [])
             health_row = workflow_report["comparison_summary"]["logical_scenario_health_rows"][0]
             self.assertEqual(health_row["gate_status"], "FAIL")
             self.assertIn("MERGE_CONFLICT_PRESENT", health_row["health_reasons"])
@@ -414,6 +431,48 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
                 workflow_report["comparison_summary"]["attention_reason_counts"]["PATH_CONFLICT_PRESENT"],
                 1,
             )
+
+    def test_scenario_batch_workflow_tracks_matrix_group_failure_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            matrix_scenario_path = root / "matrix_route_attention.json"
+            self._write_route_attention_scenario(matrix_scenario_path)
+            result = run_scenario_batch_workflow(
+                logical_scenarios_path=str(P_VALIDATION_FIXTURE_ROOT / "highway_mixed_payloads_v0.json"),
+                scenario_language_profile="",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                matrix_scenario_path=matrix_scenario_path,
+                out_root=root / "batch_workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=1,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+                matrix_run_id_prefix="RUN_BATCH_MATRIX",
+                traffic_profile_ids=["sumo_highway_balanced_v0"],
+                traffic_actor_pattern_ids=["sumo_platoon_sparse_v0"],
+                traffic_npc_speed_scale_values=[1.0],
+                tire_friction_coeff_values=[1.0],
+                surface_friction_scale_values=[1.0],
+                enable_ego_collision_avoidance=False,
+                avoidance_ttc_threshold_sec=2.5,
+                ego_max_brake_mps2=6.0,
+                max_cases=0,
+                gate_max_merge_conflict_rows=0,
+            )
+            workflow_report = result["workflow_report"]
+            expected_group_id = "sumo_highway_balanced_v0::sumo_platoon_sparse_v0"
+            self.assertEqual(workflow_report["status"], "FAILED")
+            self.assertEqual(
+                workflow_report["status_summary"]["failing_matrix_group_ids"],
+                [expected_group_id],
+            )
+            self.assertEqual(workflow_report["status_summary"]["attention_matrix_group_ids"], [])
+            markdown = Path(result["workflow_markdown_path"]).read_text(encoding="utf-8")
+            self.assertIn(expected_group_id, markdown)
 
     def test_scenario_batch_workflow_cli_can_resolve_gate_profile_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
