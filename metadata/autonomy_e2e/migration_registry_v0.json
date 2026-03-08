@@ -1,10 +1,10 @@
 {
   "schema_version": "autonomy_e2e_migration_registry_v0",
-  "generated_at_utc": "2026-03-08T22:31:39+00:00",
+  "generated_at_utc": "2026-03-08T22:42:33+00:00",
   "source_repo_root": "/Users/seongcheoljeong/Documents/Autonomy-E2E/Autonomy-E2E",
   "current_repo_root": "/Users/seongcheoljeong/Documents/Test",
   "integration_baseline_commit": "8d2353f",
-  "current_repo_head_commit": "87bb098365a62589cc943117b030d04dbe817b2f",
+  "current_repo_head_commit": "6718150355c73bf0066133ef94c2de82ab297da2",
   "blocks": [
     {
       "block_id": "p_autoware_workspace_ci.data_contract_bridge",
