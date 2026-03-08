@@ -390,7 +390,8 @@ python3 scripts/run_scenario_runtime_backend_workflow.py \
 - `backend_smoke_workflow`: embedded backend-smoke workflow status, selected variant, runtime selection, bridge summary, and smoke result
 - `backend_smoke_workflow.runtime_selection` also records whether backend selection came from explicit args, local setup/workflow summaries, or staged package artifacts under `third_party/runtime_backends/<backend>/renderer_backend_package_{stage,acquire}.json`
 - host-incompatible packaged backend selections are now lifted to top-level `HANDOFF_READY` or `HANDOFF_DOCKER_*` runtime statuses, together with `backend_handoff_status`, `backend_handoff_ready`, blocker codes, recommended command, and bundle/script artifact paths
-- `HANDOFF_DOCKER_OUTPUT_READY` means the packaged backend exited non-zero but still produced a complete, backend-runtime-only export set, so the top-level workflow is downgraded to `ATTENTION` instead of `FAILED`
+- `HANDOFF_DOCKER_OUTPUT_READY` at the backend-smoke layer means the packaged backend exited non-zero but still produced a complete, backend-runtime-only export set
+- the top-level runtime workflow now promotes that state to `SUCCEEDED` when the same run is also `MATCHED`, `COMPLETE`, `BACKEND_RUNTIME_ONLY`, and Autoware reports runtime `READY` or `DEGRADED`; otherwise it remains `ATTENTION`
 - `history_guard`: optional provenance guard status, failure codes, and report path for publish-time validation against `origin/main`
 - `status_summary`: final status source, ordered decision trace, batch triage IDs, backend smoke result summary, backend output smoke/comparison mismatch details, Autoware readiness, dataset readiness, scenario lineage, and optional history-guard status
   - the backend smoke summary now also exposes `backend_output_origin_status`, `backend_output_origin_counts`, `backend_sidecar_materialization_status`, and `backend_sidecar_materialized_output_count`

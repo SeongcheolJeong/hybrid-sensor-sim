@@ -216,7 +216,7 @@ Implemented in the current repository:
 52. packaged-runtime output-ready handoff classification
    - when a Linux handoff Docker run produces complete backend-runtime outputs and passes output comparison but the packaged runtime still exits non-zero, `renderer_backend_workflow` now emits `HANDOFF_DOCKER_OUTPUT_READY` instead of a generic handoff failure
    - `scenario_backend_smoke_workflow` preserves that state and still runs the Autoware bridge
-   - `scenario_runtime_backend_workflow` now promotes that state to top-level `ATTENTION`, which is the first real packaged AWSIM handoff result that is downstream-usable without being silently marked green
+   - `scenario_runtime_backend_workflow` now treats that state as top-level `SUCCEEDED` when the same run is `MATCHED`, `COMPLETE`, `BACKEND_RUNTIME_ONLY`, and Autoware is runtime-ready; otherwise it remains `ATTENTION`
 
 Still pending from the same migration track:
 

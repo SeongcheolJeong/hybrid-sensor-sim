@@ -1198,7 +1198,7 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
                 ],
             )
 
-    def test_run_scenario_runtime_backend_workflow_marks_output_ready_handoff_as_attention(
+    def test_run_scenario_runtime_backend_workflow_promotes_usable_output_ready_handoff(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1302,6 +1302,127 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
                 )
 
             report = result["workflow_report"]
+            self.assertEqual(report["status"], "SUCCEEDED")
+            self.assertEqual(
+                report["status_summary"]["final_status_source"],
+                "backend_handoff_docker_output_usable",
+            )
+            self.assertIn(
+                "BACKEND_HANDOFF_DOCKER_OUTPUT_USABLE",
+                report["status_summary"]["status_reason_codes"],
+            )
+            self.assertEqual(
+                report["status_summary"]["autoware_pipeline_status"],
+                "READY",
+            )
+            self.assertTrue(report["status_summary"]["backend_output_usable"])
+            self.assertEqual(
+                report["status_summary"]["backend_handoff_warning_codes"],
+                ["BACKEND_RUNTIME_NONZERO_EXIT_WITH_COMPLETE_OUTPUTS"],
+            )
+
+    def test_run_scenario_runtime_backend_workflow_keeps_non_runtime_output_ready_handoff_as_attention(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with patch(
+                "hybrid_sensor_sim.tools.scenario_runtime_backend_workflow.run_scenario_batch_workflow",
+                return_value={
+                    "workflow_report_path": root / "batch_workflow_report.json",
+                    "workflow_markdown_path": root / "batch_workflow_report.md",
+                    "workflow_report": {
+                        "status": "SUCCEEDED",
+                        "status_summary": {
+                            "worst_logical_scenario_row": {"logical_scenario_id": "scn_ok"},
+                            "gate_failure_codes": [],
+                            "status_reason_codes": [],
+                        },
+                    },
+                },
+            ), patch(
+                "hybrid_sensor_sim.tools.scenario_runtime_backend_workflow.run_scenario_backend_smoke_workflow",
+                return_value={
+                    "workflow_report_path": root / "scenario_backend_smoke_workflow_report_v0.json",
+                    "workflow_report": {
+                        "status": "HANDOFF_DOCKER_OUTPUT_READY",
+                        "selection": {"variant_id": "v1"},
+                        "smoke": {
+                            "summary": {
+                                "backend_runtime_exit_code": 1,
+                                "output_comparison_status": "MATCHED",
+                                "output_smoke_status": "COMPLETE",
+                                "output_origin_status": "BACKEND_RUNTIME_ONLY",
+                            }
+                        },
+                        "renderer_backend_workflow": {
+                            "status": "HANDOFF_DOCKER_OUTPUT_READY",
+                            "linux_handoff_ready": True,
+                            "blocker_codes": ["BACKEND_HOST_INCOMPATIBLE"],
+                            "warning_codes": [
+                                "BACKEND_RUNTIME_NONZERO_EXIT_WITH_COMPLETE_OUTPUTS"
+                            ],
+                        },
+                        "autoware": {
+                            "status": "SIDECAR_READY",
+                            "availability_mode": "sidecar",
+                            "available_sensor_count": 3,
+                            "missing_required_sensor_count": 0,
+                            "available_topics": ["/sensing/lidar/lidar_top/pointcloud"],
+                            "required_topics_complete": True,
+                            "frame_tree_complete": True,
+                        },
+                        "artifacts": {
+                            "smoke_scenario_path": str(root / "smoke_scenario.json"),
+                            "smoke_input_config_path": str(root / "smoke_input_config.json"),
+                            "autoware_report_path": str(root / "autoware_report.json"),
+                            "autoware_sensor_contracts_path": str(root / "autoware_sensor_contracts.json"),
+                            "autoware_frame_tree_path": str(root / "autoware_frame_tree.json"),
+                            "autoware_pipeline_manifest_path": str(root / "autoware_pipeline_manifest.json"),
+                            "autoware_dataset_manifest_path": str(root / "autoware_dataset_manifest.json"),
+                        },
+                    },
+                },
+            ):
+                result = run_scenario_runtime_backend_workflow(
+                    logical_scenarios_path=str(P_VALIDATION_FIXTURE_ROOT / "highway_mixed_payloads_v0.json"),
+                    scenario_language_profile="",
+                    scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                    matrix_scenario_path=P_SIM_ENGINE_FIXTURE_ROOT / "highway_safe_following_v0.json",
+                    smoke_config_path=root / "smoke_config.json",
+                    backend="awsim",
+                    out_root=root / "runtime_backend_workflow",
+                    sampling="full",
+                    sample_size=0,
+                    seed=7,
+                    max_variants_per_scenario=1000,
+                    execution_max_variants=1,
+                    sds_version="sds_test",
+                    sim_version="sim_test",
+                    fidelity_profile="dev-fast",
+                    matrix_run_id_prefix="RUN_BATCH",
+                    traffic_profile_ids=["sumo_highway_balanced_v0"],
+                    traffic_actor_pattern_ids=["sumo_platoon_sparse_v0"],
+                    traffic_npc_speed_scale_values=[1.0],
+                    tire_friction_coeff_values=[1.0],
+                    surface_friction_scale_values=[1.0],
+                    enable_ego_collision_avoidance=False,
+                    avoidance_ttc_threshold_sec=2.5,
+                    ego_max_brake_mps2=6.0,
+                    max_cases=0,
+                    selection_strategy="worst_logical_scenario",
+                    selected_variant_id="",
+                    lane_spacing_m=4.0,
+                    smoke_output_dir="",
+                    setup_summary_path="",
+                    backend_workflow_summary_path="",
+                    backend_bin="",
+                    renderer_map="",
+                    option_overrides=[],
+                    skip_smoke=False,
+                )
+
+            report = result["workflow_report"]
             self.assertEqual(report["status"], "ATTENTION")
             self.assertEqual(
                 report["status_summary"]["final_status_source"],
@@ -1311,10 +1432,7 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
                 "BACKEND_HANDOFF_DOCKER_OUTPUT_READY",
                 report["status_summary"]["status_reason_codes"],
             )
-            self.assertEqual(
-                report["status_summary"]["autoware_pipeline_status"],
-                "READY",
-            )
+            self.assertFalse(report["status_summary"]["backend_output_usable"])
 
     def test_run_scenario_runtime_backend_workflow_forwards_docker_platform(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -254,17 +254,22 @@ def _build_workflow_status(
     *,
     batch_status: str,
     backend_status: str,
+    backend_report: dict[str, Any],
     history_guard_status: str | None,
 ) -> str:
+    if _is_usable_backend_handoff_output(backend_report):
+        backend_status = "HANDOFF_DOCKER_OUTPUT_USABLE"
     if history_guard_status == "FAIL":
         return "FAILED"
     if backend_status in {"SMOKE_FAILED", "FAILED", "HANDOFF_FAILED", "HANDOFF_DOCKER_FAILED"}:
         return "FAILED"
-    if backend_status == "HANDOFF_DOCKER_OUTPUT_READY":
-        return "ATTENTION"
     if batch_status == "FAILED":
         return "FAILED"
     if batch_status == "ATTENTION":
+        return "ATTENTION"
+    if backend_status == "HANDOFF_DOCKER_OUTPUT_USABLE":
+        return "SUCCEEDED"
+    if backend_status == "HANDOFF_DOCKER_OUTPUT_READY":
         return "ATTENTION"
     if backend_status in {"HANDOFF_DOCKER_VERIFIED", "HANDOFF_DOCKER_EXECUTED"}:
         return backend_status
@@ -275,6 +280,40 @@ def _build_workflow_status(
     return "SUCCEEDED"
 
 
+def _infer_autoware_availability_mode(summary: dict[str, Any]) -> str | None:
+    raw_mode = str(summary.get("availability_mode", "")).strip().lower()
+    if raw_mode:
+        return raw_mode
+    status = str(summary.get("status", "")).strip().upper()
+    if status == "PLANNED":
+        return "planned"
+    if status.startswith("SIDECAR_"):
+        return "sidecar"
+    if status.startswith("MIXED_"):
+        return "mixed"
+    if status in {"READY", "DEGRADED"}:
+        return "runtime"
+    return None
+
+
+def _is_usable_backend_handoff_output(backend_report: dict[str, Any]) -> bool:
+    if str(backend_report.get("status", "")).strip() != "HANDOFF_DOCKER_OUTPUT_READY":
+        return False
+    smoke_summary = dict(backend_report.get("smoke", {}).get("summary", {}))
+    autoware_summary = dict(backend_report.get("autoware", {}))
+    autoware_status = str(autoware_summary.get("status", "")).strip().upper()
+    autoware_mode = _infer_autoware_availability_mode(autoware_summary)
+    return (
+        str(smoke_summary.get("output_comparison_status", "")).strip() == "MATCHED"
+        and str(smoke_summary.get("output_smoke_status", "")).strip() == "COMPLETE"
+        and str(smoke_summary.get("output_origin_status", "")).strip() == "BACKEND_RUNTIME_ONLY"
+        and autoware_status in {"READY", "DEGRADED"}
+        and autoware_mode == "runtime"
+        and bool(autoware_summary.get("required_topics_complete")) is True
+        and bool(autoware_summary.get("frame_tree_complete")) is True
+    )
+
+
 def _build_status_summary(
     *,
     workflow_status: str,
@@ -282,6 +321,7 @@ def _build_status_summary(
     backend_report: dict[str, Any],
     history_guard_report: dict[str, Any] | None,
 ) -> dict[str, Any]:
+    handoff_output_usable = _is_usable_backend_handoff_output(backend_report)
     decision_trace = [
         {
             "step_id": "history_guard",
@@ -305,12 +345,6 @@ def _build_status_summary(
             "reason_code": "BACKEND_HANDOFF_DOCKER_FAILED",
         },
         {
-            "step_id": "backend_handoff_docker_output_ready",
-            "matched": backend_report["status"] == "HANDOFF_DOCKER_OUTPUT_READY",
-            "status_if_matched": "ATTENTION",
-            "reason_code": "BACKEND_HANDOFF_DOCKER_OUTPUT_READY",
-        },
-        {
             "step_id": "batch_workflow_status",
             "matched": batch_report["status"] == "FAILED",
             "status_if_matched": "FAILED",
@@ -321,6 +355,18 @@ def _build_status_summary(
             "matched": batch_report["status"] == "ATTENTION",
             "status_if_matched": "ATTENTION",
             "reason_code": "BATCH_WORKFLOW_ATTENTION",
+        },
+        {
+            "step_id": "backend_handoff_docker_output_usable",
+            "matched": handoff_output_usable,
+            "status_if_matched": "SUCCEEDED",
+            "reason_code": "BACKEND_HANDOFF_DOCKER_OUTPUT_USABLE",
+        },
+        {
+            "step_id": "backend_handoff_docker_output_ready",
+            "matched": backend_report["status"] == "HANDOFF_DOCKER_OUTPUT_READY" and not handoff_output_usable,
+            "status_if_matched": "ATTENTION",
+            "reason_code": "BACKEND_HANDOFF_DOCKER_OUTPUT_READY",
         },
         {
             "step_id": "smoke_skipped",
@@ -341,20 +387,6 @@ def _build_status_summary(
             "reason_code": "BACKEND_HANDOFF_DOCKER_READY",
         },
     ]
-    def _infer_autoware_availability_mode(summary: dict[str, Any]) -> str | None:
-        raw_mode = str(summary.get("availability_mode", "")).strip().lower()
-        if raw_mode:
-            return raw_mode
-        status = str(summary.get("status", "")).strip().upper()
-        if status == "PLANNED":
-            return "planned"
-        if status.startswith("SIDECAR_"):
-            return "sidecar"
-        if status.startswith("MIXED_"):
-            return "mixed"
-        if status in {"READY", "DEGRADED"}:
-            return "runtime"
-        return None
 
     final_status_source = "default_success"
     status_reason_codes: list[str] = []
@@ -420,12 +452,16 @@ def _build_status_summary(
         "backend_handoff_blocker_codes": list(
             backend_report.get("renderer_backend_workflow", {}).get("blocker_codes", [])
         ),
+        "backend_handoff_warning_codes": list(
+            backend_report.get("renderer_backend_workflow", {}).get("warning_codes", [])
+        ),
         "backend_handoff_recommended_command": backend_report.get("renderer_backend_workflow", {}).get(
             "recommended_next_command"
         ),
         "backend_handoff_bundle_path": backend_report.get("renderer_backend_workflow", {}).get(
             "linux_handoff_bundle_path"
         ),
+        "backend_output_usable": handoff_output_usable,
         "backend_logical_scenario_id": backend_report.get("selection", {}).get("logical_scenario_id"),
         "backend_scenario_id": backend_report.get("bridge", {}).get("scenario_id"),
         "backend_source_payload_kind": backend_report.get("bridge", {}).get("source_payload_kind"),
@@ -495,8 +531,10 @@ def _build_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Handoff status: `{summary['backend_handoff_status'] or '-'}`",
         f"- Handoff ready: `{summary['backend_handoff_ready'] if summary['backend_handoff_ready'] is not None else '-'}`",
         f"- Handoff blockers: `{', '.join(summary.get('backend_handoff_blocker_codes', [])) or '-'}`",
+        f"- Handoff warnings: `{', '.join(summary.get('backend_handoff_warning_codes', [])) or '-'}`",
         f"- Handoff command: `{summary.get('backend_handoff_recommended_command') or '-'}`",
         f"- Handoff bundle: `{summary.get('backend_handoff_bundle_path') or '-'}`",
+        f"- Output usable: `{summary.get('backend_output_usable') if summary.get('backend_output_usable') is not None else '-'}`",
         "",
         "## Autoware Bridge",
         "",
@@ -714,6 +752,7 @@ def run_scenario_runtime_backend_workflow(
     workflow_status = _build_workflow_status(
         batch_status=str(batch_report["status"]),
         backend_status=str(backend_report["status"]),
+        backend_report=backend_report,
         history_guard_status=(
             str(history_guard_report.get("status", "")).strip()
             if isinstance(history_guard_report, dict)
