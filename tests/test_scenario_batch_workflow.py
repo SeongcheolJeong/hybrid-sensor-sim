@@ -114,6 +114,7 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             self.assertIn("## Successful Variants", markdown)
             self.assertIn("## Non-Success Variants", markdown)
             self.assertIn("Gate Failure Codes", markdown)
+            self.assertIn("Min TTC Path", markdown)
             self.assertIn("No non-success variants.", markdown)
 
     def test_scenario_batch_workflow_reports_attention_without_failing_by_default(self) -> None:

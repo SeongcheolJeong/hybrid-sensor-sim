@@ -458,6 +458,7 @@ def run_scenario_matrix_sweep(
                     lowest_ttc_any_lane_run_id = run_id
         status_counts[status] = status_counts.get(status, 0) + 1
         summary_path = (out_root / run_id / "summary.json").resolve()
+        lane_risk_summary_path = (out_root / run_id / "lane_risk_summary.json").resolve()
         case_rows.append(
             {
                 "run_id": run_id,
@@ -469,6 +470,8 @@ def run_scenario_matrix_sweep(
                 "returncode": int(returncode),
                 "summary_path": str(summary_path),
                 "summary_exists": bool(summary_path.exists()),
+                "lane_risk_summary_path": str(lane_risk_summary_path),
+                "lane_risk_summary_exists": bool(lane_risk_summary_path.exists()),
                 "status": status,
                 "collision": bool(summary_payload.get("collision", False)),
                 "timeout": bool(summary_payload.get("timeout", False)),

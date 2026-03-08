@@ -101,6 +101,9 @@ Implemented in the current repository:
    - route-aware runtime reporting now distinguishes `same_lane_conflict`, `merge_conflict`, `lane_change_conflict`, `lane_change_clear`, `diverge_clear`, and `downstream_route_conflict`
    - `trace.csv` now exposes `path_interaction_kind`
    - `lane_risk_summary.json` now aggregates `path_interaction_counts` plus merge/diverge/lane-change summary rows and TTCs
+23. batch comparison propagation of route interaction summaries
+   - `src/hybrid_sensor_sim/tools/scenario_batch_comparison.py` now reads `lane_risk_summary.json` from both variant runs and matrix cases
+   - logical-scenario and matrix-group summary rows now aggregate `path_conflict_row_count`, `merge_conflict_row_count`, `lane_change_conflict_row_count`, `path_interaction_counts`, and `min_ttc_path_conflict_sec_min`
 
 Still pending from the same migration track:
 

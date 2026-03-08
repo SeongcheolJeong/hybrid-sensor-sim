@@ -92,6 +92,8 @@ class ScenarioBatchComparisonTests(unittest.TestCase):
             self.assertEqual(report["overview"]["variant_selected_count"], 2)
             self.assertEqual(report["overview"]["matrix_case_count"], matrix_report["case_count"])
             self.assertEqual(report["overview"]["combined_row_count"], 4)
+            self.assertGreater(report["overview"]["path_conflict_row_count"], 0)
+            self.assertGreater(report["overview"]["merge_conflict_row_count"], 0)
             self.assertEqual(report["comparison_tables"]["logical_scenario_row_count"], 2)
             self.assertEqual(report["comparison_tables"]["matrix_group_row_count"], 2)
             self.assertIn(
@@ -102,12 +104,30 @@ class ScenarioBatchComparisonTests(unittest.TestCase):
                 "sumo_highway_balanced_v0::sumo_route_shifted_v0",
                 {row["matrix_group_id"] for row in report["comparison_tables"]["matrix_group_rows"]},
             )
+            logical_row = next(
+                row
+                for row in report["comparison_tables"]["logical_scenario_rows"]
+                if row["logical_scenario_id"] == "scn_log_route_relations"
+            )
+            self.assertGreater(logical_row["path_conflict_row_count"], 0)
+            self.assertGreater(logical_row["merge_conflict_row_count"], 0)
+            self.assertIsNotNone(logical_row["min_ttc_path_conflict_sec_min"])
+            self.assertGreater(logical_row["path_interaction_counts"]["merge_conflict"], 0)
+            matrix_row = next(
+                row
+                for row in report["comparison_tables"]["matrix_group_rows"]
+                if row["matrix_group_id"] == "sumo_highway_balanced_v0::sumo_route_shifted_v0"
+            )
+            self.assertGreater(matrix_row["merge_conflict_row_count"], 0)
+            self.assertIsNotNone(matrix_row["min_ttc_path_conflict_sec_min"])
             self.assertTrue((root / "comparison.json").is_file())
             self.assertTrue((root / "comparison.md").is_file())
             markdown = (root / "comparison.md").read_text(encoding="utf-8")
             self.assertIn("## Logical Scenario Summary", markdown)
             self.assertIn("scn_direct_object_sim", markdown)
             self.assertIn("sumo_highway_balanced_v0::sumo_platoon_sparse_v0", markdown)
+            self.assertIn("Path conflict row count", markdown)
+            self.assertIn("Min TTC Path", markdown)
 
     def test_scenario_batch_comparison_cli_writes_report(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

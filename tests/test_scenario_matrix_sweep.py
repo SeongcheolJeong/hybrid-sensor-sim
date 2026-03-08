@@ -38,8 +38,10 @@ class ScenarioMatrixSweepTests(unittest.TestCase):
             self.assertEqual(report["core_sim_matrix_sweep_schema_version"], "core_sim_matrix_sweep_report_v0")
             self.assertEqual(report["case_count"], 1)
             self.assertEqual(report["success_case_count"], 1)
+            self.assertTrue(report["cases"][0]["lane_risk_summary_exists"])
             self.assertTrue((root / "report.json").exists())
             self.assertTrue((root / "runs" / "RUN_MATRIX_0001" / "summary.json").exists())
+            self.assertTrue((root / "runs" / "RUN_MATRIX_0001" / "lane_risk_summary.json").exists())
 
     def test_run_scenario_matrix_sweep_preserves_map_route_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

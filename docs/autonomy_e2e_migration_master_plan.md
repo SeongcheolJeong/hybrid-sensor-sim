@@ -36,6 +36,7 @@ Implemented from the first migration wave:
 16. logical-scenario health summaries for batch workflow triage
 17. per-scenario gate evaluation inside logical-scenario health summaries
 18. merge/diverge/lane-change interaction tagging inside route-aware object sim
+19. propagation of route interaction summaries into batch comparison and workflow reporting
 
 Current repository paths:
 

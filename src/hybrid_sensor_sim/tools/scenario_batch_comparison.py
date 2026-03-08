@@ -129,6 +129,17 @@ def _load_summary_payload(summary_path_value: Any) -> dict[str, Any]:
     return payload
 
 
+def _load_lane_risk_summary_payload(lane_risk_summary_path_value: Any) -> dict[str, Any]:
+    lane_risk_summary_path_text = str(lane_risk_summary_path_value or "").strip()
+    if not lane_risk_summary_path_text:
+        return {}
+    lane_risk_summary_path = Path(lane_risk_summary_path_text)
+    if not lane_risk_summary_path.is_file():
+        return {}
+    payload = _load_json_dict(lane_risk_summary_path, label="lane risk summary")
+    return payload
+
+
 def _coerce_optional_float(value: Any) -> float | None:
     if value in (None, ""):
         return None
@@ -233,12 +244,42 @@ def _bool_value(value: Any) -> bool:
     return bool(value)
 
 
+def _extract_path_interaction_fields(lane_risk_summary: dict[str, Any]) -> dict[str, Any]:
+    raw_counts = lane_risk_summary.get("path_interaction_counts", {})
+    path_interaction_counts = dict(raw_counts) if isinstance(raw_counts, dict) else {}
+    return {
+        "path_interaction_counts": path_interaction_counts,
+        "path_conflict_rows": int(lane_risk_summary.get("path_conflict_rows", 0) or 0),
+        "merge_conflict_rows": int(lane_risk_summary.get("merge_conflict_rows", 0) or 0),
+        "lane_change_conflict_rows": int(lane_risk_summary.get("lane_change_conflict_rows", 0) or 0),
+        "lane_change_clear_rows": int(lane_risk_summary.get("lane_change_clear_rows", 0) or 0),
+        "diverge_clear_rows": int(lane_risk_summary.get("diverge_clear_rows", 0) or 0),
+        "downstream_route_conflict_rows": int(
+            lane_risk_summary.get("downstream_route_conflict_rows", 0) or 0
+        ),
+        "min_ttc_path_conflict_sec": _coerce_optional_float(
+            lane_risk_summary.get("min_ttc_path_conflict_sec")
+        ),
+        "min_ttc_merge_conflict_sec": _coerce_optional_float(
+            lane_risk_summary.get("min_ttc_merge_conflict_sec")
+        ),
+        "min_ttc_lane_change_conflict_sec": _coerce_optional_float(
+            lane_risk_summary.get("min_ttc_lane_change_conflict_sec")
+        ),
+        "min_ttc_downstream_route_conflict_sec": _coerce_optional_float(
+            lane_risk_summary.get("min_ttc_downstream_route_conflict_sec")
+        ),
+    }
+
+
 def _build_variant_batch_rows(variant_run_report: dict[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for run in variant_run_report.get("variant_runs", []):
         if not isinstance(run, dict):
             continue
         summary = _load_summary_payload(run.get("summary_path"))
+        lane_risk_summary = _load_lane_risk_summary_payload(run.get("lane_risk_summary_path"))
+        path_interaction_fields = _extract_path_interaction_fields(lane_risk_summary)
         object_sim_status = str(summary.get("status", run.get("object_sim_status", ""))).strip() or None
         termination_reason = str(summary.get("termination_reason", run.get("termination_reason", ""))).strip() or None
         row = {
@@ -257,7 +298,9 @@ def _build_variant_batch_rows(variant_run_report: dict[str, Any]) -> list[dict[s
             "failure_code": str(run.get("failure_code", "")).strip() or None,
             "failure_reason": str(run.get("failure_reason", "")).strip() or None,
             "summary_path": str(run.get("summary_path", "")).strip() or None,
+            "lane_risk_summary_path": str(run.get("lane_risk_summary_path", "")).strip() or None,
         }
+        row.update(path_interaction_fields)
         rows.append(row)
     return rows
 
@@ -274,6 +317,12 @@ def _build_matrix_batch_rows(matrix_sweep_report: dict[str, Any]) -> list[dict[s
         if not isinstance(case, dict):
             continue
         summary = _load_summary_payload(case.get("summary_path")) if case.get("summary_exists") else {}
+        lane_risk_summary = (
+            _load_lane_risk_summary_payload(case.get("lane_risk_summary_path"))
+            if case.get("lane_risk_summary_exists")
+            else {}
+        )
+        path_interaction_fields = _extract_path_interaction_fields(lane_risk_summary)
         status_value = str(case.get("status", summary.get("status", ""))).strip() or None
         termination_reason = str(summary.get("termination_reason", "")).strip() or None
         row = {
@@ -292,12 +341,14 @@ def _build_matrix_batch_rows(matrix_sweep_report: dict[str, Any]) -> list[dict[s
             "failure_code": "EXECUTION_ERROR" if int(case.get("returncode", 2)) != 0 else None,
             "failure_reason": str(case.get("stderr_tail", "")).strip() or None,
             "summary_path": str(case.get("summary_path", "")).strip() or None,
+            "lane_risk_summary_path": str(case.get("lane_risk_summary_path", "")).strip() or None,
             "traffic_profile_id": str(case.get("traffic_profile_id", "")).strip() or None,
             "traffic_actor_pattern_id": str(case.get("traffic_actor_pattern_id", "")).strip() or None,
             "traffic_npc_speed_scale": _coerce_optional_float(case.get("traffic_npc_speed_scale")),
             "tire_friction_coeff": _coerce_optional_float(case.get("tire_friction_coeff")),
             "surface_friction_scale": _coerce_optional_float(case.get("surface_friction_scale")),
         }
+        row.update(path_interaction_fields)
         rows.append(row)
     return rows
 
@@ -317,6 +368,12 @@ def _build_logical_scenario_rows(variant_rows: list[dict[str, Any]]) -> list[dic
                 "collision_count": 0,
                 "timeout_count": 0,
                 "min_ttc_any_lane_sec_min": None,
+                "path_conflict_row_count": 0,
+                "merge_conflict_row_count": 0,
+                "lane_change_conflict_row_count": 0,
+                "diverge_clear_row_count": 0,
+                "path_interaction_counts": Counter(),
+                "min_ttc_path_conflict_sec_min": None,
                 "row_ids": [],
             },
         )
@@ -338,10 +395,20 @@ def _build_logical_scenario_rows(variant_rows: list[dict[str, Any]]) -> list[dic
             group["collision_count"] += 1
         if row.get("timeout"):
             group["timeout_count"] += 1
+        group["path_conflict_row_count"] += int(row.get("path_conflict_rows", 0) or 0)
+        group["merge_conflict_row_count"] += int(row.get("merge_conflict_rows", 0) or 0)
+        group["lane_change_conflict_row_count"] += int(row.get("lane_change_conflict_rows", 0) or 0)
+        group["diverge_clear_row_count"] += int(row.get("diverge_clear_rows", 0) or 0)
+        for label, count in dict(row.get("path_interaction_counts", {})).items():
+            group["path_interaction_counts"][str(label)] += int(count)
         ttc_value = _coerce_optional_float(row.get("min_ttc_any_lane_sec"))
         current_min = group["min_ttc_any_lane_sec_min"]
         if ttc_value is not None and (current_min is None or ttc_value < current_min):
             group["min_ttc_any_lane_sec_min"] = ttc_value
+        path_ttc_value = _coerce_optional_float(row.get("min_ttc_path_conflict_sec"))
+        current_path_min = group["min_ttc_path_conflict_sec_min"]
+        if path_ttc_value is not None and (current_path_min is None or path_ttc_value < current_path_min):
+            group["min_ttc_path_conflict_sec_min"] = path_ttc_value
     return [
         {
             "logical_scenario_id": logical_scenario_id,
@@ -353,6 +420,12 @@ def _build_logical_scenario_rows(variant_rows: list[dict[str, Any]]) -> list[dic
             "collision_count": int(group["collision_count"]),
             "timeout_count": int(group["timeout_count"]),
             "min_ttc_any_lane_sec_min": group["min_ttc_any_lane_sec_min"],
+            "path_conflict_row_count": int(group["path_conflict_row_count"]),
+            "merge_conflict_row_count": int(group["merge_conflict_row_count"]),
+            "lane_change_conflict_row_count": int(group["lane_change_conflict_row_count"]),
+            "diverge_clear_row_count": int(group["diverge_clear_row_count"]),
+            "path_interaction_counts": dict(sorted(group["path_interaction_counts"].items())),
+            "min_ttc_path_conflict_sec_min": group["min_ttc_path_conflict_sec_min"],
             "row_ids": list(group["row_ids"]),
         }
         for logical_scenario_id, group in sorted(grouped.items())
@@ -376,6 +449,12 @@ def _build_matrix_group_rows(matrix_rows: list[dict[str, Any]]) -> list[dict[str
                 "collision_count": 0,
                 "timeout_count": 0,
                 "min_ttc_any_lane_sec_min": None,
+                "path_conflict_row_count": 0,
+                "merge_conflict_row_count": 0,
+                "lane_change_conflict_row_count": 0,
+                "diverge_clear_row_count": 0,
+                "path_interaction_counts": Counter(),
+                "min_ttc_path_conflict_sec_min": None,
                 "traffic_npc_speed_scale_values": set(),
                 "tire_friction_coeff_values": set(),
                 "surface_friction_scale_values": set(),
@@ -394,10 +473,20 @@ def _build_matrix_group_rows(matrix_rows: list[dict[str, Any]]) -> list[dict[str
             group["collision_count"] += 1
         if row.get("timeout"):
             group["timeout_count"] += 1
+        group["path_conflict_row_count"] += int(row.get("path_conflict_rows", 0) or 0)
+        group["merge_conflict_row_count"] += int(row.get("merge_conflict_rows", 0) or 0)
+        group["lane_change_conflict_row_count"] += int(row.get("lane_change_conflict_rows", 0) or 0)
+        group["diverge_clear_row_count"] += int(row.get("diverge_clear_rows", 0) or 0)
+        for label, count in dict(row.get("path_interaction_counts", {})).items():
+            group["path_interaction_counts"][str(label)] += int(count)
         ttc_value = _coerce_optional_float(row.get("min_ttc_any_lane_sec"))
         current_min = group["min_ttc_any_lane_sec_min"]
         if ttc_value is not None and (current_min is None or ttc_value < current_min):
             group["min_ttc_any_lane_sec_min"] = ttc_value
+        path_ttc_value = _coerce_optional_float(row.get("min_ttc_path_conflict_sec"))
+        current_path_min = group["min_ttc_path_conflict_sec_min"]
+        if path_ttc_value is not None and (current_path_min is None or path_ttc_value < current_path_min):
+            group["min_ttc_path_conflict_sec_min"] = path_ttc_value
         for field_name in (
             "traffic_npc_speed_scale_values",
             "tire_friction_coeff_values",
@@ -418,6 +507,12 @@ def _build_matrix_group_rows(matrix_rows: list[dict[str, Any]]) -> list[dict[str
             "collision_count": int(group["collision_count"]),
             "timeout_count": int(group["timeout_count"]),
             "min_ttc_any_lane_sec_min": group["min_ttc_any_lane_sec_min"],
+            "path_conflict_row_count": int(group["path_conflict_row_count"]),
+            "merge_conflict_row_count": int(group["merge_conflict_row_count"]),
+            "lane_change_conflict_row_count": int(group["lane_change_conflict_row_count"]),
+            "diverge_clear_row_count": int(group["diverge_clear_row_count"]),
+            "path_interaction_counts": dict(sorted(group["path_interaction_counts"].items())),
+            "min_ttc_path_conflict_sec_min": group["min_ttc_path_conflict_sec_min"],
             "traffic_npc_speed_scale_values": sorted(group["traffic_npc_speed_scale_values"]),
             "tire_friction_coeff_values": sorted(group["tire_friction_coeff_values"]),
             "surface_friction_scale_values": sorted(group["surface_friction_scale_values"]),
@@ -471,6 +566,9 @@ def _build_overview(
     min_ttc_any_lane_source_batch = None
     collision_row_count = 0
     timeout_row_count = 0
+    path_conflict_row_count = 0
+    merge_conflict_row_count = 0
+    lane_change_conflict_row_count = 0
 
     for row in list(variant_rows) + list(matrix_rows):
         execution_status = str(row.get("execution_status", "")).strip()
@@ -483,6 +581,9 @@ def _build_overview(
             collision_row_count += 1
         if row.get("timeout"):
             timeout_row_count += 1
+        path_conflict_row_count += int(row.get("path_conflict_rows", 0) or 0)
+        merge_conflict_row_count += int(row.get("merge_conflict_rows", 0) or 0)
+        lane_change_conflict_row_count += int(row.get("lane_change_conflict_rows", 0) or 0)
         ttc_value = _coerce_optional_float(row.get("min_ttc_any_lane_sec"))
         if ttc_value is not None and (min_ttc_any_lane_sec_min is None or ttc_value < min_ttc_any_lane_sec_min):
             min_ttc_any_lane_sec_min = ttc_value
@@ -497,6 +598,9 @@ def _build_overview(
         "combined_object_sim_status_counts": dict(sorted(combined_object_sim_status_counts.items())),
         "collision_row_count": int(collision_row_count),
         "timeout_row_count": int(timeout_row_count),
+        "path_conflict_row_count": int(path_conflict_row_count),
+        "merge_conflict_row_count": int(merge_conflict_row_count),
+        "lane_change_conflict_row_count": int(lane_change_conflict_row_count),
         "min_ttc_any_lane_sec_min": min_ttc_any_lane_sec_min,
         "min_ttc_any_lane_row_id": min_ttc_any_lane_row_id,
         "min_ttc_any_lane_source_batch": min_ttc_any_lane_source_batch,
@@ -642,6 +746,9 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
                 ["Combined object sim status counts", _format_counter(overview["combined_object_sim_status_counts"])],
                 ["Collision row count", str(overview["collision_row_count"])],
                 ["Timeout row count", str(overview["timeout_row_count"])],
+                ["Path conflict row count", str(overview["path_conflict_row_count"])],
+                ["Merge conflict row count", str(overview["merge_conflict_row_count"])],
+                ["Lane-change conflict row count", str(overview["lane_change_conflict_row_count"])],
                 ["Minimum TTC any-lane", _format_float(overview["min_ttc_any_lane_sec_min"])],
                 ["Minimum TTC source", str(overview.get("min_ttc_any_lane_source_batch") or "-")],
                 ["Minimum TTC row id", str(overview.get("min_ttc_any_lane_row_id") or "-")],
@@ -694,7 +801,11 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
                 "Object Sim",
                 "Collisions",
                 "Timeouts",
+                "Path",
+                "Merge",
+                "Lane Change",
                 "Min TTC Any",
+                "Min TTC Path",
             ],
             [
                 [
@@ -705,7 +816,11 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
                     _format_counter(row["object_sim_status_counts"]),
                     str(row["collision_count"]),
                     str(row["timeout_count"]),
+                    str(row["path_conflict_row_count"]),
+                    str(row["merge_conflict_row_count"]),
+                    str(row["lane_change_conflict_row_count"]),
                     _format_float(row["min_ttc_any_lane_sec_min"]),
+                    _format_float(row["min_ttc_path_conflict_sec_min"]),
                 ]
                 for row in logical_rows
             ],
@@ -723,7 +838,11 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
                 "Object Sim",
                 "Collisions",
                 "Timeouts",
+                "Path",
+                "Merge",
+                "Lane Change",
                 "Min TTC Any",
+                "Min TTC Path",
                 "Speed Scale",
                 "Tire Friction",
                 "Surface Friction",
@@ -736,7 +855,11 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
                     _format_counter(row["object_sim_status_counts"]),
                     str(row["collision_count"]),
                     str(row["timeout_count"]),
+                    str(row["path_conflict_row_count"]),
+                    str(row["merge_conflict_row_count"]),
+                    str(row["lane_change_conflict_row_count"]),
                     _format_float(row["min_ttc_any_lane_sec_min"]),
+                    _format_float(row["min_ttc_path_conflict_sec_min"]),
                     ",".join(str(value) for value in row["traffic_npc_speed_scale_values"]) or "-",
                     ",".join(str(value) for value in row["tire_friction_coeff_values"]) or "-",
                     ",".join(str(value) for value in row["surface_friction_scale_values"]) or "-",

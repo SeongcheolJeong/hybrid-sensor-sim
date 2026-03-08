@@ -402,25 +402,33 @@ def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
                     "Logical Scenario",
                     "Variants",
                     "Payload Kinds",
-                    "Execution",
-                    "Object Sim",
-                    "Collisions",
-                    "Timeouts",
-                    "Min TTC Any",
-                ],
+                "Execution",
+                "Object Sim",
+                "Collisions",
+                "Timeouts",
+                "Path",
+                "Merge",
+                "Lane Change",
+                "Min TTC Any",
+                "Min TTC Path",
+            ],
+            [
                 [
-                    [
                         str(row["logical_scenario_id"]),
                         str(row["variant_count"]),
                         _format_counter(row["payload_kind_counts"]),
                         _format_counter(row["execution_status_counts"]),
-                        _format_counter(row["object_sim_status_counts"]),
-                        str(row["collision_count"]),
-                        str(row["timeout_count"]),
-                        _format_float(row["min_ttc_any_lane_sec_min"]),
-                    ]
-                    for row in logical_rows
-                ],
+                    _format_counter(row["object_sim_status_counts"]),
+                    str(row["collision_count"]),
+                    str(row["timeout_count"]),
+                    str(row.get("path_conflict_row_count", 0)),
+                    str(row.get("merge_conflict_row_count", 0)),
+                    str(row.get("lane_change_conflict_row_count", 0)),
+                    _format_float(row["min_ttc_any_lane_sec_min"]),
+                    _format_float(row.get("min_ttc_path_conflict_sec_min")),
+                ]
+                for row in logical_rows
+            ],
             )
         )
     else:
@@ -432,24 +440,32 @@ def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
                 [
                     "Matrix Group",
                     "Cases",
-                    "Execution",
-                    "Object Sim",
-                    "Collisions",
-                    "Timeouts",
-                    "Min TTC Any",
-                ],
+                "Execution",
+                "Object Sim",
+                "Collisions",
+                "Timeouts",
+                "Path",
+                "Merge",
+                "Lane Change",
+                "Min TTC Any",
+                "Min TTC Path",
+            ],
+            [
                 [
-                    [
                         str(row["matrix_group_id"]),
                         str(row["case_count"]),
                         _format_counter(row["execution_status_counts"]),
-                        _format_counter(row["object_sim_status_counts"]),
-                        str(row["collision_count"]),
-                        str(row["timeout_count"]),
-                        _format_float(row["min_ttc_any_lane_sec_min"]),
-                    ]
-                    for row in matrix_rows
-                ],
+                    _format_counter(row["object_sim_status_counts"]),
+                    str(row["collision_count"]),
+                    str(row["timeout_count"]),
+                    str(row.get("path_conflict_row_count", 0)),
+                    str(row.get("merge_conflict_row_count", 0)),
+                    str(row.get("lane_change_conflict_row_count", 0)),
+                    _format_float(row["min_ttc_any_lane_sec_min"]),
+                    _format_float(row.get("min_ttc_path_conflict_sec_min")),
+                ]
+                for row in matrix_rows
+            ],
             )
         )
     else:
