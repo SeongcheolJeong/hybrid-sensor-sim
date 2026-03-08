@@ -122,6 +122,8 @@ Detailed audit:
    - `lane_risk_summary_v0` now carries `same/downstream/upstream/off_route` route relation counts and route-aware TTC/gap summaries
 9. route-driven lane binding inference
    - route-backed scenarios now infer `lane_id` from `lane_index` when possible and expose `*_lane_binding_mode` in summary and trace outputs
+10. route-aware runtime path-conflict handling
+   - object-sim now uses route semantics directly for path-conflict TTC and ego avoidance, not only for post-run reporting
 
 ### Reference only
 

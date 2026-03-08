@@ -29,6 +29,7 @@ class CoreSimRunner:
         self.step_count = 0
         self.min_ttc_same_lane_sec = float("inf")
         self.min_ttc_adjacent_lane_sec = float("inf")
+        self.min_ttc_path_conflict_sec = float("inf")
         self.min_ttc_sec = float("inf")
         self.collision = False
         self.timeout = False
@@ -93,9 +94,16 @@ class CoreSimRunner:
         min_ttc_adjacent_lane = (
             None if self.min_ttc_adjacent_lane_sec == float("inf") else round(self.min_ttc_adjacent_lane_sec, 6)
         )
+        min_ttc_path_conflict = (
+            None if self.min_ttc_path_conflict_sec == float("inf") else round(self.min_ttc_path_conflict_sec, 6)
+        )
         finite_ttc_values = [
             value
-            for value in (self.min_ttc_same_lane_sec, self.min_ttc_adjacent_lane_sec)
+            for value in (
+                self.min_ttc_same_lane_sec,
+                self.min_ttc_adjacent_lane_sec,
+                self.min_ttc_path_conflict_sec,
+            )
             if value != float("inf")
         ]
         min_ttc_any_lane = None if not finite_ttc_values else round(min(finite_ttc_values), 6)
@@ -112,6 +120,7 @@ class CoreSimRunner:
             "min_ttc_sec": min_ttc_same_lane,
             "min_ttc_same_lane_sec": min_ttc_same_lane,
             "min_ttc_adjacent_lane_sec": min_ttc_adjacent_lane,
+            "min_ttc_path_conflict_sec": min_ttc_path_conflict,
             "min_ttc_any_lane_sec": min_ttc_any_lane,
             "collision": self.collision,
             "timeout": self.timeout,
@@ -147,29 +156,19 @@ class CoreSimRunner:
             ttc_same_lane_sec = None
             ttc_adjacent_lane_sec = None
             route_ttc_sec = None
+            path_ttc_sec = None
             lane_delta = abs(int(npc.lane_index) - int(self.ego.lane_index))
             same_lane = bool(npc.lane_index == self.ego.lane_index)
             adjacent_lane = bool(lane_delta == 1)
-            ego_route_lane_order = self.route_lane_order_by_id.get(self.ego.lane_id)
-            npc_route_lane_order = self.route_lane_order_by_id.get(npc.lane_id)
-            route_lane_delta = (
-                None
-                if ego_route_lane_order is None or npc_route_lane_order is None
-                else int(npc_route_lane_order - ego_route_lane_order)
+            ego_route_lane_order, npc_route_lane_order, route_lane_delta, route_relation = self._classify_route_relation(
+                npc
             )
-            route_relation = "unavailable"
-            if self.route_lane_ids:
-                if self.ego.lane_id in self.route_lane_order_by_id and npc.lane_id in self.route_lane_order_by_id:
-                    if route_lane_delta == 0:
-                        route_relation = "same_lane"
-                    elif route_lane_delta is not None and route_lane_delta > 0:
-                        route_relation = "downstream"
-                    else:
-                        route_relation = "upstream"
-                else:
-                    route_relation = "off_route"
+            path_conflict, path_conflict_source = self._classify_path_conflict(
+                same_lane=same_lane,
+                route_relation=route_relation,
+            )
 
-            if same_lane and gap_m <= 0:
+            if path_conflict and gap_m <= 0:
                 self.collision = True
             elif rel_speed_mps > 0 and (same_lane or adjacent_lane):
                 ttc_value = gap_m / rel_speed_mps
@@ -181,6 +180,10 @@ class CoreSimRunner:
                 elif adjacent_lane:
                     self.min_ttc_adjacent_lane_sec = min(self.min_ttc_adjacent_lane_sec, ttc_value)
                     ttc_adjacent_lane_sec = round(ttc_value, 6)
+            if rel_speed_mps > 0 and path_conflict and gap_m > 0:
+                path_ttc_value = gap_m / rel_speed_mps
+                self.min_ttc_path_conflict_sec = min(self.min_ttc_path_conflict_sec, path_ttc_value)
+                path_ttc_sec = round(path_ttc_value, 6)
             if rel_speed_mps > 0 and gap_m > 0 and route_relation in {"same_lane", "downstream", "upstream"}:
                 route_ttc_sec = round(gap_m / rel_speed_mps, 6)
 
@@ -200,6 +203,8 @@ class CoreSimRunner:
                     "lane_delta": lane_delta,
                     "same_lane": same_lane,
                     "adjacent_lane": adjacent_lane,
+                    "path_conflict": path_conflict,
+                    "path_conflict_source": path_conflict_source,
                     "ego_route_lane_order": ego_route_lane_order,
                     "npc_route_lane_order": npc_route_lane_order,
                     "route_lane_delta": route_lane_delta,
@@ -209,6 +214,7 @@ class CoreSimRunner:
                     "ttc_sec": ttc_sec,
                     "ttc_same_lane_sec": ttc_same_lane_sec,
                     "ttc_adjacent_lane_sec": ttc_adjacent_lane_sec,
+                    "path_ttc_sec": path_ttc_sec,
                     "route_ttc_sec": route_ttc_sec,
                     "ego_avoidance_brake_applied": bool(avoidance_action.get("brake_applied", False)),
                     "ego_avoidance_ttc_sec": avoidance_action.get("ttc_sec"),
@@ -231,6 +237,37 @@ class CoreSimRunner:
                     "collision": self.collision,
                 }
             )
+
+    def _classify_route_relation(self, npc: ActorState) -> tuple[int | None, int | None, int | None, str]:
+        ego_route_lane_order = self.route_lane_order_by_id.get(self.ego.lane_id)
+        npc_route_lane_order = self.route_lane_order_by_id.get(npc.lane_id)
+        route_lane_delta = (
+            None
+            if ego_route_lane_order is None or npc_route_lane_order is None
+            else int(npc_route_lane_order - ego_route_lane_order)
+        )
+        route_relation = "unavailable"
+        if self.route_lane_ids:
+            if self.ego.lane_id in self.route_lane_order_by_id and npc.lane_id in self.route_lane_order_by_id:
+                if route_lane_delta == 0:
+                    route_relation = "same_lane"
+                elif route_lane_delta is not None and route_lane_delta > 0:
+                    route_relation = "downstream"
+                else:
+                    route_relation = "upstream"
+            else:
+                route_relation = "off_route"
+        return ego_route_lane_order, npc_route_lane_order, route_lane_delta, route_relation
+
+    def _classify_path_conflict(self, *, same_lane: bool, route_relation: str) -> tuple[bool, str]:
+        route_path_conflict = route_relation in {"same_lane", "downstream"}
+        if route_path_conflict and same_lane:
+            return True, "combined"
+        if route_path_conflict:
+            return True, "route"
+        if same_lane:
+            return True, "lane_index"
+        return False, "none"
 
     def _update_ego(self, dt_sec: float, avoidance_action: Mapping[str, Any]) -> dict[str, Any]:
         if self.scenario.ego_dynamics_mode == "vehicle_dynamics":
@@ -350,14 +387,16 @@ class CoreSimRunner:
             return result
         if self.scenario.avoidance_ttc_threshold_sec <= 0 or self.scenario.ego_max_brake_mps2 <= 0:
             return result
-        same_lane_leads = [
-            npc
-            for npc in self.npcs
-            if int(npc.lane_index) == int(self.ego.lane_index) and npc.position_m > self.ego.position_m
-        ]
-        if not same_lane_leads:
+        lead_candidates: list[ActorState] = []
+        for npc in self.npcs:
+            same_lane = bool(int(npc.lane_index) == int(self.ego.lane_index))
+            _, _, _, route_relation = self._classify_route_relation(npc)
+            path_conflict, _ = self._classify_path_conflict(same_lane=same_lane, route_relation=route_relation)
+            if path_conflict and npc.position_m > self.ego.position_m:
+                lead_candidates.append(npc)
+        if not lead_candidates:
             return result
-        lead = min(same_lane_leads, key=lambda row: row.position_m)
+        lead = min(lead_candidates, key=lambda row: row.position_m)
         gap_m = lead.position_m - self.ego.position_m - 0.5 * (lead.length_m + self.ego.length_m)
         rel_speed_mps = self.ego.speed_mps - lead.speed_mps
         if gap_m <= 0 or rel_speed_mps <= 0:
@@ -385,10 +424,13 @@ class CoreSimRunner:
 def build_lane_risk_summary(*, run_id: str, summary: Mapping[str, Any], trace_rows: list[dict[str, Any]]) -> dict[str, Any]:
     same_lane_rows = [row for row in trace_rows if bool(row.get("same_lane", False))]
     adjacent_lane_rows = [row for row in trace_rows if bool(row.get("adjacent_lane", False))]
+    path_conflict_rows = [row for row in trace_rows if bool(row.get("path_conflict", False))]
     other_lane_rows = [
         row
         for row in trace_rows
-        if not bool(row.get("same_lane", False)) and not bool(row.get("adjacent_lane", False))
+        if not bool(row.get("same_lane", False))
+        and not bool(row.get("adjacent_lane", False))
+        and not bool(row.get("path_conflict", False))
     ]
 
     def _collect_numeric(rows: list[dict[str, Any]], key: str) -> list[float]:
@@ -405,8 +447,10 @@ def build_lane_risk_summary(*, run_id: str, summary: Mapping[str, Any], trace_ro
 
     min_gap_same_lane = _collect_numeric(same_lane_rows, "gap_m")
     min_gap_adjacent_lane = _collect_numeric(adjacent_lane_rows, "gap_m")
+    min_gap_path_conflict = _collect_numeric(path_conflict_rows, "gap_m")
     ttc_same_lane = _collect_numeric(same_lane_rows, "ttc_same_lane_sec")
     ttc_adjacent_lane = _collect_numeric(adjacent_lane_rows, "ttc_adjacent_lane_sec")
+    ttc_path_conflict = _collect_numeric(path_conflict_rows, "path_ttc_sec")
     route_relation_labels = ["same_lane", "downstream", "upstream", "off_route", "unavailable"]
     route_relation_rows = {
         label: [row for row in trace_rows if str(row.get("route_relation", "unavailable")) == label]
@@ -432,19 +476,28 @@ def build_lane_risk_summary(*, run_id: str, summary: Mapping[str, Any], trace_ro
         "step_rows_total": len(trace_rows),
         "same_lane_rows": len(same_lane_rows),
         "adjacent_lane_rows": len(adjacent_lane_rows),
+        "path_conflict_rows": len(path_conflict_rows),
         "other_lane_rows": len(other_lane_rows),
         "collision_flag": bool(summary.get("collision", False)),
         "same_lane_collision_rows": sum(1 for row in same_lane_rows if bool(row.get("collision", False))),
         "adjacent_lane_collision_rows": sum(
             1 for row in adjacent_lane_rows if bool(row.get("collision", False))
         ),
+        "path_conflict_collision_rows": sum(
+            1 for row in path_conflict_rows if bool(row.get("collision", False))
+        ),
         "min_gap_same_lane_m": None if not min_gap_same_lane else round(min(min_gap_same_lane), 6),
         "min_gap_adjacent_lane_m": None if not min_gap_adjacent_lane else round(min(min_gap_adjacent_lane), 6),
+        "min_gap_path_conflict_m": (
+            None if not min_gap_path_conflict else round(min(min_gap_path_conflict), 6)
+        ),
         "min_ttc_same_lane_sec": summary.get("min_ttc_same_lane_sec"),
         "min_ttc_adjacent_lane_sec": summary.get("min_ttc_adjacent_lane_sec"),
+        "min_ttc_path_conflict_sec": summary.get("min_ttc_path_conflict_sec"),
         "min_ttc_any_lane_sec": summary.get("min_ttc_any_lane_sec"),
         "ttc_under_3s_same_lane_count": sum(1 for value in ttc_same_lane if value <= 3.0),
         "ttc_under_3s_adjacent_lane_count": sum(1 for value in ttc_adjacent_lane if value <= 3.0),
+        "ttc_under_3s_path_conflict_count": sum(1 for value in ttc_path_conflict if value <= 3.0),
         "route_semantics_enabled": bool(route_lane_ids),
         "route_lane_ids": list(route_lane_ids),
         "route_relation_counts": {
@@ -580,6 +633,7 @@ def run_object_sim(
                 str(route_report.get("route_cost_mode", "")) if route_report is not None else None
             ),
             "scenario_route_cost_value": route_report.get("route_cost_value") if route_report is not None else None,
+            "route_aware_runtime_enabled": bool(route_report is not None),
             "enable_ego_collision_avoidance": bool(effective_scenario.enable_ego_collision_avoidance),
             "avoidance_ttc_threshold_sec": float(effective_scenario.avoidance_ttc_threshold_sec),
             "ego_max_brake_mps2": float(effective_scenario.ego_max_brake_mps2),
@@ -625,6 +679,11 @@ def run_object_sim(
                 {
                     "metric_id": "min_ttc_adjacent_lane_sec",
                     "value": summary.get("min_ttc_adjacent_lane_sec"),
+                    "unit": "sec",
+                },
+                {
+                    "metric_id": "min_ttc_path_conflict_sec",
+                    "value": summary.get("min_ttc_path_conflict_sec"),
                     "unit": "sec",
                 },
                 {
