@@ -164,6 +164,8 @@ Detailed audit:
    - the batch gate preset catalog now includes an avoidance-specific profile for route-interaction-heavy scenarios, and both comparison/workflow CLIs are covered for preset-id resolution
 19. avoidance policy trace surfaced in batch triage
    - batch comparison and workflow worst-case rows now preserve interaction-policy traces such as selected avoidance `priority` and `max_gap_m`, so top-level triage can explain not only that braking happened but under which route-interaction policy it happened
+20. interaction-specific avoidance gate presets
+   - the batch gate preset catalog now includes dedicated merge-conflict and downstream-route avoidance profiles so route-interaction-heavy scenarios can be gated without turning on the broader avoidance-wide preset
 11. route-relation-driven replay and sweep generation
    - `log_scene_v0` and matrix actor patterns can now synthesize actor lane assignments from route relations instead of relying only on explicit lane IDs or raw lane slots
 12. rendered payload generation in scenario variants

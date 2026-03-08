@@ -143,6 +143,9 @@ Implemented in the current repository:
 33. avoidance policy trace propagation into batch triage
    - batch comparison now carries `ego_avoidance_last_trigger_priority` and `ego_avoidance_last_trigger_max_gap_m` from object-sim summaries into attention rows
    - logical-scenario rows, matrix-group rows, health rows, and worst-case workflow rows now preserve these values as `*_values` lists for compact triage
+34. interaction-specific avoidance gate presets
+   - the gate preset catalog now includes dedicated `scenario_batch_gate_avoidance_merge_v0` and `scenario_batch_gate_avoidance_downstream_route_v0` profiles in addition to the broader avoidance preset
+   - comparison and workflow CLIs now have regression coverage for resolving the downstream-route preset and failing specifically on `AVOIDANCE_DOWNSTREAM_ROUTE_TRIGGER_COUNT_EXCEEDED`
 
 Still pending from the same migration track:
 

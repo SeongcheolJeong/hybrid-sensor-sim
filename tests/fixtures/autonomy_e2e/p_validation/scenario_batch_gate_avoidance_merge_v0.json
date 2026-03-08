@@ -1,0 +1,7 @@
+{
+  "gate_profile_schema_version": "scenario_batch_gate_profile_v0",
+  "profile_id": "scenario_batch_gate_avoidance_merge_v0",
+  "policy": {
+    "max_avoidance_merge_conflict_triggers": 0
+  }
+}

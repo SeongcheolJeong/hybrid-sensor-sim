@@ -142,6 +142,46 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def _build_downstream_route_avoidance_scenario(self) -> dict[str, object]:
+        return {
+            "scenario_schema_version": "scenario_definition_v0",
+            "scenario_id": "scn_downstream_route_avoidance",
+            "duration_sec": 0.2,
+            "dt_sec": 0.1,
+            "canonical_map_path": str((P_MAP_TOOLSET_FIXTURE_ROOT / "canonical_lane_graph_v0.json").resolve()),
+            "route_definition": {
+                "entry_lane_id": "lane_a",
+                "exit_lane_id": "lane_c",
+                "via_lane_ids": ["lane_b"],
+                "cost_mode": "hops",
+            },
+            "enable_ego_collision_avoidance": True,
+            "avoidance_ttc_threshold_sec": 10.0,
+            "ego_max_brake_mps2": 5.0,
+            "ego": {"position_m": 0.0, "speed_mps": 10.0, "lane_id": "lane_a"},
+            "npcs": [{"position_m": 20.0, "speed_mps": 4.0, "lane_id": "lane_c"}],
+        }
+
+    def _write_downstream_route_avoidance_logical_scenarios(self, path: Path) -> None:
+        path.write_text(
+            json.dumps(
+                {
+                    "logical_scenarios": [
+                        {
+                            "scenario_id": "scn_downstream_route_avoidance",
+                            "parameters": {"scenario_variant": [1]},
+                            "variant_payload_kind": "scenario_definition_v0",
+                            "variant_payload_template": self._build_downstream_route_avoidance_scenario(),
+                        }
+                    ]
+                },
+                indent=2,
+                ensure_ascii=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
     def _write_route_avoidance_policy_trace_logical_scenarios(self, path: Path) -> None:
         path.write_text(
             json.dumps(
@@ -980,6 +1020,64 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             self.assertIn("AVOIDANCE_BRAKE_EVENTS_EXCEEDED", payload["comparison_summary"]["gate"]["failure_codes"])
             self.assertIn(
                 "AVOIDANCE_MERGE_CONFLICT_TRIGGER_COUNT_EXCEEDED",
+                payload["comparison_summary"]["gate"]["failure_codes"],
+            )
+
+    def test_scenario_batch_workflow_cli_can_resolve_downstream_route_gate_profile_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            logical_path = root / "downstream_route_avoidance_logical_scenarios.json"
+            self._write_downstream_route_avoidance_logical_scenarios(logical_path)
+            matrix_scenario_path = root / "downstream_route_avoidance_matrix.json"
+            matrix_scenario_path.write_text(
+                json.dumps(self._build_downstream_route_avoidance_scenario(), indent=2, ensure_ascii=True) + "\n",
+                encoding="utf-8",
+            )
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = scenario_batch_workflow_main(
+                    [
+                        "--logical-scenarios",
+                        str(logical_path),
+                        "--matrix-scenario",
+                        str(matrix_scenario_path),
+                        "--out-root",
+                        str(root / "batch_workflow"),
+                        "--execution-max-variants",
+                        "1",
+                        "--traffic-profile-ids",
+                        "sumo_highway_balanced_v0",
+                        "--traffic-actor-pattern-ids",
+                        "sumo_route_shifted_v0",
+                        "--traffic-npc-speed-scale-values",
+                        "0.5",
+                        "--tire-friction-coeff-values",
+                        "1.0",
+                        "--surface-friction-scale-values",
+                        "1.0",
+                        "--enable-ego-collision-avoidance",
+                        "--avoidance-ttc-threshold-sec",
+                        "10.0",
+                        "--ego-max-brake-mps2",
+                        "5.0",
+                        "--max-cases",
+                        "1",
+                        "--gate-profile-id",
+                        "scenario_batch_gate_avoidance_downstream_route_v0",
+                        "--gate-profile-dir",
+                        str(P_VALIDATION_FIXTURE_ROOT),
+                    ]
+                )
+            self.assertEqual(exit_code, 2)
+            payload = json.loads(
+                (root / "batch_workflow" / "scenario_batch_workflow_report_v0.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(payload["status"], "FAILED")
+            self.assertEqual(
+                payload["comparison_summary"]["gate"]["policy"]["profile_id"],
+                "scenario_batch_gate_avoidance_downstream_route_v0",
+            )
+            self.assertIn(
+                "AVOIDANCE_DOWNSTREAM_ROUTE_TRIGGER_COUNT_EXCEEDED",
                 payload["comparison_summary"]["gate"]["failure_codes"],
             )
 

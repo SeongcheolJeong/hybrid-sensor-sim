@@ -136,6 +136,47 @@ class ScenarioBatchComparisonTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def _build_downstream_route_avoidance_scenario(self) -> dict[str, object]:
+        canonical_map_path = str((P_MAP_TOOLSET_FIXTURE_ROOT / "canonical_lane_graph_v0.json").resolve())
+        return {
+            "scenario_schema_version": "scenario_definition_v0",
+            "scenario_id": "scn_downstream_route_avoidance",
+            "duration_sec": 0.2,
+            "dt_sec": 0.1,
+            "canonical_map_path": canonical_map_path,
+            "route_definition": {
+                "entry_lane_id": "lane_a",
+                "exit_lane_id": "lane_c",
+                "via_lane_ids": ["lane_b"],
+                "cost_mode": "hops",
+            },
+            "enable_ego_collision_avoidance": True,
+            "avoidance_ttc_threshold_sec": 10.0,
+            "ego_max_brake_mps2": 5.0,
+            "ego": {"position_m": 0.0, "speed_mps": 10.0, "lane_id": "lane_a"},
+            "npcs": [{"position_m": 20.0, "speed_mps": 4.0, "lane_id": "lane_c"}],
+        }
+
+    def _write_downstream_route_avoidance_logical_scenarios(self, path: Path) -> None:
+        path.write_text(
+            json.dumps(
+                {
+                    "logical_scenarios": [
+                        {
+                            "scenario_id": "scn_downstream_route_avoidance",
+                            "parameters": {"scenario_variant": [1]},
+                            "variant_payload_kind": "scenario_definition_v0",
+                            "variant_payload_template": self._build_downstream_route_avoidance_scenario(),
+                        }
+                    ]
+                },
+                indent=2,
+                ensure_ascii=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
     def test_build_scenario_batch_comparison_report_writes_json_and_markdown(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -727,6 +768,67 @@ class ScenarioBatchComparisonTests(unittest.TestCase):
             self.assertIn("AVOIDANCE_ROWS_EXCEEDED", payload["gate"]["failure_codes"])
             self.assertIn("AVOIDANCE_BRAKE_EVENTS_EXCEEDED", payload["gate"]["failure_codes"])
             self.assertIn("AVOIDANCE_MERGE_CONFLICT_TRIGGER_COUNT_EXCEEDED", payload["gate"]["failure_codes"])
+
+    def test_scenario_batch_comparison_cli_can_resolve_downstream_route_gate_profile_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            logical_path = root / "downstream_route_avoidance_logical_scenarios.json"
+            self._write_downstream_route_avoidance_logical_scenarios(logical_path)
+            workflow_result = run_scenario_variant_workflow(
+                logical_scenarios_path=str(logical_path),
+                scenario_language_profile="",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                out_root=root / "workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=1,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+            )
+            run_scenario_matrix_sweep(
+                scenario_path=P_SIM_ENGINE_FIXTURE_ROOT / "highway_safe_following_v0.json",
+                out_root=root / "matrix_runs",
+                report_out=root / "matrix_report.json",
+                run_id_prefix="RUN_MATRIX_COMPARE",
+                traffic_profile_ids=["sumo_highway_balanced_v0"],
+                traffic_actor_pattern_ids=["sumo_platoon_sparse_v0"],
+                traffic_npc_speed_scale_values=[1.0],
+                tire_friction_coeff_values=[1.0],
+                surface_friction_scale_values=[1.0],
+                enable_ego_collision_avoidance=False,
+                avoidance_ttc_threshold_sec=2.5,
+                ego_max_brake_mps2=6.0,
+                max_cases=0,
+            )
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = scenario_batch_comparison_main(
+                    [
+                        "--variant-workflow-report",
+                        str(workflow_result["workflow_report_path"]),
+                        "--matrix-sweep-report",
+                        str(root / "matrix_report.json"),
+                        "--out-report",
+                        str(root / "comparison.json"),
+                        "--gate-profile-id",
+                        "scenario_batch_gate_avoidance_downstream_route_v0",
+                        "--gate-profile-dir",
+                        str(P_VALIDATION_FIXTURE_ROOT),
+                    ]
+                )
+            self.assertEqual(exit_code, 2)
+            payload = json.loads((root / "comparison.json").read_text(encoding="utf-8"))
+            self.assertEqual(payload["gate"]["status"], "FAIL")
+            self.assertEqual(
+                payload["gate"]["policy"]["profile_id"],
+                "scenario_batch_gate_avoidance_downstream_route_v0",
+            )
+            self.assertIn(
+                "AVOIDANCE_DOWNSTREAM_ROUTE_TRIGGER_COUNT_EXCEEDED",
+                payload["gate"]["failure_codes"],
+            )
 
     def test_scenario_batch_comparison_propagates_avoidance_policy_trace_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
