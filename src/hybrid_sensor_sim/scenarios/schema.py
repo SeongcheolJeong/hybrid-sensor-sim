@@ -208,6 +208,13 @@ def _parse_avoidance_interaction_policy(raw_value: Any) -> dict[str, dict[str, f
                     f"avoidance_interaction_policy.{interaction_key}.brake_scale must be between 0 and 1"
                 )
             normalized_policy["brake_scale"] = brake_scale
+        if "min_brake_scale" in interaction_policy_raw:
+            min_brake_scale = float(interaction_policy_raw["min_brake_scale"])
+            if min_brake_scale < 0 or min_brake_scale > 1:
+                raise ScenarioValidationError(
+                    f"avoidance_interaction_policy.{interaction_key}.min_brake_scale must be between 0 and 1"
+                )
+            normalized_policy["min_brake_scale"] = min_brake_scale
         if "priority" in interaction_policy_raw:
             priority = int(interaction_policy_raw["priority"])
             if priority < 0:

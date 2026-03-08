@@ -251,6 +251,7 @@ python3 scripts/run_scenario_batch_workflow.py \
 - `comparison_summary.logical_scenario_health_rows`: now also carries `ego_avoidance_row_count`, `ego_avoidance_brake_event_count_total`, and `ego_avoidance_trigger_counts_by_interaction_kind`
 - `comparison_summary.logical_scenario_health_rows`, `comparison_summary.logical_scenario_rows`, and `comparison_summary.matrix_group_rows` now also preserve avoidance policy trace values through `ego_avoidance_last_trigger_priority_values` and `ego_avoidance_last_trigger_max_gap_m_values`
 - lane-change route evidence is now connected more directly to triage through `LANE_CHANGE_ROUTE_LANE_TRACE_PRESENT`, plus top-level `status_summary.lane_change_logical_scenario_ids`, `status_summary.failing_lane_change_logical_scenario_ids`, `status_summary.lane_change_matrix_group_ids`, and `status_summary.lane_change_gate_failure_code_counts`
+- top-level worst-case ranking now also treats lane-change gate breaches as their own severity signal, so otherwise similar scenarios with explicit `LANE_CHANGE_CONFLICT_ROWS_EXCEEDED` or `AVOIDANCE_LANE_CHANGE_TRIGGER_COUNT_EXCEEDED` surface ahead of lighter route-interaction cases
 - `comparison_summary.logical_scenario_health_gate_status_counts`: compact `DISABLED|PASS|FAIL` counts for the per-scenario gate surface
 - `comparison_summary.failing_logical_scenario_rows`: compact subset of logical scenarios whose health or gate status is `FAIL`
 - `comparison_summary.failing_logical_scenario_gate_failure_code_counts`: aggregate failing gate reasons such as `MERGE_CONFLICT_ROWS_EXCEEDED`
@@ -457,11 +458,14 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - Scenario inputs can optionally override avoidance policy per interaction kind:
   - `avoidance_interaction_policy.merge_conflict.ttc_threshold_sec`
   - `avoidance_interaction_policy.merge_conflict.brake_scale`
+  - `avoidance_interaction_policy.merge_conflict.min_brake_scale`
   - `avoidance_interaction_policy.merge_conflict.priority`
   - `avoidance_interaction_policy.merge_conflict.max_gap_m`
   - same shape is also supported for `same_lane_conflict`, `lane_change_conflict`, and `downstream_route_conflict`
+  - `min_brake_scale` is useful for `lane_change_conflict` when the scenario should keep a minimum braking floor even if the selected policy uses a small `brake_scale`
   - applied values are surfaced through `summary.json` as `ego_avoidance_last_trigger_priority` / `ego_avoidance_last_trigger_max_gap_m`
-  - and through `trace.csv` as `ego_avoidance_target_priority` / `ego_avoidance_target_max_gap_m`
+  - applied minimum brake floors are surfaced through `summary.json` as `ego_avoidance_last_trigger_min_brake_scale`
+  - and through `trace.csv` as `ego_avoidance_target_priority` / `ego_avoidance_target_max_gap_m` / `ego_avoidance_target_min_brake_scale`
 - The route-aware runtime surface now distinguishes:
   - `same_lane_conflict`
   - `merge_conflict`

@@ -174,6 +174,9 @@ Detailed audit:
 23. lane-change status-summary escalation
    - batch attention and health reasons now emit `LANE_CHANGE_ROUTE_LANE_TRACE_PRESENT` when a lane-change conflict is backed by explicit route-lane traces
    - top-level workflow triage now surfaces lane-change-specific logical-scenario IDs, matrix-group IDs, and gate-failure-code counts directly in `status_summary`
+24. lane-change brake floors and stronger worst-case prioritization
+   - interaction-specific avoidance policy now supports `min_brake_scale` in addition to `ttc_threshold_sec`, `brake_scale`, `priority`, and `max_gap_m`, which lets `lane_change_conflict` scenarios keep a minimum braking floor without over-tightening the full policy
+   - top-level worst-case ranking now treats lane-change gate breaches as an explicit severity layer, so lane-change-heavy failures rank ahead of lighter route-interaction cases even when avoidance counts otherwise tie
 11. route-relation-driven replay and sweep generation
    - `log_scene_v0` and matrix actor patterns can now synthesize actor lane assignments from route relations instead of relying only on explicit lane IDs or raw lane slots
 12. rendered payload generation in scenario variants

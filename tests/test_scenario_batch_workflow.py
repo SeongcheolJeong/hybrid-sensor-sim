@@ -321,6 +321,36 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def _write_ranked_lane_change_gate_logical_scenarios(self, path: Path) -> None:
+        path.write_text(
+            json.dumps(
+                {
+                    "logical_scenarios": [
+                        {
+                            "scenario_id": "scn_merge_gate_failure",
+                            "parameters": {"scenario_variant": [1]},
+                            "variant_payload_kind": "scenario_definition_v0",
+                            "variant_payload_template": self._build_route_avoidance_scenario(
+                                scenario_id="scn_merge_gate_failure_payload",
+                                merge_ttc_threshold_sec=3.5,
+                                merge_brake_scale=0.5,
+                            ),
+                        },
+                        {
+                            "scenario_id": "scn_lane_change_gate_failure",
+                            "parameters": {"scenario_variant": [1]},
+                            "variant_payload_kind": "scenario_definition_v0",
+                            "variant_payload_template": self._build_lane_change_avoidance_scenario(),
+                        },
+                    ]
+                },
+                indent=2,
+                ensure_ascii=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
     def test_run_scenario_batch_workflow_writes_all_reports(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1068,6 +1098,48 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
                 health_rows["scn_route_policy_high_priority_tight_gap"]["ego_avoidance_last_trigger_max_gap_m_values"],
                 [20.0],
             )
+
+    def test_scenario_batch_workflow_prioritizes_lane_change_gate_failures_in_worst_ranking(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            logical_path = root / "ranked_lane_change_gate_logical_scenarios.json"
+            self._write_ranked_lane_change_gate_logical_scenarios(logical_path)
+            result = run_scenario_batch_workflow(
+                logical_scenarios_path=str(logical_path),
+                scenario_language_profile="",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                matrix_scenario_path=P_SIM_ENGINE_FIXTURE_ROOT / "highway_safe_following_v0.json",
+                out_root=root / "batch_workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=2,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+                matrix_run_id_prefix="RUN_BATCH_MATRIX",
+                traffic_profile_ids=["sumo_highway_balanced_v0"],
+                traffic_actor_pattern_ids=["sumo_platoon_sparse_v0"],
+                traffic_npc_speed_scale_values=[1.0],
+                tire_friction_coeff_values=[1.0],
+                surface_friction_scale_values=[1.0],
+                enable_ego_collision_avoidance=False,
+                avoidance_ttc_threshold_sec=2.5,
+                ego_max_brake_mps2=6.0,
+                max_cases=0,
+                gate_max_avoidance_merge_conflict_triggers=0,
+                gate_max_avoidance_lane_change_conflict_triggers=0,
+            )
+            worst_row = result["workflow_report"]["status_summary"]["worst_logical_scenario_row"]
+            self.assertEqual(worst_row["logical_scenario_id"], "scn_lane_change_gate_failure")
+            self.assertEqual(worst_row["lane_change_gate_failure_count"], 1)
+            health_rows = {
+                row["logical_scenario_id"]: row
+                for row in result["workflow_report"]["comparison_summary"]["logical_scenario_health_rows"]
+            }
+            self.assertEqual(health_rows["scn_merge_gate_failure"]["lane_change_gate_failure_count"], 0)
+            self.assertEqual(health_rows["scn_lane_change_gate_failure"]["lane_change_gate_failure_count"], 1)
 
     def test_scenario_batch_workflow_cli_can_resolve_gate_profile_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

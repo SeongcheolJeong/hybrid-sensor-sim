@@ -135,6 +135,27 @@ class ObjectSimTests(unittest.TestCase):
                 }
             )
 
+        with self.assertRaisesRegex(
+            ScenarioValidationError,
+            "avoidance_interaction_policy.lane_change_conflict.min_brake_scale must be between 0 and 1",
+        ):
+            load_scenario(
+                {
+                    "scenario_schema_version": "scenario_definition_v0",
+                    "scenario_id": "bad_avoidance_policy_min_brake_scale",
+                    "duration_sec": 1.0,
+                    "dt_sec": 0.1,
+                    "enable_ego_collision_avoidance": True,
+                    "avoidance_ttc_threshold_sec": 2.0,
+                    "ego_max_brake_mps2": 5.0,
+                    "avoidance_interaction_policy": {
+                        "lane_change_conflict": {"min_brake_scale": 1.5},
+                    },
+                    "ego": {"position_m": 0.0, "speed_mps": 1.0},
+                    "npcs": [{"position_m": 5.0, "speed_mps": 1.0}],
+                }
+            )
+
     def test_load_scenario_resolves_lane_ids_from_map_route(self) -> None:
         scenario = load_scenario(FIXTURE_ROOT / "highway_map_route_following_v0.json")
 
@@ -611,6 +632,54 @@ class ObjectSimTests(unittest.TestCase):
         self.assertEqual(result.trace_rows[0]["ego_avoidance_target_interaction_kind"], "merge_conflict")
         self.assertAlmostEqual(float(result.trace_rows[0]["ego_avoidance_target_ttc_threshold_sec"]), 3.0, places=6)
         self.assertAlmostEqual(float(result.trace_rows[0]["ego_avoidance_target_brake_scale"]), 0.5, places=6)
+
+    def test_lane_change_avoidance_policy_supports_min_brake_scale(self) -> None:
+        canonical_map = json.loads((MAP_FIXTURE_ROOT / "canonical_lane_graph_v0.json").read_text(encoding="utf-8"))
+        scenario = load_scenario(
+            {
+                "scenario_schema_version": "scenario_definition_v0",
+                "scenario_id": "route_avoidance_lane_change_min_brake",
+                "duration_sec": 0.5,
+                "dt_sec": 0.1,
+                "canonical_map": canonical_map,
+                "route_definition": {
+                    "entry_lane_id": "lane_a",
+                    "exit_lane_id": "lane_c",
+                    "via_lane_ids": ["lane_b"],
+                    "cost_mode": "hops",
+                },
+                "enable_ego_collision_avoidance": True,
+                "avoidance_ttc_threshold_sec": 3.0,
+                "ego_max_brake_mps2": 5.0,
+                "avoidance_interaction_policy": {
+                    "lane_change_conflict": {
+                        "ttc_threshold_sec": 3.0,
+                        "brake_scale": 0.1,
+                        "min_brake_scale": 0.6,
+                    }
+                },
+                "ego": {"position_m": 0.0, "speed_mps": 10.0, "lane_id": "lane_a"},
+                "npcs": [
+                    {
+                        "actor_id": "lane_change_risk",
+                        "position_m": 18.0,
+                        "speed_mps": 4.0,
+                        "lane_id": "lane_b",
+                        "route_lane_id": "lane_a",
+                    }
+                ],
+            }
+        )
+
+        result = run_object_sim(scenario, seed=42, metadata={"run_id": "ROUTE_AVOID_LANE_CHANGE_MIN_BRAKE_001"})
+
+        self.assertGreater(result.summary["ego_avoidance_brake_event_count"], 0)
+        self.assertEqual(result.summary["ego_avoidance_last_trigger_interaction_kind"], "lane_change_conflict")
+        self.assertAlmostEqual(result.summary["ego_avoidance_last_trigger_brake_scale"], 0.1, places=6)
+        self.assertAlmostEqual(result.summary["ego_avoidance_last_trigger_min_brake_scale"], 0.6, places=6)
+        self.assertAlmostEqual(result.summary["ego_avoidance_applied_brake_mps2_max"], 3.0, places=6)
+        self.assertAlmostEqual(float(result.trace_rows[0]["ego_avoidance_target_brake_scale"]), 0.1, places=6)
+        self.assertAlmostEqual(float(result.trace_rows[0]["ego_avoidance_target_min_brake_scale"]), 0.6, places=6)
 
     def test_route_aware_avoidance_policy_priority_breaks_equal_ttc_tie(self) -> None:
         canonical_map = json.loads((MAP_FIXTURE_ROOT / "canonical_lane_graph_v0.json").read_text(encoding="utf-8"))

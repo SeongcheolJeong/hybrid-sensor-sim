@@ -454,6 +454,15 @@ def _build_logical_scenario_health_rows(
                 "ego_avoidance_last_trigger_max_gap_m_values": list(
                     row.get("ego_avoidance_last_trigger_max_gap_m_values", [])
                 ),
+                "lane_change_gate_failure_count": sum(
+                    1
+                    for code in gate_failure_codes
+                    if code
+                    in {
+                        "LANE_CHANGE_CONFLICT_ROWS_EXCEEDED",
+                        "AVOIDANCE_LANE_CHANGE_TRIGGER_COUNT_EXCEEDED",
+                    }
+                ),
                 "ego_route_lane_ids": list(row.get("ego_route_lane_ids", [])),
                 "traffic_npc_route_lane_id_profiles": list(
                     row.get("traffic_npc_route_lane_id_profiles", [])
@@ -529,6 +538,21 @@ def _avoidance_rank_key(row: dict[str, Any]) -> tuple[int, int, int, int, int, i
         -int(trigger_counts.get("same_lane_conflict", 0) or 0),
         -int(row.get("ego_avoidance_row_count", 0) or 0),
         *_avoidance_policy_trace_rank_key(row),
+    )
+
+
+def _lane_change_gate_rank_key(row: dict[str, Any]) -> tuple[int, int]:
+    gate_failure_codes = {
+        str(code)
+        for code in list(row.get("gate_failure_codes", []))
+        if code is not None
+    }
+    lane_change_gate_failure_count = int(
+        "LANE_CHANGE_CONFLICT_ROWS_EXCEEDED" in gate_failure_codes
+    ) + int("AVOIDANCE_LANE_CHANGE_TRIGGER_COUNT_EXCEEDED" in gate_failure_codes)
+    return (
+        -lane_change_gate_failure_count,
+        -int(row.get("lane_change_conflict_row_count", 0) or 0),
     )
 
 
@@ -693,6 +717,7 @@ def _build_workflow_status_summary(
                 logical_health_priority.get(str(row.get("health_status")), 99),
                 gate_status_priority.get(str(row.get("gate_status")), 99),
                 -len(list(row.get("gate_failure_codes", []))),
+                *_lane_change_gate_rank_key(row),
                 -int(row.get("collision_count", 0) or 0),
                 -int(row.get("timeout_count", 0) or 0),
                 -int(row.get("merge_conflict_row_count", 0) or 0),
@@ -727,6 +752,15 @@ def _build_workflow_status_summary(
                 (
                     0 if failure_codes else 1,
                     -len(failure_codes),
+                    -sum(
+                        1
+                        for code in failure_codes
+                        if code
+                        in {
+                            "LANE_CHANGE_CONFLICT_ROWS_EXCEEDED",
+                            "AVOIDANCE_LANE_CHANGE_TRIGGER_COUNT_EXCEEDED",
+                        }
+                    ),
                     -int(row.get("collision_count", 0) or 0),
                     -int(row.get("timeout_count", 0) or 0),
                     -int(row.get("merge_conflict_row_count", 0) or 0),
@@ -759,6 +793,15 @@ def _build_workflow_status_summary(
                     ),
                     "ego_avoidance_last_trigger_max_gap_m_values": list(
                         row.get("ego_avoidance_last_trigger_max_gap_m_values", [])
+                    ),
+                    "lane_change_gate_failure_count": sum(
+                        1
+                        for code in failure_codes
+                        if code
+                        in {
+                            "LANE_CHANGE_CONFLICT_ROWS_EXCEEDED",
+                            "AVOIDANCE_LANE_CHANGE_TRIGGER_COUNT_EXCEEDED",
+                        }
                     ),
                     "min_ttc_any_lane_sec_min": _coerce_optional_float(row.get("min_ttc_any_lane_sec_min")),
                     "min_ttc_path_conflict_sec_min": _coerce_optional_float(

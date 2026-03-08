@@ -63,6 +63,7 @@ class CoreSimRunner:
         self.ego_avoidance_last_trigger_gap_m: float | None = None
         self.ego_avoidance_last_trigger_ttc_threshold_sec: float | None = None
         self.ego_avoidance_last_trigger_brake_scale: float | None = None
+        self.ego_avoidance_last_trigger_min_brake_scale: float | None = None
         self.ego_avoidance_last_trigger_priority: int | None = None
         self.ego_avoidance_last_trigger_max_gap_m: float | None = None
         self.ego_dynamics_longitudinal_force_limited_event_count = 0
@@ -252,6 +253,9 @@ class CoreSimRunner:
                     "ego_avoidance_target_ttc_sec": avoidance_action.get("target_ttc_sec"),
                     "ego_avoidance_target_ttc_threshold_sec": avoidance_action.get("target_ttc_threshold_sec"),
                     "ego_avoidance_target_brake_scale": avoidance_action.get("target_brake_scale"),
+                    "ego_avoidance_target_min_brake_scale": avoidance_action.get(
+                        "target_min_brake_scale"
+                    ),
                     "ego_avoidance_target_priority": avoidance_action.get("target_priority"),
                     "ego_avoidance_target_max_gap_m": avoidance_action.get("target_max_gap_m"),
                     "ego_surface_friction_scale": round(self.scenario.surface_friction_scale, 6),
@@ -453,6 +457,7 @@ class CoreSimRunner:
                 interaction_policy.get("ttc_threshold_sec", self.scenario.avoidance_ttc_threshold_sec)
             ),
             "brake_scale": float(interaction_policy.get("brake_scale", 1.0)),
+            "min_brake_scale": float(interaction_policy.get("min_brake_scale", 0.0)),
             "priority": int(
                 interaction_policy.get(
                     "priority",
@@ -480,6 +485,7 @@ class CoreSimRunner:
             "target_ttc_sec": None,
             "target_ttc_threshold_sec": None,
             "target_brake_scale": None,
+            "target_min_brake_scale": None,
             "target_priority": None,
             "target_max_gap_m": None,
         }
@@ -555,6 +561,9 @@ class CoreSimRunner:
             float(selected_target["avoidance_policy"]["ttc_threshold_sec"]), 6
         )
         result["target_brake_scale"] = round(float(selected_target["avoidance_policy"]["brake_scale"]), 6)
+        result["target_min_brake_scale"] = round(
+            float(selected_target["avoidance_policy"]["min_brake_scale"]), 6
+        )
         result["target_priority"] = int(selected_target["avoidance_policy"]["priority"])
         result["target_max_gap_m"] = (
             round(float(selected_target["avoidance_policy"]["max_gap_m"]), 6)
@@ -568,12 +577,16 @@ class CoreSimRunner:
         friction_brake_limit_mps2 = (
             self.scenario.tire_friction_coeff * self.scenario.surface_friction_scale * 9.80665
         )
+        minimum_policy_brake_limit_mps2 = (
+            max(0.0, self.scenario.ego_max_brake_mps2)
+            * float(selected_target["avoidance_policy"]["min_brake_scale"])
+        )
         policy_brake_limit_mps2 = (
             max(0.0, self.scenario.ego_max_brake_mps2)
             * float(selected_target["avoidance_policy"]["brake_scale"])
         )
         effective_brake_limit_mps2 = min(
-            policy_brake_limit_mps2,
+            max(policy_brake_limit_mps2, minimum_policy_brake_limit_mps2),
             max(0.0, friction_brake_limit_mps2),
         )
         if effective_brake_limit_mps2 <= 0:
@@ -593,6 +606,9 @@ class CoreSimRunner:
         )
         self.ego_avoidance_last_trigger_brake_scale = round(
             float(selected_target["avoidance_policy"]["brake_scale"]), 6
+        )
+        self.ego_avoidance_last_trigger_min_brake_scale = round(
+            float(selected_target["avoidance_policy"]["min_brake_scale"]), 6
         )
         self.ego_avoidance_last_trigger_priority = int(selected_target["avoidance_policy"]["priority"])
         self.ego_avoidance_last_trigger_max_gap_m = (
@@ -900,6 +916,7 @@ def run_object_sim(
             "ego_avoidance_last_trigger_gap_m": runner.ego_avoidance_last_trigger_gap_m,
             "ego_avoidance_last_trigger_ttc_threshold_sec": runner.ego_avoidance_last_trigger_ttc_threshold_sec,
             "ego_avoidance_last_trigger_brake_scale": runner.ego_avoidance_last_trigger_brake_scale,
+            "ego_avoidance_last_trigger_min_brake_scale": runner.ego_avoidance_last_trigger_min_brake_scale,
             "ego_avoidance_last_trigger_priority": runner.ego_avoidance_last_trigger_priority,
             "ego_avoidance_last_trigger_max_gap_m": runner.ego_avoidance_last_trigger_max_gap_m,
             "traffic_npc_count": int(len(effective_scenario.npcs)),

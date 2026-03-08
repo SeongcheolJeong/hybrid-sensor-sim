@@ -157,6 +157,9 @@ Implemented in the current repository:
 37. lane-change evidence promoted into batch status summaries
    - attention and health reasons now emit `LANE_CHANGE_ROUTE_LANE_TRACE_PRESENT` when explicit route-lane traces back a lane-change conflict
    - workflow `status_summary` now exposes `lane_change_logical_scenario_ids`, `failing_lane_change_logical_scenario_ids`, `lane_change_matrix_group_ids`, and `lane_change_gate_failure_code_counts` so lane-change-heavy failures can be identified without reading the full row tables
+38. lane-change brake floors and worst-case ranking escalation
+   - interaction-specific avoidance policy now also supports `min_brake_scale`, which is especially useful for `lane_change_conflict` when the scenario should preserve a minimum braking floor despite a small `brake_scale`
+   - top-level worst-case ranking now treats lane-change gate breaches as their own severity signal, so explicit `LANE_CHANGE_CONFLICT_ROWS_EXCEEDED` and `AVOIDANCE_LANE_CHANGE_TRIGGER_COUNT_EXCEEDED` cases surface ahead of lighter interaction conflicts
 
 Still pending from the same migration track:
 
