@@ -29,6 +29,7 @@ Implemented from the first migration wave:
 9. rendered variant execution runner for `scenario_variants_report_v0`
 10. scenario variant workflow for `logical_scenarios_v0 -> rendered payload execution`
 11. scenario batch comparison surface for `scenario_variant_workflow_report_v0 -> core_sim_matrix_sweep_report_v0`
+12. scenario batch workflow for `logical_scenarios_v0 -> rendered payload execution -> matrix sweep -> batch comparison`
 
 Current repository paths:
 
@@ -45,6 +46,7 @@ Current repository paths:
 - `src/hybrid_sensor_sim/tools/scenario_variants.py`
 - `src/hybrid_sensor_sim/tools/scenario_matrix_sweep.py`
 - `src/hybrid_sensor_sim/tools/scenario_batch_comparison.py`
+- `src/hybrid_sensor_sim/tools/scenario_batch_workflow.py`
 - `src/hybrid_sensor_sim/tools/sensor_rig_sweep.py`
 - `src/hybrid_sensor_sim/maps/convert.py`
 - `src/hybrid_sensor_sim/maps/validate.py`

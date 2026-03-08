@@ -50,6 +50,7 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
   - report includes `successful_variant_rows` and `non_success_variant_rows` for quick triage
 - `scripts/run_scenario_variant_workflow.py`: generates variants and immediately executes rendered payloads, writing a workflow report plus the underlying variant/run reports.
 - `scripts/run_scenario_batch_comparison.py`: compares a scenario variant workflow report against a matrix-sweep report and writes JSON plus Markdown comparison artifacts.
+- `scripts/run_scenario_batch_workflow.py`: runs variant workflow, matrix sweep, and batch comparison as one reusable workflow and writes a single top-level workflow report.
 - `scripts/run_scenario_matrix_sweep.py`: runs object-sim over traffic/friction parameter grids and writes a sweep report.
 - `scripts/run_sensor_rig_sweep.py`: evaluates rig candidates against current native preview and coverage outputs.
 - `scripts/run_map_convert.py`: converts `simple_map_v0` and `canonical_lane_graph_v0`.
@@ -190,6 +191,31 @@ python3 scripts/run_scenario_batch_comparison.py \
 - `comparison_tables.attention_rows`: compact rows that need cross-batch triage
 
 The comparison command also writes a Markdown report next to the JSON report by default.
+
+Scenario batch workflow:
+
+```bash
+python3 scripts/run_scenario_batch_workflow.py \
+  --scenario-language-profile highway_mixed_payloads_v0 \
+  --matrix-scenario tests/fixtures/autonomy_e2e/p_sim_engine/highway_safe_following_v0.json \
+  --out-root artifacts/scenario_batch_workflow_runs \
+  --execution-max-variants 1 \
+  --traffic-profile-ids sumo_highway_balanced_v0 \
+  --traffic-actor-pattern-ids sumo_platoon_sparse_v0 \
+  --traffic-npc-speed-scale-values 1.0 \
+  --tire-friction-coeff-values 1.0 \
+  --surface-friction-scale-values 1.0
+```
+
+`scenario_batch_workflow_report_v0.json` includes:
+
+- `status`: `SUCCEEDED|ATTENTION|FAILED`
+- `variant_summary`: selected variant execution summary copied from the variant workflow
+- `matrix_summary`: matrix-sweep case summary
+- `comparison_summary`: cross-batch overview plus compact attention rows
+- `artifacts`: paths to all underlying workflow, sweep, and comparison reports
+
+Use `--fail-on-attention` if attention rows should fail the command.
 
 Both `run_scenario_variants.py` and `run_scenario_variant_workflow.py` resolve default scenario-language profiles from:
 

@@ -86,6 +86,9 @@ Implemented in the current repository:
 19. cross-batch comparison surface in `src/hybrid_sensor_sim/tools/scenario_batch_comparison.py`
    - `scenario_variant_workflow_report_v0` and `core_sim_matrix_sweep_report_v0` can now be compared through one JSON and Markdown surface
    - comparison output now includes grouped logical-scenario rows, grouped matrix-group rows, and compact cross-batch attention rows
+20. top-level batch workflow in `src/hybrid_sensor_sim/tools/scenario_batch_workflow.py`
+   - variant workflow, matrix sweep, and cross-batch comparison can now be executed through one reusable command surface
+   - workflow output now carries a top-level `status` plus paths to all underlying reports
 
 Still pending from the same migration track:
 
