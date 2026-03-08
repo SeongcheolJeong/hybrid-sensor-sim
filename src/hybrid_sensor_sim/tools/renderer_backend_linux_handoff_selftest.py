@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import json
 import tarfile
 from pathlib import Path
@@ -12,6 +13,14 @@ from hybrid_sensor_sim.tools.renderer_backend_linux_handoff_docker import (
 
 _DEFAULT_DOCKER_IMAGE = "python:3.11-slim"
 _DEFAULT_CONTAINER_WORKSPACE = "/workspace"
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _format_utc(dt: datetime) -> str:
+    return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -224,6 +233,7 @@ def run_renderer_backend_linux_handoff_selftest(
     marker_exists = marker_path.exists()
     marker_content = marker_path.read_text(encoding="utf-8").strip() if marker_exists else None
     summary = {
+        "generated_at_utc": _format_utc(_utc_now()),
         "repo_root": str(repo_root),
         "output_root": str(output_root),
         "summary_path": str(summary_path),

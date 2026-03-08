@@ -540,6 +540,7 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             def _fake_selftest(**kwargs: object) -> dict[str, object]:
                 summary_path = Path(str(kwargs["summary_path"]))
                 payload = {
+                    "generated_at_utc": "2026-03-08T00:00:00Z",
                     "success": True,
                     "execute": kwargs["execute"],
                     "summary_path": str(summary_path),
@@ -577,6 +578,7 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertTrue(probe_path.exists())
             probe_payload = json.loads(probe_path.read_text(encoding="utf-8"))
             self.assertEqual(probe_payload["docker"]["return_code"], 0)
+            self.assertEqual(probe_payload["generated_at_utc"], "2026-03-08T00:00:00Z")
 
     def test_local_setup_main_writes_env_and_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

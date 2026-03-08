@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import json
 import os
 import platform
@@ -120,6 +121,14 @@ def _resolve_runtime_path(raw: str | Path) -> Path:
     if path.is_absolute():
         return path.resolve()
     return (Path.cwd() / path).resolve()
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _format_utc(dt: datetime) -> str:
+    return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _is_executable_file(path: Path) -> bool:
@@ -1121,6 +1130,7 @@ def build_renderer_backend_local_setup(
             )
         except Exception as exc:
             probe_summary = {
+                "generated_at_utc": _format_utc(_utc_now()),
                 "repo_root": str(repo_root),
                 "output_root": str(handoff_selftest_output_root),
                 "summary_path": str(handoff_selftest_summary_path),
@@ -1146,6 +1156,7 @@ def build_renderer_backend_local_setup(
         readiness=readiness,
     )
     return {
+        "generated_at_utc": _format_utc(_utc_now()),
         "search_roots": [str(path) for path in all_search_roots],
         "backends": {
             "helios": helios,

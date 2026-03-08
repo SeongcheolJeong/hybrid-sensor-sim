@@ -556,7 +556,12 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - when `heliosplusplus:cli` is present in Docker Desktop, discovery can mark HELIOS as docker-ready even if `HELIOS_BIN` is unset.
 - `--probe-helios-docker-demo` runs the configured docker demo and records actual HELIOS execution success/failure in `probes.helios_docker_demo`.
 - `--probe-linux-handoff-docker-selftest` runs the synthetic Linux handoff Docker self-test and records the result in `probes.linux_handoff_docker_selftest`.
-- `run_renderer_backend_workflow.py --run-linux-handoff-docker` now reads that probe as a Docker preflight summary; if the probe is failed, workflow reports `HANDOFF_DOCKER_PREFLIGHT_FAILED` before attempting the Docker handoff run.
+- the Linux handoff Docker self-test summary carries `generated_at_utc`; workflow also falls back to the probe summary file mtime or setup summary mtime when it needs freshness metadata from older summaries.
+- `run_renderer_backend_workflow.py --run-linux-handoff-docker` reads that probe as a Docker preflight summary. It now tracks `generated_at_utc`, `age_seconds`, `max_age_seconds`, `timestamp_source`, and `stale`.
+- workflow reports:
+  - `HANDOFF_DOCKER_PREFLIGHT_FAILED` when the cached probe is fresh but failed
+  - `HANDOFF_DOCKER_PREFLIGHT_STALE` when the cached probe is older than `--docker-handoff-preflight-max-age-seconds`
+- `--refresh-docker-handoff-preflight` reruns local setup with `--probe-linux-handoff-docker-selftest` when the cached Docker handoff preflight is missing or stale.
 - workflow smoke config materialization now uses setup-summary selections as env overrides, so docker presets with `${AWSIM_BIN}` / `${HELIOS_DOCKER_IMAGE}` style placeholders can be resolved without first exporting those variables into the shell.
 - use `--no-default-search-roots` when you want discovery to only scan explicit `--search-root` inputs plus the repo root.
 
@@ -599,6 +604,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - `python3 scripts/run_renderer_backend_workflow.py --backend carla --setup-summary artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json --dry-run`
 - `python3 scripts/run_renderer_backend_workflow.py --backend awsim --setup-summary artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json --dry-run --pack-linux-handoff --verify-linux-handoff-bundle`
 - `python3 scripts/run_renderer_backend_workflow.py --backend awsim --setup-summary artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json --dry-run --run-linux-handoff-docker`
+- `python3 scripts/run_renderer_backend_workflow.py --backend awsim --setup-summary artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json --dry-run --run-linux-handoff-docker --docker-handoff-preflight-max-age-seconds 3600 --refresh-docker-handoff-preflight`
 - `python3 scripts/run_renderer_backend_linux_handoff.py --bundle <handoff_bundle.tar.gz> --transfer-manifest <renderer_backend_workflow_linux_handoff_transfer_manifest.json> --bundle-manifest <renderer_backend_workflow_linux_handoff_bundle_manifest.json> --repo-root <linux_repo_checkout>`
 - `python3 scripts/run_renderer_backend_linux_handoff_selftest.py --output-root artifacts/renderer_backend_linux_handoff_selftest --execute`
 - behavior:
@@ -609,6 +615,8 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `--pack-linux-handoff` also builds the handoff tarball locally
 - `--verify-linux-handoff-bundle` unpacks that tarball into a local verification root and checks per-file checksums before any runner-side execution
   - `--run-linux-handoff-docker` runs the handoff helper inside a local Linux container; by default this is verify-only, and `--docker-handoff-execute` opts into executing the extracted handoff script too
+  - `--docker-handoff-preflight-max-age-seconds <n>` bounds how long a cached Docker handoff preflight probe is trusted
+  - `--refresh-docker-handoff-preflight` reruns the Docker handoff self-test via local setup when the cached probe is missing or stale
   - if backend runtime is missing and `--auto-acquire` is set, runs acquire+stage automatically
   - runs `renderer_backend_smoke.py` when all prerequisites are ready
 - emits:

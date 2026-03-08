@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+from datetime import datetime, timedelta, timezone
 import io
 import json
 import os
@@ -14,6 +15,12 @@ from hybrid_sensor_sim.tools.renderer_backend_workflow import (
     build_renderer_backend_workflow,
     main as workflow_main,
 )
+
+
+def _utc_iso(offset_seconds: int = 0) -> str:
+    return (
+        datetime.now(timezone.utc) + timedelta(seconds=offset_seconds)
+    ).isoformat().replace("+00:00", "Z")
 
 
 def _write_fake_helios_script(path: Path) -> None:
@@ -737,6 +744,238 @@ class RendererBackendWorkflowTests(unittest.TestCase):
             )
             blocker_codes = [entry["code"] for entry in summary["blockers"]]
             self.assertIn("HANDOFF_DOCKER_PREFLIGHT_FAILED", blocker_codes)
+
+    def test_workflow_main_blocks_linux_handoff_docker_when_preflight_stale(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+            awsim_bin = root / "AWSIM-Demo.x86_64"
+            awsim_bin.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            awsim_bin.chmod(0o755)
+            setup_summary = root / "renderer_backend_local_setup.json"
+            setup_summary.write_text(
+                json.dumps(
+                    {
+                        "selection": {
+                            "HELIOS_BIN": str(fake_helios.resolve()),
+                            "AWSIM_BIN": str(awsim_bin.resolve()),
+                            "AWSIM_RENDERER_MAP": "Town09",
+                        },
+                        "readiness": {
+                            "helios_ready": True,
+                            "awsim_host_compatible": False,
+                        },
+                        "probes": {
+                            "linux_handoff_docker_selftest": {
+                                "success": True,
+                                "execute": False,
+                                "marker_exists": False,
+                                "generated_at_utc": _utc_iso(-7200),
+                                "docker": {"return_code": 0},
+                                "summary_path": str(root / "stale_selftest_summary.json"),
+                            }
+                        },
+                        "commands": {
+                            "linux_handoff_docker_selftest": "python3 scripts/discover_renderer_backend_local_env.py --probe-linux-handoff-docker-selftest",
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            config_path = self._write_base_config(
+                root=root,
+                survey=survey,
+                helios_bin=fake_helios,
+                output_dir=root / "smoke_base_output",
+            )
+            output_root = root / "workflow"
+
+            with patch(
+                "hybrid_sensor_sim.tools.renderer_backend_workflow._inspect_executable_host_compatibility",
+                return_value={
+                    "host_compatible": False,
+                    "host_compatibility_reason": "ELF binary is not supported on Darwin",
+                    "binary_format": "elf",
+                    "file_description": "ELF 64-bit LSB executable",
+                },
+            ):
+                with patch(
+                    "hybrid_sensor_sim.tools.renderer_backend_workflow.run_renderer_backend_linux_handoff_in_docker",
+                ) as docker_run:
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        exit_code = workflow_main(
+                            [
+                                "--backend",
+                                "awsim",
+                                "--setup-summary",
+                                str(setup_summary),
+                                "--config",
+                                str(config_path),
+                                "--dry-run",
+                                "--run-linux-handoff-docker",
+                                "--docker-handoff-preflight-max-age-seconds",
+                                "60",
+                                "--output-root",
+                                str(output_root),
+                            ]
+                        )
+
+            self.assertEqual(exit_code, 1)
+            self.assertFalse(docker_run.called)
+            summary = json.loads(
+                (output_root / "renderer_backend_workflow_summary.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(summary["status"], "HANDOFF_DOCKER_PREFLIGHT_STALE")
+            self.assertFalse(summary["success"])
+            self.assertTrue(summary["docker_handoff"]["preflight"]["stale"])
+            self.assertEqual(
+                summary["recommended_next_command"],
+                "python3 scripts/discover_renderer_backend_local_env.py --probe-linux-handoff-docker-selftest",
+            )
+            blocker_codes = [entry["code"] for entry in summary["blockers"]]
+            self.assertIn("HANDOFF_DOCKER_PREFLIGHT_STALE", blocker_codes)
+
+    def test_workflow_main_refreshes_stale_docker_preflight_when_requested(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+            awsim_bin = root / "AWSIM-Demo.x86_64"
+            awsim_bin.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            awsim_bin.chmod(0o755)
+            setup_summary = root / "renderer_backend_local_setup.json"
+            setup_summary.write_text(
+                json.dumps(
+                    {
+                        "selection": {
+                            "HELIOS_BIN": str(fake_helios.resolve()),
+                            "AWSIM_BIN": str(awsim_bin.resolve()),
+                            "AWSIM_RENDERER_MAP": "Town09",
+                        },
+                        "readiness": {
+                            "helios_ready": True,
+                            "awsim_host_compatible": False,
+                        },
+                        "search_roots": [str(root)],
+                        "probes": {
+                            "linux_handoff_docker_selftest": {
+                                "success": True,
+                                "execute": False,
+                                "generated_at_utc": _utc_iso(-7200),
+                                "docker": {"return_code": 0},
+                                "summary_path": str(root / "stale_selftest_summary.json"),
+                            }
+                        },
+                        "commands": {
+                            "linux_handoff_docker_selftest": "python3 scripts/discover_renderer_backend_local_env.py --probe-linux-handoff-docker-selftest",
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            config_path = self._write_base_config(
+                root=root,
+                survey=survey,
+                helios_bin=fake_helios,
+                output_dir=root / "smoke_base_output",
+            )
+            output_root = root / "workflow"
+
+            def _fake_refresh_setup(**kwargs: object) -> dict[str, object]:
+                output_dir = Path(str(kwargs["output_dir"]))
+                refreshed_summary_path = output_dir / "renderer_backend_local_setup.json"
+                payload = {
+                    "selection": {
+                        "HELIOS_BIN": str(fake_helios.resolve()),
+                        "AWSIM_BIN": str(awsim_bin.resolve()),
+                        "AWSIM_RENDERER_MAP": "Town09",
+                    },
+                    "readiness": {
+                        "helios_ready": True,
+                        "awsim_host_compatible": False,
+                    },
+                    "probes": {
+                        "linux_handoff_docker_selftest": {
+                            "success": True,
+                            "execute": False,
+                            "generated_at_utc": _utc_iso(0),
+                            "docker": {"return_code": 0},
+                            "summary_path": str(output_dir / "linux_handoff_docker_selftest_probe" / "renderer_backend_linux_handoff_selftest.json"),
+                        }
+                    },
+                    "commands": {
+                        "linux_handoff_docker_selftest": "python3 scripts/discover_renderer_backend_local_env.py --probe-linux-handoff-docker-selftest",
+                    },
+                    "artifacts": {
+                        "summary_path": str(refreshed_summary_path),
+                        "env_path": str(output_dir / "renderer_backend_local.env.sh"),
+                        "linux_handoff_docker_selftest_probe_path": str(
+                            output_dir / "linux_handoff_docker_selftest_probe" / "renderer_backend_linux_handoff_selftest.json"
+                        ),
+                    },
+                }
+                refreshed_summary_path.parent.mkdir(parents=True, exist_ok=True)
+                refreshed_summary_path.write_text(json.dumps(payload), encoding="utf-8")
+                (output_dir / "renderer_backend_local.env.sh").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+                return payload
+
+            with patch(
+                "hybrid_sensor_sim.tools.renderer_backend_workflow._inspect_executable_host_compatibility",
+                return_value={
+                    "host_compatible": False,
+                    "host_compatibility_reason": "ELF binary is not supported on Darwin",
+                    "binary_format": "elf",
+                    "file_description": "ELF 64-bit LSB executable",
+                },
+            ):
+                with patch(
+                    "hybrid_sensor_sim.tools.renderer_backend_workflow.build_renderer_backend_local_setup",
+                    side_effect=_fake_refresh_setup,
+                ) as refresh_setup:
+                    with patch(
+                        "hybrid_sensor_sim.tools.renderer_backend_workflow.run_renderer_backend_linux_handoff_in_docker",
+                        return_value={
+                            "return_code": 0,
+                            "summary_path": str(output_root / "renderer_backend_linux_handoff_docker_run" / "renderer_backend_linux_handoff_docker_run.json"),
+                        },
+                    ) as docker_run:
+                        with contextlib.redirect_stdout(io.StringIO()):
+                            exit_code = workflow_main(
+                                [
+                                    "--backend",
+                                    "awsim",
+                                    "--setup-summary",
+                                    str(setup_summary),
+                                    "--config",
+                                    str(config_path),
+                                    "--dry-run",
+                                    "--run-linux-handoff-docker",
+                                    "--refresh-docker-handoff-preflight",
+                                    "--docker-handoff-preflight-max-age-seconds",
+                                    "60",
+                                    "--output-root",
+                                    str(output_root),
+                                ]
+                            )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(refresh_setup.call_count, 1)
+            self.assertTrue(refresh_setup.call_args.kwargs["probe_linux_handoff_docker_selftest"])
+            self.assertFalse(refresh_setup.call_args.kwargs["probe_linux_handoff_docker_selftest_execute"])
+            self.assertTrue(docker_run.called)
+            summary = json.loads(
+                (output_root / "renderer_backend_workflow_summary.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(summary["status"], "HANDOFF_DOCKER_VERIFIED")
+            self.assertTrue(summary["docker_handoff"]["preflight"]["refreshed"])
+            self.assertEqual(summary["docker_handoff"]["preflight"]["refresh_reason"], "stale")
+            self.assertFalse(summary["docker_handoff"]["preflight"]["stale"])
+            self.assertIsNotNone(summary["refreshed_setup"])
 
     def test_workflow_can_materialize_default_docker_preset_from_setup_selection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import copy
 import contextlib
+from datetime import datetime, timezone
 import hashlib
 import io
 import json
@@ -51,6 +52,7 @@ _BACKEND_ENV_VARS = {
 }
 _DEFAULT_LINUX_HANDOFF_DOCKER_IMAGE = "python:3.11-slim"
 _DEFAULT_LINUX_HANDOFF_CONTAINER_WORKSPACE = "/workspace"
+_DEFAULT_DOCKER_HANDOFF_PREFLIGHT_MAX_AGE_SECONDS = 24 * 60 * 60
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -155,6 +157,23 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=_DEFAULT_LINUX_HANDOFF_CONTAINER_WORKSPACE,
         help="Workspace mount path inside the Docker container for --run-linux-handoff-docker.",
     )
+    parser.add_argument(
+        "--docker-handoff-preflight-max-age-seconds",
+        type=int,
+        default=_DEFAULT_DOCKER_HANDOFF_PREFLIGHT_MAX_AGE_SECONDS,
+        help=(
+            "Maximum age in seconds for the cached Docker handoff preflight probe before it is "
+            "treated as stale."
+        ),
+    )
+    parser.add_argument(
+        "--refresh-docker-handoff-preflight",
+        action="store_true",
+        help=(
+            "When --run-linux-handoff-docker is used, rerun local setup with the Docker handoff "
+            "self-test if the cached preflight probe is missing or stale."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -186,6 +205,31 @@ def _resolve_path(raw: str | Path) -> Path:
     if path.is_absolute():
         return path.resolve()
     return (Path.cwd() / path).resolve()
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _format_utc(dt: datetime) -> str:
+    return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _parse_utc_timestamp(raw: Any) -> datetime | None:
+    if not isinstance(raw, str):
+        return None
+    text = raw.strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def _selection_value(selection: dict[str, Any], key: str) -> str | None:
@@ -342,9 +386,16 @@ def _render_workflow_markdown_report(summary: dict[str, Any], summary_path: Path
                     "### Docker Preflight",
                     f"- available: `{_inline(preflight.get('available'))}`",
                     f"- success: `{_inline(preflight.get('success'))}`",
+                    f"- stale: `{_inline(preflight.get('stale'))}`",
+                    f"- generated_at_utc: `{_inline(preflight.get('generated_at_utc'))}`",
+                    f"- age_seconds: `{_inline(preflight.get('age_seconds'))}`",
+                    f"- max_age_seconds: `{_inline(preflight.get('max_age_seconds'))}`",
+                    f"- timestamp_source: `{_inline(preflight.get('timestamp_source'))}`",
                     f"- execute: `{_inline(preflight.get('execute'))}`",
                     f"- marker_exists: `{_inline(preflight.get('marker_exists'))}`",
                     f"- docker_return_code: `{_inline(preflight.get('docker_return_code'))}`",
+                    f"- refreshed: `{_inline(preflight.get('refreshed'))}`",
+                    f"- refresh_reason: `{_inline(preflight.get('refresh_reason'))}`",
                     f"- command: `{_inline(preflight.get('command'))}`",
                     f"- summary_path: `{_inline(preflight.get('summary_path'))}`",
                     "",
@@ -484,6 +535,8 @@ def _refresh_setup_summary(
     repo_root: Path,
     workflow_root: Path,
     prior_summary: dict[str, Any],
+    probe_linux_handoff_docker_selftest: bool = False,
+    probe_linux_handoff_docker_selftest_execute: bool = False,
 ) -> tuple[dict[str, Any], Path, Path]:
     refresh_root = workflow_root / "local_setup_refreshed"
     refreshed = build_renderer_backend_local_setup(
@@ -491,6 +544,8 @@ def _refresh_setup_summary(
         search_roots=_reuse_search_roots_from_setup(prior_summary),
         output_dir=refresh_root,
         include_default_search_roots=False,
+        probe_linux_handoff_docker_selftest=probe_linux_handoff_docker_selftest,
+        probe_linux_handoff_docker_selftest_execute=probe_linux_handoff_docker_selftest_execute,
     )
     summary_path = Path(refreshed["artifacts"]["summary_path"])
     env_path = Path(refreshed["artifacts"]["env_path"])
@@ -499,30 +554,66 @@ def _refresh_setup_summary(
     return refreshed, summary_path, env_path
 
 
-def _extract_linux_handoff_docker_preflight(setup_summary: dict[str, Any]) -> dict[str, Any]:
+def _extract_linux_handoff_docker_preflight(
+    setup_summary: dict[str, Any],
+    *,
+    setup_summary_path: Path | None = None,
+    max_age_seconds: int | None = None,
+) -> dict[str, Any]:
     probes = setup_summary.get("probes", {})
     probe = probes.get("linux_handoff_docker_selftest", {}) if isinstance(probes, dict) else {}
     commands = setup_summary.get("commands", {})
     artifacts = setup_summary.get("artifacts", {})
     if not isinstance(probe, dict):
         probe = {}
+    summary_path_raw = (
+        probe.get("summary_path")
+        or (
+            artifacts.get("linux_handoff_docker_selftest_probe_path")
+            if isinstance(artifacts, dict)
+            else None
+        )
+        if probe
+        else None
+    )
+    generated_at_utc = probe.get("generated_at_utc") if probe else None
+    timestamp_source: str | None = "probe_payload" if generated_at_utc else None
+    if probe and not generated_at_utc and isinstance(summary_path_raw, str) and summary_path_raw.strip():
+        candidate_path = _resolve_path(summary_path_raw)
+        if candidate_path.exists():
+            generated_at_utc = _format_utc(
+                datetime.fromtimestamp(candidate_path.stat().st_mtime, tz=timezone.utc)
+            )
+            timestamp_source = "probe_summary_mtime"
+    if probe and not generated_at_utc and setup_summary_path is not None and setup_summary_path.exists():
+        generated_at_utc = _format_utc(
+            datetime.fromtimestamp(setup_summary_path.stat().st_mtime, tz=timezone.utc)
+        )
+        timestamp_source = "setup_summary_mtime"
+    generated_at = _parse_utc_timestamp(generated_at_utc) if probe else None
+    age_seconds: float | None = None
+    if generated_at is not None:
+        age_seconds = max(0.0, (_utc_now() - generated_at).total_seconds())
+    stale = (
+        bool(max_age_seconds is not None and age_seconds is not None and age_seconds > max_age_seconds)
+    )
     return {
         "available": bool(probe),
         "success": probe.get("success"),
         "execute": probe.get("execute"),
         "marker_exists": probe.get("marker_exists"),
         "marker_content": probe.get("marker_content"),
+        "generated_at_utc": generated_at_utc,
+        "timestamp_source": timestamp_source,
+        "age_seconds": age_seconds,
+        "max_age_seconds": max_age_seconds,
+        "stale": stale,
         "docker_return_code": (
             probe.get("docker", {}).get("return_code")
             if isinstance(probe.get("docker"), dict)
             else None
         ),
-        "summary_path": probe.get("summary_path")
-        or (
-            artifacts.get("linux_handoff_docker_selftest_probe_path")
-            if isinstance(artifacts, dict)
-            else None
-        ),
+        "summary_path": summary_path_raw,
         "command": (
             commands.get("linux_handoff_docker_selftest")
             if isinstance(commands, dict)
@@ -637,6 +728,23 @@ def _build_blockers(
                 "severity": "blocking",
                 "message": f"Backend smoke exited with code {smoke_exit_code}.",
                 "recommended_command": recommended_next_command,
+            }
+        )
+    if (
+        run_linux_handoff_docker
+        and isinstance(docker_handoff_preflight, dict)
+        and docker_handoff_preflight.get("available")
+        and docker_handoff_preflight.get("stale")
+    ):
+        blockers.append(
+            {
+                "code": "HANDOFF_DOCKER_PREFLIGHT_STALE",
+                "severity": "blocking",
+                "message": (
+                    "Docker handoff preflight probe is stale. "
+                    f"Max age is {docker_handoff_preflight.get('max_age_seconds')} seconds."
+                ),
+                "recommended_command": docker_handoff_preflight.get("command"),
             }
         )
     if (
@@ -1532,6 +1640,8 @@ def build_renderer_backend_workflow(
     docker_binary: str = "docker",
     docker_image: str = _DEFAULT_LINUX_HANDOFF_DOCKER_IMAGE,
     docker_container_workspace: str = _DEFAULT_LINUX_HANDOFF_CONTAINER_WORKSPACE,
+    docker_handoff_preflight_max_age_seconds: int | None = _DEFAULT_DOCKER_HANDOFF_PREFLIGHT_MAX_AGE_SECONDS,
+    refresh_docker_handoff_preflight: bool = False,
 ) -> dict[str, Any]:
     backend = backend.strip().lower()
     if backend not in _BACKEND_ENV_VARS:
@@ -1604,7 +1714,50 @@ def build_renderer_backend_workflow(
     active_setup_summary_path = refreshed_setup_summary_path or resolved_setup_summary_path
     active_setup_selection = dict(active_setup_summary.get("selection", {}))
     active_setup_readiness = active_setup_summary.get("readiness", {})
-    docker_handoff_preflight = _extract_linux_handoff_docker_preflight(active_setup_summary)
+    docker_handoff_preflight = _extract_linux_handoff_docker_preflight(
+        active_setup_summary,
+        setup_summary_path=active_setup_summary_path,
+        max_age_seconds=docker_handoff_preflight_max_age_seconds,
+    )
+    if (
+        run_linux_handoff_docker
+        and refresh_docker_handoff_preflight
+        and (
+            not docker_handoff_preflight.get("available")
+            or docker_handoff_preflight.get("stale")
+        )
+    ):
+        refresh_reason = (
+            "missing" if not docker_handoff_preflight.get("available") else "stale"
+        )
+        (
+            refreshed_setup_summary,
+            refreshed_setup_summary_path,
+            refreshed_setup_env_path,
+        ) = _refresh_setup_summary(
+            repo_root=repo_root,
+            workflow_root=workflow_root,
+            prior_summary=active_setup_summary,
+            probe_linux_handoff_docker_selftest=True,
+            probe_linux_handoff_docker_selftest_execute=docker_handoff_execute,
+        )
+        active_setup_summary = refreshed_setup_summary
+        active_setup_summary_path = refreshed_setup_summary_path
+        active_setup_selection = dict(active_setup_summary.get("selection", {}))
+        active_setup_readiness = active_setup_summary.get("readiness", {})
+        selected_backend_bin = _selection_value(active_setup_selection, backend_env_var) or selected_backend_bin
+        if renderer_map_override is None:
+            selected_renderer_map = _selection_value(active_setup_selection, map_env_var) or selected_renderer_map
+        docker_handoff_preflight = _extract_linux_handoff_docker_preflight(
+            active_setup_summary,
+            setup_summary_path=active_setup_summary_path,
+            max_age_seconds=docker_handoff_preflight_max_age_seconds,
+        )
+        docker_handoff_preflight["refreshed"] = True
+        docker_handoff_preflight["refresh_reason"] = refresh_reason
+    else:
+        docker_handoff_preflight["refreshed"] = False
+        docker_handoff_preflight["refresh_reason"] = None
 
     smoke_config_path, smoke_config_source = _determine_smoke_config(
         backend=backend,
@@ -1700,6 +1853,11 @@ def build_renderer_backend_workflow(
             backend_host_compatibility_reason
             or f"{backend_env_var} is resolved but not executable on the current host."
         )
+    if run_linux_handoff_docker and docker_handoff_preflight.get("available") and docker_handoff_preflight.get("stale"):
+        issues.append(
+            "Docker handoff preflight probe is stale. "
+            f"Max age is {docker_handoff_preflight.get('max_age_seconds')} seconds."
+        )
 
     if smoke_ready and not dry_run:
         smoke_executed = True
@@ -1741,7 +1899,7 @@ def build_renderer_backend_workflow(
         )
     blockers = _build_blockers(
         backend=backend,
-        setup_summary=setup_summary,
+        setup_summary=active_setup_summary,
         helios_ready=helios_ready,
         backend_bin=selected_backend_bin,
         backend_host_compatible=backend_host_compatible,
@@ -1780,12 +1938,15 @@ def build_renderer_backend_workflow(
         if (
             run_linux_handoff_docker
             and docker_handoff_preflight.get("available")
-            and docker_handoff_preflight.get("success") is False
+            and (
+                docker_handoff_preflight.get("stale")
+                or docker_handoff_preflight.get("success") is False
+            )
         ):
             recommended_next_command = docker_handoff_preflight.get("command") or recommended_next_command
         blockers = _build_blockers(
             backend=backend,
-            setup_summary=setup_summary,
+            setup_summary=active_setup_summary,
             helios_ready=helios_ready,
             backend_bin=selected_backend_bin,
             backend_host_compatible=backend_host_compatible,
@@ -1881,6 +2042,8 @@ def build_renderer_backend_workflow(
             "requested": run_linux_handoff_docker,
             "ready": bool(linux_handoff.get("ready")),
             "preflight": docker_handoff_preflight,
+            "preflight_max_age_seconds": docker_handoff_preflight_max_age_seconds,
+            "preflight_refresh_requested": refresh_docker_handoff_preflight,
             "execute_in_container": docker_handoff_execute,
             "skip_run": not docker_handoff_execute,
             "docker_binary": docker_binary,
@@ -1984,6 +2147,8 @@ def main(argv: list[str] | None = None) -> int:
         docker_binary=args.docker_binary,
         docker_image=args.docker_image,
         docker_container_workspace=args.docker_container_workspace,
+        docker_handoff_preflight_max_age_seconds=args.docker_handoff_preflight_max_age_seconds,
+        refresh_docker_handoff_preflight=args.refresh_docker_handoff_preflight,
     )
     summary_path = Path(summary["artifacts"]["summary_path"])
     env_path = Path(summary["artifacts"]["env_path"])
@@ -2061,7 +2226,14 @@ def main(argv: list[str] | None = None) -> int:
     docker_handoff = summary.get("docker_handoff", {})
     if isinstance(docker_handoff, dict) and docker_handoff.get("requested"):
         preflight = docker_handoff.get("preflight", {})
-        if isinstance(preflight, dict) and preflight.get("available") and preflight.get("success") is False:
+        if isinstance(preflight, dict) and preflight.get("available") and preflight.get("stale"):
+            docker_handoff["error"] = (
+                "Docker handoff preflight probe is stale. "
+                f"Max age is {preflight.get('max_age_seconds')} seconds."
+            )
+            summary["status"] = "HANDOFF_DOCKER_PREFLIGHT_STALE"
+            summary["success"] = False
+        elif isinstance(preflight, dict) and preflight.get("available") and preflight.get("success") is False:
             docker_handoff["error"] = "Docker handoff preflight probe failed."
             summary["status"] = "HANDOFF_DOCKER_PREFLIGHT_FAILED"
             summary["success"] = False
