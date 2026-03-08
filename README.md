@@ -49,6 +49,8 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
   - supports `rendered_payload_kind=log_scene_v0` via replay and `rendered_payload_kind=scenario_definition_v0` via direct object-sim execution
   - report includes `successful_variant_rows` and `non_success_variant_rows` for quick triage
 - `scripts/run_scenario_variant_workflow.py`: generates variants and immediately executes rendered payloads, writing a workflow report plus the underlying variant/run reports.
+- `src/hybrid_sensor_sim/tools/scenario_runtime_bridge.py`: translates migrated scenarios into smoke-ready `objects` scenarios for HELIOS survey generation and renderer smoke execution.
+- `scripts/run_scenario_backend_smoke_workflow.py`: selects a variant from scenario variant/batch workflow reports, materializes a smoke-ready scenario/config, and optionally runs renderer backend smoke.
 - `src/hybrid_sensor_sim/tools/scenario_batch_gate_catalog.py`: reusable gate preset catalog and profile-id resolution for batch comparison/workflow tooling.
 - `scripts/run_scenario_batch_comparison.py`: compares a scenario variant workflow report against a matrix-sweep report and writes JSON plus Markdown comparison artifacts.
 - `scripts/run_scenario_batch_workflow.py`: runs variant workflow, matrix sweep, and batch comparison as one reusable workflow and writes a single top-level workflow report.
@@ -283,6 +285,25 @@ Fixture preset examples:
 
 The workflow Markdown report now includes logical-scenario health with per-scenario gate columns, logical-scenario summary and matrix-group summary with path/merge/lane-change columns, successful/non-success variant tables, and attention rows annotated with `attention_reasons` such as `PATH_CONFLICT_PRESENT`, `MERGE_CONFLICT_PRESENT`, `LANE_CHANGE_CONFLICT_PRESENT`, and `PATH_TTC_UNDER_3S` when applicable.
 Attention rows and grouped batch rows now also preserve explicit route-lane traces such as `ego_route_lane_id`, `traffic_npc_route_lane_id_profile`, and `traffic_npc_route_binding_mode_profiles`, so lane-change conflicts remain inspectable all the way through batch triage.
+
+Scenario backend smoke workflow:
+
+```bash
+python3 scripts/run_scenario_backend_smoke_workflow.py \
+  --variant-workflow-report artifacts/scenario_variant_workflow_runs/scenario_variant_workflow_report_v0.json \
+  --smoke-config configs/renderer_backend_smoke.awsim.example.json \
+  --backend awsim \
+  --out-root artifacts/scenario_backend_smoke_runs \
+  --selection-strategy first_successful_variant \
+  --skip-smoke
+```
+
+`scenario_backend_smoke_workflow_report_v0.json` includes:
+
+- `selection`: chosen `variant_id`, `logical_scenario_id`, bridge source path, and whether the bridge used `rendered_payload_path` or `replay_scenario_path`
+- `bridge`: lane spacing, actor IDs, lane bindings, route-lane metadata, and the translated smoke scenario artifact path
+- `artifacts`: `scenario_backend_smoke_selection.json`, `scenario_runtime_bridge_manifest.json`, translated smoke scenario JSON, and materialized smoke input config
+- `smoke`: optional downstream `renderer_backend_smoke` execution status, summary/report paths, and captured stdout/stderr logs
 
 Both `run_scenario_variants.py` and `run_scenario_variant_workflow.py` resolve default scenario-language profiles from:
 

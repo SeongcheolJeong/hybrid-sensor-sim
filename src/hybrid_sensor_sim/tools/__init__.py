@@ -42,6 +42,9 @@ from hybrid_sensor_sim.tools.scenario_variant_runner import (
 from hybrid_sensor_sim.tools.scenario_variant_workflow import (
     run_scenario_variant_workflow,
 )
+from hybrid_sensor_sim.tools.scenario_backend_smoke_workflow import (
+    run_scenario_backend_smoke_workflow,
+)
 from hybrid_sensor_sim.tools.scenario_batch_comparison import (
     build_scenario_batch_comparison_report,
 )
@@ -70,6 +73,7 @@ __all__ = [
     "run_log_replay",
     "run_scenario_variant_report",
     "run_scenario_variant_workflow",
+    "run_scenario_backend_smoke_workflow",
     "build_scenario_batch_comparison_report",
     "augment_log_scene",
     "run_vehicle_dynamics_trace",

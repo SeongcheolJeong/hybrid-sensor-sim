@@ -166,6 +166,9 @@ Implemented in the current repository:
 40. hold-aware batch triage
    - batch comparison overview, logical-scenario rows, matrix-group rows, and workflow worst-case rows now preserve hold metrics and selected `hold_duration_sec` values
    - worst-case ranking is now explicitly hold-aware: hold-active steps and hold events rank ahead of raw brake totals before policy-trace tie-breaks
+41. scenario-to-runtime smoke bridge
+   - `src/hybrid_sensor_sim/tools/scenario_runtime_bridge.py` now converts migrated `scenario_definition_v0` and replay-generated scenarios into smoke-ready `objects` scenarios for HELIOS survey generation and renderer smoke
+   - `src/hybrid_sensor_sim/tools/scenario_backend_smoke_workflow.py` now connects variant/batch workflow outputs to `renderer_backend_smoke`, selecting a variant, materializing a translated scenario/config, and optionally running the backend smoke stack
 
 Still pending from the same migration track:
 
