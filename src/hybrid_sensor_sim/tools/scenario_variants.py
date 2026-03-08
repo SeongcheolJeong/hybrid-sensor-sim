@@ -37,7 +37,7 @@ def main(argv: list[str] | None = None) -> int:
         scenario_language_dir = args.scenario_language_dir
         if not scenario_language_dir:
             scenario_language_dir = str(
-                Path(__file__).resolve().parents[4]
+                Path(__file__).resolve().parents[3]
                 / "tests"
                 / "fixtures"
                 / "autonomy_e2e"

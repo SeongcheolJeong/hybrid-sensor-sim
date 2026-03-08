@@ -61,6 +61,27 @@ def _build_non_success_variant_rows(variant_runs: list[dict[str, Any]]) -> list[
     return rows
 
 
+def _build_success_variant_rows(variant_runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for run in variant_runs:
+        execution_status = str(run.get("execution_status", "")).strip()
+        if execution_status != "SUCCEEDED":
+            continue
+        rows.append(
+            {
+                "variant_id": str(run.get("variant_id", "")).strip() or None,
+                "logical_scenario_id": str(run.get("logical_scenario_id", "")).strip() or None,
+                "rendered_payload_kind": str(run.get("rendered_payload_kind", "")).strip() or None,
+                "execution_status": execution_status,
+                "object_sim_status": str(run.get("object_sim_status", "")).strip() or None,
+                "termination_reason": str(run.get("termination_reason", "")).strip() or None,
+                "execution_path": str(run.get("execution_path", "")).strip() or None,
+                "summary_path": str(run.get("summary_path", "")).strip() or None,
+            }
+        )
+    return rows
+
+
 def run_scenario_variant_workflow(
     *,
     logical_scenarios_path: str,
@@ -137,8 +158,10 @@ def run_scenario_variant_workflow(
         "execution_status_counts": dict(run_report["execution_status_counts"]),
         "object_sim_status_counts": dict(run_report["object_sim_status_counts"]),
         "by_payload_kind": dict(run_report["by_payload_kind"]),
+        "successful_variant_rows": _build_success_variant_rows(run_report["variant_runs"]),
         "non_success_variant_rows": _build_non_success_variant_rows(run_report["variant_runs"]),
     }
+    workflow_report["successful_variant_row_count"] = len(workflow_report["successful_variant_rows"])
     workflow_report["non_success_variant_row_count"] = len(workflow_report["non_success_variant_rows"])
     workflow_report_path = out_root / "scenario_variant_workflow_report_v0.json"
     workflow_report_path.write_text(
@@ -161,7 +184,7 @@ def main(argv: list[str] | None = None) -> int:
         scenario_language_dir = args.scenario_language_dir
         if not scenario_language_dir:
             scenario_language_dir = str(
-                Path(__file__).resolve().parents[4]
+                Path(__file__).resolve().parents[3]
                 / "tests"
                 / "fixtures"
                 / "autonomy_e2e"

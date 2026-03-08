@@ -51,10 +51,38 @@ class ScenarioVariantWorkflowTests(unittest.TestCase):
                 workflow_report["by_payload_kind"]["scenario_definition_v0"]["execution_path_counts"]["direct_object_sim"],
                 1,
             )
+            self.assertEqual(workflow_report["successful_variant_row_count"], 2)
             self.assertEqual(workflow_report["non_success_variant_row_count"], 0)
+            self.assertEqual(
+                {row["rendered_payload_kind"] for row in workflow_report["successful_variant_rows"]},
+                {"log_scene_v0", "scenario_definition_v0"},
+            )
             self.assertTrue(Path(result["variants_report_path"]).is_file())
             self.assertTrue(Path(result["variant_run_report_path"]).is_file())
             self.assertTrue(Path(result["workflow_report_path"]).is_file())
+
+    def test_run_scenario_variant_workflow_supports_scenario_language_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            result = run_scenario_variant_workflow(
+                logical_scenarios_path="",
+                scenario_language_profile="highway_mixed_payloads_v0",
+                scenario_language_dir=FIXTURE_ROOT,
+                out_root=root / "workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=2,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+            )
+            workflow_report = result["workflow_report"]
+            self.assertEqual(workflow_report["source_kind"], "scenario_language_profile")
+            self.assertEqual(Path(workflow_report["source_path"]).name, "highway_mixed_payloads_v0.json")
+            self.assertEqual(workflow_report["selected_variant_count"], 2)
+            self.assertEqual(workflow_report["execution_status_counts"]["SUCCEEDED"], 2)
 
     def test_run_scenario_variant_workflow_emits_non_success_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -100,6 +128,7 @@ class ScenarioVariantWorkflowTests(unittest.TestCase):
                 fidelity_profile="dev-fast",
             )
             workflow_report = result["workflow_report"]
+            self.assertEqual(workflow_report["successful_variant_row_count"], 0)
             self.assertEqual(workflow_report["non_success_variant_row_count"], 2)
             self.assertEqual(
                 {row["execution_status"] for row in workflow_report["non_success_variant_rows"]},
@@ -116,8 +145,8 @@ class ScenarioVariantWorkflowTests(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()):
                 exit_code = scenario_variant_workflow_main(
                     [
-                        "--logical-scenarios",
-                        str(FIXTURE_ROOT / "highway_mixed_payloads_v0.json"),
+                        "--scenario-language-profile",
+                        "highway_mixed_payloads_v0",
                         "--out-root",
                         str(root / "workflow"),
                         "--execution-max-variants",

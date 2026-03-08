@@ -152,7 +152,7 @@ python3 scripts/run_scenario_variant_runner.py \
   --out artifacts/scenario_variant_runs
 
 python3 scripts/run_scenario_variant_workflow.py \
-  --logical-scenarios tests/fixtures/autonomy_e2e/p_validation/highway_mixed_payloads_v0.json \
+  --scenario-language-profile highway_mixed_payloads_v0 \
   --out-root artifacts/scenario_variant_workflow_runs \
   --execution-max-variants 2
 ```
@@ -160,7 +160,12 @@ python3 scripts/run_scenario_variant_workflow.py \
 `scenario_variant_workflow_report_v0.json` includes:
 
 - `by_payload_kind`: grouped execution summary for each rendered payload kind
+- `successful_variant_rows`: compact successful variant table with execution path and summary artifact
 - `non_success_variant_rows`: compact failed/skipped variant table for quick triage
+
+Both `run_scenario_variants.py` and `run_scenario_variant_workflow.py` resolve default scenario-language profiles from:
+
+- `tests/fixtures/autonomy_e2e/p_validation`
 
 Object-sim matrix sweep:
 
