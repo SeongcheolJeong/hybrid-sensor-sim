@@ -195,6 +195,70 @@ def _write_text(path: Path, payload: str) -> None:
     path.write_text(payload, encoding="utf-8")
 
 
+def _extract_handoff_nested_smoke_summary(docker_result: dict[str, Any]) -> dict[str, Any] | None:
+    handoff_run_summary = docker_result.get("handoff_run_summary")
+    if not isinstance(handoff_run_summary, dict):
+        return None
+    execution = handoff_run_summary.get("execution")
+    if not isinstance(execution, dict):
+        return None
+    stdout_text = execution.get("stdout")
+    if not isinstance(stdout_text, str) or not stdout_text.strip():
+        return None
+    try:
+        payload = json.loads(stdout_text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return payload
+
+
+def _classify_handoff_docker_result(docker_result: dict[str, Any]) -> dict[str, Any]:
+    nested_smoke_summary = _extract_handoff_nested_smoke_summary(docker_result)
+    if not isinstance(nested_smoke_summary, dict):
+        return {
+            "status": "HANDOFF_DOCKER_FAILED",
+            "success": False,
+            "warning_codes": [],
+            "nested_smoke_summary": None,
+        }
+    output_comparison = nested_smoke_summary.get("output_comparison")
+    output_smoke_report = nested_smoke_summary.get("output_smoke_report")
+    run_summary = nested_smoke_summary.get("run")
+    if not isinstance(output_comparison, dict) or not isinstance(output_smoke_report, dict):
+        return {
+            "status": "HANDOFF_DOCKER_FAILED",
+            "success": False,
+            "warning_codes": [],
+            "nested_smoke_summary": nested_smoke_summary,
+        }
+    output_origin_status = str(output_smoke_report.get("output_origin_status", "")).strip()
+    output_comparison_status = str(output_comparison.get("status", "")).strip()
+    output_smoke_status = str(output_smoke_report.get("status", "")).strip()
+    run_failure_reason = ""
+    if isinstance(run_summary, dict):
+        run_failure_reason = str(run_summary.get("failure_reason", "")).strip()
+    if (
+        output_comparison_status == "MATCHED"
+        and output_smoke_status == "COMPLETE"
+        and output_origin_status == "BACKEND_RUNTIME_ONLY"
+        and run_failure_reason == "NONZERO_EXIT"
+    ):
+        return {
+            "status": "HANDOFF_DOCKER_OUTPUT_READY",
+            "success": True,
+            "warning_codes": ["BACKEND_RUNTIME_NONZERO_EXIT_WITH_COMPLETE_OUTPUTS"],
+            "nested_smoke_summary": nested_smoke_summary,
+        }
+    return {
+        "status": "HANDOFF_DOCKER_FAILED",
+        "success": False,
+        "warning_codes": [],
+        "nested_smoke_summary": nested_smoke_summary,
+    }
+
+
 def _write_executable_text(path: Path, payload: str) -> None:
     _write_text(path, payload)
     path.chmod(path.stat().st_mode | 0o111)
@@ -340,6 +404,12 @@ def _render_workflow_markdown_report(summary: dict[str, Any], summary_path: Path
         lines.append("## Issues")
         for issue in issues:
             lines.append(f"- `{_inline(issue)}`")
+        lines.append("")
+    warning_codes = summary.get("warning_codes", [])
+    if isinstance(warning_codes, list) and warning_codes:
+        lines.append("## Warning Codes")
+        for warning_code in warning_codes:
+            lines.append(f"- `{_inline(warning_code)}`")
         lines.append("")
     blockers = summary.get("blockers", [])
     if isinstance(blockers, list) and blockers:
@@ -1992,10 +2062,11 @@ def build_renderer_backend_workflow(
     return {
         "backend": backend,
         "status": status,
-        "success": status in {"SMOKE_SUCCEEDED", "DRY_RUN_READY"},
+        "success": status in {"SMOKE_SUCCEEDED", "DRY_RUN_READY", "HANDOFF_DOCKER_OUTPUT_READY"},
         "dry_run": dry_run,
         "generated_setup": generated_setup,
         "issues": issues,
+        "warning_codes": [],
         "blockers": blockers,
         "final_selection": final_selection,
         "recommended_next_command": recommended_next_command,
@@ -2297,8 +2368,21 @@ def _materialize_renderer_backend_workflow(
                         )
                         summary["success"] = True
                     else:
-                        summary["status"] = "HANDOFF_DOCKER_FAILED"
-                        summary["success"] = False
+                        docker_result_classification = _classify_handoff_docker_result(
+                            docker_result
+                        )
+                        summary["status"] = str(docker_result_classification["status"])
+                        summary["success"] = bool(docker_result_classification["success"])
+                        if docker_result_classification.get("warning_codes"):
+                            summary["warning_codes"] = list(
+                                docker_result_classification["warning_codes"]
+                            )
+                        if docker_result_classification.get("nested_smoke_summary") is not None:
+                            docker_handoff["nested_smoke_summary"] = docker_result_classification[
+                                "nested_smoke_summary"
+                            ]
+                        if not summary["success"]:
+                            summary["status"] = "HANDOFF_DOCKER_FAILED"
     _write_json(summary_path, summary)
     _write_text(report_path, _render_workflow_markdown_report(summary, summary_path))
     _write_executable_text(next_step_script_path, _render_next_step_script(summary))
@@ -2414,6 +2498,8 @@ def main(argv: list[str] | None = None) -> int:
     print(json.dumps(summary, indent=2))
     docker_handoff = summary.get("docker_handoff", {})
     if isinstance(docker_handoff, dict) and docker_handoff.get("requested"):
+        if summary.get("success"):
+            return 0
         if docker_handoff.get("executed"):
             return_code = docker_handoff.get("return_code")
             if isinstance(return_code, int):

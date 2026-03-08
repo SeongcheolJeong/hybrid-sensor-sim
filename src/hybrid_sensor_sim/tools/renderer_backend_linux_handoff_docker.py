@@ -259,6 +259,15 @@ def run_renderer_backend_linux_handoff_in_docker(
         return_code = 127
         stdout = ""
         stderr = str(exc)
+    handoff_run_summary_path = (output_root / "renderer_backend_linux_handoff_run.json").resolve()
+    handoff_run_summary = None
+    if handoff_run_summary_path.exists():
+        try:
+            handoff_run_summary = json.loads(
+                handoff_run_summary_path.read_text(encoding="utf-8")
+            )
+        except (OSError, json.JSONDecodeError):
+            handoff_run_summary = None
     summary = {
         "bundle_path": str(bundle_path),
         "transfer_manifest_path": str(transfer_manifest_path),
@@ -284,6 +293,10 @@ def run_renderer_backend_linux_handoff_in_docker(
         "stdout": stdout,
         "stderr": stderr,
         "launch_error": launch_error,
+        "handoff_run_summary_path": (
+            str(handoff_run_summary_path) if handoff_run_summary_path.exists() else None
+        ),
+        "handoff_run_summary": handoff_run_summary,
     }
     _write_json(summary_path, summary)
     return summary

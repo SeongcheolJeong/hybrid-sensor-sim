@@ -260,6 +260,8 @@ def _build_workflow_status(
         return "FAILED"
     if backend_status in {"SMOKE_FAILED", "FAILED", "HANDOFF_FAILED", "HANDOFF_DOCKER_FAILED"}:
         return "FAILED"
+    if backend_status == "HANDOFF_DOCKER_OUTPUT_READY":
+        return "ATTENTION"
     if batch_status == "FAILED":
         return "FAILED"
     if batch_status == "ATTENTION":
@@ -301,6 +303,12 @@ def _build_status_summary(
             "matched": backend_report["status"] in {"HANDOFF_DOCKER_FAILED", "HANDOFF_DOCKER_PREFLIGHT_FAILED"},
             "status_if_matched": "FAILED",
             "reason_code": "BACKEND_HANDOFF_DOCKER_FAILED",
+        },
+        {
+            "step_id": "backend_handoff_docker_output_ready",
+            "matched": backend_report["status"] == "HANDOFF_DOCKER_OUTPUT_READY",
+            "status_if_matched": "ATTENTION",
+            "reason_code": "BACKEND_HANDOFF_DOCKER_OUTPUT_READY",
         },
         {
             "step_id": "batch_workflow_status",

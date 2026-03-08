@@ -880,6 +880,7 @@ def run_scenario_backend_smoke_workflow(
         if renderer_workflow_status in {
             "HANDOFF_DOCKER_VERIFIED",
             "HANDOFF_DOCKER_EXECUTED",
+            "HANDOFF_DOCKER_OUTPUT_READY",
             "HANDOFF_DOCKER_FAILED",
             "HANDOFF_DOCKER_PREFLIGHT_FAILED",
         }:
@@ -1266,6 +1267,7 @@ def run_scenario_backend_smoke_workflow(
             "HANDOFF_READY",
             "HANDOFF_DOCKER_VERIFIED",
             "HANDOFF_DOCKER_EXECUTED",
+            "HANDOFF_DOCKER_OUTPUT_READY",
         }
     ):
         autoware_result = run_autoware_pipeline_bridge(
@@ -1354,7 +1356,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[ok] variant_id={workflow_report['selection']['variant_id']}")
         print(f"[ok] smoke_scenario={workflow_report['artifacts']['smoke_scenario_path']}")
         print(f"[ok] report={result['workflow_report_path']}")
-        return 0 if workflow_report["status"] in {"BRIDGED_ONLY", "SMOKE_SUCCEEDED", "HANDOFF_READY", "HANDOFF_DOCKER_VERIFIED", "HANDOFF_DOCKER_EXECUTED"} else 2
+        return 0 if workflow_report["status"] in {"BRIDGED_ONLY", "SMOKE_SUCCEEDED", "HANDOFF_READY", "HANDOFF_DOCKER_VERIFIED", "HANDOFF_DOCKER_EXECUTED", "HANDOFF_DOCKER_OUTPUT_READY"} else 2
     except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
         print(f"[error] scenario_backend_smoke_workflow.py: {exc}", file=sys.stderr)
         return 2

@@ -659,6 +659,99 @@ class RendererBackendWorkflowTests(unittest.TestCase):
             self.assertFalse(summary["success"])
             self.assertEqual(summary["docker_handoff"]["return_code"], 9)
 
+    def test_workflow_main_promotes_runtime_output_ready_from_linux_handoff_docker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+            awsim_bin = root / "AWSIM-Demo.x86_64"
+            awsim_bin.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            awsim_bin.chmod(0o755)
+            setup_summary = root / "renderer_backend_local_setup.json"
+            setup_summary.write_text(
+                json.dumps(
+                    {
+                        "selection": {
+                            "HELIOS_BIN": str(fake_helios.resolve()),
+                            "AWSIM_BIN": str(awsim_bin.resolve()),
+                            "AWSIM_RENDERER_MAP": "Town09",
+                        },
+                        "readiness": {
+                            "helios_ready": True,
+                            "awsim_host_compatible": False,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            config_path = self._write_base_config(
+                root=root,
+                survey=survey,
+                helios_bin=fake_helios,
+                output_dir=root / "smoke_base_output",
+            )
+            output_root = root / "workflow"
+            nested_summary = {
+                "run": {"status": "EXECUTION_FAILED", "failure_reason": "NONZERO_EXIT"},
+                "output_comparison": {"status": "MATCHED"},
+                "output_smoke_report": {
+                    "status": "COMPLETE",
+                    "output_origin_status": "BACKEND_RUNTIME_ONLY",
+                },
+            }
+
+            with patch(
+                "hybrid_sensor_sim.tools.renderer_backend_workflow._inspect_executable_host_compatibility",
+                return_value={
+                    "host_compatible": False,
+                    "host_compatibility_reason": "ELF binary is not supported on Darwin",
+                    "binary_format": "elf",
+                    "file_description": "ELF 64-bit LSB executable",
+                },
+            ), patch(
+                "hybrid_sensor_sim.tools.renderer_backend_workflow.run_renderer_backend_linux_handoff_in_docker",
+                return_value={
+                    "return_code": 1,
+                    "summary_path": str(output_root / "renderer_backend_linux_handoff_docker_run" / "renderer_backend_linux_handoff_docker_run.json"),
+                    "handoff_run_summary": {
+                        "execution": {
+                            "stdout": json.dumps(nested_summary),
+                            "stderr": "",
+                            "exit_code": 1,
+                        }
+                    },
+                },
+            ):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    exit_code = workflow_main(
+                        [
+                            "--backend",
+                            "awsim",
+                            "--setup-summary",
+                            str(setup_summary),
+                            "--config",
+                            str(config_path),
+                            "--dry-run",
+                            "--run-linux-handoff-docker",
+                            "--docker-handoff-execute",
+                            "--output-root",
+                            str(output_root),
+                        ]
+                    )
+
+            self.assertEqual(exit_code, 0)
+            summary = json.loads(
+                (output_root / "renderer_backend_workflow_summary.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(summary["status"], "HANDOFF_DOCKER_OUTPUT_READY")
+            self.assertTrue(summary["success"])
+            self.assertEqual(
+                summary["warning_codes"],
+                ["BACKEND_RUNTIME_NONZERO_EXIT_WITH_COMPLETE_OUTPUTS"],
+            )
+
     def test_workflow_main_blocks_linux_handoff_docker_when_preflight_failed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

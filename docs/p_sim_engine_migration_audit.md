@@ -212,6 +212,10 @@ Implemented in the current repository:
 51. packaged-runtime crash diagnostics in scenario workflows
    - `scenario_backend_smoke_workflow` now parses nested Linux handoff smoke logs and surfaces runtime exit code, failed plugin basenames, missing shared libraries, and crash signatures
    - `scenario_runtime_backend_workflow` now lifts those diagnostics into top-level `status_summary`, so real AWSIM/CARLA aborts can be triaged without opening nested runner logs
+52. packaged-runtime output-ready handoff classification
+   - when a Linux handoff Docker run produces complete backend-runtime outputs and passes output comparison but the packaged runtime still exits non-zero, `renderer_backend_workflow` now emits `HANDOFF_DOCKER_OUTPUT_READY` instead of a generic handoff failure
+   - `scenario_backend_smoke_workflow` preserves that state and still runs the Autoware bridge
+   - `scenario_runtime_backend_workflow` now promotes that state to top-level `ATTENTION`, which is the first real packaged AWSIM handoff result that is downstream-usable without being silently marked green
 
 Still pending from the same migration track:
 

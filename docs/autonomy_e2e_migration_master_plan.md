@@ -100,10 +100,11 @@ Still pending from this master plan:
 1. deeper map-aware behavior inside scenario/object-sim flows
 2. real packaged backend smoke execution against AWSIM/CARLA binaries
    - staged package artifacts under `third_party/runtime_backends/<backend>/renderer_backend_package_{stage,acquire}.json` are now treated as first-class runtime-selection sources by the scenario smoke workflows, reducing the gap between package acquisition and scenario-driven smoke execution
+   - the current macOS -> Linux Docker handoff path now reaches `HANDOFF_DOCKER_OUTPUT_READY` for a real AWSIM packaged run, meaning output comparison and Autoware bridging are usable even though the packaged runtime still exits non-zero
 3. tighter publish gating that combines scenario/runtime smoke with provenance refresh status
 4. lower-level backend smoke entrypoints should preserve the same provenance-aware publish checks as top-level workflows
 5. top-level runtime/backend workflow should expose backend output comparison drift without requiring manual drill-down into nested smoke reports
-6. a real packaged AWSIM/CARLA smoke run on native Linux x86_64 is still pending; the current macOS Docker handoff path now exposes the concrete plugin/crash blocker instead of only a generic failure
+6. a clean `READY` packaged AWSIM/CARLA smoke run on native Linux x86_64 is still pending; the current macOS Docker handoff path now yields a real `ATTENTION` state with complete backend outputs instead of only a generic failure
 
 ## Boundary
 
