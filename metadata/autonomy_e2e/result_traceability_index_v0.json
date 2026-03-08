@@ -1,6 +1,6 @@
 {
   "schema_version": "autonomy_e2e_result_traceability_index_v0",
-  "generated_at_utc": "2026-03-08T22:42:39+00:00",
+  "generated_at_utc": "2026-03-08T22:58:33+00:00",
   "current_repo_root": "/Users/seongcheoljeong/Documents/Test",
   "paths": [
     {
@@ -32,7 +32,7 @@
       ],
       "result_role": "audit_doc",
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "b968b38265390f05abb23cc12aae535ec7ed2255"
+      "current_latest_touch_commit": "b3756a9862ef517feba8e291fc720593311f8087"
     },
     {
       "current_path": "docs/autonomy_e2e_history_integration.md",
@@ -81,7 +81,7 @@
       ],
       "result_role": "audit_doc",
       "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
-      "current_latest_touch_commit": "b968b38265390f05abb23cc12aae535ec7ed2255"
+      "current_latest_touch_commit": "b3756a9862ef517feba8e291fc720593311f8087"
     },
     {
       "current_path": "docs/p_sim_engine_migration_audit.md",
@@ -108,7 +108,7 @@
       ],
       "result_role": "audit_doc",
       "current_intro_commit": "9104dc8429b6e5bd7faac52cbd37a8a8287ff960",
-      "current_latest_touch_commit": "b968b38265390f05abb23cc12aae535ec7ed2255"
+      "current_latest_touch_commit": "b3756a9862ef517feba8e291fc720593311f8087"
     },
     {
       "current_path": "docs/sensor_sim_master_plan.md",
@@ -1183,7 +1183,7 @@
       ],
       "result_role": "regression",
       "current_intro_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
-      "current_latest_touch_commit": "b968b38265390f05abb23cc12aae535ec7ed2255"
+      "current_latest_touch_commit": "b3756a9862ef517feba8e291fc720593311f8087"
     },
     {
       "current_path": "tests/test_backend_runner.py",
