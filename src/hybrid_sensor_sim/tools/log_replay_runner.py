@@ -46,7 +46,7 @@ def run_log_replay(
     run_dir = out_root / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    scenario_payload = build_scenario_from_log_scene(log_scene)
+    scenario_payload = build_scenario_from_log_scene(log_scene, log_scene_path=log_scene_path)
     scenario_path = run_dir / "replay_scenario.json"
     scenario_path.write_text(json.dumps(scenario_payload, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
 

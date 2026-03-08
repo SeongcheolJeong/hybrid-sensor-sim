@@ -19,9 +19,9 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `src/hybrid_sensor_sim/scenarios/schema.py`: migrated `scenario_definition_v0` schema validation and actor normalization.
 - `src/hybrid_sensor_sim/scenarios/object_sim.py`: deterministic 1D object-sim core with collision/minTTC/lane-risk outputs, optional ego vehicle-dynamics coupling, and canonical map/route lane-id consumption.
 - `src/hybrid_sensor_sim/scenarios/log_scene.py`: migrated `log_scene_v0` validation.
-- `src/hybrid_sensor_sim/scenarios/replay.py`: `log_scene_v0` to `scenario_definition_v0` conversion helpers.
+- `src/hybrid_sensor_sim/scenarios/replay.py`: `log_scene_v0` to `scenario_definition_v0` conversion helpers with canonical-map route synthesis.
 - `src/hybrid_sensor_sim/scenarios/variants.py`: migrated `logical_scenarios_v0` variant generation with deterministic `full` and `random` sampling.
-- `src/hybrid_sensor_sim/scenarios/matrix_sweep.py`: migrated object-sim matrix sweep with traffic actor-pattern synthesis and per-case report aggregation.
+- `src/hybrid_sensor_sim/scenarios/matrix_sweep.py`: migrated object-sim matrix sweep with traffic actor-pattern synthesis, per-case report aggregation, and map/route propagation.
 - `src/hybrid_sensor_sim/maps/convert.py`: migrated `simple_map_v0 <-> canonical_lane_graph_v0` conversion helpers.
 - `src/hybrid_sensor_sim/maps/validate.py`: canonical lane graph semantic validation and report generation.
 - `src/hybrid_sensor_sim/maps/route.py`: canonical lane graph route computation for `hops` and `length` cost modes.
@@ -111,6 +111,11 @@ python3 scripts/run_log_replay.py \
   --run-id LOG_REPLAY_001 \
   --out artifacts/log_replay_runs
 
+python3 scripts/run_log_replay.py \
+  --log-scene tests/fixtures/autonomy_e2e/p_sim_engine/log_scene_map_route_v0.json \
+  --run-id LOG_REPLAY_MAP_001 \
+  --out artifacts/log_replay_map_runs
+
 python3 scripts/run_log_scene_augment.py \
   --input tests/fixtures/autonomy_e2e/p_sim_engine/log_scene_v0.json \
   --out artifacts/log_scene_aug_v0.json \
@@ -181,6 +186,7 @@ Autonomy-E2E fixtures currently mirrored into this repo:
 - `tests/fixtures/autonomy_e2e/p_sim_engine/highway_safe_following_vehicle_dynamics_v0.json`
 - `tests/fixtures/autonomy_e2e/p_sim_engine/highway_map_route_following_v0.json`
 - `tests/fixtures/autonomy_e2e/p_sim_engine/log_scene_v0.json`
+- `tests/fixtures/autonomy_e2e/p_sim_engine/log_scene_map_route_v0.json`
 - `tests/fixtures/autonomy_e2e/p_sim_engine/rig_sweep_base_config.json`
 - `tests/fixtures/autonomy_e2e/p_sim_engine/rig_sweep_candidates_v1.json`
 - `tests/fixtures/autonomy_e2e/p_validation/highway_cut_in_v0.json`
@@ -258,6 +264,13 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `route_definition`
   - actor-level `lane_id`
 - When a route is provided, actor `lane_id` values are normalized into the existing `lane_index` surface using the route lane order.
+- `log_scene_v0` can now optionally carry the same canonical-map inputs:
+  - `canonical_map` or `canonical_map_path`
+  - `route_definition`
+  - `ego_lane_id`
+  - `lead_vehicle_lane_id`
+- When `log_scene_v0` provides a canonical map but no `route_definition`, replay synthesizes a default route and propagates it into the generated scenario.
+- `scenario_matrix_sweep` preserves canonical map, route definition, and actor `lane_id` values in each generated `matrix_scenario.json`.
 - Default behavior remains the historical fixed-speed kinematic core.
 - Vehicle-dynamics coupling is currently longitudinal only; lane handling remains `1D + lane_index`.
 

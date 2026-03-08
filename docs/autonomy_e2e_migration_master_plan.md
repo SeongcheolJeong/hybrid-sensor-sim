@@ -115,6 +115,9 @@ Detailed audit:
    - now migrated as optional `ego_dynamics_mode=vehicle_dynamics` longitudinal coupling
 6. canonical map route consumption inside `scenario_definition_v0`
    - now migrated as optional `canonical_map/canonical_map_path + route_definition + actor lane_id`
+7. replay and matrix-sweep route propagation
+   - `log_scene_v0` can synthesize and forward canonical routes
+   - matrix sweep now preserves canonical map, route definition, and actor `lane_id` in each case scenario
 
 ### Reference only
 
@@ -294,7 +297,7 @@ Status:
 Work:
 
 1. consume canonical map semantics for richer lane/risk behavior than simple route-order normalization
-2. decide whether replay or matrix sweep should synthesize lane_id values from canonical routes by default
+2. decide whether replay or matrix sweep should infer more lane semantics than current route/lane-id propagation
 
 Success criteria:
 

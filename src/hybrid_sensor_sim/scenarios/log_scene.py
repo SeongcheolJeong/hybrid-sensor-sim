@@ -52,6 +52,25 @@ def validate_log_scene_payload(payload: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("duration_sec must be > 0")
     if dt_sec <= 0:
         raise ValueError("dt_sec must be > 0")
+    canonical_map = payload.get("canonical_map")
+    canonical_map_path = payload.get("canonical_map_path")
+    if canonical_map is not None and not isinstance(canonical_map, dict):
+        raise ValueError("canonical_map must be a JSON object when provided")
+    if canonical_map is not None and canonical_map_path is not None:
+        raise ValueError("provide only one of canonical_map or canonical_map_path")
+    route_definition = payload.get("route_definition")
+    if route_definition is not None and not isinstance(route_definition, dict):
+        raise ValueError("route_definition must be an object when provided")
+    ego_lane_id_raw = payload.get("ego_lane_id")
+    ego_lane_id = None if ego_lane_id_raw is None else str(ego_lane_id_raw).strip()
+    if ego_lane_id == "":
+        raise ValueError("ego_lane_id must be non-empty when provided")
+    lead_vehicle_lane_id_raw = payload.get("lead_vehicle_lane_id")
+    lead_vehicle_lane_id = (
+        None if lead_vehicle_lane_id_raw is None else str(lead_vehicle_lane_id_raw).strip()
+    )
+    if lead_vehicle_lane_id == "":
+        raise ValueError("lead_vehicle_lane_id must be non-empty when provided")
     return {
         "log_scene_schema_version": LOG_SCENE_SCHEMA_VERSION_V0,
         "log_id": log_id,
@@ -62,6 +81,11 @@ def validate_log_scene_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "lead_vehicle_speed_mps": float(payload["lead_vehicle_speed_mps"]),
         "duration_sec": duration_sec,
         "dt_sec": dt_sec,
+        "canonical_map": canonical_map,
+        "canonical_map_path": None if canonical_map_path is None else str(canonical_map_path),
+        "route_definition": route_definition,
+        "ego_lane_id": ego_lane_id,
+        "lead_vehicle_lane_id": lead_vehicle_lane_id,
     }
 
 

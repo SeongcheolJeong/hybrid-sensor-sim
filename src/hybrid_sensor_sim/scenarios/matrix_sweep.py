@@ -221,6 +221,56 @@ def apply_traffic_actor_pattern(
     )
 
 
+def _serialize_actor(actor: ActorState) -> dict[str, Any]:
+    payload = {
+        "actor_id": actor.actor_id,
+        "position_m": actor.position_m,
+        "speed_mps": actor.speed_mps,
+        "length_m": actor.length_m,
+        "lane_index": actor.lane_index,
+    }
+    if actor.lane_id is not None:
+        payload["lane_id"] = actor.lane_id
+    return payload
+
+
+def _serialize_scenario_config(scenario: ScenarioConfig) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "scenario_schema_version": scenario.scenario_schema_version,
+        "scenario_id": scenario.scenario_id,
+        "duration_sec": scenario.duration_sec,
+        "dt_sec": scenario.dt_sec,
+        "npc_speed_jitter_mps": scenario.npc_speed_jitter_mps,
+        "enable_ego_collision_avoidance": scenario.enable_ego_collision_avoidance,
+        "avoidance_ttc_threshold_sec": scenario.avoidance_ttc_threshold_sec,
+        "ego_max_brake_mps2": scenario.ego_max_brake_mps2,
+        "tire_friction_coeff": scenario.tire_friction_coeff,
+        "surface_friction_scale": scenario.surface_friction_scale,
+        "ego_dynamics_mode": scenario.ego_dynamics_mode,
+        "ego_target_speed_mps": scenario.ego_target_speed_mps,
+        "ego_road_grade_percent": scenario.ego_road_grade_percent,
+        "ego": _serialize_actor(scenario.ego),
+        "npcs": [_serialize_actor(npc) for npc in scenario.npcs],
+    }
+    if scenario.wall_timeout_sec is not None:
+        payload["wall_timeout_sec"] = scenario.wall_timeout_sec
+    if scenario.ego_vehicle_profile is not None:
+        payload["ego_vehicle_profile"] = dict(scenario.ego_vehicle_profile)
+    if scenario.map_context is not None:
+        if scenario.map_context.map_path is not None:
+            payload["canonical_map_path"] = scenario.map_context.map_path
+        else:
+            payload["canonical_map"] = scenario.map_context.map_payload
+        if scenario.map_context.route_report is not None:
+            payload["route_definition"] = {
+                "entry_lane_id": scenario.map_context.route_report["selected_entry_lane_id"],
+                "exit_lane_id": scenario.map_context.route_report["selected_exit_lane_id"],
+                "via_lane_ids": list(scenario.map_context.route_report["via_lane_ids_input"]),
+                "cost_mode": scenario.map_context.route_report["route_cost_mode"],
+            }
+    return payload
+
+
 def run_scenario_matrix_sweep(
     *,
     scenario_path: Path,
@@ -287,39 +337,7 @@ def run_scenario_matrix_sweep(
         case_scenario_path = out_root / run_id / "matrix_scenario.json"
         case_scenario_path.parent.mkdir(parents=True, exist_ok=True)
         case_scenario_path.write_text(
-            json.dumps(
-                {
-                    "scenario_schema_version": case_scenario.scenario_schema_version,
-                    "scenario_id": case_scenario.scenario_id,
-                    "duration_sec": case_scenario.duration_sec,
-                    "dt_sec": case_scenario.dt_sec,
-                    "npc_speed_jitter_mps": case_scenario.npc_speed_jitter_mps,
-                    "enable_ego_collision_avoidance": case_scenario.enable_ego_collision_avoidance,
-                    "avoidance_ttc_threshold_sec": case_scenario.avoidance_ttc_threshold_sec,
-                    "ego_max_brake_mps2": case_scenario.ego_max_brake_mps2,
-                    "tire_friction_coeff": case_scenario.tire_friction_coeff,
-                    "surface_friction_scale": case_scenario.surface_friction_scale,
-                    "ego": {
-                        "actor_id": case_scenario.ego.actor_id,
-                        "position_m": case_scenario.ego.position_m,
-                        "speed_mps": case_scenario.ego.speed_mps,
-                        "length_m": case_scenario.ego.length_m,
-                        "lane_index": case_scenario.ego.lane_index,
-                    },
-                    "npcs": [
-                        {
-                            "actor_id": npc.actor_id,
-                            "position_m": npc.position_m,
-                            "speed_mps": npc.speed_mps,
-                            "length_m": npc.length_m,
-                            "lane_index": npc.lane_index,
-                        }
-                        for npc in case_scenario.npcs
-                    ],
-                },
-                indent=2,
-                ensure_ascii=True,
-            )
+            json.dumps(_serialize_scenario_config(case_scenario), indent=2, ensure_ascii=True)
             + "\n",
             encoding="utf-8",
         )
