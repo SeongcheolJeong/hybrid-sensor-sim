@@ -1,6 +1,6 @@
 {
   "schema_version": "autonomy_e2e_project_inventory_v0",
-  "generated_at_utc": "2026-03-08T22:29:03+00:00",
+  "generated_at_utc": "2026-03-08T22:31:41+00:00",
   "source_repo_root": "/Users/seongcheoljeong/Documents/Autonomy-E2E/Autonomy-E2E",
   "integration_baseline_commit": "8d2353f",
   "projects": [
@@ -70,6 +70,7 @@
         "src/hybrid_sensor_sim/autoware/export_bridge.py",
         "src/hybrid_sensor_sim/autoware/frames.py",
         "src/hybrid_sensor_sim/autoware/pipeline_manifest.py",
+        "src/hybrid_sensor_sim/autoware/profiles.py",
         "src/hybrid_sensor_sim/autoware/topics.py",
         "src/hybrid_sensor_sim/tools/autoware_pipeline_bridge.py",
         "src/hybrid_sensor_sim/tools/scenario_backend_smoke_workflow.py",

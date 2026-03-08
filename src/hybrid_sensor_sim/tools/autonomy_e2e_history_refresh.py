@@ -794,6 +794,7 @@ BLOCK_CATALOG: list[dict[str, Any]] = [
             "src/hybrid_sensor_sim/autoware/topics.py",
             "src/hybrid_sensor_sim/autoware/pipeline_manifest.py",
             "src/hybrid_sensor_sim/autoware/export_bridge.py",
+            "src/hybrid_sensor_sim/autoware/profiles.py",
             "src/hybrid_sensor_sim/tools/autoware_pipeline_bridge.py",
             "src/hybrid_sensor_sim/tools/scenario_backend_smoke_workflow.py",
             "src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py",
