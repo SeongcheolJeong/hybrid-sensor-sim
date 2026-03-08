@@ -195,6 +195,10 @@ Implemented in the current repository:
 46. backend smoke mismatch triage propagation
    - `scenario_backend_smoke_workflow` now preserves backend output smoke/comparison details including mismatch reasons and unexpected output count
    - `scenario_runtime_backend_workflow` now lifts those details into top-level `status_summary` and Markdown so real package smoke drift is visible without opening nested reports
+47. Autoware data-contract bridge
+   - `src/hybrid_sensor_sim/autoware/*.py` now builds JSON-first topic/frame/pipeline manifests from backend smoke artifacts
+   - `src/hybrid_sensor_sim/tools/autoware_pipeline_bridge.py` and `scripts/run_autoware_pipeline_bridge.py` expose the bridge directly
+   - `scenario_backend_smoke_workflow` and `scenario_runtime_backend_workflow` now lift Autoware readiness into their workflow reports
 
 Still pending from the same migration track:
 

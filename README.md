@@ -54,6 +54,8 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `src/hybrid_sensor_sim/tools/scenario_runtime_bridge.py`: translates migrated scenarios into smoke-ready `objects` scenarios for HELIOS survey generation and renderer smoke execution.
 - `scripts/run_scenario_backend_smoke_workflow.py`: selects a variant from scenario variant/batch workflow reports, materializes a smoke-ready scenario/config, and optionally runs renderer backend smoke.
 - `scripts/run_scenario_runtime_backend_workflow.py`: runs scenario batch workflow first, then feeds the selected result into renderer backend smoke as one top-level workflow.
+- `src/hybrid_sensor_sim/autoware/*.py`: JSON-first Autoware topic/frame/pipeline contract bridge built from backend smoke artifacts.
+- `scripts/run_autoware_pipeline_bridge.py`: builds Autoware-facing sensor contracts, frame tree, pipeline manifest, and dataset manifest from backend smoke workflow reports.
 - `src/hybrid_sensor_sim/tools/scenario_batch_gate_catalog.py`: reusable gate preset catalog and profile-id resolution for batch comparison/workflow tooling.
 - `scripts/run_scenario_batch_comparison.py`: compares a scenario variant workflow report against a matrix-sweep report and writes JSON plus Markdown comparison artifacts.
 - `scripts/run_scenario_batch_workflow.py`: runs variant workflow, matrix sweep, and batch comparison as one reusable workflow and writes a single top-level workflow report.
@@ -355,6 +357,7 @@ python3 scripts/run_scenario_backend_smoke_workflow.py \
 - `history_guard`: optional provenance guard result for publish-time validation against `origin/main`
 - `artifacts`: `scenario_backend_smoke_selection.json`, `scenario_runtime_bridge_manifest.json`, translated smoke scenario JSON, and materialized smoke input config
 - `smoke`: optional downstream `renderer_backend_smoke` execution status, summary/report paths, captured stdout/stderr logs, and backend output triage (`output_smoke_status`, `output_comparison_status`, mismatch reasons, unexpected output count)
+- `autoware`: optional Autoware-facing bridge status, available topics, missing required sensor count, and bundle artifact paths
 
 Scenario runtime/backend workflow:
 
@@ -381,8 +384,16 @@ python3 scripts/run_scenario_runtime_backend_workflow.py \
 - `backend_smoke_workflow`: embedded backend-smoke workflow status, selected variant, runtime selection, bridge summary, and smoke result
 - `backend_smoke_workflow.runtime_selection` also records whether staged backend selection artifacts were supplied explicitly or auto-discovered from canonical artifact locations
 - `history_guard`: optional provenance guard status, failure codes, and report path for publish-time validation against `origin/main`
-- `status_summary`: final status source, ordered decision trace, batch triage IDs, backend smoke result summary, backend output smoke/comparison mismatch details, and optional history-guard status
-- `artifacts`: top-level report paths plus generated smoke scenario/config paths and optional history-guard report
+- `status_summary`: final status source, ordered decision trace, batch triage IDs, backend smoke result summary, backend output smoke/comparison mismatch details, Autoware readiness, and optional history-guard status
+- `artifacts`: top-level report paths plus generated smoke scenario/config paths, Autoware bundle artifact paths, and optional history-guard report
+
+Autoware pipeline bridge:
+
+```bash
+python3 scripts/run_autoware_pipeline_bridge.py \
+  --backend-smoke-workflow-report artifacts/scenario_backend_smoke_runs/scenario_backend_smoke_workflow_report_v0.json \
+  --out-root artifacts/autoware_pipeline_bridge_runs
+```
 
 Both `run_scenario_variants.py` and `run_scenario_variant_workflow.py` resolve default scenario-language profiles from:
 

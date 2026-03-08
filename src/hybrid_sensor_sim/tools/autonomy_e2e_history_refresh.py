@@ -773,6 +773,54 @@ BLOCK_CATALOG: list[dict[str, Any]] = [
         "notes": "",
     },
     {
+        "block_id": "p_autoware_workspace_ci.data_contract_bridge",
+        "project_id": "P_Autoware-Workspace-CI-MVP",
+        "source_kind": "workflow_pattern",
+        "source_paths": [
+            "30_Projects/P_Autoware-Workspace-CI-MVP/prototype/hil_sequence_runner_stub.py",
+            "30_Projects/P_Autoware-Workspace-CI-MVP/prototype/examples/hil_interface_v0.json",
+        ],
+        "migration_status": "partial",
+        "current_paths": [
+            "src/hybrid_sensor_sim/autoware/contracts.py",
+            "src/hybrid_sensor_sim/autoware/frames.py",
+            "src/hybrid_sensor_sim/autoware/topics.py",
+            "src/hybrid_sensor_sim/autoware/pipeline_manifest.py",
+            "src/hybrid_sensor_sim/autoware/export_bridge.py",
+            "src/hybrid_sensor_sim/tools/autoware_pipeline_bridge.py",
+            "src/hybrid_sensor_sim/tools/scenario_backend_smoke_workflow.py",
+            "src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py",
+        ],
+        "current_test_paths": [
+            "tests/test_autoware_contracts.py",
+            "tests/test_autoware_pipeline_bridge.py",
+            "tests/test_scenario_backend_smoke_workflow.py",
+            "tests/test_scenario_runtime_backend_workflow.py",
+        ],
+        "current_fixture_paths": [],
+        "current_script_paths": [
+            "scripts/run_autoware_pipeline_bridge.py",
+            "scripts/run_scenario_backend_smoke_workflow.py",
+            "scripts/run_scenario_runtime_backend_workflow.py",
+        ],
+        "current_doc_paths": [
+            "README.md",
+            "docs/autonomy_e2e_history_integration.md",
+            "docs/p_sim_engine_migration_audit.md",
+            "docs/autonomy_e2e_migration_master_plan.md",
+        ],
+        "working_result_kind": ["library", "workflow", "cli", "test", "doc"],
+        "result_summary": (
+            "Autoware-facing data-contract bridge that converts backend smoke outputs "
+            "into topics, frame-tree, and pipeline manifests."
+        ),
+        "open_gaps": [
+            "No ROS2 live publisher or launch integration in the current round.",
+            "Real packaged AWSIM/CARLA exports still need to be validated against this contract.",
+        ],
+        "notes": "This is a JSON-first compatibility layer, not a full Autoware stack migration.",
+    },
+    {
         "block_id": "p_autoware_workspace_ci.hil_sequence_reference",
         "project_id": "P_Autoware-Workspace-CI-MVP",
         "source_kind": "workflow_pattern",

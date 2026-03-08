@@ -277,6 +277,12 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
             self.assertEqual(report["batch_workflow"]["status"], "SUCCEEDED")
             self.assertEqual(report["backend_smoke_workflow"]["status"], "SMOKE_SUCCEEDED")
             self.assertEqual(report["status_summary"]["final_status_source"], "default_success")
+            self.assertIn(
+                report["status_summary"]["autoware_pipeline_status"],
+                {"READY", "DEGRADED"},
+            )
+            self.assertIsNotNone(report["status_summary"]["autoware_missing_required_sensor_count"])
+            self.assertTrue(Path(report["artifacts"]["autoware_pipeline_manifest_path"]).is_file())
             self.assertTrue(Path(report["artifacts"]["smoke_scenario_path"]).is_file())
             self.assertTrue(Path(result["workflow_markdown_path"]).is_file())
 
@@ -350,6 +356,8 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
                 report["status_summary"]["backend_output_comparison_unexpected_output_count"],
                 0,
             )
+            self.assertEqual(report["status_summary"]["autoware_pipeline_status"], "DEGRADED")
+            self.assertTrue(Path(report["artifacts"]["autoware_report_path"]).is_file())
 
     def test_run_scenario_runtime_backend_workflow_keeps_attention_status(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

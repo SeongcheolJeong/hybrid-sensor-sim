@@ -56,6 +56,7 @@ Examples:
 - `p_validation.scenario_variants`
 - `p_cloud_engine.local_batch_pattern`
 - `p_e2e_stack.runtime_evidence_compare_reference`
+- `p_autoware_workspace_ci.data_contract_bridge`
 
 Rules:
 

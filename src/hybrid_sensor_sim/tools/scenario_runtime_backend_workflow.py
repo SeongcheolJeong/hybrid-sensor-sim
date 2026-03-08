@@ -128,6 +128,21 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--set-option", action="append", default=[], help="Forwarded to renderer backend smoke")
     parser.add_argument("--skip-smoke", action="store_true", help="Run batch workflow and bridge only")
     parser.add_argument(
+        "--skip-autoware-bridge",
+        action="store_true",
+        help="Do not build Autoware-facing sensor/data manifests from backend smoke artifacts",
+    )
+    parser.add_argument(
+        "--autoware-base-frame",
+        default="base_link",
+        help="Base frame ID for generated Autoware frame tree",
+    )
+    parser.add_argument(
+        "--autoware-strict",
+        action="store_true",
+        help="Fail Autoware bridge if required sensor outputs are missing",
+    )
+    parser.add_argument(
         "--run-history-guard",
         action="store_true",
         help="Run Autonomy-E2E provenance guard against the canonical baseline after workflow execution",
@@ -193,7 +208,7 @@ def _build_workflow_status(
 ) -> str:
     if history_guard_status == "FAIL":
         return "FAILED"
-    if backend_status == "SMOKE_FAILED":
+    if backend_status in {"SMOKE_FAILED", "FAILED"}:
         return "FAILED"
     if batch_status == "FAILED":
         return "FAILED"
@@ -256,6 +271,7 @@ def _build_status_summary(
     batch_status_summary = dict(batch_report.get("status_summary", {}))
     worst_logical_row = dict(batch_status_summary.get("worst_logical_scenario_row", {}))
     smoke_summary = dict(backend_report.get("smoke", {}).get("summary", {}))
+    autoware_summary = dict(backend_report.get("autoware", {}))
     history_guard_summary = dict(history_guard_report or {})
     return {
         "final_status_source": final_status_source,
@@ -280,6 +296,12 @@ def _build_status_summary(
         "backend_output_inspection_status": smoke_summary.get("output_inspection_status"),
         "backend_runner_smoke_status": smoke_summary.get("runner_smoke_status"),
         "backend_run_status": smoke_summary.get("run_status"),
+        "autoware_pipeline_status": autoware_summary.get("status"),
+        "autoware_available_sensor_count": autoware_summary.get("available_sensor_count"),
+        "autoware_missing_required_sensor_count": autoware_summary.get("missing_required_sensor_count"),
+        "autoware_available_topics": list(autoware_summary.get("available_topics", [])),
+        "autoware_required_topics_complete": autoware_summary.get("required_topics_complete"),
+        "autoware_frame_tree_complete": autoware_summary.get("frame_tree_complete"),
         "history_guard_status": history_guard_summary.get("status"),
         "history_guard_failure_codes": list(history_guard_summary.get("failure_codes", [])),
         "history_guard_impacted_block_ids": list(
@@ -325,6 +347,15 @@ def _build_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Runner smoke: `{summary['backend_runner_smoke_status'] or '-'}`",
         f"- Run status: `{summary['backend_run_status'] or '-'}`",
         "",
+        "## Autoware Bridge",
+        "",
+        f"- Status: `{summary.get('autoware_pipeline_status') or '-'}`",
+        f"- Available sensors: `{summary.get('autoware_available_sensor_count') if summary.get('autoware_available_sensor_count') is not None else '-'}`",
+        f"- Missing required sensors: `{summary.get('autoware_missing_required_sensor_count') if summary.get('autoware_missing_required_sensor_count') is not None else '-'}`",
+        f"- Required topics complete: `{summary.get('autoware_required_topics_complete') if summary.get('autoware_required_topics_complete') is not None else '-'}`",
+        f"- Frame tree complete: `{summary.get('autoware_frame_tree_complete') if summary.get('autoware_frame_tree_complete') is not None else '-'}`",
+        f"- Available topics: `{', '.join(summary.get('autoware_available_topics', [])) or '-'}`",
+        "",
         "## Provenance Guard",
         "",
         f"- Requested: `{workflow_report['history_guard']['requested']}`",
@@ -338,6 +369,8 @@ def _build_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Backend smoke workflow report: `{workflow_report['artifacts']['backend_smoke_workflow_report_path']}`",
         f"- Smoke scenario: `{workflow_report['artifacts']['smoke_scenario_path']}`",
         f"- Smoke input config: `{workflow_report['artifacts']['smoke_input_config_path']}`",
+        f"- Autoware pipeline manifest: `{workflow_report['artifacts'].get('autoware_pipeline_manifest_path') or '-'}`",
+        f"- Autoware dataset manifest: `{workflow_report['artifacts'].get('autoware_dataset_manifest_path') or '-'}`",
         f"- History guard report: `{workflow_report['artifacts'].get('history_guard_report_path') or '-'}`",
         "",
     ]
@@ -396,6 +429,9 @@ def run_scenario_runtime_backend_workflow(
     renderer_map: str,
     option_overrides: list[str],
     skip_smoke: bool,
+    skip_autoware_bridge: bool = False,
+    autoware_base_frame: str = "base_link",
+    autoware_strict: bool = False,
     run_history_guard: bool = False,
     history_guard_metadata_root: str | Path | None = None,
     history_guard_current_repo_root: str | Path | None = None,
@@ -464,6 +500,9 @@ def run_scenario_runtime_backend_workflow(
         renderer_map=renderer_map,
         option_overrides=option_overrides,
         skip_smoke=skip_smoke,
+        skip_autoware_bridge=skip_autoware_bridge,
+        autoware_base_frame=autoware_base_frame,
+        autoware_strict=autoware_strict,
     )
 
     batch_report = batch_result["workflow_report"]
@@ -542,6 +581,7 @@ def run_scenario_runtime_backend_workflow(
                 "object_count": backend_report.get("bridge", {}).get("object_count"),
             },
             "smoke": dict(backend_report.get("smoke", {})),
+            "autoware": dict(backend_report.get("autoware", {})),
         },
         "history_guard": {
             "requested": bool(run_history_guard),
@@ -572,6 +612,11 @@ def run_scenario_runtime_backend_workflow(
             "backend_smoke_workflow_report_path": str(Path(backend_result["workflow_report_path"]).resolve()),
             "smoke_scenario_path": str(Path(backend_report["artifacts"]["smoke_scenario_path"]).resolve()),
             "smoke_input_config_path": str(Path(backend_report["artifacts"]["smoke_input_config_path"]).resolve()),
+            "autoware_report_path": backend_report["artifacts"].get("autoware_report_path"),
+            "autoware_sensor_contracts_path": backend_report["artifacts"].get("autoware_sensor_contracts_path"),
+            "autoware_frame_tree_path": backend_report["artifacts"].get("autoware_frame_tree_path"),
+            "autoware_pipeline_manifest_path": backend_report["artifacts"].get("autoware_pipeline_manifest_path"),
+            "autoware_dataset_manifest_path": backend_report["artifacts"].get("autoware_dataset_manifest_path"),
             "history_guard_report_path": (
                 str(history_guard_report_path.resolve())
                 if history_guard_report_path is not None
@@ -716,6 +761,9 @@ def main(argv: list[str] | None = None) -> int:
             renderer_map=args.renderer_map,
             option_overrides=list(args.set_option),
             skip_smoke=bool(args.skip_smoke),
+            skip_autoware_bridge=bool(args.skip_autoware_bridge),
+            autoware_base_frame=args.autoware_base_frame,
+            autoware_strict=bool(args.autoware_strict),
             run_history_guard=bool(args.run_history_guard),
             history_guard_metadata_root=args.history_guard_metadata_root,
             history_guard_current_repo_root=args.history_guard_current_repo_root,

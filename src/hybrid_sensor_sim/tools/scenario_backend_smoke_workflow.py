@@ -14,6 +14,9 @@ from hybrid_sensor_sim.tools.renderer_backend_smoke import main as renderer_back
 from hybrid_sensor_sim.tools.autonomy_e2e_history_guard import (
     build_autonomy_e2e_history_guard_report,
 )
+from hybrid_sensor_sim.tools.autoware_pipeline_bridge import (
+    run_autoware_pipeline_bridge,
+)
 from hybrid_sensor_sim.tools.scenario_runtime_bridge import (
     DEFAULT_LANE_SPACING_M,
     write_smoke_ready_scenario,
@@ -54,6 +57,21 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--renderer-map", default="", help="Forwarded to renderer backend smoke")
     parser.add_argument("--set-option", action="append", default=[], help="Forwarded to renderer backend smoke")
     parser.add_argument("--skip-smoke", action="store_true", help="Only select and translate; do not execute renderer backend smoke")
+    parser.add_argument(
+        "--skip-autoware-bridge",
+        action="store_true",
+        help="Do not build Autoware-facing sensor/data manifests from backend smoke artifacts",
+    )
+    parser.add_argument(
+        "--autoware-base-frame",
+        default="base_link",
+        help="Base frame ID for generated Autoware frame tree",
+    )
+    parser.add_argument(
+        "--autoware-strict",
+        action="store_true",
+        help="Fail Autoware bridge if required sensor outputs are missing",
+    )
     parser.add_argument(
         "--run-history-guard",
         action="store_true",
@@ -442,6 +460,9 @@ def run_scenario_backend_smoke_workflow(
     renderer_map: str,
     option_overrides: list[str],
     skip_smoke: bool,
+    skip_autoware_bridge: bool = False,
+    autoware_base_frame: str = "base_link",
+    autoware_strict: bool = False,
     run_history_guard: bool = False,
     history_guard_metadata_root: str | Path | None = None,
     history_guard_current_repo_root: str | Path | None = None,
@@ -520,6 +541,7 @@ def run_scenario_backend_smoke_workflow(
     smoke_html_path = smoke_output_root / "renderer_backend_smoke_report.html"
     smoke_exit_code = None
     smoke_summary = None
+    autoware_result = None
     status = "BRIDGED_ONLY" if skip_smoke else "SMOKE_FAILED"
 
     if not skip_smoke:
@@ -624,12 +646,82 @@ def run_scenario_backend_smoke_workflow(
                 else None
             ),
         },
+        "autoware": {
+            "requested": not bool(skip_autoware_bridge),
+            "status": (
+                dict(autoware_result.get("report", {})).get("status")
+                if isinstance(autoware_result, dict)
+                else None
+            ),
+            "strict": bool(autoware_strict),
+            "base_frame": str(autoware_base_frame).strip() or "base_link",
+            "available_sensor_count": (
+                dict(autoware_result.get("report", {})).get("available_sensor_count")
+                if isinstance(autoware_result, dict)
+                else None
+            ),
+            "missing_required_sensor_count": (
+                dict(autoware_result.get("report", {})).get("missing_required_sensor_count")
+                if isinstance(autoware_result, dict)
+                else None
+            ),
+            "available_topics": (
+                list(dict(autoware_result.get("report", {})).get("available_topics", []))
+                if isinstance(autoware_result, dict)
+                else []
+            ),
+            "required_topics_complete": (
+                dict(autoware_result.get("report", {})).get("required_topics_complete")
+                if isinstance(autoware_result, dict)
+                else None
+            ),
+            "frame_tree_complete": (
+                dict(autoware_result.get("report", {})).get("frame_tree_complete")
+                if isinstance(autoware_result, dict)
+                else None
+            ),
+            "warnings": (
+                list(dict(autoware_result.get("report", {})).get("warnings", []))
+                if isinstance(autoware_result, dict)
+                else []
+            ),
+            "report_path": (
+                str(Path(str(autoware_result.get("report_path"))).resolve())
+                if isinstance(autoware_result, dict) and autoware_result.get("report_path") is not None
+                else None
+            ),
+        },
         "artifacts": {
             "selection_path": str(selection_path.resolve()),
             "bridge_manifest_path": str(Path(bridge_result["bridge_manifest_path"]).resolve()),
             "smoke_scenario_path": str(Path(bridge_result["smoke_scenario_path"]).resolve()),
             "smoke_input_config_path": str(smoke_input_config_path.resolve()),
             "smoke_output_dir": str(smoke_output_root.resolve()),
+            "autoware_report_path": (
+                str(Path(str(autoware_result.get("report_path"))).resolve())
+                if isinstance(autoware_result, dict) and autoware_result.get("report_path") is not None
+                else None
+            ),
+            "autoware_sensor_contracts_path": (
+                dict(autoware_result.get("report", {})).get("artifacts", {}).get("sensor_contracts_path")
+                if isinstance(autoware_result, dict)
+                else None
+            ),
+            "autoware_frame_tree_path": (
+                dict(autoware_result.get("report", {})).get("artifacts", {}).get("frame_tree_path")
+                if isinstance(autoware_result, dict)
+                else None
+            ),
+            "autoware_pipeline_manifest_path": (
+                dict(autoware_result.get("report", {})).get("artifacts", {}).get("pipeline_manifest_path")
+                if isinstance(autoware_result, dict)
+                else None
+            ),
+            "autoware_dataset_manifest_path": (
+                dict(autoware_result.get("report", {})).get("artifacts", {}).get("dataset_manifest_path")
+                if isinstance(autoware_result, dict)
+                else None
+            ),
             "history_guard_report_path": (
                 str(history_guard_report_path.resolve())
                 if history_guard_report_path is not None
@@ -680,6 +772,40 @@ def run_scenario_backend_smoke_workflow(
 
     report_path = out_root / "scenario_backend_smoke_workflow_report_v0.json"
     _write_json(report_path, workflow_report)
+    if not skip_autoware_bridge and smoke_summary_path.exists():
+        autoware_result = run_autoware_pipeline_bridge(
+            backend_smoke_workflow_report_path=str(report_path),
+            runtime_backend_workflow_report_path="",
+            out_root=out_root / "autoware",
+            base_frame=autoware_base_frame,
+            strict=bool(autoware_strict),
+        )
+        if dict(autoware_result.get("report", {})).get("status") == "FAILED":
+            workflow_report["status"] = "FAILED"
+        autoware_report = dict(autoware_result.get("report", {}))
+        workflow_report["autoware"] = {
+            "requested": True,
+            "status": autoware_report.get("status"),
+            "strict": bool(autoware_strict),
+            "base_frame": str(autoware_base_frame).strip() or "base_link",
+            "available_sensor_count": autoware_report.get("available_sensor_count"),
+            "missing_required_sensor_count": autoware_report.get("missing_required_sensor_count"),
+            "available_topics": list(autoware_report.get("available_topics", [])),
+            "required_topics_complete": autoware_report.get("required_topics_complete"),
+            "frame_tree_complete": autoware_report.get("frame_tree_complete"),
+            "warnings": list(autoware_report.get("warnings", [])),
+            "report_path": (
+                str(Path(str(autoware_result.get("report_path"))).resolve())
+                if autoware_result.get("report_path") is not None
+                else None
+            ),
+        }
+        workflow_report["artifacts"]["autoware_report_path"] = workflow_report["autoware"]["report_path"]
+        workflow_report["artifacts"]["autoware_sensor_contracts_path"] = autoware_report.get("artifacts", {}).get("sensor_contracts_path")
+        workflow_report["artifacts"]["autoware_frame_tree_path"] = autoware_report.get("artifacts", {}).get("frame_tree_path")
+        workflow_report["artifacts"]["autoware_pipeline_manifest_path"] = autoware_report.get("artifacts", {}).get("pipeline_manifest_path")
+        workflow_report["artifacts"]["autoware_dataset_manifest_path"] = autoware_report.get("artifacts", {}).get("dataset_manifest_path")
+        _write_json(report_path, workflow_report)
     return {
         "workflow_report_path": report_path,
         "workflow_report": workflow_report,
@@ -708,6 +834,9 @@ def main(argv: list[str] | None = None) -> int:
             renderer_map=args.renderer_map,
             option_overrides=list(args.set_option),
             skip_smoke=bool(args.skip_smoke),
+            skip_autoware_bridge=bool(args.skip_autoware_bridge),
+            autoware_base_frame=args.autoware_base_frame,
+            autoware_strict=bool(args.autoware_strict),
             run_history_guard=bool(args.run_history_guard),
             history_guard_metadata_root=args.history_guard_metadata_root,
             history_guard_current_repo_root=args.history_guard_current_repo_root,

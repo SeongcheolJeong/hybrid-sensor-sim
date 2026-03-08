@@ -323,8 +323,8 @@ Use only as a planning reference for:
 
 ### Defer
 
-This belongs to stack integration or a separate integration repo.
-It is not a core library/tooling block for the current repository.
+Full HIL/workspace CI still belongs to stack integration or a separate integration repo.
+However, this repository now carries a `partial` migration in the form of an Autoware-facing data-contract bridge layered on top of backend smoke artifacts.
 
 ## Phased Migration Order
 

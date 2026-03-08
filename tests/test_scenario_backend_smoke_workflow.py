@@ -277,6 +277,10 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
             self.assertEqual(smoke_summary["backend"], "awsim")
             self.assertTrue(smoke_summary["success"])
             self.assertEqual(smoke_summary["output_comparison_status"], "MATCHED")
+            self.assertIn(workflow_report["autoware"]["status"], {"READY", "DEGRADED"})
+            self.assertIsNotNone(workflow_report["autoware"]["missing_required_sensor_count"])
+            self.assertIn("/sensing/camera/camera_front/image_raw", workflow_report["autoware"]["available_topics"])
+            self.assertTrue(Path(workflow_report["artifacts"]["autoware_pipeline_manifest_path"]).is_file())
             smoke_scenario = json.loads(
                 Path(workflow_report["artifacts"]["smoke_scenario_path"]).read_text(encoding="utf-8")
             )
@@ -339,6 +343,9 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
             )
             self.assertEqual(summary["output_comparison_unexpected_output_count"], 0)
             self.assertEqual(summary["run_status"], "EXECUTION_FAILED")
+            self.assertEqual(workflow_report["autoware"]["status"], "DEGRADED")
+            self.assertIsNotNone(workflow_report["autoware"]["missing_required_sensor_count"])
+            self.assertTrue(Path(workflow_report["artifacts"]["autoware_report_path"]).is_file())
 
     def test_run_scenario_backend_smoke_workflow_selects_worst_logical_scenario_from_batch_report(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
