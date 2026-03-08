@@ -48,6 +48,16 @@ class ScenarioVariantWorkflowTests(unittest.TestCase):
             self.assertEqual(workflow_report["by_payload_kind"]["log_scene_v0"]["variant_count"], 1)
             self.assertEqual(workflow_report["by_payload_kind"]["scenario_definition_v0"]["variant_count"], 1)
             self.assertEqual(
+                workflow_report["by_logical_scenario_id"]["scn_log_route_relations"]["payload_kind_counts"]["log_scene_v0"],
+                1,
+            )
+            self.assertEqual(
+                workflow_report["by_logical_scenario_id"]["scn_direct_object_sim"]["payload_kind_counts"][
+                    "scenario_definition_v0"
+                ],
+                1,
+            )
+            self.assertEqual(
                 workflow_report["by_payload_kind"]["scenario_definition_v0"]["execution_path_counts"]["direct_object_sim"],
                 1,
             )
@@ -83,6 +93,8 @@ class ScenarioVariantWorkflowTests(unittest.TestCase):
             self.assertEqual(Path(workflow_report["source_path"]).name, "highway_mixed_payloads_v0.json")
             self.assertEqual(workflow_report["selected_variant_count"], 2)
             self.assertEqual(workflow_report["execution_status_counts"]["SUCCEEDED"], 2)
+            self.assertIn("scn_log_route_relations", workflow_report["by_logical_scenario_id"])
+            self.assertIn("scn_direct_object_sim", workflow_report["by_logical_scenario_id"])
 
     def test_run_scenario_variant_workflow_random_sampling_is_seeded_for_mixed_profile(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -125,6 +137,16 @@ class ScenarioVariantWorkflowTests(unittest.TestCase):
             self.assertEqual(
                 {row["rendered_payload_kind"] for row in result_a["workflow_report"]["successful_variant_rows"]},
                 {"log_scene_v0", "scenario_definition_v0"},
+            )
+            self.assertEqual(
+                result_a["workflow_report"]["by_logical_scenario_id"]["scn_log_route_relations_random"]["variant_count"],
+                1,
+            )
+            self.assertEqual(
+                result_a["workflow_report"]["by_logical_scenario_id"]["scn_direct_object_sim_random"][
+                    "variant_count"
+                ],
+                1,
             )
 
     def test_run_scenario_variant_workflow_emits_non_success_rows(self) -> None:
@@ -173,6 +195,14 @@ class ScenarioVariantWorkflowTests(unittest.TestCase):
             workflow_report = result["workflow_report"]
             self.assertEqual(workflow_report["successful_variant_row_count"], 0)
             self.assertEqual(workflow_report["non_success_variant_row_count"], 2)
+            self.assertEqual(
+                workflow_report["by_logical_scenario_id"]["scn_skipped"]["execution_status_counts"]["SKIPPED"],
+                1,
+            )
+            self.assertEqual(
+                workflow_report["by_logical_scenario_id"]["scn_failed"]["execution_status_counts"]["FAILED"],
+                1,
+            )
             self.assertEqual(
                 {row["execution_status"] for row in workflow_report["non_success_variant_rows"]},
                 {"SKIPPED", "FAILED"},

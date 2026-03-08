@@ -136,7 +136,7 @@ Detailed audit:
    - runner output now includes compact successful and non-success triage rows
 14. scenario variant workflow
    - `src/hybrid_sensor_sim/tools/scenario_variant_workflow.py` now provides a single workflow entry point from logical scenarios to executed rendered payloads
-   - workflow output now includes payload-kind grouping plus compact successful and failed/skipped triage rows
+   - workflow output now includes payload-kind grouping, logical-scenario grouping, plus compact successful and failed/skipped triage rows
    - scenario-language profile execution now resolves through the repo-local `tests/fixtures/autonomy_e2e/p_validation` directory
    - random sampling is now validated for mixed-payload scenario-language profiles
 

@@ -168,6 +168,7 @@ python3 scripts/run_scenario_variant_workflow.py \
 `scenario_variant_workflow_report_v0.json` includes:
 
 - `by_payload_kind`: grouped execution summary for each rendered payload kind
+- `by_logical_scenario_id`: grouped execution summary for each logical scenario
 - `successful_variant_rows`: compact successful variant table with execution path and summary artifact
 - `non_success_variant_rows`: compact failed/skipped variant table for quick triage
 

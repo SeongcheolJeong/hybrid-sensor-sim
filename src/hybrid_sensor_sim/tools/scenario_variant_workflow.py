@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -82,6 +83,48 @@ def _build_success_variant_rows(variant_runs: list[dict[str, Any]]) -> list[dict
     return rows
 
 
+def _build_by_logical_scenario_id_summary(variant_runs: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    grouped: dict[str, dict[str, Any]] = {}
+    for run in variant_runs:
+        logical_scenario_id = str(run.get("logical_scenario_id", "")).strip() or "<missing>"
+        group = grouped.setdefault(
+            logical_scenario_id,
+            {
+                "variant_count": 0,
+                "execution_status_counts": Counter(),
+                "object_sim_status_counts": Counter(),
+                "execution_path_counts": Counter(),
+                "payload_kind_counts": Counter(),
+                "variant_ids": [],
+            },
+        )
+        group["variant_count"] += 1
+        group["variant_ids"].append(str(run.get("variant_id", "")).strip())
+        payload_kind = str(run.get("rendered_payload_kind", "")).strip() or "<missing>"
+        group["payload_kind_counts"][payload_kind] += 1
+        execution_status = str(run.get("execution_status", "")).strip()
+        if execution_status:
+            group["execution_status_counts"][execution_status] += 1
+        object_sim_status = str(run.get("object_sim_status", "")).strip()
+        if object_sim_status:
+            group["object_sim_status_counts"][object_sim_status] += 1
+        execution_path = str(run.get("execution_path", "")).strip()
+        if execution_path:
+            group["execution_path_counts"][execution_path] += 1
+
+    return {
+        logical_scenario_id: {
+            "variant_count": int(group["variant_count"]),
+            "execution_status_counts": dict(sorted(group["execution_status_counts"].items())),
+            "object_sim_status_counts": dict(sorted(group["object_sim_status_counts"].items())),
+            "execution_path_counts": dict(sorted(group["execution_path_counts"].items())),
+            "payload_kind_counts": dict(sorted(group["payload_kind_counts"].items())),
+            "variant_ids": list(group["variant_ids"]),
+        }
+        for logical_scenario_id, group in sorted(grouped.items())
+    }
+
+
 def run_scenario_variant_workflow(
     *,
     logical_scenarios_path: str,
@@ -158,6 +201,7 @@ def run_scenario_variant_workflow(
         "execution_status_counts": dict(run_report["execution_status_counts"]),
         "object_sim_status_counts": dict(run_report["object_sim_status_counts"]),
         "by_payload_kind": dict(run_report["by_payload_kind"]),
+        "by_logical_scenario_id": _build_by_logical_scenario_id_summary(run_report["variant_runs"]),
         "successful_variant_rows": _build_success_variant_rows(run_report["variant_runs"]),
         "non_success_variant_rows": _build_non_success_variant_rows(run_report["variant_runs"]),
     }
