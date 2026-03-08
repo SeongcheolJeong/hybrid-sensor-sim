@@ -145,6 +145,41 @@ class RendererBackendLinuxHandoffDockerTests(unittest.TestCase):
             self.assertEqual(summary["container_workspace"], "/repo")
             self.assertEqual(summary["container_paths"]["bundle"], "/repo/artifacts/bundle.tar.gz")
 
+    def test_linux_handoff_docker_wrapper_handles_missing_docker_binary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            (repo_root / "scripts").mkdir(parents=True, exist_ok=True)
+            (repo_root / "scripts/run_renderer_backend_linux_handoff.py").write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+            bundle_path = root / "bundle.tar.gz"
+            bundle_path.write_text("bundle", encoding="utf-8")
+            transfer_manifest_path = root / "transfer_manifest.json"
+            transfer_manifest_path.write_text("{}", encoding="utf-8")
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = linux_handoff_docker_main(
+                    [
+                        "--bundle",
+                        str(bundle_path),
+                        "--transfer-manifest",
+                        str(transfer_manifest_path),
+                        "--repo-root",
+                        str(repo_root),
+                        "--docker-binary",
+                        str(root / "missing_docker"),
+                        "--output-root",
+                        str(root / "output"),
+                        "--skip-run",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 127)
+            summary = json.loads(
+                (root / "output" / "renderer_backend_linux_handoff_docker_run.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(summary["return_code"], 127)
+            self.assertTrue(summary["launch_error"])
+
 
 if __name__ == "__main__":
     unittest.main()

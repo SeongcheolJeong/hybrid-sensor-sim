@@ -26,6 +26,9 @@ from hybrid_sensor_sim.tools.renderer_backend_local_setup import (
 from hybrid_sensor_sim.tools.renderer_backend_package_acquire import (
     build_renderer_backend_package_acquire,
 )
+from hybrid_sensor_sim.tools.renderer_backend_linux_handoff_docker import (
+    run_renderer_backend_linux_handoff_in_docker,
+)
 from hybrid_sensor_sim.tools.renderer_backend_smoke import (
     _build_effective_config as _build_smoke_effective_config,
 )
@@ -126,6 +129,31 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--verify-linux-handoff-bundle",
         action="store_true",
         help="After generating or locating a Linux handoff bundle, unpack and verify it locally.",
+    )
+    parser.add_argument(
+        "--run-linux-handoff-docker",
+        action="store_true",
+        help="After Linux handoff artifacts are ready, run the handoff helper inside a local Linux Docker container.",
+    )
+    parser.add_argument(
+        "--docker-handoff-execute",
+        action="store_true",
+        help="When running the Docker handoff helper, execute the extracted handoff script instead of verify-only mode.",
+    )
+    parser.add_argument(
+        "--docker-binary",
+        default="docker",
+        help="Docker CLI binary used for --run-linux-handoff-docker.",
+    )
+    parser.add_argument(
+        "--docker-image",
+        default=_DEFAULT_LINUX_HANDOFF_DOCKER_IMAGE,
+        help="Linux Docker image used for --run-linux-handoff-docker.",
+    )
+    parser.add_argument(
+        "--docker-container-workspace",
+        default=_DEFAULT_LINUX_HANDOFF_CONTAINER_WORKSPACE,
+        help="Workspace mount path inside the Docker container for --run-linux-handoff-docker.",
     )
     return parser.parse_args(argv)
 
@@ -292,6 +320,24 @@ def _render_workflow_markdown_report(summary: dict[str, Any], summary_path: Path
                 "",
             ]
         )
+    docker_handoff = summary.get("docker_handoff", {})
+    if isinstance(docker_handoff, dict) and docker_handoff:
+        lines.extend(
+            [
+                "## Docker Handoff",
+                f"- requested: `{_inline(docker_handoff.get('requested'))}`",
+                f"- ready: `{_inline(docker_handoff.get('ready'))}`",
+                f"- executed: `{_inline(docker_handoff.get('executed'))}`",
+                f"- skip_run: `{_inline(docker_handoff.get('skip_run'))}`",
+                f"- return_code: `{_inline(docker_handoff.get('return_code'))}`",
+                f"- docker_image: `{_inline(docker_handoff.get('docker_image'))}`",
+                f"- summary_path: `{_inline(docker_handoff.get('summary_path'))}`",
+                "",
+            ]
+        )
+        if docker_handoff.get("error"):
+            lines.append(f"- error: `{_inline(docker_handoff.get('error'))}`")
+            lines.append("")
     linux_handoff = summary.get("linux_handoff", {})
     if isinstance(linux_handoff, dict) and linux_handoff:
         lines.extend(
@@ -1417,6 +1463,11 @@ def build_renderer_backend_workflow(
     option_overrides: list[str] | None = None,
     pack_linux_handoff: bool = False,
     verify_linux_handoff_bundle: bool = False,
+    run_linux_handoff_docker: bool = False,
+    docker_handoff_execute: bool = False,
+    docker_binary: str = "docker",
+    docker_image: str = _DEFAULT_LINUX_HANDOFF_DOCKER_IMAGE,
+    docker_container_workspace: str = _DEFAULT_LINUX_HANDOFF_CONTAINER_WORKSPACE,
 ) -> dict[str, Any]:
     backend = backend.strip().lower()
     if backend not in _BACKEND_ENV_VARS:
@@ -1748,6 +1799,25 @@ def build_renderer_backend_workflow(
             "unpack_script_text": _render_linux_handoff_unpack_script(linux_handoff),
             "docker_script_text": _render_linux_handoff_docker_script(linux_handoff),
         },
+        "docker_handoff": {
+            "requested": run_linux_handoff_docker,
+            "ready": bool(linux_handoff.get("ready")),
+            "execute_in_container": docker_handoff_execute,
+            "skip_run": not docker_handoff_execute,
+            "docker_binary": docker_binary,
+            "docker_image": docker_image,
+            "container_workspace": docker_container_workspace,
+            "output_root": str(workflow_root / "renderer_backend_linux_handoff_docker_run"),
+            "summary_path": str(
+                workflow_root
+                / "renderer_backend_linux_handoff_docker_run"
+                / "renderer_backend_linux_handoff_docker_run.json"
+            ),
+            "executed": False,
+            "return_code": None,
+            "summary": None,
+            "error": None,
+        },
         "commands": {
             "smoke": "python3 scripts/run_renderer_backend_smoke.py " + " ".join(
                 f"\"{arg}\"" if " " in arg else arg for arg in smoke_args
@@ -1830,6 +1900,11 @@ def main(argv: list[str] | None = None) -> int:
         option_overrides=list(args.set_option),
         pack_linux_handoff=args.pack_linux_handoff,
         verify_linux_handoff_bundle=args.verify_linux_handoff_bundle,
+        run_linux_handoff_docker=args.run_linux_handoff_docker,
+        docker_handoff_execute=args.docker_handoff_execute,
+        docker_binary=args.docker_binary,
+        docker_image=args.docker_image,
+        docker_container_workspace=args.docker_container_workspace,
     )
     summary_path = Path(summary["artifacts"]["summary_path"])
     env_path = Path(summary["artifacts"]["env_path"])
@@ -1904,6 +1979,63 @@ def main(argv: list[str] | None = None) -> int:
                 }
                 bundle_summary["verification"] = verification_payload
                 _write_json(linux_handoff_verification_manifest_path, verification_payload)
+    docker_handoff = summary.get("docker_handoff", {})
+    if isinstance(docker_handoff, dict) and docker_handoff.get("requested"):
+        bundle_path_value = None
+        if isinstance(bundle_summary, dict):
+            bundle_path_value = bundle_summary.get("bundle_path")
+        if (
+            isinstance(bundle_path_value, str)
+            and summary["linux_handoff"].get("ready")
+            and not _resolve_path(bundle_path_value).exists()
+        ):
+            bundle_result = _pack_linux_handoff_bundle(
+                transfer_manifest=summary["linux_handoff"]["transfer_manifest"],
+                bundle_path=_resolve_path(bundle_path_value),
+                bundle_manifest_path=linux_handoff_bundle_manifest_path,
+            )
+            if isinstance(bundle_summary, dict):
+                bundle_summary.update(bundle_result)
+                bundle_summary["bundle_generated"] = True
+        if not summary["linux_handoff"].get("ready"):
+            docker_handoff["error"] = "Linux handoff is not ready."
+        elif not isinstance(bundle_path_value, str):
+            docker_handoff["error"] = "Linux handoff bundle path is not available."
+        else:
+            bundle_path = _resolve_path(bundle_path_value)
+            if not bundle_path.exists():
+                docker_handoff["error"] = f"Linux handoff bundle is missing: {bundle_path}"
+            else:
+                docker_result = run_renderer_backend_linux_handoff_in_docker(
+                    bundle_path=bundle_path,
+                    transfer_manifest_path=linux_handoff_transfer_manifest_path,
+                    bundle_manifest_path=(
+                        linux_handoff_bundle_manifest_path
+                        if linux_handoff_bundle_manifest_path.exists()
+                        else None
+                    ),
+                    repo_root=repo_root,
+                    output_root=_resolve_path(docker_handoff["output_root"]),
+                    summary_path=_resolve_path(docker_handoff["summary_path"]),
+                    docker_binary=str(docker_handoff["docker_binary"]),
+                    docker_image=str(docker_handoff["docker_image"]),
+                    container_workspace=str(docker_handoff["container_workspace"]),
+                    skip_run=bool(docker_handoff["skip_run"]),
+                )
+                docker_handoff["executed"] = True
+                docker_handoff["return_code"] = docker_result.get("return_code")
+                docker_handoff["summary"] = docker_result
+                docker_handoff["error"] = docker_result.get("launch_error")
+                if docker_result.get("return_code") == 0:
+                    summary["status"] = (
+                        "HANDOFF_DOCKER_VERIFIED"
+                        if docker_handoff.get("skip_run")
+                        else "HANDOFF_DOCKER_EXECUTED"
+                    )
+                    summary["success"] = True
+                else:
+                    summary["status"] = "HANDOFF_DOCKER_FAILED"
+                    summary["success"] = False
     _write_json(summary_path, summary)
     _write_text(report_path, _render_workflow_markdown_report(summary, summary_path))
     _write_executable_text(next_step_script_path, _render_next_step_script(summary))
@@ -1924,6 +2056,14 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     print(json.dumps(summary, indent=2))
+    docker_handoff = summary.get("docker_handoff", {})
+    if isinstance(docker_handoff, dict) and docker_handoff.get("requested"):
+        if docker_handoff.get("executed"):
+            return_code = docker_handoff.get("return_code")
+            if isinstance(return_code, int):
+                return return_code
+        if docker_handoff.get("error"):
+            return 1
     return 0 if summary["success"] else 1
 
 

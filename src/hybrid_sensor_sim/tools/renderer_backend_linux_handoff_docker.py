@@ -7,8 +7,6 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from hybrid_sensor_sim.tools.renderer_backend_workflow import _resolve_path
-
 _DEFAULT_DOCKER_IMAGE = "python:3.11-slim"
 _DEFAULT_CONTAINER_WORKSPACE = "/workspace"
 
@@ -82,6 +80,13 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 def _ensure_directory(path: Path) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def _resolve_path(raw: str | Path) -> Path:
+    path = Path(raw).expanduser()
+    if path.is_absolute():
+        return path.resolve()
+    return (Path.cwd() / path).resolve()
 
 
 def _containerize_path(
@@ -228,13 +233,23 @@ def run_renderer_backend_linux_handoff_in_docker(
     for item in forward_args:
         command.extend(["--forward-arg", item])
 
-    proc = subprocess.run(
-        command,
-        text=True,
-        capture_output=True,
-        check=False,
-        env=os.environ.copy(),
-    )
+    launch_error = None
+    try:
+        proc = subprocess.run(
+            command,
+            text=True,
+            capture_output=True,
+            check=False,
+            env=os.environ.copy(),
+        )
+        return_code = proc.returncode
+        stdout = proc.stdout
+        stderr = proc.stderr
+    except OSError as exc:
+        launch_error = str(exc)
+        return_code = 127
+        stdout = ""
+        stderr = str(exc)
     summary = {
         "bundle_path": str(bundle_path),
         "transfer_manifest_path": str(transfer_manifest_path),
@@ -255,9 +270,10 @@ def run_renderer_backend_linux_handoff_in_docker(
         "command": command,
         "skip_run": skip_run,
         "forward_args": forward_args,
-        "return_code": proc.returncode,
-        "stdout": proc.stdout,
-        "stderr": proc.stderr,
+        "return_code": return_code,
+        "stdout": stdout,
+        "stderr": stderr,
+        "launch_error": launch_error,
     }
     _write_json(summary_path, summary)
     return summary
