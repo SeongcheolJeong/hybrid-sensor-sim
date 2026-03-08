@@ -76,6 +76,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--ego-max-brake-mps2", default="6.0")
     parser.add_argument("--max-cases", default="0")
     parser.add_argument("--fail-on-attention", action="store_true")
+    parser.add_argument("--gate-max-attention-rows", default="")
+    parser.add_argument("--gate-max-collision-rows", default="")
+    parser.add_argument("--gate-max-timeout-rows", default="")
+    parser.add_argument("--gate-min-min-ttc-any-lane-sec", default="")
     return parser.parse_args(argv)
 
 
@@ -99,9 +103,92 @@ def _build_workflow_status(
         return "FAILED"
     if int(matrix_sweep_report.get("success_case_count", 0)) <= 0:
         return "FAILED"
+    if comparison_report["gate"]["status"] == "FAIL":
+        return "FAILED"
     if int(comparison_report["comparison_tables"].get("attention_row_count", 0)) > 0:
         return "ATTENTION"
     return "SUCCEEDED"
+
+
+def _parse_optional_non_negative_int(raw: Any, *, field: str) -> int | None:
+    value = str(raw or "").strip()
+    if not value:
+        return None
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise ValueError(f"{field} must be an integer, got: {raw}") from exc
+    if parsed < 0:
+        raise ValueError(f"{field} must be >= 0, got: {parsed}")
+    return parsed
+
+
+def _parse_optional_non_negative_float(raw: Any, *, field: str) -> float | None:
+    value = str(raw or "").strip()
+    if not value:
+        return None
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise ValueError(f"{field} must be a number, got: {raw}") from exc
+    if parsed < 0.0:
+        raise ValueError(f"{field} must be >= 0, got: {parsed}")
+    return parsed
+
+
+def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
+    variant_summary = workflow_report["variant_summary"]
+    matrix_summary = workflow_report["matrix_summary"]
+    comparison_summary = workflow_report["comparison_summary"]
+    gate = comparison_summary["gate"]
+    lines = [
+        "# Scenario Batch Workflow",
+        "",
+        "## Overview",
+        "",
+        f"- Status: `{workflow_report['status']}`",
+        f"- Selected variants: `{variant_summary['selected_variant_count']}`",
+        f"- Matrix cases: `{matrix_summary['case_count']}`",
+        f"- Attention rows: `{comparison_summary['attention_row_count']}`",
+        f"- Gate status: `{gate['status']}`",
+        f"- Gate failure codes: `{','.join(gate['failure_codes']) or '-'}`",
+        "",
+        "## Artifacts",
+        "",
+        f"- Variant workflow report: `{workflow_report['artifacts']['variant_workflow_report_path']}`",
+        f"- Variant run report: `{workflow_report['artifacts']['variant_run_report_path']}`",
+        f"- Matrix sweep report: `{workflow_report['artifacts']['matrix_sweep_report_path']}`",
+        f"- Comparison report: `{workflow_report['artifacts']['comparison_report_path']}`",
+        f"- Comparison markdown: `{workflow_report['artifacts']['comparison_markdown_path']}`",
+        "",
+        "## Attention Rows",
+        "",
+    ]
+    attention_rows = comparison_summary["attention_rows"]
+    if attention_rows:
+        lines.append("| Source | Row ID | Group | Execution | Object Sim | Collision | Timeout | Failure Code |")
+        lines.append("| --- | --- | --- | --- | --- | --- | --- | --- |")
+        for row in attention_rows:
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        str(row.get("source_batch") or "-"),
+                        str(row.get("row_id") or "-"),
+                        str(row.get("group_id") or "-"),
+                        str(row.get("execution_status") or "-"),
+                        str(row.get("object_sim_status") or "-"),
+                        str(row.get("collision")),
+                        str(row.get("timeout")),
+                        str(row.get("failure_code") or "-"),
+                    ]
+                )
+                + " |"
+            )
+    else:
+        lines.append("No attention rows.")
+    lines.append("")
+    return "\n".join(lines)
 
 
 def run_scenario_batch_workflow(
@@ -129,6 +216,10 @@ def run_scenario_batch_workflow(
     avoidance_ttc_threshold_sec: float,
     ego_max_brake_mps2: float,
     max_cases: int,
+    gate_max_attention_rows: int | None = None,
+    gate_max_collision_rows: int | None = None,
+    gate_max_timeout_rows: int | None = None,
+    gate_min_min_ttc_any_lane_sec: float | None = None,
 ) -> dict[str, Any]:
     out_root = out_root.resolve()
     out_root.mkdir(parents=True, exist_ok=True)
@@ -138,6 +229,7 @@ def run_scenario_batch_workflow(
     matrix_report_path = out_root / "matrix_sweep_report_v0.json"
     comparison_report_path = out_root / "scenario_batch_comparison_report_v0.json"
     comparison_markdown_path = out_root / "scenario_batch_comparison_report_v0.md"
+    workflow_markdown_path = out_root / "scenario_batch_workflow_report_v0.md"
 
     variant_result = run_scenario_variant_workflow(
         logical_scenarios_path=logical_scenarios_path,
@@ -173,6 +265,10 @@ def run_scenario_batch_workflow(
         matrix_sweep_report_path=matrix_report_path,
         out_report=comparison_report_path,
         markdown_out=comparison_markdown_path,
+        gate_max_attention_rows=gate_max_attention_rows,
+        gate_max_collision_rows=gate_max_collision_rows,
+        gate_max_timeout_rows=gate_max_timeout_rows,
+        gate_min_min_ttc_any_lane_sec=gate_min_min_ttc_any_lane_sec,
     )
     variant_workflow_report = variant_result["workflow_report"]
     workflow_status = _build_workflow_status(
@@ -202,6 +298,7 @@ def run_scenario_batch_workflow(
             "matrix_sweep_report_path": str(matrix_report_path.resolve()),
             "comparison_report_path": str(comparison_report_path.resolve()),
             "comparison_markdown_path": str(comparison_markdown_path.resolve()),
+            "workflow_markdown_path": str(workflow_markdown_path.resolve()),
         },
         "variant_summary": {
             "variant_count": int(variant_workflow_report["variant_count"]),
@@ -229,6 +326,7 @@ def run_scenario_batch_workflow(
             "matrix_group_row_count": int(comparison_report["comparison_tables"]["matrix_group_row_count"]),
             "attention_row_count": int(comparison_report["comparison_tables"]["attention_row_count"]),
             "attention_rows": list(comparison_report["comparison_tables"]["attention_rows"]),
+            "gate": dict(comparison_report["gate"]),
         },
     }
     workflow_report_path = out_root / "scenario_batch_workflow_report_v0.json"
@@ -236,8 +334,10 @@ def run_scenario_batch_workflow(
         json.dumps(workflow_report, indent=2, ensure_ascii=True) + "\n",
         encoding="utf-8",
     )
+    workflow_markdown_path.write_text(_build_workflow_markdown_report(workflow_report), encoding="utf-8")
     return {
         "workflow_report_path": workflow_report_path,
+        "workflow_markdown_path": workflow_markdown_path,
         "workflow_report": workflow_report,
         "variant_result": variant_result,
         "matrix_report": matrix_report,
@@ -287,12 +387,29 @@ def main(argv: list[str] | None = None) -> int:
             avoidance_ttc_threshold_sec=float(args.avoidance_ttc_threshold_sec),
             ego_max_brake_mps2=float(args.ego_max_brake_mps2),
             max_cases=_parse_non_negative_int(args.max_cases, field="max-cases"),
+            gate_max_attention_rows=_parse_optional_non_negative_int(
+                args.gate_max_attention_rows,
+                field="gate-max-attention-rows",
+            ),
+            gate_max_collision_rows=_parse_optional_non_negative_int(
+                args.gate_max_collision_rows,
+                field="gate-max-collision-rows",
+            ),
+            gate_max_timeout_rows=_parse_optional_non_negative_int(
+                args.gate_max_timeout_rows,
+                field="gate-max-timeout-rows",
+            ),
+            gate_min_min_ttc_any_lane_sec=_parse_optional_non_negative_float(
+                args.gate_min_min_ttc_any_lane_sec,
+                field="gate-min-min-ttc-any-lane-sec",
+            ),
         )
         workflow_report = result["workflow_report"]
         print(f"[ok] status={workflow_report['status']}")
         print(f"[ok] selected_variant_count={workflow_report['variant_summary']['selected_variant_count']}")
         print(f"[ok] matrix_case_count={workflow_report['matrix_summary']['case_count']}")
         print(f"[ok] attention_row_count={workflow_report['comparison_summary']['attention_row_count']}")
+        print(f"[ok] gate_status={workflow_report['comparison_summary']['gate']['status']}")
         print(f"[ok] workflow_report={result['workflow_report_path']}")
         if workflow_report["status"] == "FAILED":
             return 2

@@ -89,6 +89,9 @@ Implemented in the current repository:
 20. top-level batch workflow in `src/hybrid_sensor_sim/tools/scenario_batch_workflow.py`
    - variant workflow, matrix sweep, and cross-batch comparison can now be executed through one reusable command surface
    - workflow output now carries a top-level `status` plus paths to all underlying reports
+21. threshold-based batch gate in `src/hybrid_sensor_sim/tools/scenario_batch_comparison.py`
+   - cross-batch comparison can now enforce configurable thresholds for attention rows, collisions, timeouts, and minimum TTC
+   - top-level batch workflow now forwards this gate and records its result in both JSON and Markdown workflow summaries
 
 Still pending from the same migration track:
 

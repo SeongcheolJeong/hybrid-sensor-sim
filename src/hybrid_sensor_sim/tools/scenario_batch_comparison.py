@@ -26,6 +26,26 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="",
         help="Optional Markdown report path; defaults next to --out-report",
     )
+    parser.add_argument(
+        "--gate-max-attention-rows",
+        default="",
+        help="Optional maximum allowed attention rows before gate failure",
+    )
+    parser.add_argument(
+        "--gate-max-collision-rows",
+        default="",
+        help="Optional maximum allowed collision rows before gate failure",
+    )
+    parser.add_argument(
+        "--gate-max-timeout-rows",
+        default="",
+        help="Optional maximum allowed timeout rows before gate failure",
+    )
+    parser.add_argument(
+        "--gate-min-min-ttc-any-lane-sec",
+        default="",
+        help="Optional minimum allowed global minimum TTC before gate failure",
+    )
     return parser.parse_args(argv)
 
 
@@ -92,6 +112,32 @@ def _load_summary_payload(summary_path_value: Any) -> dict[str, Any]:
 def _coerce_optional_float(value: Any) -> float | None:
     if value in (None, ""):
         return None
+
+
+def _parse_optional_non_negative_int(raw: Any, *, field: str) -> int | None:
+    value = str(raw or "").strip()
+    if not value:
+        return None
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise ValueError(f"{field} must be an integer, got: {raw}") from exc
+    if parsed < 0:
+        raise ValueError(f"{field} must be >= 0, got: {parsed}")
+    return parsed
+
+
+def _parse_optional_non_negative_float(raw: Any, *, field: str) -> float | None:
+    value = str(raw or "").strip()
+    if not value:
+        return None
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise ValueError(f"{field} must be a number, got: {raw}") from exc
+    if parsed < 0.0:
+        raise ValueError(f"{field} must be >= 0, got: {parsed}")
+    return parsed
     try:
         return float(value)
     except (TypeError, ValueError):
@@ -372,6 +418,102 @@ def _build_overview(
     }
 
 
+def _build_gate_summary(
+    *,
+    overview: dict[str, Any],
+    comparison_tables: dict[str, Any],
+    gate_max_attention_rows: int | None,
+    gate_max_collision_rows: int | None,
+    gate_max_timeout_rows: int | None,
+    gate_min_min_ttc_any_lane_sec: float | None,
+) -> dict[str, Any]:
+    policy = {
+        "max_attention_rows": gate_max_attention_rows,
+        "max_collision_rows": gate_max_collision_rows,
+        "max_timeout_rows": gate_max_timeout_rows,
+        "min_min_ttc_any_lane_sec": gate_min_min_ttc_any_lane_sec,
+    }
+    evaluated_rules: list[dict[str, Any]] = []
+    failure_codes: list[str] = []
+    enabled_rule_count = 0
+
+    def evaluate(*, metric_id: str, metric_value: Any, threshold_value: Any, comparison: str, failure_code: str) -> None:
+        nonlocal enabled_rule_count
+        if threshold_value is None:
+            return
+        enabled_rule_count += 1
+        passed = False
+        if comparison == "max_le":
+            metric_float = int(metric_value)
+            threshold_float = int(threshold_value)
+            passed = metric_float <= threshold_float
+        elif comparison == "min_ge":
+            metric_float = _coerce_optional_float(metric_value)
+            threshold_float = float(threshold_value)
+            passed = metric_float is not None and metric_float >= threshold_float
+        else:
+            raise ValueError(f"unsupported gate comparison: {comparison}")
+        if not passed:
+            failure_codes.append(failure_code)
+        evaluated_rules.append(
+            {
+                "metric_id": metric_id,
+                "metric_value": metric_value,
+                "threshold_value": threshold_value,
+                "comparison": comparison,
+                "passed": bool(passed),
+                "failure_code": None if passed else failure_code,
+            }
+        )
+
+    evaluate(
+        metric_id="attention_row_count",
+        metric_value=comparison_tables["attention_row_count"],
+        threshold_value=gate_max_attention_rows,
+        comparison="max_le",
+        failure_code="ATTENTION_ROWS_EXCEEDED",
+    )
+    evaluate(
+        metric_id="collision_row_count",
+        metric_value=overview["collision_row_count"],
+        threshold_value=gate_max_collision_rows,
+        comparison="max_le",
+        failure_code="COLLISION_ROWS_EXCEEDED",
+    )
+    evaluate(
+        metric_id="timeout_row_count",
+        metric_value=overview["timeout_row_count"],
+        threshold_value=gate_max_timeout_rows,
+        comparison="max_le",
+        failure_code="TIMEOUT_ROWS_EXCEEDED",
+    )
+    evaluate(
+        metric_id="min_ttc_any_lane_sec_min",
+        metric_value=overview["min_ttc_any_lane_sec_min"],
+        threshold_value=gate_min_min_ttc_any_lane_sec,
+        comparison="min_ge",
+        failure_code="MIN_TTC_BELOW_THRESHOLD",
+    )
+
+    if enabled_rule_count == 0:
+        status = "DISABLED"
+        passed = True
+    elif failure_codes:
+        status = "FAIL"
+        passed = False
+    else:
+        status = "PASS"
+        passed = True
+    return {
+        "status": status,
+        "passed": bool(passed),
+        "enabled_rule_count": int(enabled_rule_count),
+        "failure_codes": failure_codes,
+        "policy": policy,
+        "evaluated_rules": evaluated_rules,
+    }
+
+
 def _format_counter(counter_payload: dict[str, Any]) -> str:
     items = []
     for key, value in sorted(counter_payload.items()):
@@ -398,6 +540,7 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
     logical_rows = report["comparison_tables"]["logical_scenario_rows"]
     matrix_rows = report["comparison_tables"]["matrix_group_rows"]
     attention_rows = report["comparison_tables"]["attention_rows"]
+    gate = report["gate"]
 
     sections: list[str] = []
     sections.append("# Scenario Batch Comparison")
@@ -421,6 +564,37 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
             ],
         )
     )
+    sections.append("")
+    sections.append("## Gate")
+    sections.append("")
+    sections.append(
+        _markdown_table(
+            ["Metric", "Value"],
+            [
+                ["Gate status", str(gate["status"])],
+                ["Gate passed", str(gate["passed"])],
+                ["Enabled rule count", str(gate["enabled_rule_count"])],
+                ["Failure codes", ",".join(gate["failure_codes"]) or "-"],
+            ],
+        )
+    )
+    if gate["evaluated_rules"]:
+        sections.append("")
+        sections.append(
+            _markdown_table(
+                ["Rule", "Metric", "Threshold", "Passed", "Failure Code"],
+                [
+                    [
+                        str(rule["metric_id"]),
+                        str(rule["metric_value"]),
+                        str(rule["threshold_value"]),
+                        str(rule["passed"]),
+                        str(rule["failure_code"] or "-"),
+                    ]
+                    for rule in gate["evaluated_rules"]
+                ],
+            )
+        )
     sections.append("")
     sections.append("## Logical Scenario Summary")
     sections.append("")
@@ -545,6 +719,10 @@ def build_scenario_batch_comparison_report(
     matrix_sweep_report_path: Path,
     out_report: Path,
     markdown_out: Path | None = None,
+    gate_max_attention_rows: int | None = None,
+    gate_max_collision_rows: int | None = None,
+    gate_max_timeout_rows: int | None = None,
+    gate_min_min_ttc_any_lane_sec: float | None = None,
 ) -> dict[str, Any]:
     workflow_report = _load_variant_workflow_report(variant_workflow_report_path)
     variant_run_report_path_value = workflow_report["artifacts"].get("variant_run_report_path")
@@ -610,6 +788,14 @@ def build_scenario_batch_comparison_report(
     report["comparison_tables"]["logical_scenario_row_count"] = len(logical_scenario_rows)
     report["comparison_tables"]["matrix_group_row_count"] = len(matrix_group_rows)
     report["comparison_tables"]["attention_row_count"] = len(attention_rows)
+    report["gate"] = _build_gate_summary(
+        overview=report["overview"],
+        comparison_tables=report["comparison_tables"],
+        gate_max_attention_rows=gate_max_attention_rows,
+        gate_max_collision_rows=gate_max_collision_rows,
+        gate_max_timeout_rows=gate_max_timeout_rows,
+        gate_min_min_ttc_any_lane_sec=gate_min_min_ttc_any_lane_sec,
+    )
 
     markdown_text = _build_markdown_report(report)
     out_report.write_text(json.dumps(report, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
@@ -627,12 +813,31 @@ def main(argv: list[str] | None = None) -> int:
             matrix_sweep_report_path=Path(args.matrix_sweep_report).resolve(),
             out_report=out_report,
             markdown_out=markdown_out,
+            gate_max_attention_rows=_parse_optional_non_negative_int(
+                args.gate_max_attention_rows,
+                field="gate-max-attention-rows",
+            ),
+            gate_max_collision_rows=_parse_optional_non_negative_int(
+                args.gate_max_collision_rows,
+                field="gate-max-collision-rows",
+            ),
+            gate_max_timeout_rows=_parse_optional_non_negative_int(
+                args.gate_max_timeout_rows,
+                field="gate-max-timeout-rows",
+            ),
+            gate_min_min_ttc_any_lane_sec=_parse_optional_non_negative_float(
+                args.gate_min_min_ttc_any_lane_sec,
+                field="gate-min-min-ttc-any-lane-sec",
+            ),
         )
         print(f"[ok] logical_scenario_row_count={report['comparison_tables']['logical_scenario_row_count']}")
         print(f"[ok] matrix_group_row_count={report['comparison_tables']['matrix_group_row_count']}")
         print(f"[ok] attention_row_count={report['comparison_tables']['attention_row_count']}")
+        print(f"[ok] gate_status={report['gate']['status']}")
         print(f"[ok] report_out={report['artifacts']['json_report_path']}")
-        if report["comparison_tables"]["attention_row_count"] > 0:
+        if report["gate"]["status"] == "FAIL":
+            return 2
+        if report["gate"]["status"] == "DISABLED" and report["comparison_tables"]["attention_row_count"] > 0:
             return 2
         return 0
     except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
