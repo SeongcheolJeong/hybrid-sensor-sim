@@ -152,6 +152,8 @@ Detailed audit:
    - object-sim now supports per-interaction TTC threshold and brake-scale overrides for route-aware avoidance decisions
 13. avoidance-aware batch reporting
    - scenario batch comparison and workflow now propagate object-sim avoidance trigger counts, last-trigger interaction kinds, and grouped avoidance counters into overview, logical-scenario, matrix-group, attention, and top-level status-summary surfaces
+14. avoidance-aware gate policy
+   - batch gate policy now supports direct thresholds for avoidance activity and interaction-specific trigger counts, and the same failure codes are reused in logical-scenario health and matrix-group triage
 11. route-relation-driven replay and sweep generation
    - `log_scene_v0` and matrix actor patterns can now synthesize actor lane assignments from route relations instead of relying only on explicit lane IDs or raw lane slots
 12. rendered payload generation in scenario variants

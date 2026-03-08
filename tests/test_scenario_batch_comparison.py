@@ -470,6 +470,61 @@ class ScenarioBatchComparisonTests(unittest.TestCase):
             self.assertEqual(report["comparison_tables"]["attention_reason_counts"]["MERGE_CONFLICT_PRESENT"], 2)
             self.assertEqual(report["comparison_tables"]["attention_reason_counts"]["PATH_TTC_UNDER_3S"], 2)
 
+    def test_scenario_batch_comparison_avoidance_trigger_gate_can_fail(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            logical_path = root / "route_avoidance_logical_scenarios.json"
+            self._write_route_avoidance_logical_scenarios(logical_path)
+            workflow_result = run_scenario_variant_workflow(
+                logical_scenarios_path=str(logical_path),
+                scenario_language_profile="",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                out_root=root / "workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=1,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+            )
+            matrix_scenario_path = root / "route_avoidance_matrix.json"
+            matrix_scenario_path.write_text(
+                json.dumps(self._build_route_avoidance_scenario(), indent=2, ensure_ascii=True) + "\n",
+                encoding="utf-8",
+            )
+            run_scenario_matrix_sweep(
+                scenario_path=matrix_scenario_path,
+                out_root=root / "matrix_runs",
+                report_out=root / "matrix_report.json",
+                run_id_prefix="RUN_MATRIX_COMPARE",
+                traffic_profile_ids=["sumo_highway_balanced_v0"],
+                traffic_actor_pattern_ids=["sumo_route_shifted_v0"],
+                traffic_npc_speed_scale_values=[0.5],
+                tire_friction_coeff_values=[1.0],
+                surface_friction_scale_values=[1.0],
+                enable_ego_collision_avoidance=True,
+                avoidance_ttc_threshold_sec=10.0,
+                ego_max_brake_mps2=5.0,
+                max_cases=1,
+            )
+            report = build_scenario_batch_comparison_report(
+                variant_workflow_report_path=Path(workflow_result["workflow_report_path"]),
+                matrix_sweep_report_path=root / "matrix_report.json",
+                out_report=root / "comparison.json",
+                gate_max_avoidance_merge_conflict_triggers=0,
+            )
+            self.assertEqual(report["gate"]["status"], "FAIL")
+            self.assertIn(
+                "AVOIDANCE_MERGE_CONFLICT_TRIGGER_COUNT_EXCEEDED",
+                report["gate"]["failure_codes"],
+            )
+            self.assertIn(
+                "ego_avoidance_merge_conflict_trigger_count",
+                [rule["metric_id"] for rule in report["gate"]["evaluated_rules"] if not rule["passed"]],
+            )
+
     def test_scenario_batch_comparison_cli_threshold_can_override_profile(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

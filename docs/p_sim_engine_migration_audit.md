@@ -127,6 +127,9 @@ Implemented in the current repository:
 27. avoidance trigger propagation into batch reporting
    - batch comparison now propagates `ego_avoidance_brake_event_count`, `ego_avoidance_last_trigger_interaction_kind`, and grouped avoidance trigger counters from object-sim summaries into logical-scenario rows, matrix-group rows, attention rows, and overview totals
    - batch workflow `status_summary` now surfaces aggregate avoidance counts and interaction-kind counters for top-level triage
+28. avoidance-aware batch gate thresholds
+   - batch gate policy now supports direct thresholds for avoidance-active rows, aggregated avoidance brake events, and interaction-specific avoidance trigger counts
+   - per-scenario logical health and matrix-group triage now reuse the same avoidance failure codes such as `AVOIDANCE_MERGE_CONFLICT_TRIGGER_COUNT_EXCEEDED`
 
 Still pending from the same migration track:
 

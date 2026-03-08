@@ -205,6 +205,13 @@ python3 scripts/run_scenario_batch_comparison.py \
     - `--gate-max-merge-conflict-rows`
     - `--gate-max-lane-change-conflict-rows`
     - `--gate-min-min-ttc-path-conflict-sec`
+  - avoidance-specific gates are also supported through:
+    - `--gate-max-avoidance-rows`
+    - `--gate-max-avoidance-brake-events`
+    - `--gate-max-avoidance-same-lane-conflict-triggers`
+    - `--gate-max-avoidance-merge-conflict-triggers`
+    - `--gate-max-avoidance-lane-change-conflict-triggers`
+    - `--gate-max-avoidance-downstream-route-conflict-triggers`
 
 The comparison command also writes a Markdown report next to the JSON report by default.
 
@@ -239,11 +246,13 @@ python3 scripts/run_scenario_batch_workflow.py \
 - `comparison_summary.logical_scenario_rows`: compact logical-scenario table reused by workflow Markdown
 - `comparison_summary.logical_scenario_rows` and `comparison_summary.matrix_group_rows` now also carry aggregated route-interaction fields such as `path_conflict_row_count`, `merge_conflict_row_count`, `lane_change_conflict_row_count`, `path_interaction_counts`, and `min_ttc_path_conflict_sec_min`
 - `comparison_summary.logical_scenario_health_rows`: pass/fail/attention logical-scenario health table derived from collisions, timeouts, execution failures, TTC threshold breaches, and route-interaction thresholds, now including per-scenario `gate_status`, `gate_failure_codes`, `gate_evaluated_rules`, `path_conflict_row_count`, `merge_conflict_row_count`, `lane_change_conflict_row_count`, and `min_ttc_path_conflict_sec_min`
+- `comparison_summary.logical_scenario_health_rows`: now also carries `ego_avoidance_row_count`, `ego_avoidance_brake_event_count_total`, and `ego_avoidance_trigger_counts_by_interaction_kind`
 - `comparison_summary.logical_scenario_health_gate_status_counts`: compact `DISABLED|PASS|FAIL` counts for the per-scenario gate surface
 - `comparison_summary.failing_logical_scenario_rows`: compact subset of logical scenarios whose health or gate status is `FAIL`
 - `comparison_summary.failing_logical_scenario_gate_failure_code_counts`: aggregate failing gate reasons such as `MERGE_CONFLICT_ROWS_EXCEEDED`
 - `comparison_summary.attention_reason_counts`: aggregate attention reason counts propagated from the comparison layer
 - batch gate policy can now optionally cover `path_conflict`, `merge_conflict`, `lane_change_conflict`, and `min_ttc_path_conflict_sec` in addition to the existing attention/collision/timeout/TTC-any-lane rules
+- batch gate policy can also cover avoidance activity and interaction-kind trigger counts
 - `comparison_summary.matrix_group_rows`: compact matrix-group table reused by workflow Markdown
 - `variant_summary.successful_variant_rows`: compact successful variant rows reused by workflow Markdown
 - `variant_summary.non_success_variant_rows`: compact failed/skipped variant rows reused by workflow Markdown

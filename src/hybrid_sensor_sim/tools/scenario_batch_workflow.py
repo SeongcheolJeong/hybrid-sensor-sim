@@ -88,6 +88,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--gate-max-path-conflict-rows", default="")
     parser.add_argument("--gate-max-merge-conflict-rows", default="")
     parser.add_argument("--gate-max-lane-change-conflict-rows", default="")
+    parser.add_argument("--gate-max-avoidance-rows", default="")
+    parser.add_argument("--gate-max-avoidance-brake-events", default="")
+    parser.add_argument("--gate-max-avoidance-same-lane-conflict-triggers", default="")
+    parser.add_argument("--gate-max-avoidance-merge-conflict-triggers", default="")
+    parser.add_argument("--gate-max-avoidance-lane-change-conflict-triggers", default="")
+    parser.add_argument("--gate-max-avoidance-downstream-route-conflict-triggers", default="")
     parser.add_argument("--gate-min-min-ttc-any-lane-sec", default="")
     parser.add_argument("--gate-min-min-ttc-path-conflict-sec", default="")
     return parser.parse_args(argv)
@@ -193,6 +199,16 @@ def _build_logical_scenario_health_rows(
     max_path_conflict_rows = gate_policy.get("max_path_conflict_rows")
     max_merge_conflict_rows = gate_policy.get("max_merge_conflict_rows")
     max_lane_change_conflict_rows = gate_policy.get("max_lane_change_conflict_rows")
+    max_avoidance_rows = gate_policy.get("max_avoidance_rows")
+    max_avoidance_brake_events = gate_policy.get("max_avoidance_brake_events")
+    max_avoidance_same_lane_conflict_triggers = gate_policy.get("max_avoidance_same_lane_conflict_triggers")
+    max_avoidance_merge_conflict_triggers = gate_policy.get("max_avoidance_merge_conflict_triggers")
+    max_avoidance_lane_change_conflict_triggers = gate_policy.get(
+        "max_avoidance_lane_change_conflict_triggers"
+    )
+    max_avoidance_downstream_route_conflict_triggers = gate_policy.get(
+        "max_avoidance_downstream_route_conflict_triggers"
+    )
     min_ttc_path_conflict_threshold = _coerce_optional_float(gate_policy.get("min_min_ttc_path_conflict_sec"))
 
     def evaluate_rule(
@@ -232,6 +248,23 @@ def _build_logical_scenario_health_rows(
         path_conflict_row_count = int(row.get("path_conflict_row_count", 0))
         merge_conflict_row_count = int(row.get("merge_conflict_row_count", 0))
         lane_change_conflict_row_count = int(row.get("lane_change_conflict_row_count", 0))
+        ego_avoidance_row_count = int(row.get("ego_avoidance_row_count", 0) or 0)
+        ego_avoidance_brake_event_count_total = int(row.get("ego_avoidance_brake_event_count_total", 0) or 0)
+        ego_avoidance_trigger_counts_by_interaction_kind = dict(
+            row.get("ego_avoidance_trigger_counts_by_interaction_kind", {})
+        )
+        same_lane_avoidance_trigger_count = int(
+            ego_avoidance_trigger_counts_by_interaction_kind.get("same_lane_conflict", 0) or 0
+        )
+        merge_avoidance_trigger_count = int(
+            ego_avoidance_trigger_counts_by_interaction_kind.get("merge_conflict", 0) or 0
+        )
+        lane_change_avoidance_trigger_count = int(
+            ego_avoidance_trigger_counts_by_interaction_kind.get("lane_change_conflict", 0) or 0
+        )
+        downstream_route_avoidance_trigger_count = int(
+            ego_avoidance_trigger_counts_by_interaction_kind.get("downstream_route_conflict", 0) or 0
+        )
         attention_variant_count = max(non_success_variant_count, collision_count, timeout_count)
         min_ttc_any_lane_sec = _coerce_optional_float(row.get("min_ttc_any_lane_sec_min"))
         min_ttc_path_conflict_sec = _coerce_optional_float(row.get("min_ttc_path_conflict_sec_min"))
@@ -279,6 +312,48 @@ def _build_logical_scenario_health_rows(
                     threshold_value=max_lane_change_conflict_rows,
                     comparison="max_le",
                     failure_code="LANE_CHANGE_CONFLICT_ROWS_EXCEEDED",
+                ),
+                evaluate_rule(
+                    metric_id="ego_avoidance_row_count",
+                    metric_value=ego_avoidance_row_count,
+                    threshold_value=max_avoidance_rows,
+                    comparison="max_le",
+                    failure_code="AVOIDANCE_ROWS_EXCEEDED",
+                ),
+                evaluate_rule(
+                    metric_id="ego_avoidance_brake_event_count_total",
+                    metric_value=ego_avoidance_brake_event_count_total,
+                    threshold_value=max_avoidance_brake_events,
+                    comparison="max_le",
+                    failure_code="AVOIDANCE_BRAKE_EVENTS_EXCEEDED",
+                ),
+                evaluate_rule(
+                    metric_id="ego_avoidance_same_lane_conflict_trigger_count",
+                    metric_value=same_lane_avoidance_trigger_count,
+                    threshold_value=max_avoidance_same_lane_conflict_triggers,
+                    comparison="max_le",
+                    failure_code="AVOIDANCE_SAME_LANE_TRIGGER_COUNT_EXCEEDED",
+                ),
+                evaluate_rule(
+                    metric_id="ego_avoidance_merge_conflict_trigger_count",
+                    metric_value=merge_avoidance_trigger_count,
+                    threshold_value=max_avoidance_merge_conflict_triggers,
+                    comparison="max_le",
+                    failure_code="AVOIDANCE_MERGE_CONFLICT_TRIGGER_COUNT_EXCEEDED",
+                ),
+                evaluate_rule(
+                    metric_id="ego_avoidance_lane_change_conflict_trigger_count",
+                    metric_value=lane_change_avoidance_trigger_count,
+                    threshold_value=max_avoidance_lane_change_conflict_triggers,
+                    comparison="max_le",
+                    failure_code="AVOIDANCE_LANE_CHANGE_TRIGGER_COUNT_EXCEEDED",
+                ),
+                evaluate_rule(
+                    metric_id="ego_avoidance_downstream_route_conflict_trigger_count",
+                    metric_value=downstream_route_avoidance_trigger_count,
+                    threshold_value=max_avoidance_downstream_route_conflict_triggers,
+                    comparison="max_le",
+                    failure_code="AVOIDANCE_DOWNSTREAM_ROUTE_TRIGGER_COUNT_EXCEEDED",
                 ),
                 evaluate_rule(
                     metric_id="min_ttc_any_lane_sec_min",
@@ -366,6 +441,11 @@ def _build_logical_scenario_health_rows(
                 "path_conflict_row_count": path_conflict_row_count,
                 "merge_conflict_row_count": merge_conflict_row_count,
                 "lane_change_conflict_row_count": lane_change_conflict_row_count,
+                "ego_avoidance_row_count": ego_avoidance_row_count,
+                "ego_avoidance_brake_event_count_total": ego_avoidance_brake_event_count_total,
+                "ego_avoidance_trigger_counts_by_interaction_kind": dict(
+                    sorted(ego_avoidance_trigger_counts_by_interaction_kind.items())
+                ),
                 "min_ttc_any_lane_sec_min": min_ttc_any_lane_sec,
                 "min_ttc_path_conflict_sec_min": min_ttc_path_conflict_sec,
                 "gate_min_min_ttc_any_lane_sec": min_ttc_threshold,
@@ -494,6 +574,16 @@ def _build_workflow_status_summary(
         max_path_conflict_rows = gate_policy.get("max_path_conflict_rows")
         max_merge_conflict_rows = gate_policy.get("max_merge_conflict_rows")
         max_lane_change_conflict_rows = gate_policy.get("max_lane_change_conflict_rows")
+        max_avoidance_rows = gate_policy.get("max_avoidance_rows")
+        max_avoidance_brake_events = gate_policy.get("max_avoidance_brake_events")
+        max_avoidance_same_lane_conflict_triggers = gate_policy.get("max_avoidance_same_lane_conflict_triggers")
+        max_avoidance_merge_conflict_triggers = gate_policy.get("max_avoidance_merge_conflict_triggers")
+        max_avoidance_lane_change_conflict_triggers = gate_policy.get(
+            "max_avoidance_lane_change_conflict_triggers"
+        )
+        max_avoidance_downstream_route_conflict_triggers = gate_policy.get(
+            "max_avoidance_downstream_route_conflict_triggers"
+        )
         min_ttc_any_lane_sec = _coerce_optional_float(gate_policy.get("min_min_ttc_any_lane_sec"))
         min_ttc_path_conflict_sec = _coerce_optional_float(gate_policy.get("min_min_ttc_path_conflict_sec"))
         if max_collision_rows is not None and int(row.get("collision_count", 0)) > int(max_collision_rows):
@@ -506,6 +596,36 @@ def _build_workflow_status_summary(
             failure_codes.append("MERGE_CONFLICT_ROWS_EXCEEDED")
         if max_lane_change_conflict_rows is not None and int(row.get("lane_change_conflict_row_count", 0)) > int(max_lane_change_conflict_rows):
             failure_codes.append("LANE_CHANGE_CONFLICT_ROWS_EXCEEDED")
+        if max_avoidance_rows is not None and int(row.get("ego_avoidance_row_count", 0)) > int(max_avoidance_rows):
+            failure_codes.append("AVOIDANCE_ROWS_EXCEEDED")
+        if (
+            max_avoidance_brake_events is not None
+            and int(row.get("ego_avoidance_brake_event_count_total", 0)) > int(max_avoidance_brake_events)
+        ):
+            failure_codes.append("AVOIDANCE_BRAKE_EVENTS_EXCEEDED")
+        avoidance_trigger_counts = dict(row.get("ego_avoidance_trigger_counts_by_interaction_kind", {}))
+        if (
+            max_avoidance_same_lane_conflict_triggers is not None
+            and int(avoidance_trigger_counts.get("same_lane_conflict", 0)) > int(max_avoidance_same_lane_conflict_triggers)
+        ):
+            failure_codes.append("AVOIDANCE_SAME_LANE_TRIGGER_COUNT_EXCEEDED")
+        if (
+            max_avoidance_merge_conflict_triggers is not None
+            and int(avoidance_trigger_counts.get("merge_conflict", 0)) > int(max_avoidance_merge_conflict_triggers)
+        ):
+            failure_codes.append("AVOIDANCE_MERGE_CONFLICT_TRIGGER_COUNT_EXCEEDED")
+        if (
+            max_avoidance_lane_change_conflict_triggers is not None
+            and int(avoidance_trigger_counts.get("lane_change_conflict", 0))
+            > int(max_avoidance_lane_change_conflict_triggers)
+        ):
+            failure_codes.append("AVOIDANCE_LANE_CHANGE_TRIGGER_COUNT_EXCEEDED")
+        if (
+            max_avoidance_downstream_route_conflict_triggers is not None
+            and int(avoidance_trigger_counts.get("downstream_route_conflict", 0))
+            > int(max_avoidance_downstream_route_conflict_triggers)
+        ):
+            failure_codes.append("AVOIDANCE_DOWNSTREAM_ROUTE_TRIGGER_COUNT_EXCEEDED")
         row_min_ttc_any = _coerce_optional_float(row.get("min_ttc_any_lane_sec_min"))
         if min_ttc_any_lane_sec is not None and row_min_ttc_any is not None and row_min_ttc_any < min_ttc_any_lane_sec:
             failure_codes.append("MIN_TTC_BELOW_THRESHOLD")
@@ -986,6 +1106,12 @@ def run_scenario_batch_workflow(
     gate_max_path_conflict_rows: int | None = None,
     gate_max_merge_conflict_rows: int | None = None,
     gate_max_lane_change_conflict_rows: int | None = None,
+    gate_max_avoidance_rows: int | None = None,
+    gate_max_avoidance_brake_events: int | None = None,
+    gate_max_avoidance_same_lane_conflict_triggers: int | None = None,
+    gate_max_avoidance_merge_conflict_triggers: int | None = None,
+    gate_max_avoidance_lane_change_conflict_triggers: int | None = None,
+    gate_max_avoidance_downstream_route_conflict_triggers: int | None = None,
     gate_min_min_ttc_any_lane_sec: float | None = None,
     gate_min_min_ttc_path_conflict_sec: float | None = None,
 ) -> dict[str, Any]:
@@ -1040,6 +1166,12 @@ def run_scenario_batch_workflow(
         gate_max_path_conflict_rows=gate_max_path_conflict_rows,
         gate_max_merge_conflict_rows=gate_max_merge_conflict_rows,
         gate_max_lane_change_conflict_rows=gate_max_lane_change_conflict_rows,
+        gate_max_avoidance_rows=gate_max_avoidance_rows,
+        gate_max_avoidance_brake_events=gate_max_avoidance_brake_events,
+        gate_max_avoidance_same_lane_conflict_triggers=gate_max_avoidance_same_lane_conflict_triggers,
+        gate_max_avoidance_merge_conflict_triggers=gate_max_avoidance_merge_conflict_triggers,
+        gate_max_avoidance_lane_change_conflict_triggers=gate_max_avoidance_lane_change_conflict_triggers,
+        gate_max_avoidance_downstream_route_conflict_triggers=gate_max_avoidance_downstream_route_conflict_triggers,
         gate_min_min_ttc_any_lane_sec=gate_min_min_ttc_any_lane_sec,
         gate_min_min_ttc_path_conflict_sec=gate_min_min_ttc_path_conflict_sec,
     )
@@ -1224,6 +1356,30 @@ def main(argv: list[str] | None = None) -> int:
             gate_max_lane_change_conflict_rows=_parse_optional_non_negative_int(
                 args.gate_max_lane_change_conflict_rows,
                 field="gate-max-lane-change-conflict-rows",
+            ),
+            gate_max_avoidance_rows=_parse_optional_non_negative_int(
+                args.gate_max_avoidance_rows,
+                field="gate-max-avoidance-rows",
+            ),
+            gate_max_avoidance_brake_events=_parse_optional_non_negative_int(
+                args.gate_max_avoidance_brake_events,
+                field="gate-max-avoidance-brake-events",
+            ),
+            gate_max_avoidance_same_lane_conflict_triggers=_parse_optional_non_negative_int(
+                args.gate_max_avoidance_same_lane_conflict_triggers,
+                field="gate-max-avoidance-same-lane-conflict-triggers",
+            ),
+            gate_max_avoidance_merge_conflict_triggers=_parse_optional_non_negative_int(
+                args.gate_max_avoidance_merge_conflict_triggers,
+                field="gate-max-avoidance-merge-conflict-triggers",
+            ),
+            gate_max_avoidance_lane_change_conflict_triggers=_parse_optional_non_negative_int(
+                args.gate_max_avoidance_lane_change_conflict_triggers,
+                field="gate-max-avoidance-lane-change-conflict-triggers",
+            ),
+            gate_max_avoidance_downstream_route_conflict_triggers=_parse_optional_non_negative_int(
+                args.gate_max_avoidance_downstream_route_conflict_triggers,
+                field="gate-max-avoidance-downstream-route-conflict-triggers",
             ),
             gate_min_min_ttc_any_lane_sec=_parse_optional_non_negative_float(
                 args.gate_min_min_ttc_any_lane_sec,

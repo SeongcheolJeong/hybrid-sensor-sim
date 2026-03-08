@@ -605,6 +605,66 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             self.assertIn("Avoidance brake event count", markdown)
             self.assertIn("Avoidance trigger counts", markdown)
 
+    def test_scenario_batch_workflow_avoidance_trigger_gate_sets_failed_status(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            logical_path = root / "route_avoidance_logical_scenarios.json"
+            self._write_route_avoidance_logical_scenarios(logical_path)
+            matrix_scenario_path = root / "route_avoidance_matrix.json"
+            matrix_scenario_path.write_text(
+                json.dumps(self._build_route_avoidance_scenario(), indent=2, ensure_ascii=True) + "\n",
+                encoding="utf-8",
+            )
+            result = run_scenario_batch_workflow(
+                logical_scenarios_path=str(logical_path),
+                scenario_language_profile="",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                matrix_scenario_path=matrix_scenario_path,
+                out_root=root / "batch_workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=1,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+                matrix_run_id_prefix="RUN_BATCH_MATRIX",
+                traffic_profile_ids=["sumo_highway_balanced_v0"],
+                traffic_actor_pattern_ids=["sumo_route_shifted_v0"],
+                traffic_npc_speed_scale_values=[0.5],
+                tire_friction_coeff_values=[1.0],
+                surface_friction_scale_values=[1.0],
+                enable_ego_collision_avoidance=True,
+                avoidance_ttc_threshold_sec=10.0,
+                ego_max_brake_mps2=5.0,
+                max_cases=1,
+                gate_max_avoidance_merge_conflict_triggers=0,
+            )
+            workflow_report = result["workflow_report"]
+            self.assertEqual(workflow_report["status"], "FAILED")
+            self.assertEqual(workflow_report["status_summary"]["final_status_source"], "comparison_gate")
+            self.assertIn(
+                "AVOIDANCE_MERGE_CONFLICT_TRIGGER_COUNT_EXCEEDED",
+                workflow_report["comparison_summary"]["gate"]["failure_codes"],
+            )
+            self.assertIn(
+                "ego_avoidance_merge_conflict_trigger_count",
+                workflow_report["status_summary"]["breached_gate_metric_ids"],
+            )
+            health_row = workflow_report["comparison_summary"]["logical_scenario_health_rows"][0]
+            self.assertEqual(health_row["gate_status"], "FAIL")
+            self.assertIn(
+                "AVOIDANCE_MERGE_CONFLICT_TRIGGER_COUNT_EXCEEDED",
+                health_row["gate_failure_codes"],
+            )
+            self.assertEqual(
+                workflow_report["status_summary"]["matrix_group_gate_failure_code_counts"][
+                    "AVOIDANCE_MERGE_CONFLICT_TRIGGER_COUNT_EXCEEDED"
+                ],
+                1,
+            )
+
     def test_scenario_batch_workflow_cli_can_resolve_gate_profile_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
