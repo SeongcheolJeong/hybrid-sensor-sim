@@ -126,6 +126,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Base frame ID for generated Autoware frame tree",
     )
     parser.add_argument(
+        "--autoware-consumer-profile",
+        default="",
+        help="Optional Autoware consumer profile ID for stricter downstream topic expectations",
+    )
+    parser.add_argument(
         "--autoware-strict",
         action="store_true",
         help="Fail Autoware bridge if required sensor outputs are missing",
@@ -728,6 +733,7 @@ def run_scenario_backend_smoke_workflow(
     skip_smoke: bool = False,
     skip_autoware_bridge: bool = False,
     autoware_base_frame: str = "base_link",
+    autoware_consumer_profile: str = "",
     autoware_strict: bool = False,
     run_history_guard: bool = False,
     history_guard_metadata_root: str | Path | None = None,
@@ -1082,6 +1088,7 @@ def run_scenario_backend_smoke_workflow(
             ),
             "strict": bool(autoware_strict),
             "base_frame": str(autoware_base_frame).strip() or "base_link",
+            "consumer_profile_id": str(autoware_consumer_profile).strip() or None,
             "available_sensor_count": (
                 dict(autoware_result.get("report", {})).get("available_sensor_count")
                 if isinstance(autoware_result, dict)
@@ -1275,6 +1282,7 @@ def run_scenario_backend_smoke_workflow(
             runtime_backend_workflow_report_path="",
             out_root=out_root / "autoware",
             base_frame=autoware_base_frame,
+            consumer_profile_id=autoware_consumer_profile,
             strict=bool(autoware_strict),
         )
         if dict(autoware_result.get("report", {})).get("status") == "FAILED":
@@ -1286,6 +1294,10 @@ def run_scenario_backend_smoke_workflow(
             "availability_mode": autoware_report.get("availability_mode"),
             "strict": bool(autoware_strict),
             "base_frame": str(autoware_base_frame).strip() or "base_link",
+            "consumer_profile_id": autoware_report.get("consumer_profile_id"),
+            "consumer_profile_description": autoware_report.get(
+                "consumer_profile_description"
+            ),
             "available_sensor_count": autoware_report.get("available_sensor_count"),
             "missing_required_sensor_count": autoware_report.get("missing_required_sensor_count"),
             "available_topics": list(autoware_report.get("available_topics", [])),
@@ -1377,6 +1389,7 @@ def main(argv: list[str] | None = None) -> int:
             skip_smoke=bool(args.skip_smoke),
             skip_autoware_bridge=bool(args.skip_autoware_bridge),
             autoware_base_frame=args.autoware_base_frame,
+            autoware_consumer_profile=args.autoware_consumer_profile,
             autoware_strict=bool(args.autoware_strict),
             run_history_guard=bool(args.run_history_guard),
             history_guard_metadata_root=args.history_guard_metadata_root,

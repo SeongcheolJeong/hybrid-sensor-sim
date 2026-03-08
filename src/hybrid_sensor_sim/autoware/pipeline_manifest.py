@@ -104,6 +104,12 @@ def build_autoware_pipeline_manifest(
         "run_id": str(run_id).strip(),
         "backend": str(backend).strip() or None,
         "availability_mode": normalized_availability_mode,
+        "consumer_profile_id": str(sensor_contracts.get("consumer_profile_id", "")).strip()
+        or None,
+        "consumer_profile_description": str(
+            sensor_contracts.get("consumer_profile_description", "")
+        ).strip()
+        or None,
         "scenario_source": scenario_source,
         "scenario_id": str(scenario_source.get("scenario_id", "")).strip() or None,
         "variant_id": str(scenario_source.get("variant_id", "")).strip() or None,
@@ -193,6 +199,12 @@ def build_autoware_dataset_manifest(
         "smoke_scenario_path": str(scenario_source.get("smoke_scenario_path", "")).strip() or None,
         "bridge_manifest_path": str(scenario_source.get("bridge_manifest_path", "")).strip() or None,
         "backend": str(backend).strip() or None,
+        "consumer_profile_id": str(sensor_contracts.get("consumer_profile_id", "")).strip()
+        or None,
+        "consumer_profile_description": str(
+            sensor_contracts.get("consumer_profile_description", "")
+        ).strip()
+        or None,
         "recording_style": str(recording_style).strip() or "backend_smoke_export",
         "sensor_manifest_path": sensor_contracts_path,
         "pipeline_manifest_path": pipeline_manifest_path,
@@ -282,9 +294,16 @@ def build_autoware_consumer_input_manifest(
         "status": str(pipeline_manifest.get("status", "")).strip() or None,
         "availability_mode": str(pipeline_manifest.get("availability_mode", "")).strip()
         or None,
+        "consumer_profile_id": str(pipeline_manifest.get("consumer_profile_id", "")).strip()
+        or None,
+        "consumer_profile_description": str(
+            pipeline_manifest.get("consumer_profile_description", "")
+        ).strip()
+        or None,
         "consumer_ready": bool(
-            pipeline_manifest.get("frame_tree_complete")
-            and dataset_manifest.get("topic_export_count", 0)
+            pipeline_manifest.get("required_topics_complete")
+            and pipeline_manifest.get("frame_tree_complete")
+            and topic_catalog.get("available_topic_count", 0)
         ),
         "scenario_id": str(scenario_source.get("scenario_id", "")).strip() or None,
         "variant_id": str(scenario_source.get("variant_id", "")).strip() or None,

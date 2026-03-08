@@ -188,6 +188,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Base frame ID for generated Autoware frame tree",
     )
     parser.add_argument(
+        "--autoware-consumer-profile",
+        default="",
+        help="Optional Autoware consumer profile ID for stricter downstream topic expectations",
+    )
+    parser.add_argument(
         "--autoware-strict",
         action="store_true",
         help="Fail Autoware bridge if required sensor outputs are missing",
@@ -492,6 +497,10 @@ def _build_status_summary(
         "backend_source_payload_kind": backend_report.get("bridge", {}).get("source_payload_kind"),
         "autoware_pipeline_status": autoware_summary.get("status"),
         "autoware_availability_mode": _infer_autoware_availability_mode(autoware_summary),
+        "autoware_consumer_profile_id": autoware_summary.get("consumer_profile_id"),
+        "autoware_consumer_profile_description": autoware_summary.get(
+            "consumer_profile_description"
+        ),
         "autoware_available_sensor_count": autoware_summary.get("available_sensor_count"),
         "autoware_missing_required_sensor_count": autoware_summary.get("missing_required_sensor_count"),
         "autoware_available_topics": list(autoware_summary.get("available_topics", [])),
@@ -686,6 +695,7 @@ def run_scenario_runtime_backend_workflow(
     skip_smoke: bool,
     skip_autoware_bridge: bool = False,
     autoware_base_frame: str = "base_link",
+    autoware_consumer_profile: str = "",
     autoware_strict: bool = False,
     run_history_guard: bool = False,
     history_guard_metadata_root: str | Path | None = None,
@@ -767,6 +777,7 @@ def run_scenario_runtime_backend_workflow(
         skip_smoke=skip_smoke,
         skip_autoware_bridge=skip_autoware_bridge,
         autoware_base_frame=autoware_base_frame,
+        autoware_consumer_profile=autoware_consumer_profile,
         autoware_strict=autoware_strict,
     )
 
@@ -1050,6 +1061,7 @@ def main(argv: list[str] | None = None) -> int:
             skip_smoke=bool(args.skip_smoke),
             skip_autoware_bridge=bool(args.skip_autoware_bridge),
             autoware_base_frame=args.autoware_base_frame,
+            autoware_consumer_profile=args.autoware_consumer_profile,
             autoware_strict=bool(args.autoware_strict),
             run_history_guard=bool(args.run_history_guard),
             history_guard_metadata_root=args.history_guard_metadata_root,

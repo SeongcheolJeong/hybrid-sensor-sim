@@ -1013,6 +1013,7 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
                     run_linux_handoff_docker=True,
                     docker_handoff_execute=True,
                     skip_smoke=False,
+                    autoware_consumer_profile="semantic_perception_v0",
                 )
 
             workflow_report = result["workflow_report"]
@@ -1254,6 +1255,8 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
                     "report": {
                         "status": "PLANNED",
                         "availability_mode": "planned",
+                        "consumer_profile_id": "semantic_perception_v0",
+                        "consumer_profile_description": "semantic perception",
                         "available_sensor_count": 3,
                         "missing_required_sensor_count": 0,
                         "available_topics": ["/sensing/camera/camera_front/image_raw"],
@@ -1287,6 +1290,7 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
                     run_linux_handoff_docker=True,
                     docker_handoff_execute=True,
                     skip_smoke=False,
+                    autoware_consumer_profile="semantic_perception_v0",
                 )
 
             workflow_report = result["workflow_report"]
@@ -1296,8 +1300,16 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
                 "HANDOFF_DOCKER_OUTPUT_READY",
             )
             autoware_bridge.assert_called_once()
+            self.assertEqual(
+                autoware_bridge.call_args.kwargs["consumer_profile_id"],
+                "semantic_perception_v0",
+            )
             self.assertEqual(workflow_report["autoware"]["status"], "PLANNED")
             self.assertEqual(workflow_report["autoware"]["availability_mode"], "planned")
+            self.assertEqual(
+                workflow_report["autoware"]["consumer_profile_id"],
+                "semantic_perception_v0",
+            )
 
     def test_scenario_backend_smoke_workflow_script_bootstraps_src_path(self) -> None:
         script_path = Path(__file__).resolve().parents[1] / "scripts" / "run_scenario_backend_smoke_workflow.py"

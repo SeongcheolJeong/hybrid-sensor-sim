@@ -1494,6 +1494,8 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
                         "autoware": {
                             "status": "DEGRADED",
                             "availability_mode": "runtime",
+                            "consumer_profile_id": "semantic_perception_v0",
+                            "consumer_profile_description": "semantic perception",
                             "available_sensor_count": 2,
                             "missing_required_sensor_count": 1,
                             "available_topics": ["/sensing/lidar/lidar_top/pointcloud"],
@@ -1555,6 +1557,10 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
             self.assertEqual(
                 report["status_summary"]["final_status_source"],
                 "backend_handoff_docker_output_degraded",
+            )
+            self.assertEqual(
+                report["status_summary"]["autoware_consumer_profile_id"],
+                "semantic_perception_v0",
             )
             self.assertIn(
                 "BACKEND_HANDOFF_DOCKER_OUTPUT_DEGRADED",

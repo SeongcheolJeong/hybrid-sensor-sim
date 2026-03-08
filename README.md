@@ -407,7 +407,8 @@ Autoware pipeline bridge:
 ```bash
 python3 scripts/run_autoware_pipeline_bridge.py \
   --backend-smoke-workflow-report artifacts/scenario_backend_smoke_runs/scenario_backend_smoke_workflow_report_v0.json \
-  --out-root artifacts/autoware_pipeline_bridge_runs
+  --out-root artifacts/autoware_pipeline_bridge_runs \
+  --consumer-profile semantic_perception_v0
 ```
 
 If the backend workflow is in `HANDOFF_READY` or `HANDOFF_DOCKER_*` state and no real smoke summary exists yet, the bridge now emits a `PLANNED` Autoware bundle from the smoke input config. This keeps topic/frame readiness visible before the actual Linux/AWSIM handoff run.
@@ -425,6 +426,11 @@ The Autoware bundle now also carries run-level lineage:
 It also materializes a topic-facing export bundle under `autoware/topics/...` together with `autoware_topic_export_index.json`, `autoware_topic_catalog.json`, and `autoware_consumer_input_manifest.json`, so downstream consumers can inspect per-topic payload paths and load-ready topic/frame inputs without re-reading backend smoke reports.
 It now also writes `autoware_topic_catalog.json`, which lifts required-topic counts, missing required topics, and available message types into one compact downstream-facing catalog.
 When backend outputs exist only because the runner materialized sidecar exports into the expected layout, the bridge now emits `SIDECAR_READY` or `SIDECAR_DEGRADED` instead of plain `READY`. Mixed runtime-and-sidecar runs are reported as `MIXED_READY` or `MIXED_DEGRADED`.
+Consumer profiles now let the same runtime-origin export set be graded against stricter downstream expectations. The built-in profiles are:
+- `semantic_perception_v0`: requires `camera_visible`, `camera_semantic`, and `lidar_point_cloud`
+- `tracking_fusion_v0`: requires `camera_visible`, `lidar_point_cloud`, `radar_detections`, and `radar_tracks`
+This means a real backend run can now be `DEGRADED` even when output comparison is `MATCHED` and output smoke is `COMPLETE`, if the chosen downstream consumer profile still lacks a required topic.
+The current AWSIM Linux-handoff path now reproduces that state with runtime-origin outputs as well: using `semantic_perception_v0`, the workflow stays `MATCHED` + `COMPLETE` + `BACKEND_RUNTIME_ONLY` but becomes top-level `DEGRADED` because `/sensing/camera/<sensor>/semantic/image_raw` is still missing.
 
 Both `run_scenario_variants.py` and `run_scenario_variant_workflow.py` resolve default scenario-language profiles from:
 

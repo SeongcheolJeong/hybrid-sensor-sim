@@ -20,6 +20,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--runtime-backend-workflow-report", default="", help="Path to scenario_runtime_backend_workflow_report_v0.json")
     parser.add_argument("--out-root", required=True, help="Output root for the Autoware export bundle")
     parser.add_argument("--base-frame", default="base_link", help="Base frame ID for generated frame tree")
+    parser.add_argument(
+        "--consumer-profile",
+        default="",
+        help="Optional Autoware consumer profile ID for stricter required topic/output expectations",
+    )
     parser.add_argument("--strict", action="store_true", help="Fail if required sensor outputs are missing")
     return parser.parse_args(argv)
 
@@ -156,6 +161,7 @@ def run_autoware_pipeline_bridge(
     runtime_backend_workflow_report_path: str,
     out_root: Path,
     base_frame: str = "base_link",
+    consumer_profile_id: str = "",
     strict: bool = False,
 ) -> dict[str, Any]:
     report_path_text = str(backend_smoke_workflow_report_path).strip() or str(runtime_backend_workflow_report_path).strip()
@@ -213,6 +219,7 @@ def run_autoware_pipeline_bridge(
             smoke_summary=smoke_summary,
             strict=bool(strict),
             base_frame=base_frame,
+            consumer_profile_id=consumer_profile_id,
         )
     else:
         if str(backend_report.get("status", "")).strip() not in {
@@ -232,6 +239,7 @@ def run_autoware_pipeline_bridge(
             smoke_input_config=smoke_input_config,
             strict=bool(strict),
             base_frame=base_frame,
+            consumer_profile_id=consumer_profile_id,
         )
     report = {
         "backend": str(backend_report.get("backend", "")).strip() or None,
@@ -239,6 +247,8 @@ def run_autoware_pipeline_bridge(
         "status": bundle["status"],
         "strict": bool(strict),
         "availability_mode": bundle.get("availability_mode"),
+        "consumer_profile_id": bundle.get("consumer_profile_id"),
+        "consumer_profile_description": bundle.get("consumer_profile_description"),
         "available_sensor_count": bundle["available_sensor_count"],
         "missing_required_sensor_count": bundle["missing_required_sensor_count"],
         "available_topics": bundle["available_topics"],
@@ -276,6 +286,7 @@ def main(argv: list[str] | None = None) -> int:
             runtime_backend_workflow_report_path=args.runtime_backend_workflow_report,
             out_root=Path(args.out_root).resolve(),
             base_frame=args.base_frame,
+            consumer_profile_id=args.consumer_profile,
             strict=bool(args.strict),
         )
         print(f"[ok] autoware_status={result['report']['status']}")

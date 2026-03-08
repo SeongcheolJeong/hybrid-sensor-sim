@@ -163,6 +163,77 @@ class AutowareContractsTests(unittest.TestCase):
         self.assertTrue(depth_contracts[0]["available"])
         self.assertEqual(depth_contracts[0]["availability_mode"], "planned")
 
+    def test_build_sensor_contracts_applies_consumer_profile_requirements(self) -> None:
+        contracts = build_autoware_sensor_contracts(
+            backend_sensor_output_summary={
+                "backend": "awsim",
+                "sensors": [
+                    {
+                        "sensor_id": "cam_front",
+                        "modality": "camera",
+                        "outputs": [
+                            {
+                                "output_role": "camera_visible",
+                                "artifact_type": "awsim_camera_rgb_json",
+                                "data_format": "camera_projection_json",
+                                "artifact_key": "camera_projection_json",
+                                "resolved_path": "/tmp/cam_front.json",
+                                "exists": True,
+                            }
+                        ],
+                    },
+                    {
+                        "sensor_id": "lidar_top",
+                        "modality": "lidar",
+                        "outputs": [
+                            {
+                                "output_role": "lidar_point_cloud",
+                                "artifact_type": "awsim_lidar_json_point_cloud",
+                                "data_format": "lidar_points_json",
+                                "artifact_key": "lidar_points_json",
+                                "resolved_path": "/tmp/lidar_top.json",
+                                "exists": True,
+                            }
+                        ],
+                    },
+                ],
+            },
+            backend_output_spec={
+                "backend": "awsim",
+                "expected_outputs_by_sensor": [],
+            },
+            sensor_mounts=[
+                {
+                    "sensor_id": "cam_front",
+                    "sensor_type": "camera",
+                    "enabled": True,
+                },
+                {
+                    "sensor_id": "lidar_top",
+                    "sensor_type": "lidar",
+                    "enabled": True,
+                },
+            ],
+            consumer_profile_id="semantic_perception_v0",
+        )
+        self.assertEqual(contracts["consumer_profile_id"], "semantic_perception_v0")
+        self.assertEqual(contracts["available_sensor_count"], 2)
+        self.assertEqual(contracts["missing_required_sensor_count"], 1)
+        self.assertIn("/sensing/camera/cam_front/image_raw", contracts["available_topics"])
+        semantic_contracts = [
+            entry
+            for entry in contracts["contracts"]
+            if entry["sensor_id"] == "cam_front"
+            and entry["output_role"] == "camera_semantic"
+        ]
+        self.assertEqual(len(semantic_contracts), 1)
+        self.assertTrue(semantic_contracts[0]["required"])
+        self.assertFalse(semantic_contracts[0]["available"])
+        self.assertEqual(
+            semantic_contracts[0]["consumer_profile_id"],
+            "semantic_perception_v0",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

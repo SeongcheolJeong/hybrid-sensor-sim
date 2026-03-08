@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from hybrid_sensor_sim.autoware.profiles import resolve_autoware_consumer_profile
 from hybrid_sensor_sim.autoware.topics import (
     default_autoware_encoding_for_output_role,
     default_autoware_message_type_for_output_role,
@@ -58,7 +59,21 @@ def _required_output_roles(
     modality: str,
     summary_sensor: dict[str, Any] | None,
     spec_sensor: dict[str, Any] | None,
+    consumer_profile: dict[str, Any] | None,
 ) -> set[str]:
+    if isinstance(consumer_profile, dict):
+        profile_roles = (
+            dict(consumer_profile.get("required_output_roles_by_modality", {})).get(
+                str(modality).strip(),
+                [],
+            )
+            or []
+        )
+        normalized_profile_roles = {
+            str(role).strip() for role in profile_roles if str(role).strip()
+        }
+        if normalized_profile_roles:
+            return normalized_profile_roles
     explicit_roles: set[str] = set()
     for container in (spec_sensor, summary_sensor):
         for output in (container or {}).get("outputs", []) or []:
@@ -123,10 +138,12 @@ def build_autoware_sensor_contracts(
     backend_output_spec: dict[str, Any],
     sensor_mounts: list[dict[str, Any]] | None = None,
     availability_mode: str = "runtime",
+    consumer_profile_id: str = "",
 ) -> dict[str, Any]:
     mounts_by_sensor = _mounts_by_sensor_id(sensor_mounts)
     summary_by_sensor = _outputs_by_sensor_id(backend_sensor_output_summary)
     spec_by_sensor = _expected_outputs_by_sensor_id(backend_output_spec)
+    consumer_profile = resolve_autoware_consumer_profile(consumer_profile_id)
     backend = str(
         backend_sensor_output_summary.get("backend")
         or backend_output_spec.get("backend")
@@ -157,6 +174,7 @@ def build_autoware_sensor_contracts(
                 modality=modality,
                 summary_sensor=summary_sensor,
                 spec_sensor=spec_sensor,
+                consumer_profile=consumer_profile,
             )
             if enabled
             else set()
@@ -206,6 +224,11 @@ def build_autoware_sensor_contracts(
                     "required": required,
                     "available": available,
                     "availability_mode": normalized_availability_mode,
+                    "consumer_profile_id": (
+                        str(consumer_profile.get("profile_id", "")).strip() or None
+                        if isinstance(consumer_profile, dict)
+                        else None
+                    ),
                 }
             )
         for output_role in sorted(required_roles - set(merged_outputs)):
@@ -231,6 +254,11 @@ def build_autoware_sensor_contracts(
                     "required": True,
                     "available": False,
                     "availability_mode": normalized_availability_mode,
+                    "consumer_profile_id": (
+                        str(consumer_profile.get("profile_id", "")).strip() or None
+                        if isinstance(consumer_profile, dict)
+                        else None
+                    ),
                 }
             )
         if enabled and missing_required_roles:
@@ -246,6 +274,11 @@ def build_autoware_sensor_contracts(
                 "missing_required_roles": sorted(set(missing_required_roles)),
                 "required_output_roles": sorted(required_roles),
                 "availability_mode": normalized_availability_mode,
+                "consumer_profile_id": (
+                    str(consumer_profile.get("profile_id", "")).strip() or None
+                    if isinstance(consumer_profile, dict)
+                    else None
+                ),
             }
         )
 
@@ -255,6 +288,16 @@ def build_autoware_sensor_contracts(
         "schema_version": AUTOWARE_SENSOR_CONTRACT_SCHEMA_VERSION_V0,
         "backend": backend or None,
         "availability_mode": normalized_availability_mode,
+        "consumer_profile_id": (
+            str(consumer_profile.get("profile_id", "")).strip() or None
+            if isinstance(consumer_profile, dict)
+            else None
+        ),
+        "consumer_profile_description": (
+            str(consumer_profile.get("description", "")).strip() or None
+            if isinstance(consumer_profile, dict)
+            else None
+        ),
         "sensor_count": len(sensors),
         "available_sensor_count": available_sensor_count,
         "missing_required_sensor_count": missing_required_sensor_count,

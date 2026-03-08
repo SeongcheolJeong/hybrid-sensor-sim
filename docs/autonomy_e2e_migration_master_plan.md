@@ -103,6 +103,8 @@ Still pending from this master plan:
    - the current macOS -> Linux Docker handoff path now reaches `HANDOFF_DOCKER_OUTPUT_READY` for a real AWSIM packaged run, meaning output comparison and Autoware bridging are usable even though the packaged runtime still exits non-zero
    - the top-level runtime workflow now promotes that state to `SUCCEEDED` when the resulting output set is `MATCHED`, `COMPLETE`, `BACKEND_RUNTIME_ONLY`, and Autoware is runtime `READY`
    - the same path now becomes `DEGRADED` when backend-runtime outputs are still complete and matched but the Autoware bridge is runtime `DEGRADED`
+   - Autoware consumer profiles now make that downgrade intentional for downstream contracts such as `semantic_perception_v0`, where missing semantic camera topics degrade the run even though backend export comparison still passes
+   - that `DEGRADED` classification is now reproduced on the real AWSIM Linux handoff path, not only in mocked tests
    - the Autoware bridge now exposes run-level lineage so the selected variant, scenario source, smoke-ready scenario, and backend-export roots are all visible in one dataset manifest
 3. tighter publish gating that combines scenario/runtime smoke with provenance refresh status
 4. lower-level backend smoke entrypoints should preserve the same provenance-aware publish checks as top-level workflows

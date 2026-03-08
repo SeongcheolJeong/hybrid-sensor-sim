@@ -424,6 +424,7 @@ def write_autoware_export_bundle(
     smoke_summary: dict[str, Any],
     strict: bool = False,
     base_frame: str = "base_link",
+    consumer_profile_id: str = "",
 ) -> dict[str, Any]:
     autoware_root = out_root / "autoware"
     autoware_root.mkdir(parents=True, exist_ok=True)
@@ -445,6 +446,7 @@ def write_autoware_export_bundle(
         backend_output_spec=backend_output_spec,
         sensor_mounts=sensor_mounts,
         availability_mode=availability_mode,
+        consumer_profile_id=consumer_profile_id,
     )
     topic_export_index, topic_export_root, topic_export_index_path = _build_topic_export_bundle(
         autoware_root=autoware_root,
@@ -535,6 +537,10 @@ def write_autoware_export_bundle(
         "strict": bool(strict),
         "availability_mode": availability_mode,
         "base_frame": str(base_frame).strip() or "base_link",
+        "consumer_profile_id": sensor_contracts.get("consumer_profile_id"),
+        "consumer_profile_description": sensor_contracts.get(
+            "consumer_profile_description"
+        ),
         "available_sensor_count": int(sensor_contracts.get("available_sensor_count", 0) or 0),
         "missing_required_sensor_count": int(sensor_contracts.get("missing_required_sensor_count", 0) or 0),
         "available_topics": list(sensor_contracts.get("available_topics", [])),
@@ -587,6 +593,7 @@ def write_autoware_planned_export_bundle(
     smoke_input_config: dict[str, Any],
     strict: bool = False,
     base_frame: str = "base_link",
+    consumer_profile_id: str = "",
 ) -> dict[str, Any]:
     autoware_root = out_root / "autoware"
     autoware_root.mkdir(parents=True, exist_ok=True)
@@ -601,6 +608,7 @@ def write_autoware_planned_export_bundle(
         backend_output_spec=backend_output_spec,
         sensor_mounts=sensor_mounts,
         availability_mode="planned",
+        consumer_profile_id=consumer_profile_id,
     )
     topic_export_index, topic_export_root, topic_export_index_path = _build_topic_export_bundle(
         autoware_root=autoware_root,
@@ -695,6 +703,10 @@ def write_autoware_planned_export_bundle(
         "strict": bool(strict),
         "availability_mode": "planned",
         "base_frame": str(base_frame).strip() or "base_link",
+        "consumer_profile_id": sensor_contracts.get("consumer_profile_id"),
+        "consumer_profile_description": sensor_contracts.get(
+            "consumer_profile_description"
+        ),
         "available_sensor_count": int(sensor_contracts.get("available_sensor_count", 0) or 0),
         "missing_required_sensor_count": int(sensor_contracts.get("missing_required_sensor_count", 0) or 0),
         "available_topics": list(sensor_contracts.get("available_topics", [])),

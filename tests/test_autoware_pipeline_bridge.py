@@ -265,6 +265,36 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
             self.assertEqual(report["status"], "SIDECAR_READY")
             self.assertEqual(report["availability_mode"], "sidecar")
 
+    def test_bridge_degrades_for_semantic_consumer_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            backend_report_path = self._write_backend_workflow_fixture(root, include_lidar=True)
+            result = run_autoware_pipeline_bridge(
+                backend_smoke_workflow_report_path=str(backend_report_path),
+                runtime_backend_workflow_report_path="",
+                out_root=root / "autoware_bundle",
+                consumer_profile_id="semantic_perception_v0",
+                strict=False,
+            )
+            report = result["report"]
+            self.assertEqual(report["status"], "DEGRADED")
+            self.assertEqual(report["availability_mode"], "runtime")
+            self.assertEqual(report["consumer_profile_id"], "semantic_perception_v0")
+            self.assertEqual(report["missing_required_sensor_count"], 1)
+            self.assertEqual(report["required_topic_count"], 3)
+            self.assertEqual(report["missing_required_topic_count"], 1)
+            self.assertFalse(report["consumer_ready"])
+            self.assertEqual(report["topic_export_count"], 3)
+            self.assertEqual(report["materialized_topic_export_count"], 2)
+            self.assertIn(
+                "/sensing/camera/cam_front/semantic/image_raw",
+                json.loads(
+                    Path(report["artifacts"]["topic_catalog_path"]).read_text(
+                        encoding="utf-8"
+                    )
+                )["missing_required_topics"],
+            )
+
     def test_bridge_rebases_workspace_paths_from_handoff_smoke_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
