@@ -11,6 +11,7 @@ from pathlib import Path
 
 from hybrid_sensor_sim.physics.vehicle_dynamics import (
     simulate_vehicle_dynamics,
+    simulate_vehicle_dynamics_step,
     validate_control_sequence,
     validate_vehicle_profile,
 )
@@ -132,6 +133,61 @@ class VehicleDynamicsTests(unittest.TestCase):
             self.assertEqual(result["vehicle_profile_path"], str(profile_path.resolve()))
             self.assertEqual(result["control_sequence_path"], str(sequence_path.resolve()))
             self.assertGreater(result["final_speed_mps"], 0.0)
+
+    def test_simulate_vehicle_dynamics_step_matches_first_trace_row(self) -> None:
+        vehicle_profile = validate_vehicle_profile(self._profile_payload())
+        sequence_payload = self._sequence_payload()
+        sequence_payload["enable_planar_kinematics"] = True
+        sequence_payload["enable_dynamic_bicycle"] = False
+        (
+            dt_sec,
+            initial_position_m,
+            initial_speed_mps,
+            initial_heading_deg,
+            initial_lateral_position_m,
+            initial_lateral_velocity_mps,
+            initial_yaw_rate_rps,
+            enable_planar_kinematics,
+            enable_dynamic_bicycle,
+            commands,
+        ) = validate_control_sequence(sequence_payload)
+        result = simulate_vehicle_dynamics(
+            vehicle_profile=vehicle_profile,
+            dt_sec=dt_sec,
+            initial_position_m=initial_position_m,
+            initial_speed_mps=initial_speed_mps,
+            initial_heading_deg=initial_heading_deg,
+            initial_lateral_position_m=initial_lateral_position_m,
+            initial_lateral_velocity_mps=initial_lateral_velocity_mps,
+            initial_yaw_rate_rps=initial_yaw_rate_rps,
+            enable_planar_kinematics=enable_planar_kinematics,
+            enable_dynamic_bicycle=enable_dynamic_bicycle,
+            commands=commands,
+        )
+        first_step = simulate_vehicle_dynamics_step(
+            vehicle_profile=vehicle_profile,
+            dt_sec=dt_sec,
+            position_m=initial_position_m,
+            speed_mps=initial_speed_mps,
+            heading_deg=initial_heading_deg,
+            lateral_position_m=initial_lateral_position_m,
+            lateral_velocity_mps=initial_lateral_velocity_mps,
+            yaw_rate_rps=initial_yaw_rate_rps,
+            enable_planar_kinematics=enable_planar_kinematics,
+            enable_dynamic_bicycle=enable_dynamic_bicycle,
+            throttle=float(commands[0]["throttle"]),
+            brake=float(commands[0]["brake"]),
+            steering_angle_deg=float(commands[0]["steering_angle_deg"]),
+            road_grade_percent=float(commands[0]["road_grade_percent"]),
+            surface_friction_scale=float(commands[0]["surface_friction_scale"]),
+            target_speed_mps=commands[0]["target_speed_mps"],
+        )
+
+        trace_row = result["trace"][0]
+        self.assertAlmostEqual(float(first_step["speed_mps"]), float(trace_row["speed_mps"]), places=6)
+        self.assertAlmostEqual(float(first_step["position_m"]), float(trace_row["position_m"]), places=6)
+        self.assertAlmostEqual(float(first_step["accel_mps2"]), float(trace_row["accel_mps2"]), places=6)
+        self.assertAlmostEqual(float(first_step["net_force_n"]), float(trace_row["net_force_n"]), places=6)
 
     def test_vehicle_dynamics_trace_script_bootstraps_src_path(self) -> None:
         script_path = Path(__file__).resolve().parents[1] / "scripts" / "run_vehicle_dynamics_trace.py"

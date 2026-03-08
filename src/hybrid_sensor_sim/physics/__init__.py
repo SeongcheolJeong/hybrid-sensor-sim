@@ -5,6 +5,7 @@ from hybrid_sensor_sim.physics.vehicle_dynamics import (
     VEHICLE_DYNAMICS_TRACE_SCHEMA_VERSION_V0,
     VEHICLE_PROFILE_SCHEMA_VERSION_V0,
     simulate_vehicle_dynamics,
+    simulate_vehicle_dynamics_step,
     validate_control_sequence,
     validate_vehicle_profile,
 )
@@ -14,6 +15,7 @@ __all__ = [
     "VEHICLE_DYNAMICS_TRACE_SCHEMA_VERSION_V0",
     "VEHICLE_PROFILE_SCHEMA_VERSION_V0",
     "simulate_vehicle_dynamics",
+    "simulate_vehicle_dynamics_step",
     "validate_control_sequence",
     "validate_vehicle_profile",
 ]

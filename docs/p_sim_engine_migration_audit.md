@@ -67,10 +67,11 @@ Implemented in the current repository:
 6. `generate_scenario_variants.py` baseline -> `src/hybrid_sensor_sim/scenarios/variants.py`, `src/hybrid_sensor_sim/tools/scenario_variants.py`
 7. `core_sim_matrix_sweep_runner.py` baseline -> `src/hybrid_sensor_sim/scenarios/matrix_sweep.py`, `src/hybrid_sensor_sim/tools/scenario_matrix_sweep.py`
 8. `sensor_rig_sweep.py` baseline -> `src/hybrid_sensor_sim/tools/sensor_rig_sweep.py`
+9. second-wave `vehicle_dynamics` coupling into `src/hybrid_sensor_sim/scenarios/object_sim.py`
 
 Still pending from the same migration track:
 
-1. map-layer migration from `P_Map-Toolset-MVP`
+1. map-aware scenario/object-sim consumption of the migrated canonical map layer
 
 ## Block Mapping
 
@@ -120,7 +121,7 @@ These old files are still worth mining directly:
 
 The current repository does not yet have first-class equivalents for:
 
-1. map conversion / validation / route utilities
+1. map-aware scenario/object-sim consumption of the migrated canonical map layer
 
 This is consistent with the current source tree, which is centered on:
 
@@ -150,7 +151,7 @@ Why first:
 - It creates the basis for object-sim and replay work.
 - It is more important than migrating any old runtime adapter scaffold.
 
-### 2. Map layer next
+### 2. Map-aware scenario consumption next
 
 Source:
 
@@ -158,11 +159,12 @@ Source:
 - `P_Map-Toolset-MVP/prototype/validate_canonical_map.py`
 - `P_Map-Toolset-MVP/prototype/compute_canonical_route.py`
 
-Target:
+Current target:
 
 - `src/hybrid_sensor_sim/maps/convert.py`
 - `src/hybrid_sensor_sim/maps/validate.py`
 - `src/hybrid_sensor_sim/maps/route.py`
+- future object-sim/scenario consumers under `src/hybrid_sensor_sim/scenarios/`
 
 ## What Not To Repeat
 
@@ -179,8 +181,8 @@ Porting them would add duplication, not capability.
 
 The highest-value next migration from `Autonomy-E2E` is now:
 
-1. add second-wave `vehicle_dynamics` coupling into object-sim ego longitudinal update
-2. keep the new map layer standalone until scenario/object-sim can consume it coherently
+1. connect the migrated canonical map layer to scenario/object-sim inputs coherently
+2. keep the current longitudinal vehicle-dynamics coupling stable while map-aware behavior is added
 3. only then deepen map-aware scenario generation and validation
 
 That order increases current feature coverage without destabilizing the newly migrated scenario and rig-sweep blocks.

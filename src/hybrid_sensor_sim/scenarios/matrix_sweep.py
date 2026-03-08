@@ -204,6 +204,10 @@ def apply_traffic_actor_pattern(
         tire_friction_coeff=tire_friction_coeff,
         surface_friction_scale=surface_friction_scale,
         wall_timeout_sec=scenario.wall_timeout_sec,
+        ego_dynamics_mode=scenario.ego_dynamics_mode,
+        ego_vehicle_profile=scenario.ego_vehicle_profile,
+        ego_target_speed_mps=scenario.ego_target_speed_mps,
+        ego_road_grade_percent=scenario.ego_road_grade_percent,
     )
 
 

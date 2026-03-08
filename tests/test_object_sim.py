@@ -44,6 +44,23 @@ class ObjectSimTests(unittest.TestCase):
                 }
             )
 
+    def test_load_scenario_requires_vehicle_profile_for_dynamics_mode(self) -> None:
+        with self.assertRaisesRegex(
+            ScenarioValidationError,
+            "ego_dynamics_mode=vehicle_dynamics requires ego_vehicle_profile",
+        ):
+            load_scenario(
+                {
+                    "scenario_schema_version": "scenario_definition_v0",
+                    "scenario_id": "bad_dyn",
+                    "duration_sec": 1.0,
+                    "dt_sec": 0.1,
+                    "ego_dynamics_mode": "vehicle_dynamics",
+                    "ego": {"position_m": 0.0, "speed_mps": 1.0},
+                    "npcs": [{"position_m": 5.0, "speed_mps": 1.0}],
+                }
+            )
+
     def test_run_object_sim_success_case_is_deterministic(self) -> None:
         scenario = load_scenario(FIXTURE_ROOT / "highway_safe_following_v0.json")
         result = run_object_sim(scenario, seed=42, metadata={"run_id": "SAFE_001"})
@@ -66,6 +83,20 @@ class ObjectSimTests(unittest.TestCase):
         self.assertIsNotNone(result.summary["min_ttc_same_lane_sec"])
         self.assertGreater(result.lane_risk_summary["same_lane_rows"], 0)
         self.assertGreaterEqual(result.lane_risk_summary["ttc_under_3s_same_lane_count"], 1)
+
+    def test_run_object_sim_vehicle_dynamics_mode_updates_ego_speed(self) -> None:
+        scenario = load_scenario(FIXTURE_ROOT / "highway_safe_following_vehicle_dynamics_v0.json")
+        result = run_object_sim(scenario, seed=42, metadata={"run_id": "SAFE_DYN_001"})
+
+        self.assertEqual(result.summary["status"], "success")
+        self.assertEqual(result.summary["ego_dynamics_mode"], "vehicle_dynamics")
+        self.assertTrue(result.summary["ego_dynamics_coupled"])
+        self.assertEqual(result.summary["ego_dynamics_vehicle_profile_schema_version"], "vehicle_profile_v0")
+        self.assertEqual(result.summary["ego_dynamics_target_speed_mps"], 16.0)
+        self.assertGreater(float(result.trace_rows[-1]["ego_speed_mps"]), 12.0)
+        self.assertEqual(result.trace_rows[0]["ego_dynamics_mode"], "vehicle_dynamics")
+        self.assertIsNotNone(result.trace_rows[0]["ego_dynamics_throttle"])
+        self.assertIsNotNone(result.trace_rows[0]["ego_dynamics_accel_mps2"])
 
     def test_run_object_sim_respects_wall_timeout_override(self) -> None:
         scenario = load_scenario(FIXTURE_ROOT / "highway_safe_following_v0.json")

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Mapping
 
 VEHICLE_PROFILE_SCHEMA_VERSION_V0 = "vehicle_profile_v0"
 CONTROL_SEQUENCE_SCHEMA_VERSION_V0 = "control_sequence_v0"
@@ -281,29 +281,35 @@ def validate_control_sequence(
     )
 
 
-def simulate_vehicle_dynamics(
+def simulate_vehicle_dynamics_step(
     *,
-    vehicle_profile: dict[str, float],
+    vehicle_profile: Mapping[str, float],
     dt_sec: float,
-    initial_position_m: float,
-    initial_speed_mps: float,
-    initial_heading_deg: float,
-    initial_lateral_position_m: float,
-    initial_lateral_velocity_mps: float,
-    initial_yaw_rate_rps: float,
-    enable_planar_kinematics: bool,
-    enable_dynamic_bicycle: bool,
-    commands: list[dict[str, float | None]],
-) -> dict[str, Any]:
+    position_m: float,
+    speed_mps: float,
+    heading_deg: float = 0.0,
+    lateral_position_m: float = 0.0,
+    lateral_velocity_mps: float = 0.0,
+    yaw_rate_rps: float = 0.0,
+    enable_planar_kinematics: bool = False,
+    enable_dynamic_bicycle: bool = False,
+    throttle: float = 0.0,
+    brake: float = 0.0,
+    steering_angle_deg: float = 0.0,
+    road_grade_percent: float = 0.0,
+    surface_friction_scale: float = 1.0,
+    target_speed_mps: float | None = None,
+) -> dict[str, float | bool | None]:
+    if dt_sec <= 0:
+        raise ValueError("dt_sec must be > 0")
+    if surface_friction_scale <= 0:
+        raise ValueError("surface_friction_scale must be > 0")
+    if road_grade_percent <= -100 or road_grade_percent >= 100:
+        raise ValueError("road_grade_percent must be between -100 and 100")
+    if enable_dynamic_bicycle and not enable_planar_kinematics:
+        raise ValueError("enable_dynamic_bicycle requires enable_planar_kinematics=true")
+
     max_speed = float(vehicle_profile["max_speed_mps"])
-    speed_mps = max(0.0, min(max_speed, float(initial_speed_mps)))
-    position_m = float(initial_position_m)
-    heading_rad = math.radians(float(initial_heading_deg))
-    x_m = float(initial_position_m)
-    y_m = float(initial_lateral_position_m)
-    lateral_velocity_mps = float(initial_lateral_velocity_mps)
-    yaw_rate_rps = float(initial_yaw_rate_rps)
-    trace: list[dict[str, float | bool | None]] = []
     max_accel = float(vehicle_profile["max_accel_mps2"])
     max_decel = float(vehicle_profile["max_decel_mps2"])
     wheelbase_m = float(vehicle_profile["wheelbase_m"])
@@ -318,138 +324,234 @@ def simulate_vehicle_dynamics(
     cornering_stiffness_front_nprad = float(vehicle_profile["cornering_stiffness_front_nprad"])
     cornering_stiffness_rear_nprad = float(vehicle_profile["cornering_stiffness_rear_nprad"])
     tire_friction_coeff = float(vehicle_profile["tire_friction_coeff"])
+
+    clamped_speed_mps = max(0.0, min(max_speed, float(speed_mps)))
+    clamped_throttle = max(0.0, min(1.0, float(throttle)))
+    clamped_brake = max(0.0, min(1.0, float(brake)))
+    position_m = float(position_m)
+    heading_rad = math.radians(float(heading_deg))
+    x_m = position_m
+    y_m = float(lateral_position_m)
+    lateral_velocity_mps = float(lateral_velocity_mps)
+    yaw_rate_rps = float(yaw_rate_rps)
     gravity_mps2 = 9.80665
+    normalized_target_speed_mps = None
+    if target_speed_mps is not None:
+        normalized_target_speed_mps = max(0.0, min(max_speed, float(target_speed_mps)))
+
+    tractive_force_n = clamped_throttle * max_accel * mass_kg
+    brake_force_n = clamped_brake * max_decel * mass_kg
+    longitudinal_wheel_force_n = tractive_force_n - brake_force_n
+    rolling_force_n = rolling_resistance_coeff * mass_kg * gravity_mps2 if clamped_speed_mps > 0 else 0.0
+    drag_force_n = 0.5 * air_density_kgpm3 * drag_coefficient * frontal_area_m2 * clamped_speed_mps * clamped_speed_mps
+    slope_angle_rad = math.atan(road_grade_percent / 100.0)
+    normal_force_n = mass_kg * gravity_mps2 * max(0.0, math.cos(slope_angle_rad))
+    effective_friction_coeff = tire_friction_coeff * surface_friction_scale
+    tire_force_limit_n = max(0.0, effective_friction_coeff * normal_force_n)
+    longitudinal_wheel_force_limited_n = max(
+        -tire_force_limit_n,
+        min(tire_force_limit_n, longitudinal_wheel_force_n),
+    )
+    longitudinal_force_limited = (
+        abs(longitudinal_wheel_force_limited_n - longitudinal_wheel_force_n) > 1e-9
+    )
+    grade_force_n = mass_kg * gravity_mps2 * math.sin(slope_angle_rad)
+    resistive_force_n = rolling_force_n + drag_force_n + grade_force_n
+    net_force_n = longitudinal_wheel_force_limited_n - resistive_force_n
+    accel_mps2 = net_force_n / mass_kg
+    next_speed_mps = max(0.0, min(max_speed, clamped_speed_mps + accel_mps2 * dt_sec))
+    next_position_m = position_m + (next_speed_mps * dt_sec)
+
+    yaw_accel_rps2 = 0.0
+    lateral_accel_mps2 = 0.0
+    next_heading_rad = heading_rad
+    next_x_m = next_position_m
+    next_y_m = y_m
+    next_lateral_velocity_mps = lateral_velocity_mps
+    next_yaw_rate_rps = yaw_rate_rps
+    if enable_planar_kinematics:
+        steering_angle_rad = math.radians(float(steering_angle_deg))
+        if enable_dynamic_bicycle:
+            if next_speed_mps > 0.5:
+                speed_for_lateral = next_speed_mps
+                slip_front_rad = steering_angle_rad - (
+                    (lateral_velocity_mps + front_axle_to_cg_m * yaw_rate_rps) / speed_for_lateral
+                )
+                slip_rear_rad = -(
+                    (lateral_velocity_mps - rear_axle_to_cg_m * yaw_rate_rps) / speed_for_lateral
+                )
+                slip_front_rad = max(-0.7, min(0.7, slip_front_rad))
+                slip_rear_rad = max(-0.7, min(0.7, slip_rear_rad))
+                lateral_force_front_n = cornering_stiffness_front_nprad * slip_front_rad
+                lateral_force_rear_n = cornering_stiffness_rear_nprad * slip_rear_rad
+                lateral_force_abs_total_n = abs(lateral_force_front_n) + abs(lateral_force_rear_n)
+                longitudinal_utilization = (
+                    abs(longitudinal_wheel_force_limited_n) / tire_force_limit_n
+                    if tire_force_limit_n > 0.0
+                    else 1.0
+                )
+                longitudinal_utilization = max(0.0, min(1.0, longitudinal_utilization))
+                lateral_force_limit_n = tire_force_limit_n * math.sqrt(
+                    max(0.0, 1.0 - longitudinal_utilization * longitudinal_utilization)
+                )
+                if lateral_force_abs_total_n > lateral_force_limit_n and lateral_force_abs_total_n > 0.0:
+                    scale = lateral_force_limit_n / lateral_force_abs_total_n
+                    lateral_force_front_n *= scale
+                    lateral_force_rear_n *= scale
+                lateral_accel_mps2 = (
+                    (lateral_force_front_n + lateral_force_rear_n) / mass_kg
+                    - speed_for_lateral * yaw_rate_rps
+                )
+                yaw_accel_rps2 = (
+                    front_axle_to_cg_m * lateral_force_front_n
+                    - rear_axle_to_cg_m * lateral_force_rear_n
+                ) / yaw_inertia_kgm2
+            else:
+                lateral_accel_mps2 = -0.5 * lateral_velocity_mps
+                yaw_accel_rps2 = -0.5 * yaw_rate_rps
+            next_lateral_velocity_mps = lateral_velocity_mps + lateral_accel_mps2 * dt_sec
+            next_yaw_rate_rps = yaw_rate_rps + yaw_accel_rps2 * dt_sec
+        else:
+            next_yaw_rate_rps = (next_speed_mps / wheelbase_m) * math.tan(steering_angle_rad)
+            next_lateral_velocity_mps = 0.0
+        next_heading_rad = heading_rad + next_yaw_rate_rps * dt_sec
+        x_dot_mps = next_speed_mps * math.cos(next_heading_rad) - next_lateral_velocity_mps * math.sin(next_heading_rad)
+        y_dot_mps = next_speed_mps * math.sin(next_heading_rad) + next_lateral_velocity_mps * math.cos(next_heading_rad)
+        next_x_m = x_m + x_dot_mps * dt_sec
+        next_y_m = y_m + y_dot_mps * dt_sec
+    else:
+        next_yaw_rate_rps = 0.0
+        next_lateral_velocity_mps = 0.0
+
+    speed_tracking_error_mps = (
+        next_speed_mps - normalized_target_speed_mps if normalized_target_speed_mps is not None else None
+    )
+
+    return {
+        "throttle": clamped_throttle,
+        "brake": clamped_brake,
+        "target_speed_mps": normalized_target_speed_mps,
+        "speed_tracking_error_mps": speed_tracking_error_mps,
+        "steering_angle_deg": float(steering_angle_deg),
+        "yaw_rate_rps": next_yaw_rate_rps,
+        "yaw_accel_rps2": yaw_accel_rps2,
+        "lateral_velocity_mps": next_lateral_velocity_mps,
+        "lateral_accel_mps2": lateral_accel_mps2,
+        "accel_mps2": accel_mps2,
+        "tractive_force_n": tractive_force_n,
+        "brake_force_n": brake_force_n,
+        "longitudinal_wheel_force_n": longitudinal_wheel_force_n,
+        "longitudinal_wheel_force_limited_n": longitudinal_wheel_force_limited_n,
+        "longitudinal_force_limited": bool(longitudinal_force_limited),
+        "rolling_force_n": rolling_force_n,
+        "drag_force_n": drag_force_n,
+        "grade_force_n": grade_force_n,
+        "resistive_force_n": resistive_force_n,
+        "net_force_n": net_force_n,
+        "normal_force_n": normal_force_n,
+        "tire_force_limit_n": tire_force_limit_n,
+        "effective_friction_coeff": effective_friction_coeff,
+        "surface_friction_scale": surface_friction_scale,
+        "road_grade_percent": road_grade_percent,
+        "speed_mps": next_speed_mps,
+        "position_m": next_position_m,
+        "heading_deg": math.degrees(next_heading_rad),
+        "x_m": next_x_m,
+        "y_m": next_y_m,
+    }
+
+
+def simulate_vehicle_dynamics(
+    *,
+    vehicle_profile: dict[str, float],
+    dt_sec: float,
+    initial_position_m: float,
+    initial_speed_mps: float,
+    initial_heading_deg: float,
+    initial_lateral_position_m: float,
+    initial_lateral_velocity_mps: float,
+    initial_yaw_rate_rps: float,
+    enable_planar_kinematics: bool,
+    enable_dynamic_bicycle: bool,
+    commands: list[dict[str, float | None]],
+) -> dict[str, Any]:
+    speed_mps = max(0.0, min(float(vehicle_profile["max_speed_mps"]), float(initial_speed_mps)))
+    position_m = float(initial_position_m)
+    heading_rad = math.radians(float(initial_heading_deg))
+    x_m = float(initial_position_m)
+    y_m = float(initial_lateral_position_m)
+    lateral_velocity_mps = float(initial_lateral_velocity_mps)
+    yaw_rate_rps = float(initial_yaw_rate_rps)
+    trace: list[dict[str, float | bool | None]] = []
 
     for idx, cmd in enumerate(commands):
-        throttle = float(cmd["throttle"])
-        brake = float(cmd["brake"])
-        steering_angle_deg = float(cmd.get("steering_angle_deg", 0.0))
-        road_grade_percent = float(cmd.get("road_grade_percent", 0.0))
-        surface_friction_scale = float(cmd.get("surface_friction_scale", 1.0))
         target_speed_mps_raw = cmd.get("target_speed_mps")
-        if target_speed_mps_raw is None:
-            target_speed_mps = None
-        else:
-            target_speed_mps = max(0.0, min(max_speed, float(target_speed_mps_raw)))
-
-        tractive_force_n = throttle * max_accel * mass_kg
-        brake_force_n = brake * max_decel * mass_kg
-        longitudinal_wheel_force_n = tractive_force_n - brake_force_n
-        rolling_force_n = rolling_resistance_coeff * mass_kg * gravity_mps2 if speed_mps > 0 else 0.0
-        drag_force_n = 0.5 * air_density_kgpm3 * drag_coefficient * frontal_area_m2 * speed_mps * speed_mps
-        slope_angle_rad = math.atan(road_grade_percent / 100.0)
-        normal_force_n = mass_kg * gravity_mps2 * max(0.0, math.cos(slope_angle_rad))
-        effective_friction_coeff = tire_friction_coeff * surface_friction_scale
-        tire_force_limit_n = max(0.0, effective_friction_coeff * normal_force_n)
-        longitudinal_wheel_force_limited_n = max(
-            -tire_force_limit_n,
-            min(tire_force_limit_n, longitudinal_wheel_force_n),
+        step = simulate_vehicle_dynamics_step(
+            vehicle_profile=vehicle_profile,
+            dt_sec=dt_sec,
+            position_m=position_m,
+            speed_mps=speed_mps,
+            heading_deg=math.degrees(heading_rad),
+            lateral_position_m=y_m,
+            lateral_velocity_mps=lateral_velocity_mps,
+            yaw_rate_rps=yaw_rate_rps,
+            enable_planar_kinematics=enable_planar_kinematics,
+            enable_dynamic_bicycle=enable_dynamic_bicycle,
+            throttle=float(cmd["throttle"]),
+            brake=float(cmd["brake"]),
+            steering_angle_deg=float(cmd.get("steering_angle_deg", 0.0)),
+            road_grade_percent=float(cmd.get("road_grade_percent", 0.0)),
+            surface_friction_scale=float(cmd.get("surface_friction_scale", 1.0)),
+            target_speed_mps=None if target_speed_mps_raw is None else float(target_speed_mps_raw),
         )
-        longitudinal_force_limited = (
-            abs(longitudinal_wheel_force_limited_n - longitudinal_wheel_force_n) > 1e-9
-        )
-        grade_force_n = mass_kg * gravity_mps2 * math.sin(slope_angle_rad)
-        resistive_force_n = rolling_force_n + drag_force_n + grade_force_n
-        net_force_n = longitudinal_wheel_force_limited_n - resistive_force_n
-        accel_mps2 = net_force_n / mass_kg
-        speed_mps = max(0.0, min(max_speed, speed_mps + accel_mps2 * dt_sec))
-        position_m += speed_mps * dt_sec
-
-        yaw_accel_rps2 = 0.0
-        lateral_accel_mps2 = 0.0
-        if enable_planar_kinematics:
-            steering_angle_rad = math.radians(steering_angle_deg)
-            if enable_dynamic_bicycle:
-                if speed_mps > 0.5:
-                    speed_for_lateral = speed_mps
-                    slip_front_rad = steering_angle_rad - (
-                        (lateral_velocity_mps + front_axle_to_cg_m * yaw_rate_rps) / speed_for_lateral
-                    )
-                    slip_rear_rad = -(
-                        (lateral_velocity_mps - rear_axle_to_cg_m * yaw_rate_rps) / speed_for_lateral
-                    )
-                    slip_front_rad = max(-0.7, min(0.7, slip_front_rad))
-                    slip_rear_rad = max(-0.7, min(0.7, slip_rear_rad))
-                    lateral_force_front_n = cornering_stiffness_front_nprad * slip_front_rad
-                    lateral_force_rear_n = cornering_stiffness_rear_nprad * slip_rear_rad
-                    lateral_force_abs_total_n = abs(lateral_force_front_n) + abs(lateral_force_rear_n)
-                    longitudinal_utilization = (
-                        abs(longitudinal_wheel_force_limited_n) / tire_force_limit_n
-                        if tire_force_limit_n > 0.0
-                        else 1.0
-                    )
-                    longitudinal_utilization = max(0.0, min(1.0, longitudinal_utilization))
-                    lateral_force_limit_n = tire_force_limit_n * math.sqrt(
-                        max(0.0, 1.0 - longitudinal_utilization * longitudinal_utilization)
-                    )
-                    if lateral_force_abs_total_n > lateral_force_limit_n and lateral_force_abs_total_n > 0.0:
-                        scale = lateral_force_limit_n / lateral_force_abs_total_n
-                        lateral_force_front_n *= scale
-                        lateral_force_rear_n *= scale
-                    lateral_accel_mps2 = (
-                        (lateral_force_front_n + lateral_force_rear_n) / mass_kg
-                        - speed_for_lateral * yaw_rate_rps
-                    )
-                    yaw_accel_rps2 = (
-                        front_axle_to_cg_m * lateral_force_front_n
-                        - rear_axle_to_cg_m * lateral_force_rear_n
-                    ) / yaw_inertia_kgm2
-                else:
-                    lateral_accel_mps2 = -0.5 * lateral_velocity_mps
-                    yaw_accel_rps2 = -0.5 * yaw_rate_rps
-                lateral_velocity_mps += lateral_accel_mps2 * dt_sec
-                yaw_rate_rps += yaw_accel_rps2 * dt_sec
-            else:
-                yaw_rate_rps = (speed_mps / wheelbase_m) * math.tan(steering_angle_rad)
-                lateral_velocity_mps = 0.0
-            heading_rad += yaw_rate_rps * dt_sec
-            x_dot_mps = speed_mps * math.cos(heading_rad) - lateral_velocity_mps * math.sin(heading_rad)
-            y_dot_mps = speed_mps * math.sin(heading_rad) + lateral_velocity_mps * math.cos(heading_rad)
-            x_m += x_dot_mps * dt_sec
-            y_m += y_dot_mps * dt_sec
-        else:
-            yaw_rate_rps = 0.0
-            lateral_velocity_mps = 0.0
-            x_m = position_m
-
-        speed_tracking_error_mps = (
-            speed_mps - target_speed_mps if target_speed_mps is not None else None
-        )
+        speed_mps = float(step["speed_mps"])
+        position_m = float(step["position_m"])
+        heading_rad = math.radians(float(step["heading_deg"]))
+        x_m = float(step["x_m"])
+        y_m = float(step["y_m"])
+        lateral_velocity_mps = float(step["lateral_velocity_mps"])
+        yaw_rate_rps = float(step["yaw_rate_rps"])
         trace.append(
             {
                 "step": float(idx),
-                "throttle": throttle,
-                "brake": brake,
-                "target_speed_mps": round(target_speed_mps, 6) if target_speed_mps is not None else None,
-                "speed_tracking_error_mps": (
-                    round(speed_tracking_error_mps, 6) if speed_tracking_error_mps is not None else None
+                "throttle": round(float(step["throttle"]), 6),
+                "brake": round(float(step["brake"]), 6),
+                "target_speed_mps": (
+                    round(float(step["target_speed_mps"]), 6)
+                    if step["target_speed_mps"] is not None
+                    else None
                 ),
-                "steering_angle_deg": round(steering_angle_deg, 6),
-                "yaw_rate_rps": round(yaw_rate_rps, 6),
-                "yaw_accel_rps2": round(yaw_accel_rps2, 6),
-                "lateral_velocity_mps": round(lateral_velocity_mps, 6),
-                "lateral_accel_mps2": round(lateral_accel_mps2, 6),
-                "accel_mps2": round(accel_mps2, 6),
-                "tractive_force_n": round(tractive_force_n, 6),
-                "brake_force_n": round(brake_force_n, 6),
-                "longitudinal_wheel_force_n": round(longitudinal_wheel_force_n, 6),
-                "longitudinal_wheel_force_limited_n": round(longitudinal_wheel_force_limited_n, 6),
-                "longitudinal_force_limited": bool(longitudinal_force_limited),
-                "rolling_force_n": round(rolling_force_n, 6),
-                "drag_force_n": round(drag_force_n, 6),
-                "grade_force_n": round(grade_force_n, 6),
-                "resistive_force_n": round(resistive_force_n, 6),
-                "net_force_n": round(net_force_n, 6),
-                "normal_force_n": round(normal_force_n, 6),
-                "tire_force_limit_n": round(tire_force_limit_n, 6),
-                "effective_friction_coeff": round(effective_friction_coeff, 6),
-                "surface_friction_scale": round(surface_friction_scale, 6),
-                "road_grade_percent": round(road_grade_percent, 6),
-                "speed_mps": round(speed_mps, 6),
-                "position_m": round(position_m, 6),
-                "heading_deg": round(math.degrees(heading_rad), 6),
-                "x_m": round(x_m, 6),
-                "y_m": round(y_m, 6),
+                "speed_tracking_error_mps": (
+                    round(float(step["speed_tracking_error_mps"]), 6)
+                    if step["speed_tracking_error_mps"] is not None
+                    else None
+                ),
+                "steering_angle_deg": round(float(step["steering_angle_deg"]), 6),
+                "yaw_rate_rps": round(float(step["yaw_rate_rps"]), 6),
+                "yaw_accel_rps2": round(float(step["yaw_accel_rps2"]), 6),
+                "lateral_velocity_mps": round(float(step["lateral_velocity_mps"]), 6),
+                "lateral_accel_mps2": round(float(step["lateral_accel_mps2"]), 6),
+                "accel_mps2": round(float(step["accel_mps2"]), 6),
+                "tractive_force_n": round(float(step["tractive_force_n"]), 6),
+                "brake_force_n": round(float(step["brake_force_n"]), 6),
+                "longitudinal_wheel_force_n": round(float(step["longitudinal_wheel_force_n"]), 6),
+                "longitudinal_wheel_force_limited_n": round(float(step["longitudinal_wheel_force_limited_n"]), 6),
+                "longitudinal_force_limited": bool(step["longitudinal_force_limited"]),
+                "rolling_force_n": round(float(step["rolling_force_n"]), 6),
+                "drag_force_n": round(float(step["drag_force_n"]), 6),
+                "grade_force_n": round(float(step["grade_force_n"]), 6),
+                "resistive_force_n": round(float(step["resistive_force_n"]), 6),
+                "net_force_n": round(float(step["net_force_n"]), 6),
+                "normal_force_n": round(float(step["normal_force_n"]), 6),
+                "tire_force_limit_n": round(float(step["tire_force_limit_n"]), 6),
+                "effective_friction_coeff": round(float(step["effective_friction_coeff"]), 6),
+                "surface_friction_scale": round(float(step["surface_friction_scale"]), 6),
+                "road_grade_percent": round(float(step["road_grade_percent"]), 6),
+                "speed_mps": round(float(step["speed_mps"]), 6),
+                "position_m": round(float(step["position_m"]), 6),
+                "heading_deg": round(float(step["heading_deg"]), 6),
+                "x_m": round(float(step["x_m"]), 6),
+                "y_m": round(float(step["y_m"]), 6),
             }
         )
 

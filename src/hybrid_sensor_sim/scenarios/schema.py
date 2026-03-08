@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from hybrid_sensor_sim.physics.vehicle_dynamics import validate_vehicle_profile
+
 
 SCENARIO_SCHEMA_VERSION_V0 = "scenario_definition_v0"
 
@@ -37,6 +39,10 @@ class ScenarioConfig:
     tire_friction_coeff: float = 1.0
     surface_friction_scale: float = 1.0
     wall_timeout_sec: float | None = None
+    ego_dynamics_mode: str = "kinematic"
+    ego_vehicle_profile: dict[str, float] | None = None
+    ego_target_speed_mps: float | None = None
+    ego_road_grade_percent: float = 0.0
 
 
 def _load_json_object(path: Path) -> dict[str, Any]:
@@ -128,6 +134,34 @@ def validate_scenario_payload(payload: dict[str, Any]) -> ScenarioConfig:
             "enable_ego_collision_avoidance requires avoidance_ttc_threshold_sec > 0 and ego_max_brake_mps2 > 0"
         )
 
+    ego_dynamics_mode = str(payload.get("ego_dynamics_mode", "kinematic")).strip().lower()
+    if ego_dynamics_mode not in {"kinematic", "vehicle_dynamics"}:
+        raise ScenarioValidationError("ego_dynamics_mode must be one of: kinematic, vehicle_dynamics")
+    ego_vehicle_profile_raw = payload.get("ego_vehicle_profile")
+    ego_vehicle_profile = None
+    if ego_vehicle_profile_raw is not None:
+        if not isinstance(ego_vehicle_profile_raw, dict):
+            raise ScenarioValidationError("ego_vehicle_profile must be a JSON object")
+        try:
+            ego_vehicle_profile = validate_vehicle_profile(ego_vehicle_profile_raw)
+        except ValueError as exc:
+            raise ScenarioValidationError(f"invalid ego_vehicle_profile: {exc}") from exc
+    if ego_dynamics_mode == "vehicle_dynamics" and ego_vehicle_profile is None:
+        raise ScenarioValidationError(
+            "ego_dynamics_mode=vehicle_dynamics requires ego_vehicle_profile"
+        )
+    ego_target_speed_raw = payload.get("ego_target_speed_mps")
+    ego_target_speed_mps = None
+    if ego_target_speed_raw is not None:
+        ego_target_speed_mps = float(ego_target_speed_raw)
+        if ego_target_speed_mps < 0:
+            raise ScenarioValidationError("ego_target_speed_mps must be >= 0")
+    elif ego_dynamics_mode == "vehicle_dynamics":
+        ego_target_speed_mps = float(ego.speed_mps)
+    ego_road_grade_percent = float(payload.get("ego_road_grade_percent", 0.0))
+    if ego_road_grade_percent <= -100 or ego_road_grade_percent >= 100:
+        raise ScenarioValidationError("ego_road_grade_percent must be between -100 and 100")
+
     return ScenarioConfig(
         scenario_schema_version=scenario_schema_version,
         scenario_id=str(payload["scenario_id"]),
@@ -142,6 +176,10 @@ def validate_scenario_payload(payload: dict[str, Any]) -> ScenarioConfig:
         tire_friction_coeff=tire_friction_coeff,
         surface_friction_scale=surface_friction_scale,
         wall_timeout_sec=wall_timeout_sec,
+        ego_dynamics_mode=ego_dynamics_mode,
+        ego_vehicle_profile=ego_vehicle_profile,
+        ego_target_speed_mps=ego_target_speed_mps,
+        ego_road_grade_percent=ego_road_grade_percent,
     )
 
 

@@ -48,7 +48,7 @@ Current repository paths:
 
 Still pending from this master plan:
 
-1. object-sim `vehicle_dynamics` coupling
+1. canonical map consumption inside scenario/object-sim flows
 
 ## Boundary
 
@@ -111,6 +111,8 @@ Detailed audit:
    - now migrated as the current `log_scene_v0 -> scenario_definition_v0 -> object_sim` replay path
 4. `core_sim_matrix_sweep_runner.py`
    - now migrated as the current library-first object-sim sweep runner
+5. second-wave object-sim ego `vehicle_dynamics` coupling
+   - now migrated as optional `ego_dynamics_mode=vehicle_dynamics` longitudinal coupling
 
 ### Reference only
 
@@ -139,7 +141,7 @@ Primary source:
 ### Current status
 
 1. standalone map utilities are now present
-2. object-sim/scenario tooling does not yet consume the canonical map layer directly
+2. object-sim/scenario tooling still does not consume the canonical map layer directly
 
 ## 3. P_Validation-Tooling-MVP
 
@@ -221,7 +223,7 @@ It is not a core library/tooling block for the current repository.
 
 Status:
 
-- `P0`
+- `Done`
 
 Source:
 
@@ -241,12 +243,13 @@ Success criteria:
 2. deterministic trace artifact
 3. planar + dynamic bicycle modes
 4. friction/grade effects preserved
+5. object-sim can optionally use longitudinal `vehicle_dynamics` coupling without breaking the legacy kinematic path
 
 ## Phase B: Rig / Scenario Utility Layer
 
 Status:
 
-- `P1`
+- `Done`
 
 Source:
 
@@ -257,6 +260,22 @@ Work:
 
 1. keep extending the migrated rig sweep tool as sensor outputs grow richer
 2. connect rig evaluation to current camera/lidar/radar coverage outputs
+
+## Phase C: Map-Aware Scenario Consumption
+
+Status:
+
+- `Next`
+
+Source:
+
+- `P_Map-Toolset-MVP`
+
+Work:
+
+1. connect canonical lane graph inputs to scenario/object-sim
+2. decide the minimum map-aware behavior surface that does not destabilize the current deterministic runner
+3. preserve the current standalone map utilities while adding scenario consumers on top
 
 Success criteria:
 

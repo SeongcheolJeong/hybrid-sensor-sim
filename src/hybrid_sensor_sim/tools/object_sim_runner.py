@@ -85,6 +85,13 @@ def write_object_sim_artifacts(
                 "ego_avoidance_applied_brake_mps2",
                 "ego_avoidance_effective_brake_limit_mps2",
                 "ego_surface_friction_scale",
+                "ego_dynamics_mode",
+                "ego_dynamics_throttle",
+                "ego_dynamics_brake",
+                "ego_dynamics_accel_mps2",
+                "ego_dynamics_net_force_n",
+                "ego_dynamics_speed_tracking_error_mps",
+                "ego_dynamics_longitudinal_force_limited",
                 "collision",
             ],
         )

@@ -6,6 +6,10 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Mapping
 
+from hybrid_sensor_sim.physics.vehicle_dynamics import (
+    VEHICLE_PROFILE_SCHEMA_VERSION_V0,
+    simulate_vehicle_dynamics_step,
+)
 from hybrid_sensor_sim.scenarios.schema import ActorState, ScenarioConfig
 
 
@@ -46,6 +50,7 @@ class CoreSimRunner:
         self.trace_rows: list[dict[str, Any]] = []
         self.ego_avoidance_brake_event_count = 0
         self.ego_avoidance_applied_brake_mps2_max = 0.0
+        self.ego_dynamics_longitudinal_force_limited_event_count = 0
 
     def run(self) -> dict[str, Any]:
         started_wall = time.perf_counter()
@@ -109,14 +114,7 @@ class CoreSimRunner:
         self.time_sec += dt
         self.step_count += 1
         avoidance_action = self._apply_ego_collision_avoidance(dt)
-
-        self.ego = ActorState(
-            actor_id=self.ego.actor_id,
-            position_m=self.ego.position_m + (self.ego.speed_mps * dt),
-            speed_mps=self.ego.speed_mps,
-            length_m=self.ego.length_m,
-            lane_index=self.ego.lane_index,
-        )
+        ego_dynamics_step = self._update_ego(dt, avoidance_action)
         updated_npcs: list[ActorState] = []
         for npc in self.npcs:
             updated_npcs.append(
@@ -177,9 +175,123 @@ class CoreSimRunner:
                         "effective_brake_limit_mps2"
                     ),
                     "ego_surface_friction_scale": round(self.scenario.surface_friction_scale, 6),
+                    "ego_dynamics_mode": ego_dynamics_step.get("ego_dynamics_mode"),
+                    "ego_dynamics_throttle": ego_dynamics_step.get("throttle"),
+                    "ego_dynamics_brake": ego_dynamics_step.get("brake"),
+                    "ego_dynamics_accel_mps2": ego_dynamics_step.get("accel_mps2"),
+                    "ego_dynamics_net_force_n": ego_dynamics_step.get("net_force_n"),
+                    "ego_dynamics_speed_tracking_error_mps": ego_dynamics_step.get(
+                        "speed_tracking_error_mps"
+                    ),
+                    "ego_dynamics_longitudinal_force_limited": ego_dynamics_step.get(
+                        "longitudinal_force_limited"
+                    ),
                     "collision": self.collision,
                 }
             )
+
+    def _update_ego(self, dt_sec: float, avoidance_action: Mapping[str, Any]) -> dict[str, Any]:
+        if self.scenario.ego_dynamics_mode == "vehicle_dynamics":
+            return self._update_ego_with_vehicle_dynamics(dt_sec, avoidance_action)
+        return self._update_ego_kinematic(dt_sec, avoidance_action)
+
+    def _update_ego_kinematic(self, dt_sec: float, avoidance_action: Mapping[str, Any]) -> dict[str, Any]:
+        speed_mps = self.ego.speed_mps
+        if bool(avoidance_action.get("brake_applied", False)):
+            applied_brake_mps2 = float(avoidance_action.get("applied_brake_mps2", 0.0) or 0.0)
+            speed_mps = max(0.0, speed_mps - (applied_brake_mps2 * dt_sec))
+            self.ego_avoidance_brake_event_count += 1
+            self.ego_avoidance_applied_brake_mps2_max = max(
+                self.ego_avoidance_applied_brake_mps2_max,
+                applied_brake_mps2,
+            )
+        self.ego = ActorState(
+            actor_id=self.ego.actor_id,
+            position_m=self.ego.position_m + (speed_mps * dt_sec),
+            speed_mps=speed_mps,
+            length_m=self.ego.length_m,
+            lane_index=self.ego.lane_index,
+        )
+        return {
+            "ego_dynamics_mode": "kinematic",
+            "throttle": None,
+            "brake": None,
+            "accel_mps2": None,
+            "net_force_n": None,
+            "speed_tracking_error_mps": None,
+            "longitudinal_force_limited": None,
+        }
+
+    def _update_ego_with_vehicle_dynamics(
+        self,
+        dt_sec: float,
+        avoidance_action: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        vehicle_profile = self.scenario.ego_vehicle_profile
+        if vehicle_profile is None:
+            raise ValueError("ego_vehicle_profile must be configured for vehicle_dynamics mode")
+        target_speed_mps = (
+            float(self.scenario.ego_target_speed_mps)
+            if self.scenario.ego_target_speed_mps is not None
+            else float(self.ego.speed_mps)
+        )
+        speed_error_mps = target_speed_mps - float(self.ego.speed_mps)
+        throttle = 0.0
+        brake = 0.0
+        max_accel_mps2 = float(vehicle_profile["max_accel_mps2"])
+        max_decel_mps2 = float(vehicle_profile["max_decel_mps2"])
+        if speed_error_mps > 1e-6 and max_accel_mps2 > 0:
+            throttle = min(1.0, max(0.0, (speed_error_mps / dt_sec) / max_accel_mps2))
+        elif speed_error_mps < -1e-6 and max_decel_mps2 > 0:
+            brake = min(1.0, max(0.0, ((-speed_error_mps) / dt_sec) / max_decel_mps2))
+        if bool(avoidance_action.get("brake_applied", False)) and max_decel_mps2 > 0:
+            avoidance_brake_ratio = min(
+                1.0,
+                max(
+                    0.0,
+                    float(avoidance_action.get("applied_brake_mps2", 0.0) or 0.0) / max_decel_mps2,
+                ),
+            )
+            brake = max(brake, avoidance_brake_ratio)
+            throttle = 0.0
+            self.ego_avoidance_brake_event_count += 1
+            self.ego_avoidance_applied_brake_mps2_max = max(
+                self.ego_avoidance_applied_brake_mps2_max,
+                float(avoidance_action.get("applied_brake_mps2", 0.0) or 0.0),
+            )
+        dynamics_step = simulate_vehicle_dynamics_step(
+            vehicle_profile=vehicle_profile,
+            dt_sec=dt_sec,
+            position_m=self.ego.position_m,
+            speed_mps=self.ego.speed_mps,
+            throttle=throttle,
+            brake=brake,
+            road_grade_percent=self.scenario.ego_road_grade_percent,
+            surface_friction_scale=self.scenario.surface_friction_scale,
+            target_speed_mps=target_speed_mps,
+        )
+        if bool(dynamics_step["longitudinal_force_limited"]):
+            self.ego_dynamics_longitudinal_force_limited_event_count += 1
+        self.ego = ActorState(
+            actor_id=self.ego.actor_id,
+            position_m=float(dynamics_step["position_m"]),
+            speed_mps=float(dynamics_step["speed_mps"]),
+            length_m=self.ego.length_m,
+            lane_index=self.ego.lane_index,
+        )
+        return {
+            "ego_dynamics_mode": "vehicle_dynamics",
+            "throttle": round(float(dynamics_step["throttle"]), 6),
+            "brake": round(float(dynamics_step["brake"]), 6),
+            "accel_mps2": round(float(dynamics_step["accel_mps2"]), 6),
+            "net_force_n": round(float(dynamics_step["net_force_n"]), 6),
+            "speed_tracking_error_mps": (
+                round(float(dynamics_step["speed_tracking_error_mps"]), 6)
+                if dynamics_step["speed_tracking_error_mps"] is not None
+                else None
+            ),
+            "longitudinal_force_limited": bool(dynamics_step["longitudinal_force_limited"]),
+        }
 
     def _apply_ego_collision_avoidance(self, dt_sec: float) -> dict[str, Any]:
         result: dict[str, Any] = {
@@ -218,18 +330,6 @@ class CoreSimRunner:
         if effective_brake_limit_mps2 <= 0:
             result["effective_brake_limit_mps2"] = 0.0
             return result
-        self.ego = ActorState(
-            actor_id=self.ego.actor_id,
-            position_m=self.ego.position_m,
-            speed_mps=max(0.0, self.ego.speed_mps - (effective_brake_limit_mps2 * dt_sec)),
-            length_m=self.ego.length_m,
-            lane_index=self.ego.lane_index,
-        )
-        self.ego_avoidance_brake_event_count += 1
-        self.ego_avoidance_applied_brake_mps2_max = max(
-            self.ego_avoidance_applied_brake_mps2_max,
-            effective_brake_limit_mps2,
-        )
         result["brake_applied"] = True
         result["applied_brake_mps2"] = round(effective_brake_limit_mps2, 6)
         result["effective_brake_limit_mps2"] = round(effective_brake_limit_mps2, 6)
@@ -310,6 +410,10 @@ def run_object_sim(
         tire_friction_coeff=scenario.tire_friction_coeff,
         surface_friction_scale=scenario.surface_friction_scale,
         wall_timeout_sec=effective_timeout,
+        ego_dynamics_mode=scenario.ego_dynamics_mode,
+        ego_vehicle_profile=scenario.ego_vehicle_profile,
+        ego_target_speed_mps=scenario.ego_target_speed_mps,
+        ego_road_grade_percent=scenario.ego_road_grade_percent,
     )
     runner = CoreSimRunner(scenario=effective_scenario, seed=seed)
     summary = runner.run()
@@ -344,6 +448,18 @@ def run_object_sim(
             "ego_max_brake_mps2": float(effective_scenario.ego_max_brake_mps2),
             "tire_friction_coeff": float(effective_scenario.tire_friction_coeff),
             "surface_friction_scale": float(effective_scenario.surface_friction_scale),
+            "ego_dynamics_mode": effective_scenario.ego_dynamics_mode,
+            "ego_dynamics_coupled": bool(effective_scenario.ego_dynamics_mode == "vehicle_dynamics"),
+            "ego_dynamics_target_speed_mps": effective_scenario.ego_target_speed_mps,
+            "ego_dynamics_road_grade_percent": float(effective_scenario.ego_road_grade_percent),
+            "ego_dynamics_vehicle_profile_schema_version": (
+                VEHICLE_PROFILE_SCHEMA_VERSION_V0
+                if effective_scenario.ego_vehicle_profile is not None
+                else None
+            ),
+            "ego_dynamics_longitudinal_force_limited_event_count": int(
+                runner.ego_dynamics_longitudinal_force_limited_event_count
+            ),
             "ego_avoidance_brake_event_count": int(runner.ego_avoidance_brake_event_count),
             "ego_avoidance_applied_brake_mps2_max": round(
                 float(runner.ego_avoidance_applied_brake_mps2_max),
