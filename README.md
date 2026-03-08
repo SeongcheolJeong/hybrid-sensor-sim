@@ -645,6 +645,19 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - `scripts/run_renderer_backend_linux_handoff_docker.py` runs the same handoff helper in a local Linux Docker container; the generated `renderer_backend_workflow_linux_handoff_docker.sh` defaults to verify-only (`HANDOFF_SKIP_RUN=1`) so local container checks stay safe by default
 - both handoff runner scripts now bootstrap `src/` themselves, so `python3 scripts/run_renderer_backend_linux_handoff*.py ...` works without manually exporting `PYTHONPATH`
 - `scripts/run_renderer_backend_linux_handoff_selftest.py` builds a synthetic handoff bundle and runs it through the Docker helper, so the full `bundle -> container verify/run` path can be smoke-tested without AWSIM/CARLA
+- `scripts/run_renderer_backend_workflow_selftest.py` runs a higher-level workflow self-test:
+  - seeds a stale cached Docker preflight probe
+  - synthesizes a host-incompatible backend runtime stub
+  - runs `run_renderer_backend_workflow.py --dry-run --run-linux-handoff-docker --refresh-docker-handoff-preflight`
+  - verifies that workflow refreshes the stale preflight and reaches `HANDOFF_DOCKER_VERIFIED`
+- example:
+  - `python3 scripts/run_renderer_backend_workflow_selftest.py --output-root artifacts/renderer_backend_workflow_selftest_probe`
+- emitted artifacts:
+  - `artifacts/renderer_backend_workflow_selftest/<backend>/renderer_backend_workflow_selftest.json` when you choose a backend-specific output root
+  - or whatever `--output-root` you pass, including:
+    - `seed_setup/renderer_backend_local_setup.json`
+    - `workflow_run/renderer_backend_workflow_summary.json`
+    - the refreshed local setup and Docker handoff workflow artifacts under `workflow_run/`
 
 ## Next implementation target
 
