@@ -131,6 +131,7 @@ Detailed audit:
    - `logical_scenarios_v0` can now emit rendered concrete payloads, including route-relation-driven `log_scene_v0` variants
 13. rendered variant execution
    - `scenario_variants_report_v0` can now drive replay/object-sim execution directly through `src/hybrid_sensor_sim/tools/scenario_variant_runner.py`
+   - supported payload kinds now include `log_scene_v0` and `scenario_definition_v0`
 
 ### Reference only
 

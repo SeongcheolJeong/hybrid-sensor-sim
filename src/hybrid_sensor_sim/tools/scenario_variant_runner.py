@@ -8,13 +8,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from hybrid_sensor_sim.scenarios import SCENARIO_VARIANTS_REPORT_SCHEMA_VERSION_V0
+from hybrid_sensor_sim.scenarios import SCENARIO_SCHEMA_VERSION_V0, SCENARIO_VARIANTS_REPORT_SCHEMA_VERSION_V0
 from hybrid_sensor_sim.scenarios.schema import ScenarioValidationError
 from hybrid_sensor_sim.tools.log_replay_runner import run_log_replay
+from hybrid_sensor_sim.tools.object_sim_runner import run_object_sim_job
 
 
 SCENARIO_VARIANT_RUN_REPORT_SCHEMA_VERSION_V0 = "scenario_variant_run_report_v0"
 SUPPORTED_RENDERED_PAYLOAD_KIND_LOG_SCENE_V0 = "log_scene_v0"
+SUPPORTED_RENDERED_PAYLOAD_KIND_SCENARIO_DEFINITION_V0 = SCENARIO_SCHEMA_VERSION_V0
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -70,7 +72,10 @@ def _resolve_rendered_payload_paths(
     variants_report_path: Path,
 ) -> dict[str, Any]:
     resolved_payload = dict(rendered_payload)
-    if rendered_payload_kind != SUPPORTED_RENDERED_PAYLOAD_KIND_LOG_SCENE_V0:
+    if rendered_payload_kind not in {
+        SUPPORTED_RENDERED_PAYLOAD_KIND_LOG_SCENE_V0,
+        SUPPORTED_RENDERED_PAYLOAD_KIND_SCENARIO_DEFINITION_V0,
+    }:
         return resolved_payload
 
     canonical_map_path = resolved_payload.get("canonical_map_path")
@@ -85,12 +90,109 @@ def _resolve_rendered_payload_paths(
     return resolved_payload
 
 
+def _execute_log_scene_variant(
+    *,
+    rendered_payload_path: Path,
+    variant_id: str,
+    out_root: Path,
+    seed: int,
+    sds_version: str,
+    sim_version: str,
+    fidelity_profile: str,
+) -> dict[str, Any]:
+    replay_result = run_log_replay(
+        log_scene_path=rendered_payload_path,
+        run_id=variant_id,
+        out_root=out_root,
+        seed=seed,
+        sds_version=sds_version,
+        sim_version=sim_version,
+        fidelity_profile=fidelity_profile,
+    )
+    return {
+        "replay_scenario_path": str(Path(replay_result["scenario_path"]).resolve()),
+        "summary_path": str(Path(replay_result["summary_path"]).resolve()),
+        "trace_path": str(Path(replay_result["trace_path"]).resolve()),
+        "lane_risk_summary_path": str(Path(replay_result["lane_risk_summary_path"]).resolve()),
+        "manifest_path": str(Path(replay_result["manifest_path"]).resolve()),
+        "summary": dict(replay_result["summary"]),
+    }
+
+
+def _execute_scenario_definition_variant(
+    *,
+    rendered_payload_path: Path,
+    variant_id: str,
+    out_root: Path,
+    seed: int,
+    sds_version: str,
+    sim_version: str,
+    fidelity_profile: str,
+) -> dict[str, Any]:
+    job = run_object_sim_job(
+        scenario_path=rendered_payload_path,
+        run_id=variant_id,
+        out_root=out_root,
+        seed=seed,
+        metadata={
+            "run_source": "scenario_variant_direct_object_sim",
+            "sds_version": sds_version,
+            "sim_version": sim_version,
+            "fidelity_profile": fidelity_profile,
+            "batch_id": None,
+        },
+    )
+    return {
+        "replay_scenario_path": None,
+        "summary_path": str(Path(job["summary_path"]).resolve()),
+        "trace_path": str(Path(job["trace_path"]).resolve()),
+        "lane_risk_summary_path": str(Path(job["lane_risk_summary_path"]).resolve()),
+        "manifest_path": None,
+        "summary": dict(job["summary"]),
+    }
+
+
+def _execute_variant_payload(
+    *,
+    rendered_payload_kind: str,
+    rendered_payload_path: Path,
+    variant_id: str,
+    out_root: Path,
+    seed: int,
+    sds_version: str,
+    sim_version: str,
+    fidelity_profile: str,
+) -> dict[str, Any]:
+    if rendered_payload_kind == SUPPORTED_RENDERED_PAYLOAD_KIND_LOG_SCENE_V0:
+        return _execute_log_scene_variant(
+            rendered_payload_path=rendered_payload_path,
+            variant_id=variant_id,
+            out_root=out_root,
+            seed=seed,
+            sds_version=sds_version,
+            sim_version=sim_version,
+            fidelity_profile=fidelity_profile,
+        )
+    if rendered_payload_kind == SUPPORTED_RENDERED_PAYLOAD_KIND_SCENARIO_DEFINITION_V0:
+        return _execute_scenario_definition_variant(
+            rendered_payload_path=rendered_payload_path,
+            variant_id=variant_id,
+            out_root=out_root,
+            seed=seed,
+            sds_version=sds_version,
+            sim_version=sim_version,
+            fidelity_profile=fidelity_profile,
+        )
+    raise ValueError(f"unsupported rendered_payload_kind: {rendered_payload_kind or '<missing>'}")
+
+
 def _build_variant_entry_base(variant: dict[str, Any], run_dir: Path) -> dict[str, Any]:
     return {
         "variant_id": str(variant.get("scenario_id", "")).strip(),
         "logical_scenario_id": str(variant.get("logical_scenario_id", "")).strip() or None,
         "rendered_payload_kind": str(variant.get("rendered_payload_kind", "")).strip() or None,
         "variant_run_dir": str(run_dir.resolve()),
+        "execution_path": None,
         "execution_status": None,
         "failure_code": None,
         "failure_reason": None,
@@ -154,7 +256,10 @@ def run_scenario_variant_report(
         )
         rendered_payload_path = _write_rendered_payload(run_dir, resolved_payload)
         entry["rendered_payload_path"] = str(rendered_payload_path.resolve())
-        if rendered_payload_kind != SUPPORTED_RENDERED_PAYLOAD_KIND_LOG_SCENE_V0:
+        if rendered_payload_kind not in {
+            SUPPORTED_RENDERED_PAYLOAD_KIND_LOG_SCENE_V0,
+            SUPPORTED_RENDERED_PAYLOAD_KIND_SCENARIO_DEFINITION_V0,
+        }:
             entry["execution_status"] = "FAILED"
             entry["failure_code"] = "UNSUPPORTED_RENDERED_PAYLOAD_KIND"
             entry["failure_reason"] = (
@@ -166,24 +271,30 @@ def run_scenario_variant_report(
             continue
 
         try:
-            replay_result = run_log_replay(
-                log_scene_path=rendered_payload_path,
-                run_id=variant_id,
+            entry["execution_path"] = (
+                "replay_object_sim"
+                if rendered_payload_kind == SUPPORTED_RENDERED_PAYLOAD_KIND_LOG_SCENE_V0
+                else "direct_object_sim"
+            )
+            execution_result = _execute_variant_payload(
+                rendered_payload_kind=rendered_payload_kind,
+                variant_id=variant_id,
+                rendered_payload_path=rendered_payload_path,
                 out_root=out_root,
                 seed=seed,
                 sds_version=sds_version,
                 sim_version=sim_version,
                 fidelity_profile=fidelity_profile,
             )
-            summary = dict(replay_result["summary"])
+            summary = dict(execution_result["summary"])
             entry["execution_status"] = "SUCCEEDED"
             entry["object_sim_status"] = str(summary["status"])
             entry["termination_reason"] = str(summary["termination_reason"])
-            entry["replay_scenario_path"] = str(Path(replay_result["scenario_path"]).resolve())
-            entry["summary_path"] = str(Path(replay_result["summary_path"]).resolve())
-            entry["trace_path"] = str(Path(replay_result["trace_path"]).resolve())
-            entry["lane_risk_summary_path"] = str(Path(replay_result["lane_risk_summary_path"]).resolve())
-            entry["manifest_path"] = str(Path(replay_result["manifest_path"]).resolve())
+            entry["replay_scenario_path"] = execution_result["replay_scenario_path"]
+            entry["summary_path"] = execution_result["summary_path"]
+            entry["trace_path"] = execution_result["trace_path"]
+            entry["lane_risk_summary_path"] = execution_result["lane_risk_summary_path"]
+            entry["manifest_path"] = execution_result["manifest_path"]
             object_sim_status_counts[str(entry["object_sim_status"])] += 1
         except (FileNotFoundError, json.JSONDecodeError, ScenarioValidationError, ValueError) as exc:
             entry["execution_status"] = "FAILED"

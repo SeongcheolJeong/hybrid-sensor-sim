@@ -76,7 +76,7 @@ Implemented in the current repository:
 15. route-relation-driven lane synthesis in `src/hybrid_sensor_sim/scenarios/replay.py` and `src/hybrid_sensor_sim/scenarios/matrix_sweep.py`
 16. route-relation-driven rendered payload generation in `src/hybrid_sensor_sim/scenarios/variants.py`
 17. rendered variant execution in `src/hybrid_sensor_sim/tools/scenario_variant_runner.py`
-   - `scenario_variants_report_v0` now drives replay/object-sim execution directly for `rendered_payload_kind=log_scene_v0`
+   - `scenario_variants_report_v0` now drives replay/object-sim execution directly for `rendered_payload_kind=log_scene_v0` and `rendered_payload_kind=scenario_definition_v0`
 
 Still pending from the same migration track:
 
