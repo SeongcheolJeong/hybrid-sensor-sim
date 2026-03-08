@@ -302,6 +302,7 @@ python3 scripts/run_scenario_backend_smoke_workflow.py \
 `scenario_backend_smoke_workflow_report_v0.json` includes:
 
 - `selection`: chosen `variant_id`, `logical_scenario_id`, bridge source path, and whether the bridge used `rendered_payload_path` or `replay_scenario_path`
+- `runtime_selection`: resolved `backend_bin` / `renderer_map` and whether they came from explicit CLI, `renderer_backend_local_setup.json`, or `renderer_backend_workflow_summary.json`
 - `bridge`: lane spacing, actor IDs, lane bindings, route-lane metadata, and the translated smoke scenario artifact path
 - `artifacts`: `scenario_backend_smoke_selection.json`, `scenario_runtime_bridge_manifest.json`, translated smoke scenario JSON, and materialized smoke input config
 - `smoke`: optional downstream `renderer_backend_smoke` execution status, summary/report paths, and captured stdout/stderr logs
@@ -327,7 +328,7 @@ python3 scripts/run_scenario_runtime_backend_workflow.py \
 `scenario_runtime_backend_workflow_report_v0.json` includes:
 
 - `batch_workflow`: embedded batch-workflow status, report paths, and worst logical scenario summary
-- `backend_smoke_workflow`: embedded backend-smoke workflow status, selected variant, bridge summary, and smoke result
+- `backend_smoke_workflow`: embedded backend-smoke workflow status, selected variant, runtime selection, bridge summary, and smoke result
 - `status_summary`: final status source, ordered decision trace, batch triage IDs, and backend smoke result summary
 - `artifacts`: top-level report paths plus generated smoke scenario/config paths
 

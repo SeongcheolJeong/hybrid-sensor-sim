@@ -182,6 +182,8 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
                 selected_variant_id="",
                 lane_spacing_m=4.0,
                 smoke_output_dir="",
+                setup_summary_path="",
+                backend_workflow_summary_path="",
                 backend_bin=str(fake_backend),
                 renderer_map="Town07",
                 option_overrides=[],
@@ -245,6 +247,8 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
                 selected_variant_id="",
                 lane_spacing_m=4.0,
                 smoke_output_dir="",
+                setup_summary_path="",
+                backend_workflow_summary_path="",
                 backend_bin=str(fake_backend),
                 renderer_map="Town03",
                 option_overrides=[],
@@ -298,6 +302,8 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
                 selected_variant_id="",
                 lane_spacing_m=4.0,
                 smoke_output_dir="",
+                setup_summary_path="",
+                backend_workflow_summary_path="",
                 backend_bin="",
                 renderer_map="",
                 option_overrides=[],
@@ -308,6 +314,82 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
             self.assertEqual(report["status"], "BRIDGED_ONLY")
             self.assertEqual(report["backend_smoke_workflow"]["status"], "BRIDGED_ONLY")
             self.assertEqual(report["status_summary"]["final_status_source"], "smoke_skipped")
+
+    def test_run_scenario_runtime_backend_workflow_uses_setup_summary_selection(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+            fake_backend = root / "fake_backend_success.sh"
+            _write_fake_backend_success(fake_backend)
+            smoke_config = _write_smoke_base_config(
+                root=root,
+                helios_bin=fake_helios,
+                output_dir=root / "smoke_placeholder",
+            )
+            setup_summary = root / "renderer_backend_local_setup.json"
+            setup_summary.write_text(
+                json.dumps(
+                    {
+                        "selection": {
+                            "CARLA_BIN": str(fake_backend.resolve()),
+                            "CARLA_RENDERER_MAP": "Town05",
+                        }
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = run_scenario_runtime_backend_workflow(
+                logical_scenarios_path=str(P_VALIDATION_FIXTURE_ROOT / "highway_mixed_payloads_v0.json"),
+                scenario_language_profile="",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                matrix_scenario_path=P_SIM_ENGINE_FIXTURE_ROOT / "highway_safe_following_v0.json",
+                smoke_config_path=smoke_config,
+                backend="carla",
+                out_root=root / "runtime_backend_workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=2,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+                matrix_run_id_prefix="RUN_BATCH",
+                traffic_profile_ids=["sumo_highway_balanced_v0"],
+                traffic_actor_pattern_ids=["sumo_platoon_sparse_v0"],
+                traffic_npc_speed_scale_values=[1.0],
+                tire_friction_coeff_values=[1.0],
+                surface_friction_scale_values=[1.0],
+                enable_ego_collision_avoidance=False,
+                avoidance_ttc_threshold_sec=2.5,
+                ego_max_brake_mps2=6.0,
+                max_cases=0,
+                selection_strategy="worst_logical_scenario",
+                selected_variant_id="",
+                lane_spacing_m=4.0,
+                smoke_output_dir="",
+                setup_summary_path=str(setup_summary),
+                backend_workflow_summary_path="",
+                backend_bin="",
+                renderer_map="",
+                option_overrides=[],
+                skip_smoke=False,
+            )
+
+            report = result["workflow_report"]
+            self.assertEqual(report["status"], "SUCCEEDED")
+            self.assertEqual(
+                report["backend_smoke_workflow"]["runtime_selection"]["backend_bin_source"],
+                "setup_summary",
+            )
+            self.assertEqual(
+                report["backend_smoke_workflow"]["runtime_selection"]["renderer_map"],
+                "Town05",
+            )
 
     def test_scenario_runtime_backend_workflow_script_bootstraps_src_path(self) -> None:
         script_path = (

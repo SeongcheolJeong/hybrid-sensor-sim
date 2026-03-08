@@ -172,6 +172,9 @@ Implemented in the current repository:
 42. top-level scenario runtime/backend workflow
    - `src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py` now runs `scenario_batch_workflow -> scenario_backend_smoke_workflow` as one command surface
    - logical scenarios can now go directly from batch evaluation into smoke-ready scenario translation and backend smoke without manual report handoff
+43. staged-backend selection reuse in scenario smoke workflows
+   - `src/hybrid_sensor_sim/tools/scenario_backend_smoke_workflow.py` and `src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py` can now resolve `backend_bin` and renderer map from `renderer_backend_local_setup.json` or `renderer_backend_workflow_summary.json`
+   - this lets migrated scenario smoke reuse staged/runtime-discovered backend selections without repeating manual path wiring
 
 Still pending from the same migration track:
 

@@ -47,6 +47,7 @@ Implemented from the first migration wave:
 27. compact worst-case logical-scenario and matrix-group rows in top-level batch summaries
 28. scenario-to-runtime smoke bridge for selected migrated scenarios
 29. top-level scenario runtime/backend workflow for `logical_scenarios_v0 -> batch evaluation -> smoke-ready scenario -> renderer backend smoke`
+30. staged backend selection reuse for scenario-driven smoke workflows
 
 Current repository paths:
 

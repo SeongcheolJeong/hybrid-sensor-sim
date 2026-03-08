@@ -21,6 +21,10 @@ SCENARIO_BACKEND_SMOKE_WORKFLOW_REPORT_SCHEMA_VERSION_V0 = "scenario_backend_smo
 SCENARIO_VARIANT_WORKFLOW_REPORT_SCHEMA_VERSION_V0 = "scenario_variant_workflow_report_v0"
 SCENARIO_BATCH_WORKFLOW_REPORT_SCHEMA_VERSION_V0 = "scenario_batch_workflow_report_v0"
 SCENARIO_VARIANT_RUN_REPORT_SCHEMA_VERSION_V0 = "scenario_variant_run_report_v0"
+_BACKEND_ENV_VARS = {
+    "awsim": ("AWSIM_BIN", "AWSIM_RENDERER_MAP"),
+    "carla": ("CARLA_BIN", "CARLA_RENDERER_MAP"),
+}
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -41,6 +45,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--selected-variant-id", default="", help="Variant ID for selection_strategy=variant_id")
     parser.add_argument("--lane-spacing-m", type=float, default=DEFAULT_LANE_SPACING_M, help="Lane center spacing used in smoke scenario translation")
     parser.add_argument("--smoke-output-dir", default="", help="Override smoke output directory")
+    parser.add_argument("--setup-summary", default="", help="Optional renderer_backend_local_setup.json used to resolve backend runtime selection")
+    parser.add_argument("--backend-workflow-summary", default="", help="Optional renderer_backend_workflow_summary.json used to resolve backend runtime selection")
     parser.add_argument("--backend-bin", default="", help="Forwarded to renderer backend smoke")
     parser.add_argument("--renderer-map", default="", help="Forwarded to renderer backend smoke")
     parser.add_argument("--set-option", action="append", default=[], help="Forwarded to renderer backend smoke")
@@ -59,6 +65,14 @@ def _optional_text(value: Any) -> str:
     if value is None:
         return ""
     return str(value).strip()
+
+
+def _selection_value(selection: dict[str, Any], key: str) -> str | None:
+    value = selection.get(key)
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text if text else None
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -274,6 +288,64 @@ def _build_smoke_input_config(
     return payload
 
 
+def _resolve_runtime_selection(
+    *,
+    backend: str,
+    explicit_backend_bin: str,
+    explicit_renderer_map: str,
+    setup_summary_path: str,
+    backend_workflow_summary_path: str,
+) -> dict[str, Any]:
+    if backend not in _BACKEND_ENV_VARS:
+        raise ValueError(f"unsupported backend: {backend}")
+    backend_env_var, map_env_var = _BACKEND_ENV_VARS[backend]
+    resolved_backend_bin = _optional_text(explicit_backend_bin)
+    resolved_renderer_map = _optional_text(explicit_renderer_map)
+    backend_bin_source = "explicit" if resolved_backend_bin else "unresolved"
+    renderer_map_source = "explicit" if resolved_renderer_map else "unresolved"
+    setup_summary_text = _optional_text(setup_summary_path)
+    backend_workflow_summary_text = _optional_text(backend_workflow_summary_path)
+
+    if setup_summary_text and not resolved_backend_bin:
+        setup_payload = _load_json_object(Path(setup_summary_text).resolve())
+        candidate = _selection_value(dict(setup_payload.get("selection", {})), backend_env_var)
+        if candidate:
+            resolved_backend_bin = candidate
+            backend_bin_source = "setup_summary"
+    if setup_summary_text and not resolved_renderer_map:
+        setup_payload = _load_json_object(Path(setup_summary_text).resolve())
+        candidate = _selection_value(dict(setup_payload.get("selection", {})), map_env_var)
+        if candidate:
+            resolved_renderer_map = candidate
+            renderer_map_source = "setup_summary"
+
+    if backend_workflow_summary_text and not resolved_backend_bin:
+        workflow_payload = _load_json_object(Path(backend_workflow_summary_text).resolve())
+        candidate = _selection_value(dict(workflow_payload.get("final_selection", {})), backend_env_var)
+        if candidate:
+            resolved_backend_bin = candidate
+            backend_bin_source = "backend_workflow_summary"
+    if backend_workflow_summary_text and not resolved_renderer_map:
+        workflow_payload = _load_json_object(Path(backend_workflow_summary_text).resolve())
+        candidate = _selection_value(dict(workflow_payload.get("final_selection", {})), map_env_var)
+        if candidate:
+            resolved_renderer_map = candidate
+            renderer_map_source = "backend_workflow_summary"
+
+    return {
+        "backend_env_var": backend_env_var,
+        "map_env_var": map_env_var,
+        "setup_summary_path": str(Path(setup_summary_text).resolve()) if setup_summary_text else None,
+        "backend_workflow_summary_path": (
+            str(Path(backend_workflow_summary_text).resolve()) if backend_workflow_summary_text else None
+        ),
+        "backend_bin": resolved_backend_bin or None,
+        "renderer_map": resolved_renderer_map or None,
+        "backend_bin_source": backend_bin_source,
+        "renderer_map_source": renderer_map_source,
+    }
+
+
 def run_scenario_backend_smoke_workflow(
     *,
     variant_workflow_report_path: str,
@@ -285,6 +357,8 @@ def run_scenario_backend_smoke_workflow(
     selected_variant_id: str,
     lane_spacing_m: float,
     smoke_output_dir: str,
+    setup_summary_path: str,
+    backend_workflow_summary_path: str,
     backend_bin: str,
     renderer_map: str,
     option_overrides: list[str],
@@ -345,6 +419,15 @@ def run_scenario_backend_smoke_workflow(
     )
     smoke_input_config_path = out_root / "scenario_backend_smoke_input_config.json"
     _write_json(smoke_input_config_path, smoke_input_config)
+    runtime_selection = _resolve_runtime_selection(
+        backend=backend,
+        explicit_backend_bin=backend_bin,
+        explicit_renderer_map=renderer_map,
+        setup_summary_path=setup_summary_path,
+        backend_workflow_summary_path=backend_workflow_summary_path,
+    )
+    resolved_backend_bin = _optional_text(runtime_selection.get("backend_bin"))
+    resolved_renderer_map = _optional_text(runtime_selection.get("renderer_map"))
 
     smoke_stdout_path = out_root / "scenario_backend_smoke_stdout.log"
     smoke_stderr_path = out_root / "scenario_backend_smoke_stderr.log"
@@ -364,10 +447,10 @@ def run_scenario_backend_smoke_workflow(
             "--output-dir",
             str(smoke_output_root),
         ]
-        if str(backend_bin).strip():
-            smoke_argv.extend(["--backend-bin", str(backend_bin).strip()])
-        if str(renderer_map).strip():
-            smoke_argv.extend(["--renderer-map", str(renderer_map).strip()])
+        if resolved_backend_bin:
+            smoke_argv.extend(["--backend-bin", resolved_backend_bin])
+        if resolved_renderer_map:
+            smoke_argv.extend(["--renderer-map", resolved_renderer_map])
         for override in option_overrides:
             smoke_argv.extend(["--set-option", override])
 
@@ -389,6 +472,7 @@ def run_scenario_backend_smoke_workflow(
         "skip_smoke": bool(skip_smoke),
         "lane_spacing_m": float(lane_spacing_m),
         "selection": selection_payload,
+        "runtime_selection": runtime_selection,
         "bridge": dict(bridge_result["bridge_manifest"]),
         "smoke": {
             "requested": not bool(skip_smoke),
@@ -451,6 +535,8 @@ def main(argv: list[str] | None = None) -> int:
             selected_variant_id=args.selected_variant_id,
             lane_spacing_m=float(args.lane_spacing_m),
             smoke_output_dir=args.smoke_output_dir,
+            setup_summary_path=args.setup_summary,
+            backend_workflow_summary_path=args.backend_workflow_summary,
             backend_bin=args.backend_bin,
             renderer_map=args.renderer_map,
             option_overrides=list(args.set_option),

@@ -118,6 +118,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--selected-variant-id", default="", help="Variant ID for selection_strategy=variant_id")
     parser.add_argument("--lane-spacing-m", type=float, default=DEFAULT_LANE_SPACING_M, help="Lane center spacing used in smoke scenario translation")
     parser.add_argument("--smoke-output-dir", default="", help="Override smoke output directory")
+    parser.add_argument("--setup-summary", default="", help="Optional renderer_backend_local_setup.json used to resolve backend runtime selection")
+    parser.add_argument("--backend-workflow-summary", default="", help="Optional renderer_backend_workflow_summary.json used to resolve backend runtime selection")
     parser.add_argument("--backend-bin", default="", help="Forwarded to renderer backend smoke")
     parser.add_argument("--renderer-map", default="", help="Forwarded to renderer backend smoke")
     parser.add_argument("--set-option", action="append", default=[], help="Forwarded to renderer backend smoke")
@@ -314,6 +316,8 @@ def run_scenario_runtime_backend_workflow(
     selected_variant_id: str,
     lane_spacing_m: float,
     smoke_output_dir: str,
+    setup_summary_path: str,
+    backend_workflow_summary_path: str,
     backend_bin: str,
     renderer_map: str,
     option_overrides: list[str],
@@ -375,6 +379,8 @@ def run_scenario_runtime_backend_workflow(
         selected_variant_id=selected_variant_id,
         lane_spacing_m=lane_spacing_m,
         smoke_output_dir=smoke_output_dir,
+        setup_summary_path=setup_summary_path,
+        backend_workflow_summary_path=backend_workflow_summary_path,
         backend_bin=backend_bin,
         renderer_map=renderer_map,
         option_overrides=option_overrides,
@@ -419,6 +425,7 @@ def run_scenario_runtime_backend_workflow(
             "status": backend_report["status"],
             "workflow_report_path": str(Path(backend_result["workflow_report_path"]).resolve()),
             "selection": dict(backend_report.get("selection", {})),
+            "runtime_selection": dict(backend_report.get("runtime_selection", {})),
             "bridge": {
                 "source_kind": backend_report.get("bridge", {}).get("source_payload_kind"),
                 "source_path": backend_report.get("bridge", {}).get("source_payload_path"),
@@ -564,6 +571,8 @@ def main(argv: list[str] | None = None) -> int:
             selected_variant_id=args.selected_variant_id,
             lane_spacing_m=float(args.lane_spacing_m),
             smoke_output_dir=args.smoke_output_dir,
+            setup_summary_path=args.setup_summary,
+            backend_workflow_summary_path=args.backend_workflow_summary,
             backend_bin=args.backend_bin,
             renderer_map=args.renderer_map,
             option_overrides=list(args.set_option),

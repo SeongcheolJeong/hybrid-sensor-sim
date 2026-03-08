@@ -177,6 +177,8 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
                 selected_variant_id="scn_direct_object_sim_0001",
                 lane_spacing_m=4.0,
                 smoke_output_dir="",
+                setup_summary_path="",
+                backend_workflow_summary_path="",
                 backend_bin=str(fake_backend),
                 renderer_map="Town07",
                 option_overrides=[],
@@ -247,6 +249,8 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
                 selected_variant_id="",
                 lane_spacing_m=4.0,
                 smoke_output_dir="",
+                setup_summary_path="",
+                backend_workflow_summary_path="",
                 backend_bin="",
                 renderer_map="Town03",
                 option_overrides=[],
@@ -261,6 +265,80 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
             )
             self.assertTrue(Path(workflow_report["artifacts"]["smoke_input_config_path"]).is_file())
             self.assertEqual(workflow_report["smoke"]["requested"], False)
+
+    def test_run_scenario_backend_smoke_workflow_resolves_backend_from_setup_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            variant_result = run_scenario_variant_workflow(
+                logical_scenarios_path="",
+                scenario_language_profile="highway_mixed_payloads_v0",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                out_root=root / "variant_workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=2,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+            )
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+            fake_backend = root / "fake_backend_success.sh"
+            _write_fake_backend_success(fake_backend)
+            smoke_config = _write_smoke_base_config(
+                root=root,
+                helios_bin=fake_helios,
+                output_dir=root / "smoke_placeholder",
+            )
+            setup_summary = root / "renderer_backend_local_setup.json"
+            setup_summary.write_text(
+                json.dumps(
+                    {
+                        "selection": {
+                            "AWSIM_BIN": str(fake_backend.resolve()),
+                            "AWSIM_RENDERER_MAP": "Town12",
+                        }
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = run_scenario_backend_smoke_workflow(
+                variant_workflow_report_path=str(variant_result["workflow_report_path"]),
+                batch_workflow_report_path="",
+                smoke_config_path=smoke_config,
+                backend="awsim",
+                out_root=root / "backend_smoke_workflow",
+                selection_strategy="variant_id",
+                selected_variant_id="scn_direct_object_sim_0001",
+                lane_spacing_m=4.0,
+                smoke_output_dir="",
+                setup_summary_path=str(setup_summary),
+                backend_workflow_summary_path="",
+                backend_bin="",
+                renderer_map="",
+                option_overrides=[],
+                skip_smoke=False,
+            )
+
+            workflow_report = result["workflow_report"]
+            self.assertEqual(workflow_report["status"], "SMOKE_SUCCEEDED")
+            self.assertEqual(
+                workflow_report["runtime_selection"]["backend_bin_source"],
+                "setup_summary",
+            )
+            self.assertEqual(
+                workflow_report["runtime_selection"]["renderer_map_source"],
+                "setup_summary",
+            )
+            self.assertEqual(
+                workflow_report["runtime_selection"]["renderer_map"],
+                "Town12",
+            )
 
     def test_scenario_backend_smoke_workflow_script_bootstraps_src_path(self) -> None:
         script_path = Path(__file__).resolve().parents[1] / "scripts" / "run_scenario_backend_smoke_workflow.py"
