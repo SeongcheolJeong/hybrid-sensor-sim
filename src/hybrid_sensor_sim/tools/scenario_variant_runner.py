@@ -207,6 +207,43 @@ def _build_variant_entry_base(variant: dict[str, Any], run_dir: Path) -> dict[st
     }
 
 
+def _build_by_payload_kind_summary(variant_runs: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    grouped: dict[str, dict[str, Any]] = {}
+    for run in variant_runs:
+        payload_kind = str(run.get("rendered_payload_kind", "")).strip() or "<missing>"
+        group = grouped.setdefault(
+            payload_kind,
+            {
+                "variant_count": 0,
+                "execution_status_counts": Counter(),
+                "object_sim_status_counts": Counter(),
+                "execution_path_counts": Counter(),
+                "variant_ids": [],
+            },
+        )
+        group["variant_count"] += 1
+        group["variant_ids"].append(str(run.get("variant_id", "")))
+        execution_status = str(run.get("execution_status", "")).strip()
+        if execution_status:
+            group["execution_status_counts"][execution_status] += 1
+        object_sim_status = str(run.get("object_sim_status", "")).strip()
+        if object_sim_status:
+            group["object_sim_status_counts"][object_sim_status] += 1
+        execution_path = str(run.get("execution_path", "")).strip()
+        if execution_path:
+            group["execution_path_counts"][execution_path] += 1
+    return {
+        payload_kind: {
+            "variant_count": int(group["variant_count"]),
+            "execution_status_counts": dict(sorted(group["execution_status_counts"].items())),
+            "object_sim_status_counts": dict(sorted(group["object_sim_status_counts"].items())),
+            "execution_path_counts": dict(sorted(group["execution_path_counts"].items())),
+            "variant_ids": list(group["variant_ids"]),
+        }
+        for payload_kind, group in sorted(grouped.items())
+    }
+
+
 def run_scenario_variant_report(
     *,
     variants_report_path: Path,
@@ -320,6 +357,7 @@ def run_scenario_variant_report(
         "fidelity_profile": fidelity_profile,
         "execution_status_counts": dict(sorted(execution_status_counts.items())),
         "object_sim_status_counts": dict(sorted(object_sim_status_counts.items())),
+        "by_payload_kind": _build_by_payload_kind_summary(variant_runs),
         "variant_runs": variant_runs,
     }
 

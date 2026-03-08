@@ -39,6 +39,9 @@ from hybrid_sensor_sim.tools.log_replay_runner import (
 from hybrid_sensor_sim.tools.scenario_variant_runner import (
     run_scenario_variant_report,
 )
+from hybrid_sensor_sim.tools.scenario_variant_workflow import (
+    run_scenario_variant_workflow,
+)
 from hybrid_sensor_sim.tools.log_scene_augment import (
     augment_log_scene,
 )
@@ -63,6 +66,7 @@ __all__ = [
     "write_object_sim_artifacts",
     "run_log_replay",
     "run_scenario_variant_report",
+    "run_scenario_variant_workflow",
     "augment_log_scene",
     "run_vehicle_dynamics_trace",
     "run_sensor_rig_sweep",

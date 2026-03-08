@@ -77,6 +77,8 @@ Implemented in the current repository:
 16. route-relation-driven rendered payload generation in `src/hybrid_sensor_sim/scenarios/variants.py`
 17. rendered variant execution in `src/hybrid_sensor_sim/tools/scenario_variant_runner.py`
    - `scenario_variants_report_v0` now drives replay/object-sim execution directly for `rendered_payload_kind=log_scene_v0` and `rendered_payload_kind=scenario_definition_v0`
+18. rendered variant workflow in `src/hybrid_sensor_sim/tools/scenario_variant_workflow.py`
+   - logical scenarios can now go through `variant generation -> rendered payload execution` in one command surface
 
 Still pending from the same migration track:
 

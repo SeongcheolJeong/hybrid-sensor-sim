@@ -27,6 +27,7 @@ Implemented from the first migration wave:
 7. sensor rig sweep on current native preview/coverage outputs
 8. map convert / validate / route layer
 9. rendered variant execution runner for `scenario_variants_report_v0`
+10. scenario variant workflow for `logical_scenarios_v0 -> rendered payload execution`
 
 Current repository paths:
 
@@ -132,6 +133,8 @@ Detailed audit:
 13. rendered variant execution
    - `scenario_variants_report_v0` can now drive replay/object-sim execution directly through `src/hybrid_sensor_sim/tools/scenario_variant_runner.py`
    - supported payload kinds now include `log_scene_v0` and `scenario_definition_v0`
+14. scenario variant workflow
+   - `src/hybrid_sensor_sim/tools/scenario_variant_workflow.py` now provides a single workflow entry point from logical scenarios to executed rendered payloads
 
 ### Reference only
 

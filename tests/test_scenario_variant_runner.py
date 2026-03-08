@@ -214,6 +214,109 @@ class ScenarioVariantRunnerTests(unittest.TestCase):
             )
             self.assertTrue(Path(rendered_payload["canonical_map_path"]).is_absolute())
 
+    def test_run_scenario_variant_report_builds_by_payload_kind_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            report_path = root / "variants_report.json"
+            report_path.write_text(
+                json.dumps(
+                    {
+                        "scenario_variants_report_schema_version": "scenario_variants_report_v0",
+                        "source_path": str(
+                            Path(__file__).resolve().parent
+                            / "fixtures"
+                            / "autonomy_e2e"
+                            / "p_sim_engine"
+                            / "highway_map_route_following_v0.json"
+                        ),
+                        "variants": [
+                            {
+                                "scenario_id": "variant_log_scene",
+                                "logical_scenario_id": "logical_demo",
+                                "rendered_payload_kind": "log_scene_v0",
+                                "rendered_payload": {
+                                    "log_scene_schema_version": "log_scene_v0",
+                                    "log_id": "variant_log_scene",
+                                    "map_id": "demo_map_v0",
+                                    "map_version": "v0",
+                                    "canonical_map_path": "../p_map_toolset/canonical_lane_graph_v0.json",
+                                    "route_definition": {
+                                        "entry_lane_id": "lane_a",
+                                        "exit_lane_id": "lane_c",
+                                        "via_lane_ids": ["lane_b"],
+                                        "cost_mode": "hops",
+                                    },
+                                    "ego_route_relation": "same_lane",
+                                    "lead_vehicle_route_relation": "downstream",
+                                    "ego_initial_speed_mps": 16.0,
+                                    "lead_vehicle_initial_gap_m": 42.0,
+                                    "lead_vehicle_speed_mps": 14.0,
+                                    "duration_sec": 2.0,
+                                    "dt_sec": 0.1,
+                                },
+                            },
+                            {
+                                "scenario_id": "variant_direct",
+                                "logical_scenario_id": "logical_demo",
+                                "rendered_payload_kind": "scenario_definition_v0",
+                                "rendered_payload": {
+                                    "scenario_schema_version": "scenario_definition_v0",
+                                    "scenario_id": "variant_direct",
+                                    "duration_sec": 2.0,
+                                    "dt_sec": 0.1,
+                                    "canonical_map_path": "../p_map_toolset/canonical_lane_graph_v0.json",
+                                    "route_definition": {
+                                        "entry_lane_id": "lane_a",
+                                        "exit_lane_id": "lane_c",
+                                        "via_lane_ids": ["lane_b"],
+                                        "cost_mode": "hops",
+                                    },
+                                    "ego": {
+                                        "actor_id": "ego",
+                                        "position_m": 0.0,
+                                        "speed_mps": 10.0,
+                                        "lane_id": "lane_a",
+                                    },
+                                    "npcs": [
+                                        {
+                                            "actor_id": "npc_1",
+                                            "position_m": 30.0,
+                                            "speed_mps": 8.0,
+                                            "lane_id": "lane_b",
+                                        }
+                                    ],
+                                },
+                            },
+                            {
+                                "scenario_id": "variant_bad_kind",
+                                "logical_scenario_id": "logical_demo",
+                                "rendered_payload_kind": "world_state_v0",
+                                "rendered_payload": {"world_state_schema_version": "world_state_v0"},
+                            },
+                        ],
+                    },
+                    indent=2,
+                    ensure_ascii=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            report = run_scenario_variant_report(
+                variants_report_path=report_path,
+                out_root=root / "variant_runs",
+                seed=7,
+                max_variants=0,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+            )
+            self.assertEqual(report["by_payload_kind"]["log_scene_v0"]["execution_status_counts"]["SUCCEEDED"], 1)
+            self.assertEqual(
+                report["by_payload_kind"]["scenario_definition_v0"]["execution_path_counts"]["direct_object_sim"],
+                1,
+            )
+            self.assertEqual(report["by_payload_kind"]["world_state_v0"]["execution_status_counts"]["FAILED"], 1)
+
     def test_scenario_variant_runner_cli_writes_report(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
