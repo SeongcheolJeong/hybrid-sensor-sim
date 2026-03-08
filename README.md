@@ -556,6 +556,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - when `heliosplusplus:cli` is present in Docker Desktop, discovery can mark HELIOS as docker-ready even if `HELIOS_BIN` is unset.
 - `--probe-helios-docker-demo` runs the configured docker demo and records actual HELIOS execution success/failure in `probes.helios_docker_demo`.
 - `--probe-linux-handoff-docker-selftest` runs the synthetic Linux handoff Docker self-test and records the result in `probes.linux_handoff_docker_selftest`.
+- `--probe-backend-workflow-selftest` runs the higher-level workflow self-test and records the result in `probes.backend_workflow_selftest`.
 - the Linux handoff Docker self-test summary carries `generated_at_utc`; workflow also falls back to the probe summary file mtime or setup summary mtime when it needs freshness metadata from older summaries.
 - `run_renderer_backend_workflow.py --run-linux-handoff-docker` reads that probe as a Docker preflight summary. It now tracks `generated_at_utc`, `age_seconds`, `max_age_seconds`, `timestamp_source`, and `stale`.
 - workflow reports:
@@ -564,6 +565,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - `--refresh-docker-handoff-preflight` reruns local setup with `--probe-linux-handoff-docker-selftest` when the cached Docker handoff preflight is missing or stale.
 - workflow smoke config materialization now uses setup-summary selections as env overrides, so docker presets with `${AWSIM_BIN}` / `${HELIOS_DOCKER_IMAGE}` style placeholders can be resolved without first exporting those variables into the shell.
 - use `--no-default-search-roots` when you want discovery to only scan explicit `--search-root` inputs plus the repo root.
+- discovery now ignores known synthetic self-test artifact directories while recursively scanning broad roots, so workflow self-test stubs do not pollute normal AWSIM/CARLA runtime selection.
 
 ### Local backend package staging
 

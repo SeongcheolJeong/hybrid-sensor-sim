@@ -41,6 +41,13 @@ _CARLA_EXECUTABLE_NAMES = {
     "carlaunreal.sh",
     "carlaunreal.exe",
 }
+_DISCOVERY_IGNORE_PATH_TOKENS = {
+    "renderer_backend_workflow_selftest_probe",
+    "backend_workflow_selftest_probe",
+    "renderer_backend_linux_handoff_selftest",
+    "linux_handoff_docker_selftest_probe",
+    "workflow_docker_preflight_demo",
+}
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -95,6 +102,22 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="When probing the Linux handoff Docker self-test, execute the extracted handoff script too.",
     )
+    parser.add_argument(
+        "--probe-backend-workflow-selftest",
+        action="store_true",
+        help="Run the end-to-end backend workflow self-test and store the result summary.",
+    )
+    parser.add_argument(
+        "--workflow-selftest-backend",
+        choices=("awsim", "carla"),
+        default="awsim",
+        help="Backend flavor used by --probe-backend-workflow-selftest.",
+    )
+    parser.add_argument(
+        "--probe-backend-workflow-selftest-execute",
+        action="store_true",
+        help="When probing the backend workflow self-test, execute the extracted Docker handoff script too.",
+    )
     return parser.parse_args(argv)
 
 
@@ -129,6 +152,11 @@ def _utc_now() -> datetime:
 
 def _format_utc(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _should_ignore_discovery_path(path: Path) -> bool:
+    lowered_parts = {part.lower() for part in path.resolve().parts}
+    return any(token in lowered_parts for token in _DISCOVERY_IGNORE_PATH_TOKENS)
 
 
 def _is_executable_file(path: Path) -> bool:
@@ -476,7 +504,10 @@ def _scan_named_candidates(
     matches: list[Path] = []
     lowered = {name.lower() for name in names}
     for root in search_roots:
+        allow_ignored_under_root = _should_ignore_discovery_path(root)
         for path in _iter_with_depth(root, max_depth=max_depth):
+            if not allow_ignored_under_root and _should_ignore_discovery_path(path):
+                continue
             if path.is_file() and path.name.lower() in lowered:
                 matches.append(path.resolve())
     unique: list[Path] = []
@@ -501,7 +532,10 @@ def _scan_archive_candidates(
     lowered_tokens = {token.lower() for token in tokens}
     lowered_suffixes = tuple(suffix.lower() for suffix in suffixes)
     for root in search_roots:
+        allow_ignored_under_root = _should_ignore_discovery_path(root)
         for path in _iter_with_depth(root, max_depth=max_depth):
+            if not allow_ignored_under_root and _should_ignore_discovery_path(path):
+                continue
             if not path.is_file():
                 continue
             name = path.name.lower()
@@ -690,6 +724,7 @@ def _render_env_file(summary: dict[str, Any]) -> str:
             "# source artifacts/renderer_backend_local_setup/renderer_backend_local.env.sh",
             "# python3 scripts/discover_renderer_backend_local_env.py --probe-helios-docker-demo",
             "# python3 scripts/discover_renderer_backend_local_env.py --probe-linux-handoff-docker-selftest --probe-linux-handoff-docker-selftest-execute",
+            "# python3 scripts/discover_renderer_backend_local_env.py --probe-backend-workflow-selftest --workflow-selftest-backend awsim",
             "# python3 scripts/run_renderer_backend_smoke.py --config configs/renderer_backend_smoke.awsim.local.example.json --backend awsim",
             "# python3 scripts/run_renderer_backend_smoke.py --config configs/renderer_backend_smoke.awsim.local.docker.example.json --backend awsim",
             "",
@@ -926,6 +961,9 @@ def build_renderer_backend_local_setup(
     helios_docker_probe_config: Path | None = None,
     probe_linux_handoff_docker_selftest: bool = False,
     probe_linux_handoff_docker_selftest_execute: bool = False,
+    probe_backend_workflow_selftest: bool = False,
+    workflow_selftest_backend: str = "awsim",
+    probe_backend_workflow_selftest_execute: bool = False,
 ) -> dict[str, Any]:
     repo_root = repo_root.resolve()
     extra_roots = [_resolve_runtime_path(path) for path in (search_roots or [])]
@@ -1040,11 +1078,19 @@ def build_renderer_backend_local_setup(
     handoff_selftest_summary_path = (
         handoff_selftest_output_root / "renderer_backend_linux_handoff_selftest.json"
     )
+    workflow_selftest_output_root = output_root / "backend_workflow_selftest_probe"
+    workflow_selftest_summary_path = (
+        workflow_selftest_output_root / "renderer_backend_workflow_selftest.json"
+    )
     commands = {
         "helios_docker_demo": "python3 scripts/discover_renderer_backend_local_env.py --probe-helios-docker-demo",
         "linux_handoff_docker_selftest": (
             "python3 scripts/discover_renderer_backend_local_env.py "
             "--probe-linux-handoff-docker-selftest"
+        ),
+        "backend_workflow_selftest": (
+            "python3 scripts/discover_renderer_backend_local_env.py "
+            f"--probe-backend-workflow-selftest --workflow-selftest-backend {workflow_selftest_backend}"
         ),
         "awsim_acquire": (
             "python3 scripts/acquire_renderer_backend_package.py "
@@ -1142,6 +1188,34 @@ def build_renderer_backend_local_setup(
         probes["linux_handoff_docker_selftest"] = probe_summary
         if not probe_summary.get("success", False):
             issues.append("Linux handoff Docker self-test failed.")
+    if probe_backend_workflow_selftest:
+        try:
+            from hybrid_sensor_sim.tools.renderer_backend_workflow_selftest import (
+                run_renderer_backend_workflow_selftest,
+            )
+
+            probe_summary = run_renderer_backend_workflow_selftest(
+                backend=workflow_selftest_backend,
+                repo_root=repo_root,
+                output_root=workflow_selftest_output_root,
+                summary_path=workflow_selftest_summary_path,
+                docker_handoff_execute=probe_backend_workflow_selftest_execute,
+            )
+        except Exception as exc:
+            probe_summary = {
+                "generated_at_utc": _format_utc(_utc_now()),
+                "backend": workflow_selftest_backend,
+                "repo_root": str(repo_root),
+                "output_root": str(workflow_selftest_output_root),
+                "summary_path": str(workflow_selftest_summary_path),
+                "docker_handoff_execute": probe_backend_workflow_selftest_execute,
+                "success": False,
+                "error": str(exc),
+            }
+            _write_json(workflow_selftest_summary_path, probe_summary)
+        probes["backend_workflow_selftest"] = probe_summary
+        if not probe_summary.get("success", False):
+            issues.append("Backend workflow self-test failed.")
     acquisition_hints = _build_acquisition_hints(
         repo_root=repo_root,
         search_roots=all_search_roots,
@@ -1177,6 +1251,7 @@ def build_renderer_backend_local_setup(
             "env_path": str(env_path),
             "helios_docker_probe_path": str(probe_path),
             "linux_handoff_docker_selftest_probe_path": str(handoff_selftest_summary_path),
+            "backend_workflow_selftest_probe_path": str(workflow_selftest_summary_path),
         },
     }
 
@@ -1194,6 +1269,9 @@ def main(argv: list[str] | None = None) -> int:
         helios_docker_probe_config=_resolve_runtime_path(args.helios_docker_probe_config),
         probe_linux_handoff_docker_selftest=args.probe_linux_handoff_docker_selftest,
         probe_linux_handoff_docker_selftest_execute=args.probe_linux_handoff_docker_selftest_execute,
+        probe_backend_workflow_selftest=args.probe_backend_workflow_selftest,
+        workflow_selftest_backend=args.workflow_selftest_backend,
+        probe_backend_workflow_selftest_execute=args.probe_backend_workflow_selftest_execute,
     )
     summary_path = (
         _resolve_runtime_path(args.summary_path)

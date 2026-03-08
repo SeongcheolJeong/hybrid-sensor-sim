@@ -245,6 +245,33 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             )
             self.assertEqual(summary["selection"]["AWSIM_RENDERER_MAP"], "EnvAwsimMap")
             self.assertEqual(summary["selection"]["CARLA_RENDERER_MAP"], "EnvTown05")
+
+    def test_build_renderer_backend_local_setup_ignores_selftest_artifact_candidates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            repo_root.mkdir(parents=True, exist_ok=True)
+            search_root = root / "search"
+            ignored_root = search_root / "backend_workflow_selftest_probe" / "inputs"
+            ignored_root.mkdir(parents=True, exist_ok=True)
+            ignored_bin = ignored_root / "AWSIM-Demo.x86_64"
+            ignored_bin.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            ignored_bin.chmod(0o755)
+
+            with patch(
+                "hybrid_sensor_sim.tools.renderer_backend_local_setup._inspect_helios_docker_runtime",
+                return_value=_ready_docker_runtime(),
+            ):
+                summary = build_renderer_backend_local_setup(
+                    repo_root=repo_root,
+                    search_roots=[search_root],
+                    output_dir=root / "artifacts",
+                    include_default_search_roots=False,
+                )
+
+            self.assertIsNone(summary["selection"]["AWSIM_BIN"])
+            candidate_paths = [entry["path"] for entry in summary["backends"]["awsim"]["candidates"]]
+            self.assertNotIn(str(ignored_bin.resolve()), candidate_paths)
             self.assertEqual(summary["acquisition_hints"]["helios"]["status"], "docker_ready")
 
     def test_build_renderer_backend_local_setup_discovers_packaged_runtime_names(self) -> None:
@@ -580,6 +607,58 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertEqual(probe_payload["docker"]["return_code"], 0)
             self.assertEqual(probe_payload["generated_at_utc"], "2026-03-08T00:00:00Z")
 
+    def test_build_renderer_backend_local_setup_runs_backend_workflow_selftest_probe(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            repo_root.mkdir(parents=True, exist_ok=True)
+            output_dir = root / "artifacts"
+
+            def _fake_workflow_selftest(**kwargs: object) -> dict[str, object]:
+                summary_path = Path(str(kwargs["summary_path"]))
+                payload = {
+                    "generated_at_utc": "2026-03-08T00:00:00Z",
+                    "backend": kwargs["backend"],
+                    "summary_path": str(summary_path),
+                    "docker_handoff_execute": kwargs["docker_handoff_execute"],
+                    "workflow_status": "HANDOFF_DOCKER_VERIFIED",
+                    "success": True,
+                }
+                summary_path.parent.mkdir(parents=True, exist_ok=True)
+                summary_path.write_text(json.dumps(payload), encoding="utf-8")
+                return payload
+
+            with patch(
+                "hybrid_sensor_sim.tools.renderer_backend_local_setup._inspect_helios_docker_runtime",
+                return_value=_ready_docker_runtime(),
+            ):
+                with patch(
+                    "hybrid_sensor_sim.tools.renderer_backend_workflow_selftest.run_renderer_backend_workflow_selftest",
+                    side_effect=_fake_workflow_selftest,
+                ) as mocked_selftest:
+                    summary = build_renderer_backend_local_setup(
+                        repo_root=repo_root,
+                        output_dir=output_dir,
+                        include_default_search_roots=False,
+                        probe_backend_workflow_selftest=True,
+                        workflow_selftest_backend="carla",
+                        probe_backend_workflow_selftest_execute=True,
+                    )
+
+            mocked_selftest.assert_called_once()
+            self.assertIn("backend_workflow_selftest", summary["probes"])
+            self.assertTrue(summary["probes"]["backend_workflow_selftest"]["success"])
+            self.assertEqual(summary["probes"]["backend_workflow_selftest"]["backend"], "carla")
+            self.assertTrue(summary["probes"]["backend_workflow_selftest"]["docker_handoff_execute"])
+            self.assertIn(
+                "--probe-backend-workflow-selftest --workflow-selftest-backend carla",
+                summary["commands"]["backend_workflow_selftest"],
+            )
+            probe_path = Path(summary["artifacts"]["backend_workflow_selftest_probe_path"])
+            self.assertTrue(probe_path.exists())
+            probe_payload = json.loads(probe_path.read_text(encoding="utf-8"))
+            self.assertEqual(probe_payload["workflow_status"], "HANDOFF_DOCKER_VERIFIED")
+
     def test_local_setup_main_writes_env_and_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -644,6 +723,10 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertIn("python3 scripts/discover_renderer_backend_local_env.py --probe-helios-docker-demo", env_text)
             self.assertIn(
                 "python3 scripts/discover_renderer_backend_local_env.py --probe-linux-handoff-docker-selftest --probe-linux-handoff-docker-selftest-execute",
+                env_text,
+            )
+            self.assertIn(
+                "python3 scripts/discover_renderer_backend_local_env.py --probe-backend-workflow-selftest --workflow-selftest-backend awsim",
                 env_text,
             )
             self.assertIn("configs/renderer_backend_smoke.awsim.local.example.json", env_text)
