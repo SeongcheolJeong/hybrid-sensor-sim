@@ -160,6 +160,8 @@ Detailed audit:
    - object-sim avoidance policy now supports interaction-specific `priority` and `max_gap_m`, making target selection and actionable filtering more controllable without coupling to vehicle dynamics
 17. avoidance-aware worst-case batch triage
    - batch workflow worst-case logical-scenario and matrix-group ranking now considers avoidance brake-event totals and interaction-specific trigger mix before TTC-only tie-breaks, so avoidance-heavy route interactions remain visible in top-level triage
+18. avoidance-focused gate preset catalog
+   - the batch gate preset catalog now includes an avoidance-specific profile for route-interaction-heavy scenarios, and both comparison/workflow CLIs are covered for preset-id resolution
 11. route-relation-driven replay and sweep generation
    - `log_scene_v0` and matrix actor patterns can now synthesize actor lane assignments from route relations instead of relying only on explicit lane IDs or raw lane slots
 12. rendered payload generation in scenario variants

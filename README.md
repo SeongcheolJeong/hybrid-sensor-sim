@@ -268,6 +268,11 @@ python3 scripts/run_scenario_batch_workflow.py \
 
 Use `--fail-on-attention` if attention rows should fail the command.
 Use `--gate-profile-id` when you want a preset gate policy without spelling out the JSON path.
+Fixture preset examples:
+
+- `scenario_batch_gate_strict_v0`: strict attention/collision/timeout/TTC gate
+- `scenario_batch_gate_avoidance_v0`: strict avoidance-heavy route interaction gate
+
 The workflow Markdown report now includes logical-scenario health with per-scenario gate columns, logical-scenario summary and matrix-group summary with path/merge/lane-change columns, successful/non-success variant tables, and attention rows annotated with `attention_reasons` such as `PATH_CONFLICT_PRESENT`, `MERGE_CONFLICT_PRESENT`, `LANE_CHANGE_CONFLICT_PRESENT`, and `PATH_TTC_UNDER_3S` when applicable.
 
 Both `run_scenario_variants.py` and `run_scenario_variant_workflow.py` resolve default scenario-language profiles from:

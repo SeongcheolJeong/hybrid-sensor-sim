@@ -842,6 +842,66 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             self.assertEqual(payload["status"], "FAILED")
             self.assertEqual(payload["comparison_summary"]["gate"]["policy"]["profile_id"], "scenario_batch_gate_strict_v0")
 
+    def test_scenario_batch_workflow_cli_can_resolve_avoidance_gate_profile_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            logical_path = root / "route_avoidance_logical_scenarios.json"
+            self._write_route_avoidance_logical_scenarios(logical_path)
+            matrix_scenario_path = root / "route_avoidance_matrix.json"
+            matrix_scenario_path.write_text(
+                json.dumps(self._build_route_avoidance_scenario(), indent=2, ensure_ascii=True) + "\n",
+                encoding="utf-8",
+            )
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = scenario_batch_workflow_main(
+                    [
+                        "--logical-scenarios",
+                        str(logical_path),
+                        "--matrix-scenario",
+                        str(matrix_scenario_path),
+                        "--out-root",
+                        str(root / "batch_workflow"),
+                        "--execution-max-variants",
+                        "1",
+                        "--traffic-profile-ids",
+                        "sumo_highway_balanced_v0",
+                        "--traffic-actor-pattern-ids",
+                        "sumo_route_shifted_v0",
+                        "--traffic-npc-speed-scale-values",
+                        "0.5",
+                        "--tire-friction-coeff-values",
+                        "1.0",
+                        "--surface-friction-scale-values",
+                        "1.0",
+                        "--enable-ego-collision-avoidance",
+                        "--avoidance-ttc-threshold-sec",
+                        "10.0",
+                        "--ego-max-brake-mps2",
+                        "5.0",
+                        "--max-cases",
+                        "1",
+                        "--gate-profile-id",
+                        "scenario_batch_gate_avoidance_v0",
+                        "--gate-profile-dir",
+                        str(P_VALIDATION_FIXTURE_ROOT),
+                    ]
+                )
+            self.assertEqual(exit_code, 2)
+            payload = json.loads(
+                (root / "batch_workflow" / "scenario_batch_workflow_report_v0.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(payload["status"], "FAILED")
+            self.assertEqual(
+                payload["comparison_summary"]["gate"]["policy"]["profile_id"],
+                "scenario_batch_gate_avoidance_v0",
+            )
+            self.assertIn("AVOIDANCE_ROWS_EXCEEDED", payload["comparison_summary"]["gate"]["failure_codes"])
+            self.assertIn("AVOIDANCE_BRAKE_EVENTS_EXCEEDED", payload["comparison_summary"]["gate"]["failure_codes"])
+            self.assertIn(
+                "AVOIDANCE_MERGE_CONFLICT_TRIGGER_COUNT_EXCEEDED",
+                payload["comparison_summary"]["gate"]["failure_codes"],
+            )
+
     def test_scenario_batch_workflow_script_bootstraps_src_path(self) -> None:
         script_path = Path(__file__).resolve().parents[1] / "scripts" / "run_scenario_batch_workflow.py"
         proc = subprocess.run(
