@@ -16,12 +16,17 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 
 - `src/hybrid_sensor_sim/backends/helios_adapter.py`: external HELIOS execution adapter.
 - `src/hybrid_sensor_sim/backends/native_physics.py`: local physics enhancement layer.
+- `src/hybrid_sensor_sim/scenarios/schema.py`: migrated `scenario_definition_v0` schema validation and actor normalization.
+- `src/hybrid_sensor_sim/scenarios/object_sim.py`: deterministic 1D object-sim core with collision/minTTC/lane-risk outputs.
+- `src/hybrid_sensor_sim/scenarios/log_scene.py`: migrated `log_scene_v0` validation.
+- `src/hybrid_sensor_sim/scenarios/replay.py`: `log_scene_v0` to `scenario_definition_v0` conversion helpers.
 - `src/hybrid_sensor_sim/config.py`: typed Sensor Sim config translation layer for camera/lidar/radar/renderer blocks.
 - `src/hybrid_sensor_sim/io/survey_mapping.py`: scenario JSON to HELIOS survey XML mapper.
 - `src/hybrid_sensor_sim/renderers/playback_contract.py`: renderer playback contract builder for CARLA/AWSIM bridge.
 - `src/hybrid_sensor_sim/orchestrator.py`: mode selection and pipeline chaining.
 - `docs/hybrid_helios_plan.md`: functional roadmap and risk management.
 - `docs/p_sim_engine_migration_audit.md`: audit of historical `P_Sim-Engine` work and concrete migration targets into this repository.
+- `docs/autonomy_e2e_migration_master_plan.md`: selective migration scope and phased execution plan for `Autonomy-E2E` sources.
 - `scripts/setup_helios.sh`: bootstrap helper for cloning/building HELIOS.
 - `scripts/run_renderer_backend_smoke.py`: AWSIM/CARLA smoke launcher that forces direct backend execution plus output-contract inspection.
 - `scripts/discover_renderer_backend_local_env.py`: discovers local HELIOS/AWSIM/CARLA runtime candidates and writes a reusable env file plus readiness summary.
@@ -29,6 +34,10 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `scripts/stage_renderer_backend_package.py`: extracts packaged AWSIM/CARLA archives into `third_party/runtime_backends/<backend>` and writes a staging env file for smoke runs.
 - `scripts/run_renderer_backend_workflow.py`: runs `discover/load setup -> optional acquire -> smoke` as one workflow and writes a single workflow summary.
 - `scripts/run_renderer_backend_package_workflow_selftest.py`: synthesizes a packaged backend archive and exercises `acquire -> stage -> refresh discover -> smoke`.
+- `scripts/run_vehicle_dynamics_trace.py`: runs a migrated vehicle dynamics trace using `vehicle_profile_v0` and `control_sequence_v0`.
+- `scripts/run_object_sim.py`: runs migrated `scenario_definition_v0` object-sim and writes `summary.json`, `trace.csv`, and `lane_risk_summary.json`.
+- `scripts/run_log_replay.py`: converts `log_scene_v0` into a generated scenario and runs object-sim on it.
+- `scripts/run_log_scene_augment.py`: creates deterministic speed/gap variants from `log_scene_v0`.
 
 ## Quick start
 
@@ -41,6 +50,52 @@ Run tests:
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests -q
 ```
+
+## Autonomy-E2E migration quick start
+
+Vehicle dynamics trace:
+
+```bash
+python3 scripts/run_vehicle_dynamics_trace.py \
+  --vehicle-profile tests/fixtures/autonomy_e2e/p_sim_engine/vehicle_profile_v0.json \
+  --control-sequence tests/fixtures/autonomy_e2e/p_sim_engine/control_sequence_v0.json \
+  --out artifacts/vehicle_dynamics_trace_v0.json
+```
+
+Deterministic object sim:
+
+```bash
+python3 scripts/run_object_sim.py \
+  --scenario tests/fixtures/autonomy_e2e/p_sim_engine/highway_safe_following_v0.json \
+  --run-id RUN_SAFE_001 \
+  --seed 42 \
+  --out artifacts/object_sim_runs
+```
+
+Log replay and augmentation:
+
+```bash
+python3 scripts/run_log_replay.py \
+  --log-scene tests/fixtures/autonomy_e2e/p_sim_engine/log_scene_v0.json \
+  --run-id LOG_REPLAY_001 \
+  --out artifacts/log_replay_runs
+
+python3 scripts/run_log_scene_augment.py \
+  --input tests/fixtures/autonomy_e2e/p_sim_engine/log_scene_v0.json \
+  --out artifacts/log_scene_aug_v0.json \
+  --ego-speed-scale 1.1 \
+  --lead-gap-offset-m -5 \
+  --lead-speed-offset-mps 2.0 \
+  --suffix aug
+```
+
+Autonomy-E2E fixtures currently mirrored into this repo:
+
+- `tests/fixtures/autonomy_e2e/p_sim_engine/vehicle_profile_v0.json`
+- `tests/fixtures/autonomy_e2e/p_sim_engine/control_sequence_v0.json`
+- `tests/fixtures/autonomy_e2e/p_sim_engine/highway_following_v0.json`
+- `tests/fixtures/autonomy_e2e/p_sim_engine/highway_safe_following_v0.json`
+- `tests/fixtures/autonomy_e2e/p_sim_engine/log_scene_v0.json`
 
 Survey mapping dry-run demo (no HELIOS execution, plan+mapping artifacts only):
 

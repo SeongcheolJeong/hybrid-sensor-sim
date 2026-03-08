@@ -55,6 +55,23 @@ So the correct migration strategy is:
 2. `Do` port object-sim and sweep utilities where the current repository still has no equivalent.
 3. Use old files as behavioral references, not as target architecture.
 
+## Current Status
+
+Implemented in the current repository:
+
+1. `vehicle_dynamics_stub.py` -> `src/hybrid_sensor_sim/physics/vehicle_dynamics.py`
+2. vehicle trace CLI -> `src/hybrid_sensor_sim/tools/vehicle_dynamics_trace.py`
+3. `core_sim_runner.py` baseline -> `src/hybrid_sensor_sim/scenarios/schema.py`, `src/hybrid_sensor_sim/scenarios/object_sim.py`, `src/hybrid_sensor_sim/tools/object_sim_runner.py`
+4. `log_replay_runner.py` baseline -> `src/hybrid_sensor_sim/scenarios/log_scene.py`, `src/hybrid_sensor_sim/scenarios/replay.py`, `src/hybrid_sensor_sim/tools/log_replay_runner.py`
+5. `augment_log_scene.py` baseline -> `src/hybrid_sensor_sim/tools/log_scene_augment.py`
+
+Still pending from the same migration track:
+
+1. `sensor_rig_sweep.py`
+2. `core_sim_matrix_sweep_runner.py`
+3. `generate_scenario_variants.py`
+4. map-layer migration from `P_Map-Toolset-MVP`
+
 ## Block Mapping
 
 | P_Sim-Engine block | Historical evidence | Current repo equivalent | Assessment | Migration action |

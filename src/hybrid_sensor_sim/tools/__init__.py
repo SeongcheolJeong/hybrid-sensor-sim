@@ -29,6 +29,19 @@ from hybrid_sensor_sim.tools.renderer_backend_workflow_selftest import (
 from hybrid_sensor_sim.tools.renderer_backend_package_workflow_selftest import (
     run_renderer_backend_package_workflow_selftest,
 )
+from hybrid_sensor_sim.tools.object_sim_runner import (
+    run_object_sim_job,
+    write_object_sim_artifacts,
+)
+from hybrid_sensor_sim.tools.log_replay_runner import (
+    run_log_replay,
+)
+from hybrid_sensor_sim.tools.log_scene_augment import (
+    augment_log_scene,
+)
+from hybrid_sensor_sim.tools.vehicle_dynamics_trace import (
+    run_vehicle_dynamics_trace,
+)
 
 __all__ = [
     "build_renderer_backend_local_setup",
@@ -40,6 +53,11 @@ __all__ = [
     "run_renderer_backend_linux_handoff_selftest",
     "run_renderer_backend_workflow_selftest",
     "run_renderer_backend_package_workflow_selftest",
+    "run_object_sim_job",
+    "write_object_sim_artifacts",
+    "run_log_replay",
+    "augment_log_scene",
+    "run_vehicle_dynamics_trace",
     "build_renderer_backend_smoke_summary",
     "main",
 ]
