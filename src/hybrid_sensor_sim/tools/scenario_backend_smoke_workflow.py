@@ -1293,6 +1293,13 @@ def run_scenario_backend_smoke_workflow(
             "materialized_topic_export_count": autoware_report.get(
                 "materialized_topic_export_count"
             ),
+            "required_topic_count": autoware_report.get("required_topic_count"),
+            "missing_required_topic_count": autoware_report.get(
+                "missing_required_topic_count"
+            ),
+            "available_message_types": list(
+                autoware_report.get("available_message_types", [])
+            ),
             "available_modalities": list(autoware_report.get("available_modalities", [])),
             "data_roots": list(autoware_report.get("data_roots", [])),
             "recording_style": autoware_report.get("recording_style"),
@@ -1320,6 +1327,7 @@ def run_scenario_backend_smoke_workflow(
         workflow_report["artifacts"]["autoware_dataset_manifest_path"] = autoware_report.get("artifacts", {}).get("dataset_manifest_path")
         workflow_report["artifacts"]["autoware_topic_export_root"] = autoware_report.get("artifacts", {}).get("topic_export_root")
         workflow_report["artifacts"]["autoware_topic_export_index_path"] = autoware_report.get("artifacts", {}).get("topic_export_index_path")
+        workflow_report["artifacts"]["autoware_topic_catalog_path"] = autoware_report.get("artifacts", {}).get("topic_catalog_path")
         _write_json(report_path, workflow_report)
     return {
         "workflow_report_path": report_path,

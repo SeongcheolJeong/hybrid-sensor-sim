@@ -286,6 +286,11 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
             self.assertGreater(
                 workflow_report["autoware"]["materialized_topic_export_count"], 0
             )
+            self.assertIsNotNone(workflow_report["autoware"]["required_topic_count"])
+            self.assertIsNotNone(
+                workflow_report["autoware"]["missing_required_topic_count"]
+            )
+            self.assertTrue(workflow_report["autoware"]["available_message_types"])
             self.assertIn("camera", workflow_report["autoware"]["available_modalities"])
             self.assertEqual(
                 workflow_report["autoware"]["scenario_source"]["variant_id"],
@@ -296,6 +301,9 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
             self.assertTrue(Path(workflow_report["artifacts"]["autoware_pipeline_manifest_path"]).is_file())
             self.assertTrue(
                 Path(workflow_report["artifacts"]["autoware_topic_export_index_path"]).is_file()
+            )
+            self.assertTrue(
+                Path(workflow_report["artifacts"]["autoware_topic_catalog_path"]).is_file()
             )
             self.assertTrue(workflow_report["autoware"]["topic_export_root"])
             smoke_scenario = json.loads(
@@ -907,11 +915,19 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
             self.assertEqual(
                 workflow_report["autoware"]["materialized_topic_export_count"], 0
             )
+            self.assertIsNotNone(workflow_report["autoware"]["required_topic_count"])
+            self.assertIsNotNone(
+                workflow_report["autoware"]["missing_required_topic_count"]
+            )
+            self.assertTrue(workflow_report["autoware"]["available_message_types"])
             self.assertTrue(
                 workflow_report["artifacts"]["autoware_pipeline_manifest_path"]
             )
             self.assertTrue(
                 workflow_report["artifacts"]["autoware_topic_export_index_path"]
+            )
+            self.assertTrue(
+                workflow_report["artifacts"]["autoware_topic_catalog_path"]
             )
             self.assertTrue(workflow_report["autoware"]["topic_export_root"])
 

@@ -164,6 +164,10 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
             self.assertEqual(report["missing_required_sensor_count"], 0)
             self.assertEqual(report["topic_export_count"], 2)
             self.assertEqual(report["materialized_topic_export_count"], 2)
+            self.assertEqual(report["required_topic_count"], 2)
+            self.assertEqual(report["missing_required_topic_count"], 0)
+            self.assertIn("sensor_msgs/msg/Image", report["available_message_types"])
+            self.assertIn("sensor_msgs/msg/PointCloud2", report["available_message_types"])
             self.assertTrue(report["dataset_ready"])
             self.assertEqual(report["recording_style"], "backend_smoke_export")
             self.assertEqual(report["available_modalities"], ["camera", "lidar"])
@@ -174,8 +178,14 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
             topic_index = json.loads(
                 Path(report["artifacts"]["topic_export_index_path"]).read_text(encoding="utf-8")
             )
+            topic_catalog = json.loads(
+                Path(report["artifacts"]["topic_catalog_path"]).read_text(encoding="utf-8")
+            )
             self.assertEqual(topic_index["topic_count"], 2)
             self.assertEqual(topic_index["materialized_payload_count"], 2)
+            self.assertEqual(topic_catalog["required_topic_count"], 2)
+            self.assertEqual(topic_catalog["missing_required_topic_count"], 0)
+            self.assertEqual(topic_catalog["available_topic_count"], 2)
             self.assertTrue(Path(topic_index["topics"][0]["export_manifest_path"]).is_file())
             self.assertTrue(Path(topic_index["topics"][0]["payload_path"]).exists())
             dataset_manifest = json.loads(
@@ -188,6 +198,9 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
             self.assertEqual(dataset_manifest["available_sensor_ids"], ["cam_front", "lidar_top"])
             self.assertEqual(dataset_manifest["topic_export_count"], 2)
             self.assertEqual(dataset_manifest["materialized_topic_export_count"], 2)
+            self.assertEqual(dataset_manifest["required_topic_count"], 2)
+            self.assertEqual(dataset_manifest["missing_required_topic_count"], 0)
+            self.assertIn("sensor_msgs/msg/Image", dataset_manifest["available_message_types"])
 
     def test_bridge_marks_sidecar_only_exports(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -456,6 +469,12 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
             self.assertEqual(report["missing_required_sensor_count"], 0)
             self.assertEqual(report["topic_export_count"], 4)
             self.assertEqual(report["materialized_topic_export_count"], 0)
+            self.assertEqual(report["required_topic_count"], 4)
+            self.assertEqual(report["missing_required_topic_count"], 0)
+            self.assertIn(
+                "autoware_auto_perception_msgs/msg/TrackedObjects",
+                report["available_message_types"],
+            )
             self.assertTrue(report["required_topics_complete"])
             self.assertTrue(report["frame_tree_complete"])
             self.assertIn("/sensing/camera/cam_front/image_raw", report["available_topics"])
@@ -465,8 +484,13 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
             topic_index = json.loads(
                 Path(report["artifacts"]["topic_export_index_path"]).read_text(encoding="utf-8")
             )
+            topic_catalog = json.loads(
+                Path(report["artifacts"]["topic_catalog_path"]).read_text(encoding="utf-8")
+            )
             self.assertEqual(topic_index["topic_count"], 4)
             self.assertEqual(topic_index["materialized_payload_count"], 0)
+            self.assertEqual(topic_catalog["required_topic_count"], 4)
+            self.assertEqual(topic_catalog["missing_required_topic_count"], 0)
             self.assertTrue(
                 all(entry["payload_path"] is None for entry in topic_index["topics"])
             )
@@ -475,6 +499,8 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
             )
             self.assertEqual(dataset_manifest["recording_style"], "planned_backend_export")
             self.assertEqual(dataset_manifest["topic_export_count"], 4)
+            self.assertEqual(dataset_manifest["required_topic_count"], 4)
+            self.assertEqual(dataset_manifest["missing_required_topic_count"], 0)
 
     def test_script_bootstraps_src_path(self) -> None:
         script_path = Path(__file__).resolve().parents[1] / "scripts" / "run_autoware_pipeline_bridge.py"

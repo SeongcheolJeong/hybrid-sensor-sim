@@ -365,6 +365,7 @@ python3 scripts/run_scenario_backend_smoke_workflow.py \
 - `autoware`: optional Autoware-facing bridge status, available topics/modalities, dataset readiness, recording style, scenario lineage, and bundle artifact paths
   - the workflow now also carries `autoware.availability_mode` so sidecar-materialized backend exports are not reported as plain runtime-ready output
   - the bridge now also materializes a topic-oriented export bundle under `autoware/topics/...` and reports `topic_export_count`, `materialized_topic_export_count`, and `autoware_topic_export_index.json`
+  - the bridge now also emits `autoware_topic_catalog.json`, which summarizes required/available topics and message types for downstream consumers
 
 Scenario runtime/backend workflow:
 
@@ -422,6 +423,7 @@ The Autoware bundle now also carries run-level lineage:
 - `available_modalities`
 - `data_roots`
 It also materializes a topic-facing export bundle under `autoware/topics/...` together with `autoware_topic_export_index.json`, so downstream consumers can inspect per-topic payload paths without re-reading backend smoke reports.
+It now also writes `autoware_topic_catalog.json`, which lifts required-topic counts, missing required topics, and available message types into one compact downstream-facing catalog.
 When backend outputs exist only because the runner materialized sidecar exports into the expected layout, the bridge now emits `SIDECAR_READY` or `SIDECAR_DEGRADED` instead of plain `READY`. Mixed runtime-and-sidecar runs are reported as `MIXED_READY` or `MIXED_DEGRADED`.
 
 Both `run_scenario_variants.py` and `run_scenario_variant_workflow.py` resolve default scenario-language profiles from:
