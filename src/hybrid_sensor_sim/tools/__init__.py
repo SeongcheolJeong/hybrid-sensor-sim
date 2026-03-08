@@ -42,6 +42,9 @@ from hybrid_sensor_sim.tools.log_scene_augment import (
 from hybrid_sensor_sim.tools.vehicle_dynamics_trace import (
     run_vehicle_dynamics_trace,
 )
+from hybrid_sensor_sim.tools.sensor_rig_sweep import (
+    run_sensor_rig_sweep,
+)
 
 __all__ = [
     "build_renderer_backend_local_setup",
@@ -58,6 +61,7 @@ __all__ = [
     "run_log_replay",
     "augment_log_scene",
     "run_vehicle_dynamics_trace",
+    "run_sensor_rig_sweep",
     "build_renderer_backend_smoke_summary",
     "main",
 ]

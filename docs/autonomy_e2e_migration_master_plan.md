@@ -24,6 +24,7 @@ Implemented from the first migration wave:
 4. `log_scene_v0` augmentation helper
 5. `logical_scenarios_v0` variant generation
 6. object-sim matrix sweep runner
+7. sensor rig sweep on current native preview/coverage outputs
 
 Current repository paths:
 
@@ -39,11 +40,11 @@ Current repository paths:
 - `src/hybrid_sensor_sim/tools/log_scene_augment.py`
 - `src/hybrid_sensor_sim/tools/scenario_variants.py`
 - `src/hybrid_sensor_sim/tools/scenario_matrix_sweep.py`
+- `src/hybrid_sensor_sim/tools/sensor_rig_sweep.py`
 
 Still pending from this master plan:
 
-1. rig sweep migration
-2. map convert / validate / route layer
+1. map convert / validate / route layer
 
 ## Boundary
 
@@ -98,10 +99,10 @@ Detailed audit:
      - planar kinematics
      - dynamic bicycle mode
 2. `sensor_rig_sweep.py`
-   - rebuild on top of current:
+   - now migrated on top of current:
      - camera/lidar/radar preview outputs
      - coverage metrics
-     - trajectory sweep artifacts
+     - native point/actor annotations
 3. `log_replay_runner.py`
    - now migrated as the current `log_scene_v0 -> scenario_definition_v0 -> object_sim` replay path
 4. `core_sim_matrix_sweep_runner.py`
@@ -250,7 +251,7 @@ Source:
 
 Work:
 
-1. add rig candidate sweep tool
+1. keep extending the migrated rig sweep tool as sensor outputs grow richer
 2. connect rig evaluation to current camera/lidar/radar coverage outputs
 
 Success criteria:
@@ -326,16 +327,15 @@ Avoid these migration mistakes:
 
 ## Current Recommended Execution Order
 
-1. implement `P_Sim-Engine` rig sweep on top of current coverage outputs
-2. add map conversion/validation from `P_Map-Toolset-MVP`
-3. deepen object-sim with optional `vehicle_dynamics` coupling after the baseline stays stable
-4. only then extend batch/orchestration patterns from `P_Cloud-Engine`
+1. add map conversion/validation from `P_Map-Toolset-MVP`
+2. deepen object-sim with optional `vehicle_dynamics` coupling after the baseline stays stable
+3. only then extend batch/orchestration patterns from `P_Cloud-Engine`
 
 ## Immediate Next Action
 
 The next concrete code migration should be:
 
-1. start a dedicated `sensor_rig_sweep` migration from `P_Sim-Engine`
-2. then migrate `P_Map-Toolset-MVP` convert/validate/route utilities
+1. migrate `P_Map-Toolset-MVP` convert/validate/route utilities
+2. then add second-wave `vehicle_dynamics` coupling inside object-sim
 
 That order increases current feature coverage fastest while keeping repository scope under control.

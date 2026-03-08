@@ -66,18 +66,18 @@ Implemented in the current repository:
 5. `augment_log_scene.py` baseline -> `src/hybrid_sensor_sim/tools/log_scene_augment.py`
 6. `generate_scenario_variants.py` baseline -> `src/hybrid_sensor_sim/scenarios/variants.py`, `src/hybrid_sensor_sim/tools/scenario_variants.py`
 7. `core_sim_matrix_sweep_runner.py` baseline -> `src/hybrid_sensor_sim/scenarios/matrix_sweep.py`, `src/hybrid_sensor_sim/tools/scenario_matrix_sweep.py`
+8. `sensor_rig_sweep.py` baseline -> `src/hybrid_sensor_sim/tools/sensor_rig_sweep.py`
 
 Still pending from the same migration track:
 
-1. `sensor_rig_sweep.py`
-2. map-layer migration from `P_Map-Toolset-MVP`
+1. map-layer migration from `P_Map-Toolset-MVP`
 
 ## Block Mapping
 
 | P_Sim-Engine block | Historical evidence | Current repo equivalent | Assessment | Migration action |
 | --- | --- | --- | --- | --- |
 | `sensor_sim_bridge.py` | phase-2 sensor fidelity + quality summaries | `src/hybrid_sensor_sim/backends/native_physics.py`, `src/hybrid_sensor_sim/config.py`, `src/hybrid_sensor_sim/renderers/playback_contract.py` | Mostly superseded | Do not port file structure. Only mine summary field naming or small heuristic report ideas if they still help release reporting. |
-| `sensor_rig_sweep.py` | `2cd5299` restored fidelity-tier rig sweep path | No dedicated rig-candidate evaluator in current repo | Real gap | Add a rig sweep tool on top of current `coverage_targets`, trajectory sweep outputs, and runtime contracts. |
+| `sensor_rig_sweep.py` | `2cd5299` restored fidelity-tier rig sweep path | `src/hybrid_sensor_sim/tools/sensor_rig_sweep.py` | Implemented baseline | Keep the current `sensor_rig_sweep_v1` input and rank candidates using current native preview plus coverage outputs instead of reviving the old sensor bridge. |
 | `vehicle_dynamics_stub.py` | `06ea545`, `276f197`, plus mass/grade/planar/dynamic bicycle history | No object-sim or vehicle-dynamics module in current repo | Real gap and highest-value carryover | Migrate vehicle profile schema, control sequence schema, and planar/dynamic bicycle core into a new current-repo module. |
 | `log_replay_runner.py` | closed-loop log-scene -> scenario scaffold | `src/hybrid_sensor_sim/scenarios/replay.py`, `src/hybrid_sensor_sim/tools/log_replay_runner.py` | Implemented baseline | Keep the current `log_scene_v0 -> scenario_definition_v0 -> object_sim` path as the canonical replay surface. |
 | `core_sim_matrix_sweep_runner.py` | `5eb472a` matrix sweep hook | `src/hybrid_sensor_sim/scenarios/matrix_sweep.py`, `src/hybrid_sensor_sim/tools/scenario_matrix_sweep.py` | Implemented baseline | Keep the current library-first matrix runner and add `vehicle_dynamics` coupling later rather than reviving the old subprocess architecture. |
@@ -98,13 +98,10 @@ These old files are still worth mining directly:
   - road grade and surface friction controls
   - planar kinematics / dynamic bicycle switch
 
-### P1 candidates
+### Already mined into current repo
 
 - `prototype/sensor_rig_sweep.py`
-  - rig candidate schema
-  - ranking/report structure
-
-### Already mined into current repo
+  - rig candidate ranking/report structure translated into current `sensor_rig_sweep_v1`
 
 - `prototype/core_sim_matrix_sweep_runner.py`
   - traffic parameter grid and report pattern
@@ -123,8 +120,7 @@ These old files are still worth mining directly:
 
 The current repository does not yet have first-class equivalents for:
 
-1. dedicated rig-candidate sweep/ranking tool
-2. map conversion / validation / route utilities
+1. map conversion / validation / route utilities
 
 This is consistent with the current source tree, which is centered on:
 
@@ -154,23 +150,7 @@ Why first:
 - It creates the basis for object-sim and replay work.
 - It is more important than migrating any old runtime adapter scaffold.
 
-### 2. Rig sweep next
-
-Source:
-
-- `P_Sim-Engine/prototype/sensor_rig_sweep.py`
-
-Target:
-
-- `src/hybrid_sensor_sim/tools/sensor_rig_sweep.py`
-
-Expected adaptation:
-
-- use current `coverage_metrics`
-- use current camera/lidar/radar trajectory sweeps
-- use current runtime smoke summaries as optional scoring inputs
-
-### 3. Map layer after rig sweep
+### 2. Map layer next
 
 Source:
 
@@ -197,10 +177,10 @@ Porting them would add duplication, not capability.
 
 ## Next Concrete Work Item
 
-The highest-value next migration from `P_Sim-Engine` is now:
+The highest-value next migration from `Autonomy-E2E` is now:
 
-1. rebuild `sensor_rig_sweep.py` against current coverage/native preview artifacts
-2. keep `camera 1 + lidar 1 + radar 1` as the initial rig bundle scope
-3. add ranking/report logic without reviving the old sensor bridge/runtime stub layers
+1. port `P_Map-Toolset-MVP` convert / validate / route helpers
+2. keep the map layer standalone before connecting it into object-sim
+3. only then consider a second-wave `vehicle_dynamics` coupling into object-sim
 
-That is the next migration that increases current feature coverage instead of re-implementing already closed scenario and runtime blocks.
+That order increases current feature coverage without destabilizing the newly migrated scenario and rig-sweep blocks.

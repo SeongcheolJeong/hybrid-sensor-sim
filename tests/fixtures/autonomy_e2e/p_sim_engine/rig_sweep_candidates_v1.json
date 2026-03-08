@@ -1,0 +1,84 @@
+{
+  "rig_sweep_schema_version": "sensor_rig_sweep_v1",
+  "targets": [
+    {
+      "actor_id": "lead_vehicle",
+      "xyz": [40.0, 0.0, 0.0],
+      "semantic_class_name": "VEHICLES"
+    }
+  ],
+  "candidates": [
+    {
+      "rig_id": "front_bundle",
+      "camera_override": {
+        "camera_extrinsics": {
+          "enabled": true,
+          "tx": 0.0,
+          "ty": 0.0,
+          "tz": 1.5,
+          "roll_deg": 0.0,
+          "pitch_deg": 0.0,
+          "yaw_deg": 0.0
+        }
+      },
+      "lidar_override": {
+        "lidar_extrinsics": {
+          "enabled": true,
+          "tx": 0.0,
+          "ty": 0.0,
+          "tz": 1.8,
+          "roll_deg": 0.0,
+          "pitch_deg": 0.0,
+          "yaw_deg": 0.0
+        }
+      },
+      "radar_override": {
+        "radar_extrinsics": {
+          "enabled": true,
+          "tx": 0.0,
+          "ty": 0.0,
+          "tz": 0.8,
+          "roll_deg": 0.0,
+          "pitch_deg": 0.0,
+          "yaw_deg": 0.0
+        }
+      }
+    },
+    {
+      "rig_id": "offset_bundle",
+      "camera_override": {
+        "camera_extrinsics": {
+          "enabled": true,
+          "tx": 1000.0,
+          "ty": 1000.0,
+          "tz": 100.0,
+          "roll_deg": 0.0,
+          "pitch_deg": 0.0,
+          "yaw_deg": 0.0
+        }
+      },
+      "lidar_override": {
+        "lidar_extrinsics": {
+          "enabled": true,
+          "tx": 1000.0,
+          "ty": 1000.0,
+          "tz": 100.0,
+          "roll_deg": 0.0,
+          "pitch_deg": 0.0,
+          "yaw_deg": 0.0
+        }
+      },
+      "radar_override": {
+        "radar_extrinsics": {
+          "enabled": true,
+          "tx": 1000.0,
+          "ty": 1000.0,
+          "tz": 100.0,
+          "roll_deg": 0.0,
+          "pitch_deg": 0.0,
+          "yaw_deg": 0.0
+        }
+      }
+    }
+  ]
+}

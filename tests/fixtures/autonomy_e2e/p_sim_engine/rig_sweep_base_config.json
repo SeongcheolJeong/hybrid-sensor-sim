@@ -1,0 +1,70 @@
+{
+  "mode": "native_only",
+  "scenario_path": "highway_safe_following_v0.json",
+  "output_dir": "artifacts/rig_sweep_fixture",
+  "sensor_profile": "default",
+  "seed": 7,
+  "options": {
+    "camera_projection_enabled": true,
+    "camera_projection_preview_count": 128,
+    "camera_projection_max_points": 128,
+    "camera_intrinsics": {
+      "fx": 320.0,
+      "fy": 320.0,
+      "cx": 320.0,
+      "cy": 240.0,
+      "width": 640,
+      "height": 480
+    },
+    "camera_extrinsics": {
+      "enabled": true,
+      "tx": 0.0,
+      "ty": 0.0,
+      "tz": 1.5,
+      "roll_deg": 0.0,
+      "pitch_deg": 0.0,
+      "yaw_deg": 0.0
+    },
+    "lidar_postprocess_enabled": true,
+    "lidar_preview_points_per_frame": 64,
+    "lidar_extrinsics": {
+      "enabled": true,
+      "tx": 0.0,
+      "ty": 0.0,
+      "tz": 1.8,
+      "roll_deg": 0.0,
+      "pitch_deg": 0.0,
+      "yaw_deg": 0.0
+    },
+    "radar_postprocess_enabled": true,
+    "radar_horizontal_fov_deg": 80.0,
+    "radar_vertical_fov_deg": 20.0,
+    "radar_range_min_m": 0.5,
+    "radar_range_max_m": 120.0,
+    "radar_extrinsics": {
+      "enabled": true,
+      "tx": 0.0,
+      "ty": 0.0,
+      "tz": 0.8,
+      "roll_deg": 0.0,
+      "pitch_deg": 0.0,
+      "yaw_deg": 0.0
+    },
+    "coverage_metrics": {
+      "enabled": true,
+      "combine_sensors": true,
+      "thresholds": {
+        "camera": {
+          "min_pixels_on_target": 1
+        },
+        "lidar": {
+          "min_points_on_target": 1
+        },
+        "radar": {
+          "min_detections_on_target": 1
+        }
+      }
+    },
+    "renderer_bridge_enabled": false
+  }
+}

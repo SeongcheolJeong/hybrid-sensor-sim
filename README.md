@@ -42,6 +42,7 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `scripts/run_log_scene_augment.py`: creates deterministic speed/gap variants from `log_scene_v0`.
 - `scripts/run_scenario_variants.py`: expands `logical_scenarios_v0` inputs into concrete parameter combinations.
 - `scripts/run_scenario_matrix_sweep.py`: runs object-sim over traffic/friction parameter grids and writes a sweep report.
+- `scripts/run_sensor_rig_sweep.py`: evaluates rig candidates against current native preview and coverage outputs.
 
 ## Quick start
 
@@ -116,6 +117,15 @@ python3 scripts/run_scenario_matrix_sweep.py \
   --surface-friction-scale-values 0.8,1.0
 ```
 
+Sensor rig sweep:
+
+```bash
+python3 scripts/run_sensor_rig_sweep.py \
+  --base-config tests/fixtures/autonomy_e2e/p_sim_engine/rig_sweep_base_config.json \
+  --rig-candidates tests/fixtures/autonomy_e2e/p_sim_engine/rig_sweep_candidates_v1.json \
+  --out artifacts/sensor_rig_sweep
+```
+
 Autonomy-E2E fixtures currently mirrored into this repo:
 
 - `tests/fixtures/autonomy_e2e/p_sim_engine/vehicle_profile_v0.json`
@@ -123,6 +133,8 @@ Autonomy-E2E fixtures currently mirrored into this repo:
 - `tests/fixtures/autonomy_e2e/p_sim_engine/highway_following_v0.json`
 - `tests/fixtures/autonomy_e2e/p_sim_engine/highway_safe_following_v0.json`
 - `tests/fixtures/autonomy_e2e/p_sim_engine/log_scene_v0.json`
+- `tests/fixtures/autonomy_e2e/p_sim_engine/rig_sweep_base_config.json`
+- `tests/fixtures/autonomy_e2e/p_sim_engine/rig_sweep_candidates_v1.json`
 - `tests/fixtures/autonomy_e2e/p_validation/highway_cut_in_v0.json`
 
 Survey mapping dry-run demo (no HELIOS execution, plan+mapping artifacts only):
@@ -755,5 +767,5 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 
 ## Next implementation target
 
-- Rebuild `P_Sim-Engine` rig sweep on top of current coverage/native preview outputs.
 - Migrate `P_Map-Toolset-MVP` convert/validate/route utilities for map-aware scenario tooling.
+- Add optional `vehicle_dynamics` coupling into the current object-sim ego longitudinal update.
