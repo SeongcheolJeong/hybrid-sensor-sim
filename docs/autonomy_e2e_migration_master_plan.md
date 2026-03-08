@@ -14,6 +14,17 @@ Historical source repository:
 
 This is a `selective migration` plan, not a repository merge plan.
 
+Canonical implementation repository:
+
+- `/Users/seongcheoljeong/Documents/Test`
+- GitHub: `SeongcheolJeong/hybrid-sensor-sim`
+
+Checked-in provenance truth now lives under:
+
+- `/Users/seongcheoljeong/Documents/Test/metadata/autonomy_e2e`
+
+This document remains the narrative migration plan layered on top of that checked-in ledger.
+
 ## Current Execution Status
 
 Implemented from the first migration wave:

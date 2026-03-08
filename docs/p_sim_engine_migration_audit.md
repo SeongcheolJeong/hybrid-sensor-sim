@@ -13,6 +13,12 @@ and maps it onto the current codebase:
 The goal is not to preserve the old prototype as-is.
 The goal is to decide which blocks should be migrated, which are already superseded, and which remain actual gaps.
 
+Checked-in provenance truth for the broader `Autonomy-E2E` integration now lives under:
+
+- `/Users/seongcheoljeong/Documents/Test/metadata/autonomy_e2e`
+
+This audit remains the narrative explanation layer for the `P_Sim-Engine` slice of that ledger.
+
 ## Evidence
 
 Recent `P_Sim-Engine` commits touching `30_Projects/P_Sim-Engine`:

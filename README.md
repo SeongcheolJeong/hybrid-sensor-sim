@@ -32,6 +32,8 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `docs/hybrid_helios_plan.md`: functional roadmap and risk management.
 - `docs/p_sim_engine_migration_audit.md`: audit of historical `P_Sim-Engine` work and concrete migration targets into this repository.
 - `docs/autonomy_e2e_migration_master_plan.md`: selective migration scope and phased execution plan for `Autonomy-E2E` sources.
+- `docs/autonomy_e2e_history_integration.md`: provenance model, ledger workflow, and Git governance for the canonical GitHub codebase.
+- `metadata/autonomy_e2e/*.json`: checked-in provenance ledger for inventory, source history snapshot, migration registry, reverse traceability, and refresh status.
 - `scripts/setup_helios.sh`: bootstrap helper for cloning/building HELIOS.
 - `scripts/run_renderer_backend_smoke.py`: AWSIM/CARLA smoke launcher that forces direct backend execution plus output-contract inspection.
 - `scripts/discover_renderer_backend_local_env.py`: discovers local HELIOS/AWSIM/CARLA runtime candidates and writes a reusable env file plus readiness summary.
@@ -60,6 +62,9 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `scripts/run_map_convert.py`: converts `simple_map_v0` and `canonical_lane_graph_v0`.
 - `scripts/run_map_validate.py`: validates canonical lane graph semantics and writes a validation report.
 - `scripts/run_map_route.py`: computes canonical lane routes with optional via-lane constraints.
+- `scripts/run_autonomy_e2e_history_refresh.py`: regenerates checked-in `Autonomy-E2E` provenance metadata from the historical source repository.
+- `scripts/run_autonomy_e2e_history_report.py`: builds JSON/Markdown summaries from the checked-in provenance ledger.
+- `scripts/run_autonomy_e2e_history_query.py`: queries the checked-in provenance ledger by project, block, or current path.
 
 ## Quick start
 
@@ -74,6 +79,16 @@ PYTHONPATH=src python3 -m unittest discover -s tests -q
 ```
 
 ## Autonomy-E2E migration quick start
+
+Canonical implementation repository:
+
+- repo root: [/Users/seongcheoljeong/Documents/Test](/Users/seongcheoljeong/Documents/Test)
+- GitHub: [SeongcheolJeong/hybrid-sensor-sim](https://github.com/SeongcheolJeong/hybrid-sensor-sim)
+- historical source repository: `/Users/seongcheoljeong/Documents/Autonomy-E2E/Autonomy-E2E`
+
+GitHub-era provenance rollout baseline commit:
+
+- `8d2353f` `Reuse staged backend selections in scenario smoke workflows`
 
 Vehicle dynamics trace:
 
@@ -170,6 +185,32 @@ python3 scripts/run_scenario_variant_workflow.py \
   --out-root artifacts/scenario_variant_workflow_runs \
   --execution-max-variants 2
 ```
+
+Autonomy-E2E provenance refresh/query:
+
+```bash
+python3 scripts/run_autonomy_e2e_history_refresh.py \
+  --source-repo-root /Users/seongcheoljeong/Documents/Autonomy-E2E/Autonomy-E2E \
+  --current-repo-root /Users/seongcheoljeong/Documents/Test \
+  --output-root /Users/seongcheoljeong/Documents/Test/metadata/autonomy_e2e \
+  --recent-commit-limit 20
+
+python3 scripts/run_autonomy_e2e_history_query.py \
+  --metadata-root /Users/seongcheoljeong/Documents/Test/metadata/autonomy_e2e \
+  --block-id p_sim_engine.vehicle_dynamics
+```
+
+Autonomy-E2E provenance and Git governance:
+
+- checked-in truth lives under [metadata/autonomy_e2e](/Users/seongcheoljeong/Documents/Test/metadata/autonomy_e2e)
+- historical `Autonomy-E2E` is reference/migration evidence, not the implementation source of truth
+- `main` is the published baseline branch
+- new feature work should default to `codex/*` branches
+- a completed feature/migration block should update:
+  - code
+  - tests
+  - docs
+  - provenance metadata when migration state changed
 
 `scenario_variant_workflow_report_v0.json` includes:
 

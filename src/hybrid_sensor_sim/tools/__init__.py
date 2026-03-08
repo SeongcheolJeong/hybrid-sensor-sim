@@ -60,6 +60,17 @@ from hybrid_sensor_sim.tools.vehicle_dynamics_trace import (
 from hybrid_sensor_sim.tools.sensor_rig_sweep import (
     run_sensor_rig_sweep,
 )
+from hybrid_sensor_sim.tools.autonomy_e2e_history_refresh import (
+    refresh_autonomy_e2e_history,
+)
+from hybrid_sensor_sim.tools.autonomy_e2e_history_report import (
+    build_autonomy_e2e_history_report,
+)
+from hybrid_sensor_sim.tools.autonomy_e2e_history_query import (
+    query_by_block_id,
+    query_by_current_path,
+    query_by_project_id,
+)
 
 __all__ = [
     "build_renderer_backend_local_setup",
@@ -84,4 +95,9 @@ __all__ = [
     "run_sensor_rig_sweep",
     "build_renderer_backend_smoke_summary",
     "main",
+    "refresh_autonomy_e2e_history",
+    "build_autonomy_e2e_history_report",
+    "query_by_block_id",
+    "query_by_current_path",
+    "query_by_project_id",
 ]
