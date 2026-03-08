@@ -33,6 +33,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Optional JSON gate profile path; explicit CLI gate args override profile values",
     )
     parser.add_argument(
+        "--gate-profile-id",
+        default="",
+        help="Optional gate profile preset ID under --gate-profile-dir (without .json)",
+    )
+    parser.add_argument(
+        "--gate-profile-dir",
+        default="",
+        help="Optional gate profile directory for --gate-profile-id; defaults to repo fixture profile directory",
+    )
+    parser.add_argument(
         "--gate-max-attention-rows",
         default="",
         help="Optional maximum allowed attention rows before gate failure",
@@ -166,6 +176,29 @@ def _load_gate_profile(path: Path) -> dict[str, Any]:
     if not isinstance(policy, dict):
         raise ValueError("scenario batch gate profile missing policy block")
     return payload
+
+
+def _default_gate_profile_dir() -> Path:
+    return (
+        Path(__file__).resolve().parents[3]
+        / "tests"
+        / "fixtures"
+        / "autonomy_e2e"
+        / "p_validation"
+    )
+
+
+def _resolve_gate_profile_path(*, gate_profile: str, gate_profile_id: str, gate_profile_dir: str) -> Path | None:
+    gate_profile_text = str(gate_profile).strip()
+    gate_profile_id_text = str(gate_profile_id).strip()
+    if gate_profile_text and gate_profile_id_text:
+        raise ValueError("use either --gate-profile or --gate-profile-id, not both")
+    if gate_profile_text:
+        return Path(gate_profile_text).resolve()
+    if not gate_profile_id_text:
+        return None
+    base_dir = Path(gate_profile_dir).resolve() if str(gate_profile_dir).strip() else _default_gate_profile_dir()
+    return (base_dir / f"{gate_profile_id_text}.json").resolve()
 
 
 def _resolve_gate_policy(
@@ -905,7 +938,11 @@ def main(argv: list[str] | None = None) -> int:
             matrix_sweep_report_path=Path(args.matrix_sweep_report).resolve(),
             out_report=out_report,
             markdown_out=markdown_out,
-            gate_profile_path=Path(args.gate_profile).resolve() if str(args.gate_profile).strip() else None,
+            gate_profile_path=_resolve_gate_profile_path(
+                gate_profile=args.gate_profile,
+                gate_profile_id=args.gate_profile_id,
+                gate_profile_dir=args.gate_profile_dir,
+            ),
             gate_max_attention_rows=_parse_optional_non_negative_int(
                 args.gate_max_attention_rows,
                 field="gate-max-attention-rows",

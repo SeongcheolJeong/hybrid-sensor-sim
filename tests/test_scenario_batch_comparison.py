@@ -329,6 +329,60 @@ class ScenarioBatchComparisonTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
         self.assertIn("compare scenario variant workflow", proc.stdout.lower())
 
+    def test_scenario_batch_comparison_cli_can_resolve_gate_profile_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            logical_path = root / "attention_logical_scenarios.json"
+            self._write_attention_logical_scenarios(logical_path)
+            workflow_result = run_scenario_variant_workflow(
+                logical_scenarios_path=str(logical_path),
+                scenario_language_profile="",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                out_root=root / "workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=1,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+            )
+            run_scenario_matrix_sweep(
+                scenario_path=P_SIM_ENGINE_FIXTURE_ROOT / "highway_safe_following_v0.json",
+                out_root=root / "matrix_runs",
+                report_out=root / "matrix_report.json",
+                run_id_prefix="RUN_MATRIX_COMPARE",
+                traffic_profile_ids=["sumo_highway_balanced_v0"],
+                traffic_actor_pattern_ids=["sumo_platoon_sparse_v0"],
+                traffic_npc_speed_scale_values=[1.0],
+                tire_friction_coeff_values=[1.0],
+                surface_friction_scale_values=[1.0],
+                enable_ego_collision_avoidance=False,
+                avoidance_ttc_threshold_sec=2.5,
+                ego_max_brake_mps2=6.0,
+                max_cases=0,
+            )
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = scenario_batch_comparison_main(
+                    [
+                        "--variant-workflow-report",
+                        str(workflow_result["workflow_report_path"]),
+                        "--matrix-sweep-report",
+                        str(root / "matrix_report.json"),
+                        "--out-report",
+                        str(root / "comparison.json"),
+                        "--gate-profile-id",
+                        "scenario_batch_gate_strict_v0",
+                        "--gate-profile-dir",
+                        str(P_VALIDATION_FIXTURE_ROOT),
+                    ]
+                )
+            self.assertEqual(exit_code, 2)
+            payload = json.loads((root / "comparison.json").read_text(encoding="utf-8"))
+            self.assertEqual(payload["gate"]["status"], "FAIL")
+            self.assertEqual(payload["gate"]["policy"]["profile_id"], "scenario_batch_gate_strict_v0")
+
 
 if __name__ == "__main__":
     unittest.main()

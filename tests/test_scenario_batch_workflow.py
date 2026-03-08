@@ -95,6 +95,9 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
             markdown = Path(result["workflow_markdown_path"]).read_text(encoding="utf-8")
             self.assertIn("## Logical Scenario Summary", markdown)
             self.assertIn("## Matrix Group Summary", markdown)
+            self.assertIn("## Successful Variants", markdown)
+            self.assertIn("## Non-Success Variants", markdown)
+            self.assertIn("No non-success variants.", markdown)
 
     def test_scenario_batch_workflow_reports_attention_without_failing_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -251,6 +254,45 @@ class ScenarioBatchWorkflowTests(unittest.TestCase):
                 "ATTENTION_ROWS_EXCEEDED",
                 workflow_report["comparison_summary"]["gate"]["failure_codes"],
             )
+
+    def test_scenario_batch_workflow_cli_can_resolve_gate_profile_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            logical_path = root / "attention_logical_scenarios.json"
+            self._write_attention_logical_scenarios(logical_path)
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = scenario_batch_workflow_main(
+                    [
+                        "--logical-scenarios",
+                        str(logical_path),
+                        "--matrix-scenario",
+                        str(P_SIM_ENGINE_FIXTURE_ROOT / "highway_safe_following_v0.json"),
+                        "--out-root",
+                        str(root / "batch_workflow"),
+                        "--execution-max-variants",
+                        "1",
+                        "--traffic-profile-ids",
+                        "sumo_highway_balanced_v0",
+                        "--traffic-actor-pattern-ids",
+                        "sumo_platoon_sparse_v0",
+                        "--traffic-npc-speed-scale-values",
+                        "1.0",
+                        "--tire-friction-coeff-values",
+                        "1.0",
+                        "--surface-friction-scale-values",
+                        "1.0",
+                        "--gate-profile-id",
+                        "scenario_batch_gate_strict_v0",
+                        "--gate-profile-dir",
+                        str(P_VALIDATION_FIXTURE_ROOT),
+                    ]
+                )
+            self.assertEqual(exit_code, 2)
+            payload = json.loads(
+                (root / "batch_workflow" / "scenario_batch_workflow_report_v0.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(payload["status"], "FAILED")
+            self.assertEqual(payload["comparison_summary"]["gate"]["policy"]["profile_id"], "scenario_batch_gate_strict_v0")
 
     def test_scenario_batch_workflow_script_bootstraps_src_path(self) -> None:
         script_path = Path(__file__).resolve().parents[1] / "scripts" / "run_scenario_batch_workflow.py"

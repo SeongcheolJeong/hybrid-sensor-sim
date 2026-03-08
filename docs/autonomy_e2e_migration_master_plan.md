@@ -32,6 +32,7 @@ Implemented from the first migration wave:
 12. scenario batch workflow for `logical_scenarios_v0 -> rendered payload execution -> matrix sweep -> batch comparison`
 13. threshold-based batch gate for TTC/collision/timeout policy
 14. reusable batch gate profiles plus richer workflow Markdown tables for logical-scenario and matrix-group triage
+15. gate preset selection by profile id plus workflow Markdown variant triage tables
 
 Current repository paths:
 

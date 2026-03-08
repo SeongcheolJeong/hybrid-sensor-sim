@@ -193,6 +193,7 @@ python3 scripts/run_scenario_batch_comparison.py \
 - `comparison_tables.attention_rows`: compact rows that need cross-batch triage
 - `gate`: optional threshold-based pass/fail result for attention rows, collisions, timeouts, and minimum TTC
   - `--gate-profile` loads reusable JSON policy
+  - `--gate-profile-id scenario_batch_gate_strict_v0 --gate-profile-dir tests/fixtures/autonomy_e2e/p_validation` resolves a preset from a profile directory
   - explicit CLI gate flags override the matching profile fields
 
 The comparison command also writes a Markdown report next to the JSON report by default.
@@ -221,9 +222,12 @@ python3 scripts/run_scenario_batch_workflow.py \
 - `comparison_summary`: cross-batch overview, gate result, and compact attention rows
 - `comparison_summary.logical_scenario_rows`: compact logical-scenario table reused by workflow Markdown
 - `comparison_summary.matrix_group_rows`: compact matrix-group table reused by workflow Markdown
+- `variant_summary.successful_variant_rows`: compact successful variant rows reused by workflow Markdown
+- `variant_summary.non_success_variant_rows`: compact failed/skipped variant rows reused by workflow Markdown
 - `artifacts`: paths to all underlying workflow, sweep, comparison, and workflow Markdown reports
 
 Use `--fail-on-attention` if attention rows should fail the command.
+Use `--gate-profile-id` when you want a preset gate policy without spelling out the JSON path.
 
 Both `run_scenario_variants.py` and `run_scenario_variant_workflow.py` resolve default scenario-language profiles from:
 

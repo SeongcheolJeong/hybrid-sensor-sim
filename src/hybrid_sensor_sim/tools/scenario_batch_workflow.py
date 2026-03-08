@@ -15,6 +15,7 @@ from hybrid_sensor_sim.scenarios.matrix_sweep import (
 )
 from hybrid_sensor_sim.tools.scenario_batch_comparison import (
     build_scenario_batch_comparison_report,
+    _resolve_gate_profile_path,
 )
 from hybrid_sensor_sim.tools.scenario_variant_workflow import (
     run_scenario_variant_workflow,
@@ -77,6 +78,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-cases", default="0")
     parser.add_argument("--fail-on-attention", action="store_true")
     parser.add_argument("--gate-profile", default="")
+    parser.add_argument("--gate-profile-id", default="")
+    parser.add_argument("--gate-profile-dir", default="")
     parser.add_argument("--gate-max-attention-rows", default="")
     parser.add_argument("--gate-max-collision-rows", default="")
     parser.add_argument("--gate-max-timeout-rows", default="")
@@ -262,6 +265,62 @@ def _build_workflow_markdown_report(workflow_report: dict[str, Any]) -> str:
         )
     else:
         lines.append("No matrix group rows.")
+    lines.extend(["", "## Successful Variants", ""])
+    successful_rows = variant_summary["successful_variant_rows"]
+    if successful_rows:
+        lines.append(
+            _markdown_table(
+                [
+                    "Variant",
+                    "Logical Scenario",
+                    "Payload Kind",
+                    "Execution Path",
+                    "Object Sim",
+                    "Termination",
+                ],
+                [
+                    [
+                        str(row["variant_id"] or "-"),
+                        str(row["logical_scenario_id"] or "-"),
+                        str(row["rendered_payload_kind"] or "-"),
+                        str(row["execution_path"] or "-"),
+                        str(row["object_sim_status"] or "-"),
+                        str(row["termination_reason"] or "-"),
+                    ]
+                    for row in successful_rows
+                ],
+            )
+        )
+    else:
+        lines.append("No successful variants.")
+    lines.extend(["", "## Non-Success Variants", ""])
+    non_success_rows = variant_summary["non_success_variant_rows"]
+    if non_success_rows:
+        lines.append(
+            _markdown_table(
+                [
+                    "Variant",
+                    "Logical Scenario",
+                    "Payload Kind",
+                    "Execution Status",
+                    "Failure Code",
+                    "Execution Path",
+                ],
+                [
+                    [
+                        str(row["variant_id"] or "-"),
+                        str(row["logical_scenario_id"] or "-"),
+                        str(row["rendered_payload_kind"] or "-"),
+                        str(row["execution_status"] or "-"),
+                        str(row["failure_code"] or "-"),
+                        str(row["execution_path"] or "-"),
+                    ]
+                    for row in non_success_rows
+                ],
+            )
+        )
+    else:
+        lines.append("No non-success variants.")
     lines.extend(["", "## Attention Rows", ""])
     attention_rows = comparison_summary["attention_rows"]
     if attention_rows:
@@ -408,6 +467,8 @@ def run_scenario_batch_workflow(
             "object_sim_status_counts": dict(variant_workflow_report["object_sim_status_counts"]),
             "by_payload_kind": dict(variant_workflow_report["by_payload_kind"]),
             "by_logical_scenario_id": dict(variant_workflow_report["by_logical_scenario_id"]),
+            "successful_variant_rows": list(variant_workflow_report["successful_variant_rows"]),
+            "non_success_variant_rows": list(variant_workflow_report["non_success_variant_rows"]),
             "successful_variant_row_count": int(variant_workflow_report["successful_variant_row_count"]),
             "non_success_variant_row_count": int(variant_workflow_report["non_success_variant_row_count"]),
         },
@@ -469,7 +530,11 @@ def main(argv: list[str] | None = None) -> int:
             sim_version=args.sim_version,
             fidelity_profile=args.fidelity_profile,
             matrix_run_id_prefix=str(args.matrix_run_id_prefix).strip() or "RUN_CORE_SIM_SWEEP",
-            gate_profile_path=Path(args.gate_profile).resolve() if str(args.gate_profile).strip() else None,
+            gate_profile_path=_resolve_gate_profile_path(
+                gate_profile=args.gate_profile,
+                gate_profile_id=args.gate_profile_id,
+                gate_profile_dir=args.gate_profile_dir,
+            ),
             traffic_profile_ids=_parse_csv_text_items(args.traffic_profile_ids, field="traffic-profile-ids"),
             traffic_actor_pattern_ids=_parse_csv_text_items(
                 args.traffic_actor_pattern_ids,
