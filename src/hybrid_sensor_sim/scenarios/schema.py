@@ -29,6 +29,7 @@ class ActorState:
     length_m: float = 4.8
     lane_index: int = 0
     lane_id: str | None = None
+    lane_binding_mode: str = "index_only"
 
 
 @dataclass(frozen=True)
@@ -91,6 +92,12 @@ def _resolve_route_lane_index(*, lane_id: str, route_lane_ids: list[str]) -> int
     return int(route_lane_ids.index(lane_id))
 
 
+def _infer_route_lane_id(*, lane_index: int, route_lane_ids: list[str]) -> str | None:
+    if lane_index < 0 or lane_index >= len(route_lane_ids):
+        return None
+    return str(route_lane_ids[lane_index])
+
+
 def _as_actor(
     payload: dict[str, Any],
     fallback_id: str,
@@ -111,8 +118,15 @@ def _as_actor(
             raise ScenarioValidationError(
                 f"{fallback_id} lane_index does not match route-derived lane index for lane_id={lane_id}"
             )
+        lane_binding_mode = "explicit_lane_id"
     else:
         lane_index = int(payload.get("lane_index", 0))
+        lane_binding_mode = "index_only"
+        if route_lane_ids is not None:
+            inferred_lane_id = _infer_route_lane_id(lane_index=lane_index, route_lane_ids=route_lane_ids)
+            if inferred_lane_id is not None:
+                lane_id = inferred_lane_id
+                lane_binding_mode = "inferred_from_route"
     return ActorState(
         actor_id=str(payload.get("actor_id", fallback_id)),
         position_m=float(payload["position_m"]),
@@ -120,6 +134,7 @@ def _as_actor(
         length_m=float(payload.get("length_m", 4.8)),
         lane_index=lane_index,
         lane_id=lane_id,
+        lane_binding_mode=lane_binding_mode,
     )
 
 

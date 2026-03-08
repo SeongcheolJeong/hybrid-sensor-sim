@@ -196,6 +196,15 @@ def apply_traffic_actor_pattern(
                     )
                     else None
                 ),
+                lane_binding_mode=(
+                    "inferred_from_route"
+                    if (
+                        scenario.map_context is not None
+                        and scenario.map_context.route_report is not None
+                        and 0 <= lane_index < len(scenario.map_context.route_report.get("route_lane_ids", []))
+                    )
+                    else "index_only"
+                ),
             )
         )
 

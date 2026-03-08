@@ -71,10 +71,11 @@ Implemented in the current repository:
 10. canonical map / route consumption into `src/hybrid_sensor_sim/scenarios/schema.py` and `src/hybrid_sensor_sim/scenarios/object_sim.py`
 11. replay and matrix-sweep map/route propagation into `src/hybrid_sensor_sim/scenarios/replay.py` and `src/hybrid_sensor_sim/scenarios/matrix_sweep.py`
 12. route-aware lane-risk semantics in `src/hybrid_sensor_sim/scenarios/object_sim.py`
+13. route-driven `lane_index -> lane_id` inference and `lane_binding_mode` exposure in `src/hybrid_sensor_sim/scenarios/schema.py` and `src/hybrid_sensor_sim/scenarios/object_sim.py`
 
 Still pending from the same migration track:
 
-1. deeper map-aware behavior beyond lane-id normalization, route synthesis, route summary wiring, and route-aware lane-risk aggregation
+1. deeper map-aware behavior beyond lane-id normalization, lane-binding inference, route synthesis, route summary wiring, and route-aware lane-risk aggregation
 
 ## Block Mapping
 
@@ -124,7 +125,7 @@ These old files are still worth mining directly:
 
 The current repository does not yet have first-class equivalents for:
 
-1. richer map-aware behavior beyond route-lane normalization, propagation, and route-aware lane-risk aggregation
+1. richer map-aware behavior beyond route-lane normalization, lane-binding inference, propagation, and route-aware lane-risk aggregation
 
 This is consistent with the current source tree, which is centered on:
 

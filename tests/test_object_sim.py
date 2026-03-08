@@ -18,6 +18,39 @@ FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "autonomy_e2e" / "
 
 
 class ObjectSimTests(unittest.TestCase):
+    def test_load_scenario_infers_lane_ids_from_route_lane_indexes(self) -> None:
+        canonical_map = json.loads(
+            (
+                Path(__file__).resolve().parent
+                / "fixtures"
+                / "autonomy_e2e"
+                / "p_map_toolset"
+                / "canonical_lane_graph_v0.json"
+            ).read_text(encoding="utf-8")
+        )
+        scenario = load_scenario(
+            {
+                "scenario_schema_version": "scenario_definition_v0",
+                "scenario_id": "map_lane_index_only",
+                "duration_sec": 1.0,
+                "dt_sec": 0.1,
+                "canonical_map": canonical_map,
+                "route_definition": {
+                    "entry_lane_id": "lane_a",
+                    "exit_lane_id": "lane_c",
+                    "via_lane_ids": ["lane_b"],
+                    "cost_mode": "hops",
+                },
+                "ego": {"position_m": 0.0, "speed_mps": 10.0, "lane_index": 0},
+                "npcs": [{"position_m": 20.0, "speed_mps": 8.0, "lane_index": 1}],
+            }
+        )
+
+        self.assertEqual(scenario.ego.lane_id, "lane_a")
+        self.assertEqual(scenario.ego.lane_binding_mode, "inferred_from_route")
+        self.assertEqual(scenario.npcs[0].lane_id, "lane_b")
+        self.assertEqual(scenario.npcs[0].lane_binding_mode, "inferred_from_route")
+
     def test_load_scenario_rejects_invalid_schema(self) -> None:
         with self.assertRaisesRegex(ScenarioValidationError, "unsupported scenario_schema_version"):
             load_scenario(
@@ -157,8 +190,15 @@ class ObjectSimTests(unittest.TestCase):
         self.assertEqual(result.summary["scenario_route_lane_ids"], ["lane_a", "lane_b", "lane_c"])
         self.assertEqual(result.summary["scenario_route_lane_count"], 3)
         self.assertEqual(result.summary["traffic_npc_lane_id_profile"], ["lane_b", "lane_a"])
+        self.assertEqual(result.summary["ego_lane_binding_mode"], "explicit_lane_id")
+        self.assertEqual(
+            result.summary["traffic_npc_lane_binding_modes"],
+            ["explicit_lane_id", "explicit_lane_id"],
+        )
         self.assertEqual(result.trace_rows[0]["ego_lane_id"], "lane_a")
+        self.assertEqual(result.trace_rows[0]["ego_lane_binding_mode"], "explicit_lane_id")
         self.assertEqual(result.trace_rows[0]["npc_lane_id"], "lane_b")
+        self.assertEqual(result.trace_rows[0]["npc_lane_binding_mode"], "explicit_lane_id")
         self.assertEqual(result.trace_rows[0]["route_relation"], "downstream")
         self.assertEqual(result.trace_rows[1]["route_relation"], "same_lane")
         self.assertIsNotNone(result.summary["min_ttc_adjacent_lane_sec"])
@@ -171,6 +211,43 @@ class ObjectSimTests(unittest.TestCase):
         self.assertIsNone(result.lane_risk_summary["min_ttc_route_same_lane_sec"])
         self.assertAlmostEqual(result.lane_risk_summary["min_ttc_route_downstream_sec"], 0.1, places=6)
         self.assertGreater(result.lane_risk_summary["ttc_under_3s_route_downstream_count"], 0)
+
+    def test_run_object_sim_exposes_inferred_route_lane_bindings(self) -> None:
+        canonical_map = json.loads(
+            (
+                Path(__file__).resolve().parent
+                / "fixtures"
+                / "autonomy_e2e"
+                / "p_map_toolset"
+                / "canonical_lane_graph_v0.json"
+            ).read_text(encoding="utf-8")
+        )
+        scenario = load_scenario(
+            {
+                "scenario_schema_version": "scenario_definition_v0",
+                "scenario_id": "map_lane_index_inferred",
+                "duration_sec": 1.0,
+                "dt_sec": 0.1,
+                "canonical_map": canonical_map,
+                "route_definition": {
+                    "entry_lane_id": "lane_a",
+                    "exit_lane_id": "lane_c",
+                    "via_lane_ids": ["lane_b"],
+                    "cost_mode": "hops",
+                },
+                "ego": {"position_m": 0.0, "speed_mps": 10.0, "lane_index": 0},
+                "npcs": [{"position_m": 15.0, "speed_mps": 9.0, "lane_index": 1}],
+            }
+        )
+        result = run_object_sim(scenario, seed=42, metadata={"run_id": "MAP_ROUTE_INFER_001"})
+
+        self.assertEqual(result.summary["ego_lane_id"], "lane_a")
+        self.assertEqual(result.summary["ego_lane_binding_mode"], "inferred_from_route")
+        self.assertEqual(result.summary["traffic_npc_lane_id_profile"], ["lane_b"])
+        self.assertEqual(result.summary["traffic_npc_lane_binding_modes"], ["inferred_from_route"])
+        self.assertEqual(result.trace_rows[0]["ego_lane_binding_mode"], "inferred_from_route")
+        self.assertEqual(result.trace_rows[0]["npc_lane_binding_mode"], "inferred_from_route")
+        self.assertEqual(result.trace_rows[0]["route_relation"], "downstream")
 
     def test_run_object_sim_respects_wall_timeout_override(self) -> None:
         scenario = load_scenario(FIXTURE_ROOT / "highway_safe_following_v0.json")

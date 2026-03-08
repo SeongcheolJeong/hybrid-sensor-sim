@@ -120,6 +120,8 @@ Detailed audit:
    - matrix sweep now preserves canonical map, route definition, and actor `lane_id` in each case scenario
 8. route-aware lane-risk semantics
    - `lane_risk_summary_v0` now carries `same/downstream/upstream/off_route` route relation counts and route-aware TTC/gap summaries
+9. route-driven lane binding inference
+   - route-backed scenarios now infer `lane_id` from `lane_index` when possible and expose `*_lane_binding_mode` in summary and trace outputs
 
 ### Reference only
 

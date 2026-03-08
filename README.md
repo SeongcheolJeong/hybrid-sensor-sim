@@ -264,6 +264,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `route_definition`
   - actor-level `lane_id`
 - When a route is provided, actor `lane_id` values are normalized into the existing `lane_index` surface using the route lane order.
+- When a route is provided and an actor only carries `lane_index`, object-sim now infers `lane_id` when that index maps onto the route lane order and exposes the result as `*_lane_binding_mode`.
 - `log_scene_v0` can now optionally carry the same canonical-map inputs:
   - `canonical_map` or `canonical_map_path`
   - `route_definition`

@@ -46,6 +46,7 @@ class CoreSimRunner:
                     length_m=npc.length_m,
                     lane_index=npc.lane_index,
                     lane_id=npc.lane_id,
+                    lane_binding_mode=npc.lane_binding_mode,
                 )
 
         self.trace_rows: list[dict[str, Any]] = []
@@ -134,6 +135,7 @@ class CoreSimRunner:
                     length_m=npc.length_m,
                     lane_index=npc.lane_index,
                     lane_id=npc.lane_id,
+                    lane_binding_mode=npc.lane_binding_mode,
                 )
             )
         self.npcs = updated_npcs
@@ -189,10 +191,12 @@ class CoreSimRunner:
                     "ego_speed_mps": round(self.ego.speed_mps, 6),
                     "ego_lane_index": int(self.ego.lane_index),
                     "ego_lane_id": self.ego.lane_id,
+                    "ego_lane_binding_mode": self.ego.lane_binding_mode,
                     "npc_id": npc.actor_id,
                     "npc_position_m": round(npc.position_m, 6),
                     "npc_lane_index": int(npc.lane_index),
                     "npc_lane_id": npc.lane_id,
+                    "npc_lane_binding_mode": npc.lane_binding_mode,
                     "lane_delta": lane_delta,
                     "same_lane": same_lane,
                     "adjacent_lane": adjacent_lane,
@@ -250,6 +254,7 @@ class CoreSimRunner:
             length_m=self.ego.length_m,
             lane_index=self.ego.lane_index,
             lane_id=self.ego.lane_id,
+            lane_binding_mode=self.ego.lane_binding_mode,
         )
         return {
             "ego_dynamics_mode": "kinematic",
@@ -318,6 +323,7 @@ class CoreSimRunner:
             length_m=self.ego.length_m,
             lane_index=self.ego.lane_index,
             lane_id=self.ego.lane_id,
+            lane_binding_mode=self.ego.lane_binding_mode,
         )
         return {
             "ego_dynamics_mode": "vehicle_dynamics",
@@ -599,7 +605,9 @@ def run_object_sim(
             "traffic_npc_count": int(len(effective_scenario.npcs)),
             "traffic_npc_lane_profile": [int(npc.lane_index) for npc in effective_scenario.npcs],
             "traffic_npc_lane_id_profile": [npc.lane_id for npc in effective_scenario.npcs],
+            "traffic_npc_lane_binding_modes": [npc.lane_binding_mode for npc in effective_scenario.npcs],
             "ego_lane_id": effective_scenario.ego.lane_id,
+            "ego_lane_binding_mode": effective_scenario.ego.lane_binding_mode,
             "traffic_npc_gap_profile_m": [
                 round(float(npc.position_m - effective_scenario.ego.position_m), 6)
                 for npc in effective_scenario.npcs
