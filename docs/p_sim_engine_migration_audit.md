@@ -111,6 +111,9 @@ Implemented in the current repository:
 25. route-aware avoidance target selection
    - object-sim avoidance now selects the most urgent path-conflict target by TTC before braking, rather than only the nearest conflicting actor
    - `summary.json` and `trace.csv` now expose the chosen actor and interaction kind through `ego_avoidance_last_trigger_*` and `ego_avoidance_target_*`
+26. interaction-specific avoidance policy overrides
+   - scenarios can now override TTC threshold and brake strength per interaction kind through `avoidance_interaction_policy`
+   - object-sim outputs now expose the selected target's effective threshold and brake scale in both summary and trace surfaces
 25. compact failing-scenario triage for batch workflows
    - batch comparison now aggregates `attention_reason_counts` across attention rows
    - batch workflow now exposes `failing_logical_scenario_rows`, `failing_logical_scenario_gate_failure_code_counts`, and `failing_logical_scenario_health_reason_counts`

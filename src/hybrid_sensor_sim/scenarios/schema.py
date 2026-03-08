@@ -52,6 +52,7 @@ class ScenarioConfig:
     enable_ego_collision_avoidance: bool = False
     avoidance_ttc_threshold_sec: float = 0.0
     ego_max_brake_mps2: float = 0.0
+    avoidance_interaction_policy: dict[str, dict[str, float]] | None = None
     tire_friction_coeff: float = 1.0
     surface_friction_scale: float = 1.0
     wall_timeout_sec: float | None = None
@@ -149,6 +150,49 @@ def _resolve_optional_path(raw_path: Any, *, source_path: Path | None, field: st
     else:
         candidate = candidate.resolve()
     return candidate
+
+
+def _parse_avoidance_interaction_policy(raw_value: Any) -> dict[str, dict[str, float]] | None:
+    if raw_value is None:
+        return None
+    if not isinstance(raw_value, dict):
+        raise ScenarioValidationError("avoidance_interaction_policy must be an object")
+    allowed_kinds = {
+        "same_lane_conflict",
+        "merge_conflict",
+        "lane_change_conflict",
+        "downstream_route_conflict",
+    }
+    normalized: dict[str, dict[str, float]] = {}
+    for interaction_kind, interaction_policy_raw in raw_value.items():
+        interaction_key = str(interaction_kind).strip()
+        if interaction_key not in allowed_kinds:
+            raise ScenarioValidationError(
+                "avoidance_interaction_policy keys must be one of: "
+                + ", ".join(sorted(allowed_kinds))
+            )
+        if not isinstance(interaction_policy_raw, dict):
+            raise ScenarioValidationError(
+                f"avoidance_interaction_policy.{interaction_key} must be an object"
+            )
+        normalized_policy: dict[str, float] = {}
+        if "ttc_threshold_sec" in interaction_policy_raw:
+            ttc_threshold_sec = float(interaction_policy_raw["ttc_threshold_sec"])
+            if ttc_threshold_sec < 0:
+                raise ScenarioValidationError(
+                    f"avoidance_interaction_policy.{interaction_key}.ttc_threshold_sec must be >= 0"
+                )
+            normalized_policy["ttc_threshold_sec"] = ttc_threshold_sec
+        if "brake_scale" in interaction_policy_raw:
+            brake_scale = float(interaction_policy_raw["brake_scale"])
+            if brake_scale < 0 or brake_scale > 1:
+                raise ScenarioValidationError(
+                    f"avoidance_interaction_policy.{interaction_key}.brake_scale must be between 0 and 1"
+                )
+            normalized_policy["brake_scale"] = brake_scale
+        if normalized_policy:
+            normalized[interaction_key] = normalized_policy
+    return normalized
 
 
 def _load_map_context(
@@ -259,6 +303,9 @@ def validate_scenario_payload(payload: dict[str, Any], *, source_path: Path | No
     )
     avoidance_ttc_threshold_sec = float(payload.get("avoidance_ttc_threshold_sec", 0.0))
     ego_max_brake_mps2 = float(payload.get("ego_max_brake_mps2", 0.0))
+    avoidance_interaction_policy = _parse_avoidance_interaction_policy(
+        payload.get("avoidance_interaction_policy")
+    )
     tire_friction_coeff = float(payload.get("tire_friction_coeff", 1.0))
     surface_friction_scale = float(payload.get("surface_friction_scale", 1.0))
     if avoidance_ttc_threshold_sec < 0:
@@ -315,6 +362,7 @@ def validate_scenario_payload(payload: dict[str, Any], *, source_path: Path | No
         enable_ego_collision_avoidance=enable_ego_collision_avoidance,
         avoidance_ttc_threshold_sec=avoidance_ttc_threshold_sec,
         ego_max_brake_mps2=ego_max_brake_mps2,
+        avoidance_interaction_policy=avoidance_interaction_policy,
         tire_friction_coeff=tire_friction_coeff,
         surface_friction_scale=surface_friction_scale,
         wall_timeout_sec=wall_timeout_sec,

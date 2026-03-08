@@ -148,6 +148,8 @@ Detailed audit:
    - object-sim now uses route semantics directly for path-conflict TTC and ego avoidance, not only for post-run reporting
 11. route-aware avoidance target introspection
    - object-sim now exposes the chosen avoidance target actor and interaction kind in both summary and trace outputs
+12. interaction-specific avoidance policy
+   - object-sim now supports per-interaction TTC threshold and brake-scale overrides for route-aware avoidance decisions
 11. route-relation-driven replay and sweep generation
    - `log_scene_v0` and matrix actor patterns can now synthesize actor lane assignments from route relations instead of relying only on explicit lane IDs or raw lane slots
 12. rendered payload generation in scenario variants

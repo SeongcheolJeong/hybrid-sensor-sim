@@ -415,6 +415,10 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `lane_risk_summary.json`: `path_conflict_rows`, `min_ttc_path_conflict_sec`, `path_interaction_counts`, `merge_conflict_rows`, `lane_change_clear_rows`, `diverge_clear_rows`
 - Route-aware avoidance now records which actor and interaction kind triggered braking:
   - `summary.json`: `ego_avoidance_last_trigger_*`, `ego_avoidance_trigger_counts_by_interaction_kind`
+- Scenario inputs can optionally override avoidance policy per interaction kind:
+  - `avoidance_interaction_policy.merge_conflict.ttc_threshold_sec`
+  - `avoidance_interaction_policy.merge_conflict.brake_scale`
+  - same shape is also supported for `same_lane_conflict`, `lane_change_conflict`, and `downstream_route_conflict`
 - The route-aware runtime surface now distinguishes:
   - `same_lane_conflict`
   - `merge_conflict`

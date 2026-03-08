@@ -92,6 +92,28 @@ class ObjectSimTests(unittest.TestCase):
                 }
             )
 
+    def test_load_scenario_rejects_invalid_avoidance_interaction_policy(self) -> None:
+        with self.assertRaisesRegex(
+            ScenarioValidationError,
+            "avoidance_interaction_policy.merge_conflict.brake_scale must be between 0 and 1",
+        ):
+            load_scenario(
+                {
+                    "scenario_schema_version": "scenario_definition_v0",
+                    "scenario_id": "bad_avoidance_policy",
+                    "duration_sec": 1.0,
+                    "dt_sec": 0.1,
+                    "enable_ego_collision_avoidance": True,
+                    "avoidance_ttc_threshold_sec": 2.0,
+                    "ego_max_brake_mps2": 5.0,
+                    "avoidance_interaction_policy": {
+                        "merge_conflict": {"brake_scale": 1.5},
+                    },
+                    "ego": {"position_m": 0.0, "speed_mps": 1.0},
+                    "npcs": [{"position_m": 5.0, "speed_mps": 1.0}],
+                }
+            )
+
     def test_load_scenario_resolves_lane_ids_from_map_route(self) -> None:
         scenario = load_scenario(FIXTURE_ROOT / "highway_map_route_following_v0.json")
 
@@ -404,6 +426,57 @@ class ObjectSimTests(unittest.TestCase):
         self.assertEqual(result.trace_rows[0]["ego_avoidance_target_interaction_kind"], "merge_conflict")
         self.assertTrue(result.trace_rows[0]["ego_avoidance_brake_applied"])
         self.assertAlmostEqual(float(result.trace_rows[0]["ego_avoidance_target_ttc_sec"]), 2.2, places=6)
+
+    def test_route_aware_avoidance_applies_interaction_specific_policy(self) -> None:
+        canonical_map = json.loads((MAP_FIXTURE_ROOT / "canonical_lane_graph_v0.json").read_text(encoding="utf-8"))
+        scenario = load_scenario(
+            {
+                "scenario_schema_version": "scenario_definition_v0",
+                "scenario_id": "route_avoidance_policy_override",
+                "duration_sec": 0.5,
+                "dt_sec": 0.1,
+                "canonical_map": canonical_map,
+                "route_definition": {
+                    "entry_lane_id": "lane_a",
+                    "exit_lane_id": "lane_c",
+                    "via_lane_ids": ["lane_b"],
+                    "cost_mode": "hops",
+                },
+                "enable_ego_collision_avoidance": True,
+                "avoidance_ttc_threshold_sec": 1.0,
+                "ego_max_brake_mps2": 6.0,
+                "avoidance_interaction_policy": {
+                    "merge_conflict": {"ttc_threshold_sec": 3.0, "brake_scale": 0.5},
+                    "same_lane_conflict": {"ttc_threshold_sec": 0.5, "brake_scale": 1.0},
+                },
+                "ego": {"position_m": 0.0, "speed_mps": 10.0, "lane_id": "lane_a"},
+                "npcs": [
+                    {"actor_id": "same_lane_far", "position_m": 16.0, "speed_mps": 4.0, "lane_id": "lane_a"},
+                    {"actor_id": "merge_risk", "position_m": 18.0, "speed_mps": 4.0, "lane_id": "lane_b"},
+                ],
+            }
+        )
+
+        result = run_object_sim(scenario, seed=42, metadata={"run_id": "ROUTE_AVOID_POLICY_001"})
+
+        self.assertEqual(result.summary["status"], "success")
+        self.assertEqual(
+            result.summary["avoidance_interaction_policy"],
+            {
+                "merge_conflict": {"brake_scale": 0.5, "ttc_threshold_sec": 3.0},
+                "same_lane_conflict": {"brake_scale": 1.0, "ttc_threshold_sec": 0.5},
+            },
+        )
+        self.assertGreater(result.summary["ego_avoidance_brake_event_count"], 0)
+        self.assertEqual(result.summary["ego_avoidance_last_trigger_actor_id"], "merge_risk")
+        self.assertEqual(result.summary["ego_avoidance_last_trigger_interaction_kind"], "merge_conflict")
+        self.assertAlmostEqual(result.summary["ego_avoidance_last_trigger_ttc_threshold_sec"], 3.0, places=6)
+        self.assertAlmostEqual(result.summary["ego_avoidance_last_trigger_brake_scale"], 0.5, places=6)
+        self.assertAlmostEqual(result.summary["ego_avoidance_applied_brake_mps2_max"], 3.0, places=6)
+        self.assertEqual(result.trace_rows[0]["ego_avoidance_target_actor_id"], "merge_risk")
+        self.assertEqual(result.trace_rows[0]["ego_avoidance_target_interaction_kind"], "merge_conflict")
+        self.assertAlmostEqual(float(result.trace_rows[0]["ego_avoidance_target_ttc_threshold_sec"]), 3.0, places=6)
+        self.assertAlmostEqual(float(result.trace_rows[0]["ego_avoidance_target_brake_scale"]), 0.5, places=6)
 
     def test_run_object_sim_respects_wall_timeout_override(self) -> None:
         scenario = load_scenario(FIXTURE_ROOT / "highway_safe_following_v0.json")
