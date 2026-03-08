@@ -301,6 +301,9 @@ def write_autoware_export_bundle(
         scenario_id=str(scenario_source.get("scenario_id", "")).strip(),
         backend=backend,
         sensor_contracts=sensor_contracts,
+        scenario_source=scenario_source,
+        pipeline_manifest=pipeline_manifest,
+        frame_tree_path=str(frame_tree_path.resolve()),
         pipeline_manifest_path=str(pipeline_manifest_path.resolve()),
         sensor_contracts_path=str(sensor_contracts_path.resolve()),
         data_roots=sorted(
@@ -325,6 +328,15 @@ def write_autoware_export_bundle(
         "available_sensor_count": int(sensor_contracts.get("available_sensor_count", 0) or 0),
         "missing_required_sensor_count": int(sensor_contracts.get("missing_required_sensor_count", 0) or 0),
         "available_topics": list(sensor_contracts.get("available_topics", [])),
+        "available_modalities": list(dataset_manifest.get("available_modalities", [])),
+        "data_roots": list(dataset_manifest.get("data_roots", [])),
+        "recording_style": dataset_manifest.get("recording_style"),
+        "dataset_ready": bool(
+            pipeline_manifest.get("required_topics_complete")
+            and pipeline_manifest.get("frame_tree_complete")
+            and dataset_manifest.get("available_modalities")
+        ),
+        "scenario_source": dict(pipeline_manifest.get("scenario_source", {})),
         "required_topics_complete": bool(pipeline_manifest.get("required_topics_complete")),
         "frame_tree_complete": bool(pipeline_manifest.get("frame_tree_complete")),
         "warnings": warnings,
@@ -398,6 +410,9 @@ def write_autoware_planned_export_bundle(
         scenario_id=str(scenario_source.get("scenario_id", "")).strip(),
         backend=backend,
         sensor_contracts=sensor_contracts,
+        scenario_source=scenario_source,
+        pipeline_manifest=pipeline_manifest,
+        frame_tree_path=str(frame_tree_path.resolve()),
         pipeline_manifest_path=str(pipeline_manifest_path.resolve()),
         sensor_contracts_path=str(sensor_contracts_path.resolve()),
         data_roots=sorted(
@@ -424,6 +439,15 @@ def write_autoware_planned_export_bundle(
         "available_sensor_count": int(sensor_contracts.get("available_sensor_count", 0) or 0),
         "missing_required_sensor_count": int(sensor_contracts.get("missing_required_sensor_count", 0) or 0),
         "available_topics": list(sensor_contracts.get("available_topics", [])),
+        "available_modalities": list(dataset_manifest.get("available_modalities", [])),
+        "data_roots": list(dataset_manifest.get("data_roots", [])),
+        "recording_style": dataset_manifest.get("recording_style"),
+        "dataset_ready": bool(
+            pipeline_manifest.get("required_topics_complete")
+            and pipeline_manifest.get("frame_tree_complete")
+            and dataset_manifest.get("available_modalities")
+        ),
+        "scenario_source": dict(pipeline_manifest.get("scenario_source", {})),
         "required_topics_complete": bool(pipeline_manifest.get("required_topics_complete")),
         "frame_tree_complete": bool(pipeline_manifest.get("frame_tree_complete")),
         "warnings": warnings,

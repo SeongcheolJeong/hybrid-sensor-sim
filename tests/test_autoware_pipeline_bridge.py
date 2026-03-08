@@ -162,9 +162,21 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
             self.assertEqual(report["status"], "READY")
             self.assertEqual(report["available_sensor_count"], 2)
             self.assertEqual(report["missing_required_sensor_count"], 0)
+            self.assertTrue(report["dataset_ready"])
+            self.assertEqual(report["recording_style"], "backend_smoke_export")
+            self.assertEqual(report["available_modalities"], ["camera", "lidar"])
+            self.assertEqual(report["scenario_source"]["variant_id"], "var_001")
             self.assertIn("/sensing/camera/cam_front/image_raw", report["available_topics"])
             self.assertTrue(Path(report["artifacts"]["pipeline_manifest_path"]).is_file())
             self.assertTrue(Path(report["artifacts"]["dataset_manifest_path"]).is_file())
+            dataset_manifest = json.loads(
+                Path(report["artifacts"]["dataset_manifest_path"]).read_text(encoding="utf-8")
+            )
+            self.assertEqual(dataset_manifest["variant_id"], "var_001")
+            self.assertEqual(dataset_manifest["logical_scenario_id"], "scn_001")
+            self.assertEqual(dataset_manifest["pipeline_status"], "READY")
+            self.assertEqual(dataset_manifest["recording_style"], "backend_smoke_export")
+            self.assertEqual(dataset_manifest["available_sensor_ids"], ["cam_front", "lidar_top"])
 
     def test_bridge_marks_sidecar_only_exports(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

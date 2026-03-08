@@ -362,7 +362,7 @@ python3 scripts/run_scenario_backend_smoke_workflow.py \
 - `artifacts`: `scenario_backend_smoke_selection.json`, `scenario_runtime_bridge_manifest.json`, translated smoke scenario JSON, and materialized smoke input config
 - `renderer_backend_workflow`: optional packaged-backend handoff planning result, including blocker codes, recommended next command, Linux handoff readiness, and handoff artifact paths
 - `smoke`: optional downstream `renderer_backend_smoke` execution status, summary/report paths, captured stdout/stderr logs, backend output triage (`output_smoke_status`, `output_comparison_status`, mismatch reasons, unexpected output count), and packaged-runtime crash diagnostics (`backend_runtime_exit_code`, failed plugins, missing shared libraries, crash signatures)
-- `autoware`: optional Autoware-facing bridge status, available topics, missing required sensor count, and bundle artifact paths
+- `autoware`: optional Autoware-facing bridge status, available topics/modalities, dataset readiness, recording style, scenario lineage, and bundle artifact paths
   - the workflow now also carries `autoware.availability_mode` so sidecar-materialized backend exports are not reported as plain runtime-ready output
 
 Scenario runtime/backend workflow:
@@ -392,7 +392,7 @@ python3 scripts/run_scenario_runtime_backend_workflow.py \
 - host-incompatible packaged backend selections are now lifted to top-level `HANDOFF_READY` or `HANDOFF_DOCKER_*` runtime statuses, together with `backend_handoff_status`, `backend_handoff_ready`, blocker codes, recommended command, and bundle/script artifact paths
 - `HANDOFF_DOCKER_OUTPUT_READY` means the packaged backend exited non-zero but still produced a complete, backend-runtime-only export set, so the top-level workflow is downgraded to `ATTENTION` instead of `FAILED`
 - `history_guard`: optional provenance guard status, failure codes, and report path for publish-time validation against `origin/main`
-- `status_summary`: final status source, ordered decision trace, batch triage IDs, backend smoke result summary, backend output smoke/comparison mismatch details, Autoware readiness, and optional history-guard status
+- `status_summary`: final status source, ordered decision trace, batch triage IDs, backend smoke result summary, backend output smoke/comparison mismatch details, Autoware readiness, dataset readiness, scenario lineage, and optional history-guard status
   - the backend smoke summary now also exposes `backend_output_origin_status`, `backend_output_origin_counts`, `backend_sidecar_materialization_status`, and `backend_sidecar_materialized_output_count`
 - `status_summary`: now also carries packaged-runtime diagnostics such as runtime exit code, failed plugin basenames, missing shared libraries, and crash signatures when a real AWSIM/CARLA handoff run aborts inside the Linux container path
 - `artifacts`: top-level report paths plus generated smoke scenario/config paths, Autoware bundle artifact paths, and optional history-guard report
@@ -406,6 +406,17 @@ python3 scripts/run_autoware_pipeline_bridge.py \
 ```
 
 If the backend workflow is in `HANDOFF_READY` or `HANDOFF_DOCKER_*` state and no real smoke summary exists yet, the bridge now emits a `PLANNED` Autoware bundle from the smoke input config. This keeps topic/frame readiness visible before the actual Linux/AWSIM handoff run.
+
+The Autoware bundle now also carries run-level lineage:
+- `variant_id`
+- `logical_scenario_id`
+- `scenario_id`
+- `source_payload_kind`
+- `smoke_scenario_path`
+- `bridge_manifest_path`
+- `recording_style`
+- `available_modalities`
+- `data_roots`
 When backend outputs exist only because the runner materialized sidecar exports into the expected layout, the bridge now emits `SIDECAR_READY` or `SIDECAR_DEGRADED` instead of plain `READY`. Mixed runtime-and-sidecar runs are reported as `MIXED_READY` or `MIXED_DEGRADED`.
 
 Both `run_scenario_variants.py` and `run_scenario_variant_workflow.py` resolve default scenario-language profiles from:

@@ -73,6 +73,14 @@ def build_autoware_pipeline_manifest(
     elif normalized_availability_mode == "mixed":
         warnings.append("mixed_runtime_and_sidecar_backend_exports")
     missing_required_sensor_count = int(sensor_contracts.get("missing_required_sensor_count", 0) or 0)
+    available_sensor_count = int(sensor_contracts.get("available_sensor_count", 0) or 0)
+    available_modalities = sorted(
+        {
+            str(sensor.get("modality", "")).strip()
+            for sensor in sensor_contracts.get("sensors", [])
+            if isinstance(sensor, dict) and str(sensor.get("modality", "")).strip()
+        }
+    )
     output_comparison_status = (
         (smoke_summary.get("output_comparison") or {}).get("status")
         if isinstance(smoke_summary.get("output_comparison"), dict)
@@ -96,6 +104,13 @@ def build_autoware_pipeline_manifest(
         "backend": str(backend).strip() or None,
         "availability_mode": normalized_availability_mode,
         "scenario_source": scenario_source,
+        "scenario_id": str(scenario_source.get("scenario_id", "")).strip() or None,
+        "variant_id": str(scenario_source.get("variant_id", "")).strip() or None,
+        "logical_scenario_id": str(scenario_source.get("logical_scenario_id", "")).strip() or None,
+        "source_payload_kind": str(scenario_source.get("source_payload_kind", "")).strip() or None,
+        "source_payload_path": str(scenario_source.get("source_payload_path", "")).strip() or None,
+        "smoke_scenario_path": str(scenario_source.get("smoke_scenario_path", "")).strip() or None,
+        "bridge_manifest_path": str(scenario_source.get("bridge_manifest_path", "")).strip() or None,
         "status": status,
         "backend_output_smoke_status": output_smoke_status,
         "backend_output_comparison_status": output_comparison_status,
@@ -117,6 +132,10 @@ def build_autoware_pipeline_manifest(
         ),
         "frame_tree_path": artifacts.get("frame_tree_path"),
         "sensor_contracts_path": artifacts.get("sensor_contracts_path"),
+        "available_sensor_count": available_sensor_count,
+        "missing_required_sensor_count": missing_required_sensor_count,
+        "available_modalities": available_modalities,
+        "frame_tree_sensor_count": int(frame_tree.get("sensor_frame_count", 0) or 0),
         "sensors": list(sensor_contracts.get("sensors", [])),
         "available_topics": list(sensor_contracts.get("available_topics", [])),
         "required_topics_complete": missing_required_sensor_count == 0,
@@ -132,6 +151,9 @@ def build_autoware_dataset_manifest(
     scenario_id: str,
     backend: str,
     sensor_contracts: dict[str, Any],
+    scenario_source: dict[str, Any],
+    pipeline_manifest: dict[str, Any],
+    frame_tree_path: str,
     pipeline_manifest_path: str,
     sensor_contracts_path: str,
     data_roots: list[str],
@@ -144,15 +166,40 @@ def build_autoware_dataset_manifest(
             if isinstance(sensor, dict) and str(sensor.get("modality", "")).strip()
         }
     )
+    available_sensor_ids = sorted(
+        {
+            str(sensor.get("sensor_id", "")).strip()
+            for sensor in sensor_contracts.get("sensors", [])
+            if isinstance(sensor, dict) and str(sensor.get("sensor_id", "")).strip()
+        }
+    )
     return {
         "schema_version": AUTOWARE_DATASET_MANIFEST_SCHEMA_VERSION_V0,
         "run_id": str(run_id).strip(),
         "scenario_id": str(scenario_id).strip() or None,
+        "variant_id": str(scenario_source.get("variant_id", "")).strip() or None,
+        "logical_scenario_id": str(scenario_source.get("logical_scenario_id", "")).strip() or None,
+        "source_payload_kind": str(scenario_source.get("source_payload_kind", "")).strip() or None,
+        "source_payload_path": str(scenario_source.get("source_payload_path", "")).strip() or None,
+        "smoke_scenario_path": str(scenario_source.get("smoke_scenario_path", "")).strip() or None,
+        "bridge_manifest_path": str(scenario_source.get("bridge_manifest_path", "")).strip() or None,
         "backend": str(backend).strip() or None,
         "recording_style": str(recording_style).strip() or "backend_smoke_export",
         "sensor_manifest_path": sensor_contracts_path,
         "pipeline_manifest_path": pipeline_manifest_path,
+        "frame_tree_path": str(frame_tree_path).strip() or None,
+        "pipeline_status": str(pipeline_manifest.get("status", "")).strip() or None,
+        "availability_mode": str(pipeline_manifest.get("availability_mode", "")).strip() or None,
+        "required_topics_complete": bool(pipeline_manifest.get("required_topics_complete")),
+        "frame_tree_complete": bool(pipeline_manifest.get("frame_tree_complete")),
+        "available_sensor_count": int(pipeline_manifest.get("available_sensor_count", 0) or 0),
+        "missing_required_sensor_count": int(pipeline_manifest.get("missing_required_sensor_count", 0) or 0),
+        "backend_output_origin_status": str(
+            pipeline_manifest.get("backend_output_origin_status", "")
+        ).strip()
+        or None,
         "frame_count": 0,
+        "available_sensor_ids": available_sensor_ids,
         "available_modalities": available_modalities,
         "available_topics": list(sensor_contracts.get("available_topics", [])),
         "data_roots": list(data_roots),

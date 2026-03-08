@@ -290,6 +290,20 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
                 report["status_summary"]["backend_output_origin_status"],
                 "BACKEND_RUNTIME_ONLY",
             )
+            self.assertTrue(report["status_summary"]["autoware_dataset_ready"])
+            self.assertEqual(
+                report["status_summary"]["autoware_recording_style"],
+                "backend_smoke_export",
+            )
+            self.assertIn(
+                "camera",
+                report["status_summary"]["autoware_available_modalities"],
+            )
+            self.assertTrue(report["status_summary"]["autoware_data_roots"])
+            self.assertEqual(
+                report["status_summary"]["backend_logical_scenario_id"],
+                report["backend_smoke_workflow"]["selection"]["logical_scenario_id"],
+            )
             self.assertIsNotNone(report["status_summary"]["autoware_missing_required_sensor_count"])
             self.assertTrue(Path(report["artifacts"]["autoware_pipeline_manifest_path"]).is_file())
             self.assertTrue(Path(report["artifacts"]["smoke_scenario_path"]).is_file())

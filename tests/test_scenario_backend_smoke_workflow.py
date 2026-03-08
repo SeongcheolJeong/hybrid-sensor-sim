@@ -280,6 +280,13 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
             self.assertEqual(smoke_summary["output_origin_status"], "BACKEND_RUNTIME_ONLY")
             self.assertIn(workflow_report["autoware"]["status"], {"READY", "DEGRADED"})
             self.assertEqual(workflow_report["autoware"]["availability_mode"], "runtime")
+            self.assertTrue(workflow_report["autoware"]["dataset_ready"])
+            self.assertEqual(workflow_report["autoware"]["recording_style"], "backend_smoke_export")
+            self.assertIn("camera", workflow_report["autoware"]["available_modalities"])
+            self.assertEqual(
+                workflow_report["autoware"]["scenario_source"]["variant_id"],
+                workflow_report["selection"]["variant_id"],
+            )
             self.assertIsNotNone(workflow_report["autoware"]["missing_required_sensor_count"])
             self.assertIn("/sensing/camera/camera_front/image_raw", workflow_report["autoware"]["available_topics"])
             self.assertTrue(Path(workflow_report["artifacts"]["autoware_pipeline_manifest_path"]).is_file())
