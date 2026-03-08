@@ -102,6 +102,67 @@ class AutowareContractsTests(unittest.TestCase):
         self.assertFalse(lidar_contracts[0]["available"])
         self.assertTrue(lidar_contracts[0]["required"])
 
+    def test_build_sensor_contracts_supports_planned_availability_and_explicit_roles(self) -> None:
+        contracts = build_autoware_sensor_contracts(
+            backend_sensor_output_summary={
+                "backend": "awsim",
+                "sensors": [
+                    {
+                        "sensor_id": "cam_depth",
+                        "modality": "camera",
+                        "outputs": [
+                            {
+                                "output_role": "camera_depth",
+                                "artifact_type": "awsim_camera_depth_json",
+                                "data_format": "camera_depth_json",
+                                "artifact_key": "sensor_output_cam_depth",
+                                "resolved_path": "/tmp/cam_depth/depth_frame.json",
+                                "exists": False,
+                            }
+                        ],
+                    }
+                ],
+            },
+            backend_output_spec={
+                "backend": "awsim",
+                "expected_outputs_by_sensor": [
+                    {
+                        "sensor_id": "cam_depth",
+                        "outputs": [
+                            {
+                                "output_role": "camera_depth",
+                                "artifact_type": "awsim_camera_depth_json",
+                                "data_format": "camera_depth_json",
+                                "relative_path": "sensor_exports/cam_depth/depth_frame.json",
+                                "path_candidates": [],
+                            }
+                        ],
+                    }
+                ],
+            },
+            sensor_mounts=[
+                {
+                    "sensor_id": "cam_depth",
+                    "sensor_type": "camera",
+                    "enabled": True,
+                }
+            ],
+            availability_mode="planned",
+        )
+        self.assertEqual(contracts["availability_mode"], "planned")
+        self.assertEqual(contracts["missing_required_sensor_count"], 0)
+        self.assertIn("/sensing/camera/cam_depth/depth/image_raw", contracts["available_topics"])
+        depth_contracts = [
+            entry
+            for entry in contracts["contracts"]
+            if entry["sensor_id"] == "cam_depth"
+        ]
+        self.assertEqual(len(depth_contracts), 1)
+        self.assertEqual(depth_contracts[0]["output_role"], "camera_depth")
+        self.assertTrue(depth_contracts[0]["required"])
+        self.assertTrue(depth_contracts[0]["available"])
+        self.assertEqual(depth_contracts[0]["availability_mode"], "planned")
+
 
 if __name__ == "__main__":
     unittest.main()

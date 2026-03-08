@@ -6,7 +6,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from hybrid_sensor_sim.autoware.export_bridge import write_autoware_export_bundle
+from hybrid_sensor_sim.autoware.export_bridge import (
+    write_autoware_export_bundle,
+    write_autoware_planned_export_bundle,
+)
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -52,11 +55,26 @@ def _load_smoke_summary(backend_workflow_report: dict[str, Any]) -> dict[str, An
     return _load_json_object(Path(summary_path))
 
 
+def _load_optional_smoke_summary(backend_workflow_report: dict[str, Any]) -> dict[str, Any] | None:
+    raw_summary_path = backend_workflow_report.get("smoke", {}).get("summary_path", "")
+    summary_path = str(raw_summary_path).strip()
+    if raw_summary_path is None or not summary_path or summary_path.lower() == "none":
+        return None
+    return _load_json_object(Path(summary_path))
+
+
 def _load_artifact(path_text: str, *, field: str) -> dict[str, Any]:
     text = str(path_text).strip()
     if not text:
         raise ValueError(f"missing required artifact path: {field}")
     return _load_json_object(Path(text))
+
+
+def _load_smoke_input_config(backend_workflow_report: dict[str, Any]) -> dict[str, Any]:
+    return _load_artifact(
+        backend_workflow_report.get("artifacts", {}).get("smoke_input_config_path", ""),
+        field="smoke_input_config_path",
+    )
 
 
 def run_autoware_pipeline_bridge(
@@ -74,20 +92,6 @@ def run_autoware_pipeline_bridge(
         raise ValueError("provide exactly one of backend or runtime workflow report path")
     input_report = _load_report(Path(report_path_text))
     backend_report = _resolve_backend_smoke_report(input_report)
-    smoke_summary = _load_smoke_summary(backend_report)
-    smoke_artifacts = dict(smoke_summary.get("artifacts", {}))
-    playback_contract = _load_artifact(
-        smoke_artifacts.get("renderer_playback_contract", ""),
-        field="renderer_playback_contract",
-    )
-    backend_output_spec = _load_artifact(
-        smoke_artifacts.get("backend_output_spec", ""),
-        field="backend_output_spec",
-    )
-    backend_sensor_output_summary = _load_artifact(
-        smoke_artifacts.get("backend_sensor_output_summary", ""),
-        field="backend_sensor_output_summary",
-    )
     selection = dict(backend_report.get("selection", {}))
     bridge = dict(backend_report.get("bridge", {}))
     run_id = (
@@ -104,23 +108,58 @@ def run_autoware_pipeline_bridge(
         "smoke_scenario_path": str(backend_report.get("artifacts", {}).get("smoke_scenario_path", "")).strip() or None,
         "bridge_manifest_path": str(backend_report.get("artifacts", {}).get("bridge_manifest_path", "")).strip() or None,
     }
-    bundle = write_autoware_export_bundle(
-        out_root=out_root,
-        backend=str(backend_report.get("backend", "")).strip(),
-        run_id=run_id,
-        scenario_source=scenario_source,
-        backend_sensor_output_summary=backend_sensor_output_summary,
-        backend_output_spec=backend_output_spec,
-        playback_contract=playback_contract,
-        smoke_summary=smoke_summary,
-        strict=bool(strict),
-        base_frame=base_frame,
-    )
+    smoke_summary = _load_optional_smoke_summary(backend_report)
+    if smoke_summary is not None:
+        smoke_artifacts = dict(smoke_summary.get("artifacts", {}))
+        playback_contract = _load_artifact(
+            smoke_artifacts.get("renderer_playback_contract", ""),
+            field="renderer_playback_contract",
+        )
+        backend_output_spec = _load_artifact(
+            smoke_artifacts.get("backend_output_spec", ""),
+            field="backend_output_spec",
+        )
+        backend_sensor_output_summary = _load_artifact(
+            smoke_artifacts.get("backend_sensor_output_summary", ""),
+            field="backend_sensor_output_summary",
+        )
+        bundle = write_autoware_export_bundle(
+            out_root=out_root,
+            backend=str(backend_report.get("backend", "")).strip(),
+            run_id=run_id,
+            scenario_source=scenario_source,
+            backend_sensor_output_summary=backend_sensor_output_summary,
+            backend_output_spec=backend_output_spec,
+            playback_contract=playback_contract,
+            smoke_summary=smoke_summary,
+            strict=bool(strict),
+            base_frame=base_frame,
+        )
+    else:
+        if str(backend_report.get("status", "")).strip() not in {
+            "HANDOFF_READY",
+            "HANDOFF_DOCKER_VERIFIED",
+            "HANDOFF_DOCKER_EXECUTED",
+        }:
+            raise ValueError(
+                "backend smoke workflow report missing smoke.summary_path and is not in a handoff-ready state"
+            )
+        smoke_input_config = _load_smoke_input_config(backend_report)
+        bundle = write_autoware_planned_export_bundle(
+            out_root=out_root,
+            backend=str(backend_report.get("backend", "")).strip(),
+            run_id=run_id,
+            scenario_source=scenario_source,
+            smoke_input_config=smoke_input_config,
+            strict=bool(strict),
+            base_frame=base_frame,
+        )
     report = {
         "backend": str(backend_report.get("backend", "")).strip() or None,
         "run_id": run_id,
         "status": bundle["status"],
         "strict": bool(strict),
+        "availability_mode": bundle.get("availability_mode"),
         "available_sensor_count": bundle["available_sensor_count"],
         "missing_required_sensor_count": bundle["missing_required_sensor_count"],
         "available_topics": bundle["available_topics"],
@@ -151,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"[ok] autoware_status={result['report']['status']}")
         print(f"[ok] report={result['report_path']}")
-        return 0 if result["report"]["status"] in {"READY", "DEGRADED"} else 2
+        return 0 if result["report"]["status"] in {"READY", "DEGRADED", "PLANNED"} else 2
     except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
         print(f"[error] run_autoware_pipeline_bridge.py: {exc}", file=sys.stderr)
         return 2

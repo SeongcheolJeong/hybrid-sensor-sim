@@ -398,6 +398,8 @@ python3 scripts/run_autoware_pipeline_bridge.py \
   --out-root artifacts/autoware_pipeline_bridge_runs
 ```
 
+If the backend workflow is in `HANDOFF_READY` or `HANDOFF_DOCKER_*` state and no real smoke summary exists yet, the bridge now emits a `PLANNED` Autoware bundle from the smoke input config. This keeps topic/frame readiness visible before the actual Linux/AWSIM handoff run.
+
 Both `run_scenario_variants.py` and `run_scenario_variant_workflow.py` resolve default scenario-language profiles from:
 
 - `tests/fixtures/autonomy_e2e/p_validation`

@@ -782,6 +782,7 @@ BLOCK_CATALOG: list[dict[str, Any]] = [
         ],
         "migration_status": "partial",
         "current_paths": [
+            "src/hybrid_sensor_sim/autoware/__init__.py",
             "src/hybrid_sensor_sim/autoware/contracts.py",
             "src/hybrid_sensor_sim/autoware/frames.py",
             "src/hybrid_sensor_sim/autoware/topics.py",

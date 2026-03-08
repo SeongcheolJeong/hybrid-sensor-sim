@@ -53,6 +53,23 @@ def _required_output_roles_for_modality(modality: str) -> set[str]:
     }.get(str(modality).strip(), set())
 
 
+def _required_output_roles(
+    *,
+    modality: str,
+    summary_sensor: dict[str, Any] | None,
+    spec_sensor: dict[str, Any] | None,
+) -> set[str]:
+    explicit_roles: set[str] = set()
+    for container in (spec_sensor, summary_sensor):
+        for output in (container or {}).get("outputs", []) or []:
+            if not isinstance(output, dict):
+                continue
+            output_role = str(output.get("output_role", "")).strip()
+            if output_role:
+                explicit_roles.add(output_role)
+    return explicit_roles or _required_output_roles_for_modality(modality)
+
+
 def _derive_sensor_modality(
     *,
     mount: dict[str, Any] | None,
@@ -105,6 +122,7 @@ def build_autoware_sensor_contracts(
     backend_sensor_output_summary: dict[str, Any],
     backend_output_spec: dict[str, Any],
     sensor_mounts: list[dict[str, Any]] | None = None,
+    availability_mode: str = "runtime",
 ) -> dict[str, Any]:
     mounts_by_sensor = _mounts_by_sensor_id(sensor_mounts)
     summary_by_sensor = _outputs_by_sensor_id(backend_sensor_output_summary)
@@ -121,6 +139,11 @@ def build_autoware_sensor_contracts(
     available_topics: list[str] = []
     missing_required_sensor_count = 0
     available_sensor_count = 0
+    normalized_availability_mode = str(availability_mode).strip().lower() or "runtime"
+    if normalized_availability_mode not in {"runtime", "planned"}:
+        raise ValueError(
+            f"availability_mode must be 'runtime' or 'planned', got: {availability_mode}"
+        )
 
     for sensor_id in sensor_ids:
         mount = mounts_by_sensor.get(sensor_id)
@@ -129,7 +152,15 @@ def build_autoware_sensor_contracts(
         modality = _derive_sensor_modality(mount=mount, summary_sensor=summary_sensor, spec_sensor=spec_sensor)
         enabled = bool(mount.get("enabled", True)) if isinstance(mount, dict) else True
         merged_outputs = _merged_output_entries(summary_sensor=summary_sensor, spec_sensor=spec_sensor)
-        required_roles = _required_output_roles_for_modality(modality) if enabled else set()
+        required_roles = (
+            _required_output_roles(
+                modality=modality,
+                summary_sensor=summary_sensor,
+                spec_sensor=spec_sensor,
+            )
+            if enabled
+            else set()
+        )
         missing_required_roles: list[str] = []
         available_output_count = 0
         for output_role, output in sorted(merged_outputs.items()):
@@ -142,7 +173,14 @@ def build_autoware_sensor_contracts(
                 continue
             exists = bool(output.get("exists", False))
             resolved_path = str(output.get("resolved_path", "")).strip() or None
-            available = bool(exists and resolved_path)
+            available = bool(
+                (exists and resolved_path)
+                or (
+                    normalized_availability_mode == "planned"
+                    and resolved_path
+                    and output_role in required_roles
+                )
+            )
             if available:
                 available_output_count += 1
                 available_topics.append(topic)
@@ -165,6 +203,7 @@ def build_autoware_sensor_contracts(
                     "source_resolved_path": resolved_path,
                     "required": required,
                     "available": available,
+                    "availability_mode": normalized_availability_mode,
                 }
             )
         for output_role in sorted(required_roles - set(merged_outputs)):
@@ -188,6 +227,7 @@ def build_autoware_sensor_contracts(
                     "source_resolved_path": None,
                     "required": True,
                     "available": False,
+                    "availability_mode": normalized_availability_mode,
                 }
             )
         if enabled and missing_required_roles:
@@ -202,6 +242,7 @@ def build_autoware_sensor_contracts(
                 "available_output_count": available_output_count,
                 "missing_required_roles": sorted(set(missing_required_roles)),
                 "required_output_roles": sorted(required_roles),
+                "availability_mode": normalized_availability_mode,
             }
         )
 
@@ -210,6 +251,7 @@ def build_autoware_sensor_contracts(
     return {
         "schema_version": AUTOWARE_SENSOR_CONTRACT_SCHEMA_VERSION_V0,
         "backend": backend or None,
+        "availability_mode": normalized_availability_mode,
         "sensor_count": len(sensors),
         "available_sensor_count": available_sensor_count,
         "missing_required_sensor_count": missing_required_sensor_count,

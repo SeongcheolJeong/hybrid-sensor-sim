@@ -936,12 +936,15 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
                             "linux_handoff_bundle_path": "/tmp/handoff_bundle.tar.gz",
                         },
                         "autoware": {
-                            "status": None,
-                            "available_sensor_count": None,
-                            "missing_required_sensor_count": None,
-                            "available_topics": [],
-                            "required_topics_complete": None,
-                            "frame_tree_complete": None,
+                            "status": "PLANNED",
+                            "available_sensor_count": 3,
+                            "missing_required_sensor_count": 0,
+                            "available_topics": [
+                                "/sensing/camera/camera_front/image_raw",
+                                "/sensing/lidar/lidar_top/pointcloud",
+                            ],
+                            "required_topics_complete": True,
+                            "frame_tree_complete": True,
                         },
                         "artifacts": {
                             "smoke_scenario_path": str(smoke_scenario_path),
@@ -958,11 +961,11 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
                             "renderer_backend_linux_handoff_bundle_manifest_path": str(
                                 bundle_manifest_path
                             ),
-                            "autoware_report_path": None,
-                            "autoware_sensor_contracts_path": None,
-                            "autoware_frame_tree_path": None,
-                            "autoware_pipeline_manifest_path": None,
-                            "autoware_dataset_manifest_path": None,
+                            "autoware_report_path": str(root / "autoware_report.json"),
+                            "autoware_sensor_contracts_path": str(root / "autoware_sensor_contracts.json"),
+                            "autoware_frame_tree_path": str(root / "autoware_frame_tree.json"),
+                            "autoware_pipeline_manifest_path": str(root / "autoware_pipeline_manifest.json"),
+                            "autoware_dataset_manifest_path": str(root / "autoware_dataset_manifest.json"),
                         },
                     },
                 },
@@ -1022,6 +1025,13 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
             self.assertIn(
                 "BACKEND_HOST_INCOMPATIBLE",
                 report["status_summary"]["backend_handoff_blocker_codes"],
+            )
+            self.assertEqual(
+                report["status_summary"]["autoware_pipeline_status"],
+                "PLANNED",
+            )
+            self.assertTrue(
+                report["status_summary"]["autoware_required_topics_complete"]
             )
             self.assertEqual(
                 report["artifacts"]["renderer_backend_linux_handoff_script_path"],

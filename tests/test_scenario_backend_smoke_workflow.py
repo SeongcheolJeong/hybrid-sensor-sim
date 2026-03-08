@@ -860,7 +860,7 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
                     renderer_map="SampleMap",
                     option_overrides=[],
                     skip_smoke=False,
-                    skip_autoware_bridge=True,
+                    skip_autoware_bridge=False,
                 )
 
             workflow_report = result["workflow_report"]
@@ -884,6 +884,10 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
             self.assertEqual(
                 workflow_report["artifacts"]["renderer_backend_workflow_summary_path"],
                 str(renderer_summary_path),
+            )
+            self.assertEqual(workflow_report["autoware"]["status"], "PLANNED")
+            self.assertTrue(
+                workflow_report["artifacts"]["autoware_pipeline_manifest_path"]
             )
 
     def test_scenario_backend_smoke_workflow_script_bootstraps_src_path(self) -> None:

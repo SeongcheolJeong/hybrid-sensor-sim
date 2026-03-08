@@ -181,6 +181,64 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
             self.assertEqual(report["missing_required_sensor_count"], 1)
             self.assertFalse(report["required_topics_complete"])
 
+    def test_bridge_builds_planned_bundle_from_handoff_ready_report(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            smoke_input_config_path = root / "smoke_input_config.json"
+            _write_json(
+                smoke_input_config_path,
+                {
+                    "renderer_backend": "awsim",
+                    "renderer_camera_sensor_id": "cam_front",
+                    "renderer_lidar_sensor_id": "lidar_top",
+                    "renderer_radar_sensor_id": "radar_front",
+                    "camera_extrinsics": {"tx": 1.0, "tz": 1.5},
+                    "lidar_extrinsics": {"tz": 2.0},
+                    "radar_extrinsics": {"tx": 0.5, "tz": 0.8},
+                    "radar_tracking_params": {"tracks": True},
+                },
+            )
+            backend_workflow_report_path = root / "scenario_backend_smoke_workflow_report_v0.json"
+            _write_json(
+                backend_workflow_report_path,
+                {
+                    "scenario_backend_smoke_workflow_report_schema_version": "scenario_backend_smoke_workflow_report_v0",
+                    "status": "HANDOFF_READY",
+                    "backend": "awsim",
+                    "selection": {"variant_id": "var_002", "logical_scenario_id": "scn_002"},
+                    "bridge": {
+                        "scenario_id": "SCN_002",
+                        "source_payload_kind": "scenario_definition_v0",
+                    },
+                    "smoke": {"summary_path": None},
+                    "artifacts": {
+                        "smoke_input_config_path": str(smoke_input_config_path.resolve()),
+                        "smoke_scenario_path": str((root / "smoke_scenario.json").resolve()),
+                    },
+                },
+            )
+
+            result = run_autoware_pipeline_bridge(
+                backend_smoke_workflow_report_path=str(backend_workflow_report_path),
+                runtime_backend_workflow_report_path="",
+                out_root=root / "autoware_bundle",
+                strict=False,
+            )
+            report = result["report"]
+            self.assertEqual(report["status"], "PLANNED")
+            self.assertEqual(report["availability_mode"], "planned")
+            self.assertEqual(report["missing_required_sensor_count"], 0)
+            self.assertTrue(report["required_topics_complete"])
+            self.assertTrue(report["frame_tree_complete"])
+            self.assertIn("/sensing/camera/cam_front/image_raw", report["available_topics"])
+            self.assertIn("/sensing/lidar/lidar_top/pointcloud", report["available_topics"])
+            self.assertIn("/sensing/radar/radar_front/tracks", report["available_topics"])
+            self.assertIn("/sensing/radar/radar_front/detections", report["available_topics"])
+            dataset_manifest = json.loads(
+                Path(report["artifacts"]["dataset_manifest_path"]).read_text(encoding="utf-8")
+            )
+            self.assertEqual(dataset_manifest["recording_style"], "planned_backend_export")
+
     def test_script_bootstraps_src_path(self) -> None:
         script_path = Path(__file__).resolve().parents[1] / "scripts" / "run_autoware_pipeline_bridge.py"
         completed = subprocess.run(

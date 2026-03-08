@@ -1092,7 +1092,14 @@ def run_scenario_backend_smoke_workflow(
 
     report_path = out_root / "scenario_backend_smoke_workflow_report_v0.json"
     _write_json(report_path, workflow_report)
-    if not skip_autoware_bridge and smoke_summary_path.exists():
+    if not skip_autoware_bridge and (
+        smoke_summary_path.exists()
+        or workflow_report["status"] in {
+            "HANDOFF_READY",
+            "HANDOFF_DOCKER_VERIFIED",
+            "HANDOFF_DOCKER_EXECUTED",
+        }
+    ):
         autoware_result = run_autoware_pipeline_bridge(
             backend_smoke_workflow_report_path=str(report_path),
             runtime_backend_workflow_report_path="",

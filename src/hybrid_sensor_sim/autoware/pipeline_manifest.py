@@ -9,6 +9,7 @@ AUTOWARE_DATASET_MANIFEST_SCHEMA_VERSION_V0 = "autoware_dataset_manifest_v0"
 
 def _pipeline_status(
     *,
+    availability_mode: str,
     missing_required_sensor_count: int,
     output_comparison_status: str | None,
     output_smoke_status: str | None,
@@ -16,6 +17,10 @@ def _pipeline_status(
 ) -> str:
     if strict_failed:
         return "FAILED"
+    if availability_mode == "planned":
+        if missing_required_sensor_count > 0:
+            return "DEGRADED"
+        return "PLANNED"
     if missing_required_sensor_count > 0:
         return "DEGRADED"
     if output_comparison_status and output_comparison_status != "MATCHED":
@@ -35,6 +40,7 @@ def build_autoware_pipeline_manifest(
     smoke_summary: dict[str, Any],
     artifacts: dict[str, str | None],
     strict_failed: bool,
+    availability_mode: str = "runtime",
 ) -> dict[str, Any]:
     warnings = list(sensor_contracts.get("warnings", []))
     mismatch_reasons = list(
@@ -43,6 +49,9 @@ def build_autoware_pipeline_manifest(
         else []
     )
     warnings.extend(f"backend_output_mismatch:{reason}" for reason in mismatch_reasons)
+    normalized_availability_mode = str(availability_mode).strip().lower() or "runtime"
+    if normalized_availability_mode == "planned":
+        warnings.append("planned_backend_exports_only")
     missing_required_sensor_count = int(sensor_contracts.get("missing_required_sensor_count", 0) or 0)
     output_comparison_status = (
         (smoke_summary.get("output_comparison") or {}).get("status")
@@ -55,6 +64,7 @@ def build_autoware_pipeline_manifest(
         else None
     )
     status = _pipeline_status(
+        availability_mode=normalized_availability_mode,
         missing_required_sensor_count=missing_required_sensor_count,
         output_comparison_status=output_comparison_status,
         output_smoke_status=output_smoke_status,
@@ -64,6 +74,7 @@ def build_autoware_pipeline_manifest(
         "schema_version": AUTOWARE_PIPELINE_MANIFEST_SCHEMA_VERSION_V0,
         "run_id": str(run_id).strip(),
         "backend": str(backend).strip() or None,
+        "availability_mode": normalized_availability_mode,
         "scenario_source": scenario_source,
         "status": status,
         "backend_output_smoke_status": output_smoke_status,
@@ -89,6 +100,7 @@ def build_autoware_dataset_manifest(
     pipeline_manifest_path: str,
     sensor_contracts_path: str,
     data_roots: list[str],
+    recording_style: str = "backend_smoke_export",
 ) -> dict[str, Any]:
     available_modalities = sorted(
         {
@@ -102,7 +114,7 @@ def build_autoware_dataset_manifest(
         "run_id": str(run_id).strip(),
         "scenario_id": str(scenario_id).strip() or None,
         "backend": str(backend).strip() or None,
-        "recording_style": "backend_smoke_export",
+        "recording_style": str(recording_style).strip() or "backend_smoke_export",
         "sensor_manifest_path": sensor_contracts_path,
         "pipeline_manifest_path": pipeline_manifest_path,
         "frame_count": 0,
