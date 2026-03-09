@@ -680,6 +680,7 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                                 "recommended_download_dir": "/Volumes/LargeDisk/backend_downloads/carla",
                                 "recommended_download_dir_ready": False,
                                 "recommended_download_dir_available_space_bytes": 123456789,
+                                "recommended_download_dir_shortfall_bytes": 15723108218 - 123456789,
                                 "download_directory_status": "insufficient",
                                 "archive_estimated_size_bytes": 15723108218,
                             }
@@ -718,10 +719,14 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                             "DOWNLOAD_SPACE_INSUFFICIENT",
                             "LOCAL_RUNTIME_MISSING",
                         ],
+                        "recommended_download_dirs": [
+                            "/Volumes/LargeDisk/backend_downloads/carla"
+                        ],
+                        "recommended_download_dir_shortfall_bytes": 15723108218 - 123456789,
                         "plan_id": "packaged_runtime_required_with_download_space_blocker",
                         "plan_summary": "Acquire a packaged runtime after switching to a directory with enough free space.",
                         "plan_steps": [
-                            "Choose or create a download directory with enough free space for the backend archive.",
+                            "Choose or create a download directory with at least 14.5 GiB more free space at /Volumes/LargeDisk/backend_downloads/carla.",
                             "Re-run the package acquire command with --download-dir set to that directory.",
                             "Stage the packaged runtime into the local runtime workspace and rerun smoke.",
                         ],
@@ -735,7 +740,7 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
             self.assertEqual(
                 report["recommended_resolution_steps"],
                 [
-                    "Choose or create a download directory with enough free space for the backend archive.",
+                    "Choose or create a download directory with at least 14.5 GiB more free space at /Volumes/LargeDisk/backend_downloads/carla.",
                     "Re-run the package acquire command with --download-dir set to that directory.",
                     "Stage the packaged runtime into the local runtime workspace and rerun smoke.",
                     "Acquire and stage a packaged runtime for the selected backend.",

@@ -100,6 +100,10 @@ def _build_runtime_strategy_plan(
     preferred_runtime_source: str,
     docker_storage_status: str,
     reason_codes: list[str],
+    recommended_download_dir: str = "",
+    recommended_download_dir_available_space_bytes: int | None = None,
+    archive_estimated_size_bytes: int | None = None,
+    recommended_download_dir_shortfall_bytes: int | None = None,
 ) -> dict[str, Any]:
     normalized_strategy = str(strategy or "").strip()
     normalized_source = str(preferred_runtime_source or "").strip()
@@ -164,11 +168,23 @@ def _build_runtime_strategy_plan(
         }
     if normalized_strategy == "packaged_runtime_required":
         if "DOWNLOAD_SPACE_INSUFFICIENT" in normalized_reason_codes:
+            shortfall_gib = None
+            if isinstance(recommended_download_dir_shortfall_bytes, int):
+                shortfall_gib = recommended_download_dir_shortfall_bytes / float(1024 ** 3)
+            shortfall_note = ""
+            if isinstance(recommended_download_dir, str) and recommended_download_dir.strip():
+                shortfall_note = f" at {recommended_download_dir}"
+            shortfall_step = "Choose or create a download directory with enough free space for the backend archive."
+            if shortfall_gib is not None:
+                shortfall_step = (
+                    f"Choose or create a download directory with at least "
+                    f"{shortfall_gib:.1f} GiB more free space{shortfall_note}."
+                )
             return {
                 "plan_id": "packaged_runtime_required_with_download_space_blocker",
                 "summary": "Acquire a packaged runtime after switching to a directory with enough free space.",
                 "steps": [
-                    "Choose or create a download directory with enough free space for the backend archive.",
+                    shortfall_step,
                     "Re-run the package acquire command with --download-dir set to that directory.",
                     "Stage the packaged runtime into the local runtime workspace and rerun smoke.",
                 ],
@@ -511,6 +527,9 @@ def _build_local_setup_probe_result(
         "backend_runtime_recommended_download_dir_available_space_bytes": runtime_strategy.get(
             "recommended_download_dir_available_space_bytes"
         ),
+        "backend_runtime_recommended_download_dir_shortfall_bytes": runtime_strategy.get(
+            "recommended_download_dir_shortfall_bytes"
+        ),
         "backend_runtime_download_directory_status": runtime_strategy.get(
             "download_directory_status"
         ),
@@ -544,6 +563,9 @@ def _build_local_setup_probe_result(
                 ),
                 "backend_runtime_recommended_download_dir_available_space_bytes": runtime_strategy.get(
                     "recommended_download_dir_available_space_bytes"
+                ),
+                "backend_runtime_recommended_download_dir_shortfall_bytes": runtime_strategy.get(
+                    "recommended_download_dir_shortfall_bytes"
                 ),
                 "backend_runtime_download_directory_status": runtime_strategy.get(
                     "download_directory_status"
@@ -911,6 +933,9 @@ def run_scenario_runtime_backend_probe_set(
                 "backend_runtime_recommended_download_dir_available_space_bytes": rebridge_status_summary.get(
                     "backend_runtime_recommended_download_dir_available_space_bytes"
                 ),
+                "backend_runtime_recommended_download_dir_shortfall_bytes": rebridge_status_summary.get(
+                    "backend_runtime_recommended_download_dir_shortfall_bytes"
+                ),
                 "backend_runtime_download_directory_status": rebridge_status_summary.get(
                     "backend_runtime_download_directory_status"
                 ),
@@ -1084,11 +1109,51 @@ def run_scenario_runtime_backend_probe_set(
                 if str(reason_code or "").strip()
             }
         )
+        recommended_download_dirs = sorted(
+            {
+                str(result.get("backend_runtime_recommended_download_dir") or "").strip()
+                for result in probe_results
+                if str(result.get("backend_runtime_strategy") or "") == strategy
+                and str(result.get("backend_runtime_recommended_download_dir") or "").strip()
+            }
+        )
+        download_space_values = [
+            result.get("backend_runtime_recommended_download_dir_available_space_bytes")
+            for result in probe_results
+            if str(result.get("backend_runtime_strategy") or "") == strategy
+            and isinstance(
+                result.get("backend_runtime_recommended_download_dir_available_space_bytes"),
+                int,
+            )
+        ]
+        archive_size_values = [
+            result.get("backend_runtime_archive_estimated_size_bytes")
+            for result in probe_results
+            if str(result.get("backend_runtime_strategy") or "") == strategy
+            and isinstance(result.get("backend_runtime_archive_estimated_size_bytes"), int)
+        ]
+        shortfall_values = [
+            result.get("backend_runtime_recommended_download_dir_shortfall_bytes")
+            for result in probe_results
+            if str(result.get("backend_runtime_strategy") or "") == strategy
+            and isinstance(
+                result.get("backend_runtime_recommended_download_dir_shortfall_bytes"),
+                int,
+            )
+        ]
         runtime_plan = _build_runtime_strategy_plan(
             strategy=strategy,
             preferred_runtime_source=preferred_runtime_source or "",
             docker_storage_status=docker_storage_statuses[0] if docker_storage_statuses else "",
             reason_codes=reason_codes,
+            recommended_download_dir=recommended_download_dirs[0] if recommended_download_dirs else "",
+            recommended_download_dir_available_space_bytes=(
+                max(download_space_values) if download_space_values else None
+            ),
+            archive_estimated_size_bytes=(max(archive_size_values) if archive_size_values else None),
+            recommended_download_dir_shortfall_bytes=(
+                min(shortfall_values) if shortfall_values else None
+            ),
         )
         runtime_strategy_summary_rows.append(
             {
@@ -1100,18 +1165,23 @@ def run_scenario_runtime_backend_probe_set(
                 ),
             }
         )
-        runtime_strategy_plan_rows.append(
-            {
-                "strategy": strategy,
-                "probe_ids": sorted(probe_ids),
-                "preferred_runtime_source": preferred_runtime_source,
-                "docker_storage_statuses": docker_storage_statuses,
-                "reason_codes": reason_codes,
-                "plan_id": runtime_plan["plan_id"],
-                "plan_summary": runtime_plan["summary"],
-                "plan_steps": list(runtime_plan.get("steps", []) or []),
-            }
-        )
+        runtime_plan_row = {
+            "strategy": strategy,
+            "probe_ids": sorted(probe_ids),
+            "preferred_runtime_source": preferred_runtime_source,
+            "docker_storage_statuses": docker_storage_statuses,
+            "reason_codes": reason_codes,
+            "plan_id": runtime_plan["plan_id"],
+            "plan_summary": runtime_plan["summary"],
+            "plan_steps": list(runtime_plan.get("steps", []) or []),
+        }
+        if recommended_download_dirs:
+            runtime_plan_row["recommended_download_dirs"] = recommended_download_dirs
+        if shortfall_values:
+            runtime_plan_row["recommended_download_dir_shortfall_bytes"] = min(
+                shortfall_values
+            )
+        runtime_strategy_plan_rows.append(runtime_plan_row)
 
     blocking_reason_summary_rows = []
     for reason_code, probe_ids in sorted(blocking_reason_probe_ids.items()):

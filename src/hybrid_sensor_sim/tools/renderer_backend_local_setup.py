@@ -1224,6 +1224,16 @@ def _build_download_directory_hints(
         download_directory_status = "unknown"
     else:
         download_directory_status = "unavailable"
+    recommended_download_dir_shortfall_bytes = None
+    if (
+        isinstance(recommended_candidate, dict)
+        and isinstance(estimated_size_bytes, int)
+        and isinstance(recommended_candidate.get("available_space_bytes"), int)
+        and estimated_size_bytes > recommended_candidate["available_space_bytes"]
+    ):
+        recommended_download_dir_shortfall_bytes = (
+            estimated_size_bytes - recommended_candidate["available_space_bytes"]
+        )
     return {
         "archive_download_name": archive_name or None,
         "archive_download_url": archive_url or None,
@@ -1244,6 +1254,7 @@ def _build_download_directory_hints(
             if isinstance(recommended_candidate, dict)
             else None
         ),
+        "recommended_download_dir_shortfall_bytes": recommended_download_dir_shortfall_bytes,
         "download_directory_status": download_directory_status,
     }
 
@@ -1479,6 +1490,9 @@ def _classify_backend_runtime_strategy(
     recommended_download_dir_available_space_bytes = backend_hints.get(
         "recommended_download_dir_available_space_bytes"
     )
+    recommended_download_dir_shortfall_bytes = backend_hints.get(
+        "recommended_download_dir_shortfall_bytes"
+    )
     docker_storage_status = docker_hints.get("storage_probe_status")
     recommended_handoff_command = (
         "python3 scripts/run_renderer_backend_workflow.py "
@@ -1587,6 +1601,7 @@ def _classify_backend_runtime_strategy(
         "recommended_download_dir": recommended_download_dir,
         "recommended_download_dir_ready": recommended_download_dir_ready,
         "recommended_download_dir_available_space_bytes": recommended_download_dir_available_space_bytes,
+        "recommended_download_dir_shortfall_bytes": recommended_download_dir_shortfall_bytes,
         "download_directory_status": download_directory_status,
         "archive_estimated_size_bytes": archive_estimated_size_bytes,
         "reason_codes": sorted(set(reason_codes)),

@@ -798,6 +798,10 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
                 carla_hints["recommended_download_dir_available_space_bytes"],
                 123456789,
             )
+            self.assertEqual(
+                carla_hints["recommended_download_dir_shortfall_bytes"],
+                15723108218 - 123456789,
+            )
             self.assertIn(
                 "DOWNLOAD_SPACE_INSUFFICIENT",
                 summary["runtime_strategy"]["carla"]["reason_codes"],
@@ -857,6 +861,10 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertEqual(
                 summary["acquisition_hints"]["carla"]["recommended_download_dir_available_space_bytes"],
                 200,
+            )
+            self.assertEqual(
+                summary["acquisition_hints"]["carla"]["recommended_download_dir_shortfall_bytes"],
+                15723108218 - 200,
             )
 
     def test_build_renderer_backend_local_setup_writes_probe_summary(self) -> None:
