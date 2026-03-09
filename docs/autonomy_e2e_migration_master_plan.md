@@ -542,4 +542,4 @@ The next concrete code migration should be:
 
 That order increases current feature coverage fastest while keeping repository scope under control.
 
-Auto-acquire now defaults to the local setup `recommended_download_dir` when available, and standalone package acquisition follows the same rule when a setup summary is provided. Mounted `/Volumes/*` candidates are considered automatically before falling back to repo-local download roots.
+Auto-acquire now defaults to the local setup `recommended_download_dir` when available, and standalone package acquisition follows the same rule when a setup summary is provided. The same setup summary also contributes `recommended_stage_output_root`, so both acquire and workflow paths can redirect archive expansion to the same high-capacity location without restating `--output-root`. Mounted `/Volumes/*` candidates are considered automatically before falling back to repo-local download roots.

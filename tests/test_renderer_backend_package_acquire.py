@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import shlex
 import tempfile
 import unittest
 import zipfile
@@ -246,6 +247,49 @@ class RendererBackendPackageAcquireTests(unittest.TestCase):
             self.assertEqual(
                 summary["download"]["target_path"],
                 str((recommended_dir / "CARLA_UE5_Latest.tar.gz").resolve()),
+            )
+
+    def test_build_acquire_uses_setup_recommended_stage_output_root_when_omitted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            recommended_stage_root = root / "external_drive" / "runtime_backends" / "carla"
+            setup_summary = root / "renderer_backend_local_setup.json"
+            setup_summary.write_text(
+                json.dumps(
+                    {
+                        "runtime_strategy": {
+                            "carla": {
+                                "recommended_stage_output_root": str(recommended_stage_root),
+                            }
+                        },
+                        "acquisition_hints": {
+                            "carla": {
+                                "download_options": [
+                                    {
+                                        "name": "CARLA_UE5_Latest.tar.gz",
+                                        "url": "https://example.invalid/CARLA_UE5_Latest.tar.gz",
+                                    }
+                                ]
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            summary = build_renderer_backend_package_acquire(
+                backend="carla",
+                repo_root=root / "repo",
+                setup_summary_path=setup_summary,
+                download_dir=root / "downloads",
+                dry_run=True,
+            )
+
+            self.assertEqual(summary["download"]["output_root"], str(recommended_stage_root.resolve()))
+            self.assertEqual(summary["download"]["output_root_source"], "setup_summary_recommended")
+            self.assertIn(
+                f"--output-root {shlex.quote(str(recommended_stage_root.resolve()))}",
+                summary["commands"]["stage"],
             )
 
     def test_build_acquire_prefers_archive_style_url_over_release_page(self) -> None:
@@ -500,6 +544,52 @@ class RendererBackendPackageAcquireTests(unittest.TestCase):
             payload = json.loads(stdout.getvalue())
             self.assertEqual(payload["download"]["download_dir"], str(recommended_dir.resolve()))
             self.assertEqual(payload["download"]["download_dir_source"], "setup_summary_recommended")
+
+    def test_main_uses_setup_recommended_stage_output_root_when_not_explicit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            recommended_stage_root = root / "fast_volume" / "runtime_backends" / "carla"
+            setup_summary = root / "renderer_backend_local_setup.json"
+            setup_summary.write_text(
+                json.dumps(
+                    {
+                        "runtime_strategy": {
+                            "carla": {
+                                "recommended_stage_output_root": str(recommended_stage_root),
+                            }
+                        },
+                        "acquisition_hints": {
+                            "carla": {
+                                "download_options": [
+                                    {
+                                        "name": "CARLA_UE5_Latest.tar.gz",
+                                        "url": "https://example.invalid/CARLA_UE5_Latest.tar.gz",
+                                    }
+                                ]
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with contextlib.redirect_stdout(io.StringIO()) as stdout:
+                exit_code = package_acquire_main(
+                    [
+                        "--backend",
+                        "carla",
+                        "--setup-summary",
+                        str(setup_summary),
+                        "--download-dir",
+                        str(root / "downloads"),
+                        "--dry-run",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(payload["download"]["output_root"], str(recommended_stage_root.resolve()))
+            self.assertEqual(payload["download"]["output_root_source"], "setup_summary_recommended")
 
 
 if __name__ == "__main__":

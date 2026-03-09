@@ -374,4 +374,4 @@ The current downstream bridge now also emits profile-derived Autoware processing
 
 That order increases current feature coverage without destabilizing the newly migrated scenario and rig-sweep blocks.
 
-Backend runtime workflows now reuse the local setup `recommended_download_dir` during auto-acquire, and standalone backend package acquisition now follows the same setup-summary recommendation path, reducing manual CARLA/AWSIM package recovery steps once a valid download volume is available.
+Backend runtime workflows now reuse the local setup `recommended_download_dir` during auto-acquire, and standalone backend package acquisition now follows the same setup-summary recommendation path. The same setup summary also feeds `recommended_stage_output_root`, so both flows can redirect archive expansion to the same high-capacity stage root without separately passing `--output-root`, reducing manual CARLA/AWSIM package recovery steps once a valid download volume is available.

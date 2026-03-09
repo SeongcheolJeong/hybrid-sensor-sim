@@ -315,6 +315,72 @@ class RendererBackendWorkflowTests(unittest.TestCase):
                 str(recommended_download_dir.resolve()),
             )
 
+    def test_workflow_auto_acquire_uses_recommended_stage_output_root_from_setup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+            archive = root / "AWSIM-Demo.zip"
+            _write_fake_backend_archive(archive)
+            recommended_stage_root = root / "preferred_stage_root" / "awsim"
+            setup_summary = root / "renderer_backend_local_setup.json"
+            setup_summary.write_text(
+                json.dumps(
+                    {
+                        "selection": {
+                            "HELIOS_BIN": str(fake_helios.resolve()),
+                            "AWSIM_RENDERER_MAP": "Town14",
+                        },
+                        "readiness": {
+                            "helios_ready": True,
+                        },
+                        "runtime_strategy": {
+                            "awsim": {
+                                "recommended_stage_output_root": str(recommended_stage_root.resolve()),
+                            }
+                        },
+                        "acquisition_hints": {
+                            "awsim": {
+                                "platform_supported": False,
+                                "platform_note": "AWSIM quick-start docs assume Ubuntu 22.04 with NVIDIA RTX and driver 570+.",
+                                "download_options": [
+                                    {
+                                        "name": "AWSIM-Demo.zip",
+                                        "url": archive.resolve().as_uri(),
+                                    }
+                                ]
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            config_path = self._write_base_config(
+                root=root,
+                survey=survey,
+                helios_bin=fake_helios,
+                output_dir=root / "smoke_base_output",
+            )
+
+            summary = build_renderer_backend_workflow(
+                backend="awsim",
+                repo_root=root / "repo",
+                workflow_root=root / "workflow",
+                setup_summary_path=setup_summary,
+                config_path=config_path,
+                auto_acquire=True,
+            )
+
+            self.assertEqual(summary["status"], "SMOKE_SUCCEEDED")
+            self.assertEqual(summary["acquire_output_root"], str(recommended_stage_root.resolve()))
+            self.assertEqual(summary["acquire_output_root_source"], "setup_runtime_strategy")
+            self.assertEqual(
+                summary["acquire"]["download"]["output_root"],
+                str(recommended_stage_root.resolve()),
+            )
+
     def test_workflow_can_stage_existing_local_archive_without_download(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

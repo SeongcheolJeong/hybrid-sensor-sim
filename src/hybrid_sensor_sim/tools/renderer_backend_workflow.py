@@ -345,6 +345,24 @@ def _recommended_download_dir_from_setup(
     return _resolve_path(recommended_download_dir)
 
 
+def _recommended_stage_output_root_from_setup(
+    *,
+    backend: str,
+    setup_summary: dict[str, Any],
+    summary_path: Path,
+) -> Path | None:
+    runtime_strategy_map = setup_summary.get("runtime_strategy")
+    if not isinstance(runtime_strategy_map, dict):
+        runtime_strategy_map = _build_runtime_strategy(setup_summary, summary_path=summary_path)
+    runtime_strategy = runtime_strategy_map.get(backend, {}) if isinstance(runtime_strategy_map, dict) else {}
+    if not isinstance(runtime_strategy, dict):
+        return None
+    recommended_stage_output_root = runtime_strategy.get("recommended_stage_output_root")
+    if not isinstance(recommended_stage_output_root, str) or not recommended_stage_output_root.strip():
+        return None
+    return _resolve_path(recommended_stage_output_root)
+
+
 def _render_workflow_env_file(summary: dict[str, Any]) -> str:
     selection = summary.get("final_selection", {})
     lines = [
@@ -1813,9 +1831,18 @@ def build_renderer_backend_workflow(
             summary_path=resolved_setup_summary_path,
         )
     )
+    effective_acquire_output_root = _recommended_stage_output_root_from_setup(
+        backend=backend,
+        setup_summary=setup_summary,
+        summary_path=resolved_setup_summary_path,
+    )
 
     if selected_backend_bin is None and auto_acquire:
-        acquire_output_root = repo_root / "third_party" / "runtime_backends" / backend
+        acquire_output_root = (
+            effective_acquire_output_root
+            if effective_acquire_output_root is not None
+            else repo_root / "third_party" / "runtime_backends" / backend
+        )
         acquire_summary = build_renderer_backend_package_acquire(
             backend=backend,
             repo_root=repo_root,
@@ -2148,6 +2175,16 @@ def build_renderer_backend_workflow(
         ),
         "acquire_download_dir": str(effective_download_dir) if effective_download_dir is not None else None,
         "acquire_download_dir_source": "explicit" if download_dir is not None else ("setup_runtime_strategy" if effective_download_dir is not None else None),
+        "acquire_output_root": (
+            str(effective_acquire_output_root)
+            if effective_acquire_output_root is not None
+            else str((repo_root / "third_party" / "runtime_backends" / backend).resolve())
+        ),
+        "acquire_output_root_source": (
+            "setup_runtime_strategy"
+            if effective_acquire_output_root is not None
+            else "default"
+        ),
         "acquire": acquire_summary,
         "smoke": {
             "ready": smoke_ready,

@@ -130,6 +130,26 @@ def _recommended_download_dir_from_setup_summary(
     return None
 
 
+def _recommended_stage_output_root_from_setup_summary(
+    setup_summary: dict[str, Any],
+    backend: str,
+) -> Path | None:
+    runtime_strategy_map = setup_summary.get("runtime_strategy")
+    if isinstance(runtime_strategy_map, dict):
+        runtime_strategy = runtime_strategy_map.get(backend, {})
+        if isinstance(runtime_strategy, dict):
+            raw = runtime_strategy.get("recommended_stage_output_root")
+            if isinstance(raw, str) and raw.strip():
+                return _resolve_path(raw)
+    hints = setup_summary.get("acquisition_hints", {})
+    backend_hints = hints.get(backend, {}) if isinstance(hints, dict) else {}
+    if isinstance(backend_hints, dict):
+        raw = backend_hints.get("recommended_stage_output_root")
+        if isinstance(raw, str) and raw.strip():
+            return _resolve_path(raw)
+    return None
+
+
 def _resolve_download_options(setup_summary: dict[str, Any], backend: str) -> list[dict[str, str]]:
     hints = setup_summary.get("acquisition_hints", {})
     backend_hints = hints.get(backend, {}) if isinstance(hints, dict) else {}
@@ -316,17 +336,25 @@ def build_renderer_backend_package_acquire(
     if backend not in _SUPPORTED_BACKENDS:
         raise ValueError(f"Unsupported backend: {backend}")
     repo_root = repo_root.resolve()
-    output_root = (
-        _resolve_path(output_root)
-        if output_root is not None
-        else (repo_root / "third_party" / "runtime_backends" / backend).resolve()
-    )
 
     setup_summary: dict[str, Any] = {}
     resolved_setup_summary_path: Path | None = None
     if setup_summary_path is not None:
         resolved_setup_summary_path = _resolve_path(setup_summary_path)
         setup_summary = _load_json(resolved_setup_summary_path)
+    if output_root is not None:
+        output_root = _resolve_path(output_root)
+        output_root_source = "explicit"
+    else:
+        output_root = _recommended_stage_output_root_from_setup_summary(
+            setup_summary,
+            backend,
+        )
+        if output_root is not None:
+            output_root_source = "setup_summary_recommended"
+        else:
+            output_root = (repo_root / "third_party" / "runtime_backends" / backend).resolve()
+            output_root_source = "default"
     if download_dir is not None:
         download_dir = _resolve_path(download_dir)
         download_dir_source = "explicit"
@@ -462,6 +490,7 @@ def build_renderer_backend_package_acquire(
         "python3 scripts/stage_renderer_backend_package.py "
         f"--backend {backend} "
         f"--archive {shlex.quote(str(archive_path))}"
+        + f" --output-root {shlex.quote(str(output_root))}"
         + (
             f" --setup-summary {shlex.quote(str(resolved_setup_summary_path))}"
             if resolved_setup_summary_path is not None
@@ -493,6 +522,8 @@ def build_renderer_backend_package_acquire(
             "target_exists": bool(archive_path and archive_path.exists()),
             "download_dir": str(download_dir),
             "download_dir_source": download_dir_source,
+            "output_root": str(output_root),
+            "output_root_source": output_root_source,
             "estimated_size_bytes": estimated_size_bytes,
             "size_probe_source": size_probe_source,
             "size_probe_message": size_probe_message,
