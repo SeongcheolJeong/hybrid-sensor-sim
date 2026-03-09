@@ -219,6 +219,8 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
         f"- Runtime strategy reason counts: `{json.dumps(runtime_strategy_reason_code_counts, sort_keys=True) if runtime_strategy_reason_code_counts else '-'}`",
         f"- Blocking reason counts: `{json.dumps(blocking_reason_counts, sort_keys=True) if blocking_reason_counts else '-'}`",
         f"- Blocking reason category counts: `{json.dumps(blocking_reason_category_counts, sort_keys=True) if blocking_reason_category_counts else '-'}`",
+        f"- Primary blocking reason: `{report.get('primary_blocking_reason_code') or '-'}`",
+        f"- Primary blocking category: `{report.get('primary_blocking_category') or '-'}`",
         f"- Recommended resolution focus: `{report.get('recommended_resolution_focus') or '-'}`",
         f"- Recommended next command: `{report.get('recommended_next_command') or '-'}`",
         "",
@@ -292,6 +294,17 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
             )
             + " |"
         )
+    lines.extend(
+        [
+            "",
+            "## Recommended Resolution Steps",
+            "",
+            "| Order | Step |",
+            "| --- | --- |",
+        ]
+    )
+    for index, step in enumerate(report.get("recommended_resolution_steps", []) or [], start=1):
+        lines.append(f"| {index} | {step} |")
     lines.extend(
         [
             "",
@@ -562,11 +575,25 @@ def run_scenario_runtime_backend_probe_set(
         )
 
     recommended_resolution_focus = None
+    primary_blocking_reason_code = None
+    primary_blocking_category = None
     if blocking_reason_summary_rows:
-        recommended_resolution_focus = sorted(
+        primary_row = sorted(
             blocking_reason_summary_rows,
             key=lambda row: (-int(row.get("count") or 0), str(row.get("reason_code") or "")),
-        )[0]["recommended_action"]
+        )[0]
+        recommended_resolution_focus = primary_row["recommended_action"]
+        primary_blocking_reason_code = primary_row["reason_code"]
+        primary_blocking_category = primary_row["category"]
+
+    recommended_resolution_steps: list[str] = []
+    for row in sorted(
+        blocking_reason_summary_rows,
+        key=lambda row: (-int(row.get("count") or 0), str(row.get("reason_code") or "")),
+    ):
+        action = str(row.get("recommended_action") or "").strip()
+        if action and action not in recommended_resolution_steps:
+            recommended_resolution_steps.append(action)
 
     report = {
         "scenario_runtime_backend_probe_set_report_schema_version": SCENARIO_RUNTIME_BACKEND_PROBE_SET_REPORT_SCHEMA_VERSION_V0,
@@ -606,7 +633,10 @@ def run_scenario_runtime_backend_probe_set(
             for category, probe_ids in sorted(blocking_reason_category_probe_ids.items())
         },
         "blocking_reason_summary_rows": blocking_reason_summary_rows,
+        "primary_blocking_reason_code": primary_blocking_reason_code,
+        "primary_blocking_category": primary_blocking_category,
         "recommended_resolution_focus": recommended_resolution_focus,
+        "recommended_resolution_steps": recommended_resolution_steps,
         "recommended_next_command": recommended_next_command or None,
         "source_missing_required_topics": sorted(source_missing_required_topics),
         "refreshed_missing_required_topics": sorted(refreshed_missing_required_topics),

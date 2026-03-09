@@ -185,8 +185,20 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                 ],
             )
             self.assertEqual(
+                report["primary_blocking_reason_code"],
+                "HOST_INCOMPATIBLE_PACKAGED_RUNTIME",
+            )
+            self.assertEqual(
+                report["primary_blocking_category"],
+                "runtime_environment",
+            )
+            self.assertEqual(
                 report["recommended_resolution_focus"],
                 "Use the linux handoff packaged runtime path.",
+            )
+            self.assertEqual(
+                report["recommended_resolution_steps"],
+                ["Use the linux handoff packaged runtime path."],
             )
             self.assertEqual(
                 report["runtime_strategy_recommended_command_counts"],
@@ -299,8 +311,23 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                 ["semantic_recovery_ready"],
             )
             self.assertEqual(
+                report["primary_blocking_reason_code"],
+                "HOST_INCOMPATIBLE_PACKAGED_RUNTIME",
+            )
+            self.assertEqual(
+                report["primary_blocking_category"],
+                "runtime_environment",
+            )
+            self.assertEqual(
                 report["recommended_resolution_focus"],
                 "Use the linux handoff packaged runtime path.",
+            )
+            self.assertEqual(
+                report["recommended_resolution_steps"],
+                [
+                    "Use the linux handoff packaged runtime path.",
+                    "Inspect missing and recovered Autoware topics for the selected consumer profile.",
+                ],
             )
             self.assertEqual(
                 report["recommended_next_command"],
