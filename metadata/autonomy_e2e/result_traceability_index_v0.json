@@ -1,6 +1,6 @@
 {
   "schema_version": "autonomy_e2e_result_traceability_index_v0",
-  "generated_at_utc": "2026-03-09T00:05:37+00:00",
+  "generated_at_utc": "2026-03-09T00:30:44+00:00",
   "current_repo_root": "/Users/seongcheoljeong/Documents/Test",
   "paths": [
     {
@@ -314,6 +314,19 @@
       "result_role": "runner",
       "current_intro_commit": "5293a3f07fdad0fc8a67f852751b933f2a9479ba",
       "current_latest_touch_commit": "5293a3f07fdad0fc8a67f852751b933f2a9479ba"
+    },
+    {
+      "current_path": "scripts/run_scenario_runtime_backend_rebridge.py",
+      "path_kind": "script",
+      "block_ids": [
+        "p_sim_engine.scenario_runtime_smoke_bridge"
+      ],
+      "project_ids": [
+        "P_Sim-Engine"
+      ],
+      "result_role": "runner",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
     },
     {
       "current_path": "scripts/run_scenario_runtime_backend_workflow.py",
@@ -822,6 +835,19 @@
       "result_role": "core_logic",
       "current_intro_commit": "42862794ac074d2f2b8d31d5cac8eb267160b684",
       "current_latest_touch_commit": "d10bfb62ac43ae7f7b2de4c67ab444e518470027"
+    },
+    {
+      "current_path": "src/hybrid_sensor_sim/tools/scenario_runtime_backend_rebridge.py",
+      "path_kind": "library",
+      "block_ids": [
+        "p_sim_engine.scenario_runtime_smoke_bridge"
+      ],
+      "project_ids": [
+        "P_Sim-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
     },
     {
       "current_path": "src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py",
@@ -1395,6 +1421,19 @@
       "result_role": "regression",
       "current_intro_commit": "5293a3f07fdad0fc8a67f852751b933f2a9479ba",
       "current_latest_touch_commit": "b583eaf9f33a0d558ad25275da1c490086bd4a59"
+    },
+    {
+      "current_path": "tests/test_scenario_runtime_backend_rebridge.py",
+      "path_kind": "test",
+      "block_ids": [
+        "p_sim_engine.scenario_runtime_smoke_bridge"
+      ],
+      "project_ids": [
+        "P_Sim-Engine"
+      ],
+      "result_role": "regression",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
     },
     {
       "current_path": "tests/test_scenario_runtime_backend_workflow.py",

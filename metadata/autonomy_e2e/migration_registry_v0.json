@@ -1,10 +1,10 @@
 {
   "schema_version": "autonomy_e2e_migration_registry_v0",
-  "generated_at_utc": "2026-03-09T00:05:32+00:00",
+  "generated_at_utc": "2026-03-09T00:30:39+00:00",
   "source_repo_root": "/Users/seongcheoljeong/Documents/Autonomy-E2E/Autonomy-E2E",
   "current_repo_root": "/Users/seongcheoljeong/Documents/Test",
   "integration_baseline_commit": "8d2353f",
-  "current_repo_head_commit": "8b03c59849fb2b8b08412de725a89515d20c091c",
+  "current_repo_head_commit": "058331b36f7a60e8e61247c8a795fa9956c47838",
   "blocks": [
     {
       "block_id": "p_autoware_workspace_ci.data_contract_bridge",
@@ -865,21 +865,24 @@
         "da81953c6a5070668aff6e448e5e02a8785b3745",
         "157855d6ccbe7be8352295ba4df83cf07418edba"
       ],
-      "source_evidence_summary": "Scenario batch outputs can now bridge into runtime smoke and reuse staged backend selections.",
+      "source_evidence_summary": "Scenario batch outputs can now bridge into runtime smoke and reuse staged backend selections, and previously generated runtime/backend smoke reports can be re-bridged into refreshed Autoware and top-level workflow artifacts.",
       "migration_status": "migrated",
       "current_paths": [
         "src/hybrid_sensor_sim/tools/scenario_runtime_bridge.py",
         "src/hybrid_sensor_sim/tools/scenario_backend_smoke_workflow.py",
-        "src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py"
+        "src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py",
+        "src/hybrid_sensor_sim/tools/scenario_runtime_backend_rebridge.py"
       ],
       "current_test_paths": [
         "tests/test_scenario_backend_smoke_workflow.py",
-        "tests/test_scenario_runtime_backend_workflow.py"
+        "tests/test_scenario_runtime_backend_workflow.py",
+        "tests/test_scenario_runtime_backend_rebridge.py"
       ],
       "current_fixture_paths": [],
       "current_script_paths": [
         "scripts/run_scenario_backend_smoke_workflow.py",
-        "scripts/run_scenario_runtime_backend_workflow.py"
+        "scripts/run_scenario_runtime_backend_workflow.py",
+        "scripts/run_scenario_runtime_backend_rebridge.py"
       ],
       "current_doc_paths": [
         "README.md",
@@ -894,7 +897,7 @@
         "test",
         "doc"
       ],
-      "result_summary": "Scenario batch outputs can now bridge into runtime smoke and reuse staged backend selections.",
+      "result_summary": "Scenario batch outputs can now bridge into runtime smoke and reuse staged backend selections, and previously generated runtime/backend smoke reports can be re-bridged into refreshed Autoware and top-level workflow artifacts.",
       "open_gaps": [
         "Real packaged AWSIM/CARLA execution still remains to be closed."
       ],
