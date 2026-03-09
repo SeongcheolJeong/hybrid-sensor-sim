@@ -1201,9 +1201,19 @@ def _build_download_directory_hints(
     ready_candidates = [
         row for row in directory_candidates if row.get("download_space_ready") is True
     ]
-    recommended_candidate = ready_candidates[0] if ready_candidates else (
-        directory_candidates[0] if directory_candidates else None
-    )
+    if ready_candidates:
+        recommended_candidate = ready_candidates[0]
+    elif directory_candidates:
+        recommended_candidate = max(
+            directory_candidates,
+            key=lambda row: (
+                int(row.get("available_space_bytes"))
+                if isinstance(row.get("available_space_bytes"), int)
+                else -1
+            ),
+        )
+    else:
+        recommended_candidate = None
     if existing_local_archive_paths:
         download_directory_status = "local_archive_available"
     elif ready_candidates:
@@ -1543,6 +1553,17 @@ def _classify_backend_runtime_strategy(
     if strategy in {"packaged_runtime_required", "docker_or_packaged_runtime_required"}:
         if download_directory_status == "insufficient":
             reason_codes.append("DOWNLOAD_SPACE_INSUFFICIENT")
+        recommended_download_command = None
+        if (
+            isinstance(recommended_download_dir, str)
+            and recommended_download_dir.strip()
+            and isinstance(recommended_command, str)
+            and recommended_command.strip()
+        ):
+            quoted_dir = shlex.quote(recommended_download_dir)
+            recommended_download_command = (
+                f"{recommended_command} --download-dir {quoted_dir}"
+            )
         if (
             isinstance(recommended_download_dir, str)
             and recommended_download_dir.strip()
@@ -1550,8 +1571,9 @@ def _classify_backend_runtime_strategy(
             and isinstance(recommended_command, str)
             and recommended_command.strip()
         ):
-            quoted_dir = shlex.quote(recommended_download_dir)
-            recommended_command = f"{recommended_command} --download-dir {quoted_dir}"
+            recommended_command = recommended_download_command
+    else:
+        recommended_download_command = None
     return {
         "backend": backend,
         "strategy": strategy,
@@ -1569,6 +1591,7 @@ def _classify_backend_runtime_strategy(
         "archive_estimated_size_bytes": archive_estimated_size_bytes,
         "reason_codes": sorted(set(reason_codes)),
         "recommended_command": recommended_command,
+        "recommended_download_command": recommended_download_command,
         "platform_supported": backend_hints.get("platform_supported"),
         "platform_note": backend_hints.get("platform_note"),
     }

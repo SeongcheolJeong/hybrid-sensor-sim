@@ -486,6 +486,37 @@ def _build_local_setup_probe_result(
         "report_path": report_path,
         "markdown_path": markdown_path,
         "report": report,
+        "backend_runtime_strategy": strategy,
+        "backend_runtime_strategy_source": "renderer_backend_local_setup.runtime_strategy",
+        "backend_runtime_preferred_runtime_source": runtime_strategy.get(
+            "preferred_runtime_source"
+        ),
+        "backend_runtime_strategy_reason_codes": reason_codes,
+        "backend_runtime_recommended_command": runtime_strategy.get(
+            "recommended_command"
+        ),
+        "backend_runtime_recommended_download_command": runtime_strategy.get(
+            "recommended_download_command"
+        ),
+        "backend_runtime_selected_path": runtime_strategy.get("selected_path"),
+        "backend_runtime_docker_storage_status": runtime_strategy.get(
+            "docker_storage_status"
+        ),
+        "backend_runtime_recommended_download_dir": runtime_strategy.get(
+            "recommended_download_dir"
+        ),
+        "backend_runtime_recommended_download_dir_ready": runtime_strategy.get(
+            "recommended_download_dir_ready"
+        ),
+        "backend_runtime_recommended_download_dir_available_space_bytes": runtime_strategy.get(
+            "recommended_download_dir_available_space_bytes"
+        ),
+        "backend_runtime_download_directory_status": runtime_strategy.get(
+            "download_directory_status"
+        ),
+        "backend_runtime_archive_estimated_size_bytes": runtime_strategy.get(
+            "archive_estimated_size_bytes"
+        ),
         "rebridge_result": {
             "workflow_report": {
                 "status_summary": {
@@ -497,6 +528,9 @@ def _build_local_setup_probe_result(
                     "backend_runtime_strategy_reason_codes": reason_codes,
                 "backend_runtime_recommended_command": runtime_strategy.get(
                     "recommended_command"
+                ),
+                "backend_runtime_recommended_download_command": runtime_strategy.get(
+                    "recommended_download_command"
                 ),
                 "backend_runtime_selected_path": runtime_strategy.get("selected_path"),
                 "backend_runtime_docker_storage_status": runtime_strategy.get(
@@ -859,11 +893,29 @@ def run_scenario_runtime_backend_probe_set(
                 "backend_runtime_recommended_command": rebridge_status_summary.get(
                     "backend_runtime_recommended_command"
                 ),
+                "backend_runtime_recommended_download_command": rebridge_status_summary.get(
+                    "backend_runtime_recommended_download_command"
+                ),
                 "backend_runtime_selected_path": rebridge_status_summary.get(
                     "backend_runtime_selected_path"
                 ),
                 "backend_runtime_docker_storage_status": rebridge_status_summary.get(
                     "backend_runtime_docker_storage_status"
+                ),
+                "backend_runtime_recommended_download_dir": rebridge_status_summary.get(
+                    "backend_runtime_recommended_download_dir"
+                ),
+                "backend_runtime_recommended_download_dir_ready": rebridge_status_summary.get(
+                    "backend_runtime_recommended_download_dir_ready"
+                ),
+                "backend_runtime_recommended_download_dir_available_space_bytes": rebridge_status_summary.get(
+                    "backend_runtime_recommended_download_dir_available_space_bytes"
+                ),
+                "backend_runtime_download_directory_status": rebridge_status_summary.get(
+                    "backend_runtime_download_directory_status"
+                ),
+                "backend_runtime_archive_estimated_size_bytes": rebridge_status_summary.get(
+                    "backend_runtime_archive_estimated_size_bytes"
                 ),
                 "source_missing_required_topics": source_missing_required_topics,
                 "refreshed_missing_required_topics": refreshed_missing_required_topics,
@@ -983,9 +1035,16 @@ def run_scenario_runtime_backend_probe_set(
     if failed_probe_ids:
         for result in probe_results:
             if result.get("probe_id") in failed_probe_ids:
-                recommended_next_command = str(
-                    result.get("backend_runtime_recommended_command") or ""
-                ).strip()
+                if "DOWNLOAD_SPACE_INSUFFICIENT" in (
+                    result.get("backend_runtime_strategy_reason_codes", []) or []
+                ):
+                    recommended_next_command = str(
+                        result.get("backend_runtime_recommended_download_command") or ""
+                    ).strip()
+                if not recommended_next_command:
+                    recommended_next_command = str(
+                        result.get("backend_runtime_recommended_command") or ""
+                    ).strip()
                 if recommended_next_command:
                     break
     if not recommended_next_command and runtime_strategy_recommended_command_counts:

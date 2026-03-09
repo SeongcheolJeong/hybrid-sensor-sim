@@ -676,6 +676,7 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                                     "DOWNLOAD_SPACE_INSUFFICIENT",
                                 ],
                                 "recommended_command": "python3 scripts/acquire_renderer_backend_package.py --backend carla",
+                                "recommended_download_command": "python3 scripts/acquire_renderer_backend_package.py --backend carla --download-dir /Volumes/LargeDisk/backend_downloads/carla",
                                 "recommended_download_dir": "/Volumes/LargeDisk/backend_downloads/carla",
                                 "recommended_download_dir_ready": False,
                                 "recommended_download_dir_available_space_bytes": 123456789,
@@ -738,10 +739,14 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                     "Re-run the package acquire command with --download-dir set to that directory.",
                     "Stage the packaged runtime into the local runtime workspace and rerun smoke.",
                     "Acquire and stage a packaged runtime for the selected backend.",
-                    "Run: python3 scripts/acquire_renderer_backend_package.py --backend carla",
+                    "Run: python3 scripts/acquire_renderer_backend_package.py --backend carla --download-dir /Volumes/LargeDisk/backend_downloads/carla",
                     "Free space or use a larger download directory before acquiring the packaged runtime.",
                     "Fix the runtime environment or switch to the recommended handoff path.",
                 ],
+            )
+            self.assertEqual(
+                report["recommended_next_command"],
+                "python3 scripts/acquire_renderer_backend_package.py --backend carla --download-dir /Volumes/LargeDisk/backend_downloads/carla",
             )
 
     def test_builtin_hybrid_runtime_readiness_probe_set_combines_awsim_and_carla(self) -> None:

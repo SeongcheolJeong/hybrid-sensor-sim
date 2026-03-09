@@ -806,6 +806,58 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
                 summary["runtime_strategy"]["carla"]["download_directory_status"],
                 "insufficient",
             )
+            self.assertIn(
+                "--download-dir",
+                summary["runtime_strategy"]["carla"]["recommended_download_command"],
+            )
+
+    def test_build_renderer_backend_local_setup_prefers_largest_download_dir_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            repo_root.mkdir(parents=True, exist_ok=True)
+            small_dir = root / "small"
+            large_dir = root / "large"
+            small_dir.mkdir(parents=True, exist_ok=True)
+            large_dir.mkdir(parents=True, exist_ok=True)
+
+            def _fake_probe_download_space(*, target_path, estimated_size_bytes):
+                target = Path(target_path).resolve()
+                if target.parent == small_dir.resolve():
+                    return 100, False
+                if target.parent == large_dir.resolve():
+                    return 200, False
+                return 50, False
+
+            with patch.dict(
+                "os.environ",
+                {
+                    "CARLA_PACKAGE_DOWNLOAD_DIR": str(small_dir),
+                    "BACKEND_PACKAGE_DOWNLOAD_DIR": str(large_dir),
+                },
+                clear=False,
+            ), patch(
+                "hybrid_sensor_sim.tools.renderer_backend_local_setup._inspect_helios_docker_runtime",
+                return_value=_unavailable_docker_runtime(),
+            ), patch(
+                "hybrid_sensor_sim.tools.renderer_backend_local_setup._probe_download_space",
+                side_effect=_fake_probe_download_space,
+            ):
+                summary = build_renderer_backend_local_setup(
+                    repo_root=repo_root,
+                    search_roots=[],
+                    output_dir=root / "artifacts",
+                    include_default_search_roots=False,
+                )
+
+            self.assertEqual(
+                summary["acquisition_hints"]["carla"]["recommended_download_dir"],
+                str(large_dir.resolve()),
+            )
+            self.assertEqual(
+                summary["acquisition_hints"]["carla"]["recommended_download_dir_available_space_bytes"],
+                200,
+            )
 
     def test_build_renderer_backend_local_setup_writes_probe_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
