@@ -161,6 +161,34 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                 ["semantic_primary_ready", "semantic_recovery_ready", "tracking_ready"],
             )
             self.assertEqual(
+                report["blocking_reason_category_counts"],
+                {"runtime_environment": 3},
+            )
+            self.assertEqual(
+                report["blocking_reason_category_probe_ids"]["runtime_environment"],
+                ["semantic_primary_ready", "semantic_recovery_ready", "tracking_ready"],
+            )
+            self.assertEqual(
+                report["blocking_reason_summary_rows"],
+                [
+                    {
+                        "reason_code": "HOST_INCOMPATIBLE_PACKAGED_RUNTIME",
+                        "category": "runtime_environment",
+                        "count": 3,
+                        "probe_ids": [
+                            "semantic_primary_ready",
+                            "semantic_recovery_ready",
+                            "tracking_ready",
+                        ],
+                        "recommended_action": "Use the linux handoff packaged runtime path.",
+                    }
+                ],
+            )
+            self.assertEqual(
+                report["recommended_resolution_focus"],
+                "Use the linux handoff packaged runtime path.",
+            )
+            self.assertEqual(
                 report["runtime_strategy_recommended_command_counts"],
                 {
                     "python3 scripts/run_renderer_backend_workflow.py --backend awsim --dry-run": 3
@@ -261,6 +289,18 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
             self.assertEqual(
                 report["blocking_reason_probe_ids"]["AUTOWARE_STATUS_MISMATCH"],
                 ["semantic_recovery_ready"],
+            )
+            self.assertEqual(
+                report["blocking_reason_category_counts"],
+                {"consumer_contract": 1, "runtime_environment": 3},
+            )
+            self.assertEqual(
+                report["blocking_reason_category_probe_ids"]["consumer_contract"],
+                ["semantic_recovery_ready"],
+            )
+            self.assertEqual(
+                report["recommended_resolution_focus"],
+                "Use the linux handoff packaged runtime path.",
             )
             self.assertEqual(
                 report["recommended_next_command"],

@@ -481,7 +481,7 @@ That runs the built-in `tracking READY`, `semantic primary READY`, and `semantic
 
 - `scenario_runtime_backend_probe_set_report_v0.json`
 - `scenario_runtime_backend_probe_set_report_v0.md`
-- the probe-set report now also aggregates `runtime_strategy_counts`, `runtime_strategy_probe_ids`, and strategy reason-code counts, so one real AWSIM/CARLA probe set can show both downstream readiness and the intended execution route
+- the probe-set report now also aggregates `runtime_strategy_counts`, `runtime_strategy_probe_ids`, strategy reason-code counts, blocker reason categories, and per-reason recommended actions, so one real AWSIM/CARLA probe set can show both downstream readiness and the intended execution route together with the next troubleshooting focus
 - the same probe-set report now also exposes a single `recommended_next_command`, choosing the most relevant backend action from the probe results so runtime triage stays one-shot
 - the same probe-set report also aggregates `blocking_reason_counts` and `blocking_reason_probe_ids`, so the execution blocker and the next command appear together in one compact surface
 

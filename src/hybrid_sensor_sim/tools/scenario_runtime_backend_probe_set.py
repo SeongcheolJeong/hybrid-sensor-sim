@@ -17,6 +17,46 @@ SCENARIO_RUNTIME_BACKEND_PROBE_SET_REPORT_SCHEMA_VERSION_V0 = (
 DEFAULT_SCENARIO_RUNTIME_BACKEND_PROBE_SET_ID = "awsim_real_v0"
 
 
+def _classify_blocking_reason(reason_code: str) -> str:
+    normalized = str(reason_code or "").strip().upper()
+    if not normalized:
+        return "unknown"
+    if normalized.startswith("AUTOWARE_") or "TOPIC" in normalized:
+        return "consumer_contract"
+    if (
+        "DOCKER" in normalized
+        or "HOST_INCOMPATIBLE" in normalized
+        or "PACKAGED_RUNTIME" in normalized
+        or "IMAGE" in normalized
+        or "STORAGE" in normalized
+    ):
+        return "runtime_environment"
+    if "RUNTIME" in normalized or "HANDOFF" in normalized:
+        return "runtime_execution"
+    if "HISTORY_GUARD" in normalized or "PROVENANCE" in normalized:
+        return "governance"
+    return "unknown"
+
+
+def _recommended_action_for_blocking_reason(reason_code: str, category: str) -> str:
+    normalized = str(reason_code or "").strip().upper()
+    if normalized == "HOST_INCOMPATIBLE_PACKAGED_RUNTIME":
+        return "Use the linux handoff packaged runtime path."
+    if normalized == "AUTOWARE_STATUS_MISMATCH":
+        return "Inspect missing and recovered Autoware topics for the selected consumer profile."
+    if normalized.startswith("DOCKER_") or "STORAGE" in normalized:
+        return "Repair the local Docker image store or use a packaged runtime handoff path."
+    if category == "runtime_execution":
+        return "Inspect the backend runtime workflow report and rerun the selected runtime strategy."
+    if category == "consumer_contract":
+        return "Reconcile required consumer topics against the bridge output and consumer profile."
+    if category == "governance":
+        return "Refresh provenance metadata and rerun the history guard."
+    if category == "runtime_environment":
+        return "Fix the runtime environment or switch to the recommended handoff path."
+    return "Inspect the probe report for the blocking reason details."
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace(
         "+00:00", "Z"
@@ -153,6 +193,15 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
     )
     blocking_reason_counts = dict(report.get("blocking_reason_counts", {}) or {})
     blocking_reason_probe_ids = dict(report.get("blocking_reason_probe_ids", {}) or {})
+    blocking_reason_category_counts = dict(
+        report.get("blocking_reason_category_counts", {}) or {}
+    )
+    blocking_reason_category_probe_ids = dict(
+        report.get("blocking_reason_category_probe_ids", {}) or {}
+    )
+    blocking_reason_summary_rows = list(
+        report.get("blocking_reason_summary_rows", []) or []
+    )
     lines = [
         "# Scenario Runtime Backend Probe Set",
         "",
@@ -169,6 +218,8 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
         f"- Runtime strategy counts: `{json.dumps(runtime_strategy_counts, sort_keys=True) if runtime_strategy_counts else '-'}`",
         f"- Runtime strategy reason counts: `{json.dumps(runtime_strategy_reason_code_counts, sort_keys=True) if runtime_strategy_reason_code_counts else '-'}`",
         f"- Blocking reason counts: `{json.dumps(blocking_reason_counts, sort_keys=True) if blocking_reason_counts else '-'}`",
+        f"- Blocking reason category counts: `{json.dumps(blocking_reason_category_counts, sort_keys=True) if blocking_reason_category_counts else '-'}`",
+        f"- Recommended resolution focus: `{report.get('recommended_resolution_focus') or '-'}`",
         f"- Recommended next command: `{report.get('recommended_next_command') or '-'}`",
         "",
         "## Runtime Strategies",
@@ -209,10 +260,45 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
-        "## Probes",
-        "",
-        "| Probe | Status | Strategy | Source Runtime | Refreshed Runtime | Source Autoware | Refreshed Autoware | Consumer | Supplemental Dep | Recovered Topics |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+            "## Blocking Reason Categories",
+            "",
+            "| Category | Probe IDs |",
+            "| --- | --- |",
+        ]
+    )
+    for category, probe_ids in sorted(blocking_reason_category_probe_ids.items()):
+        lines.append(
+            f"| {category or '-'} | {', '.join(probe_ids or []) or '-'} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Blocking Reason Actions",
+            "",
+            "| Reason | Category | Probe IDs | Action |",
+            "| --- | --- | --- | --- |",
+        ]
+    )
+    for row in blocking_reason_summary_rows:
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    str(row.get("reason_code") or "-"),
+                    str(row.get("category") or "-"),
+                    str(", ".join(row.get("probe_ids", [])) or "-"),
+                    str(row.get("recommended_action") or "-"),
+                ]
+            )
+            + " |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Probes",
+            "",
+            "| Probe | Status | Strategy | Source Runtime | Refreshed Runtime | Source Autoware | Refreshed Autoware | Consumer | Supplemental Dep | Recovered Topics |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
     )
     for probe in probe_rows:
@@ -378,6 +464,8 @@ def run_scenario_runtime_backend_probe_set(
     runtime_strategy_recommended_command_probe_ids: dict[str, list[str]] = {}
     blocking_reason_counts: dict[str, int] = {}
     blocking_reason_probe_ids: dict[str, list[str]] = {}
+    blocking_reason_category_counts: dict[str, int] = {}
+    blocking_reason_category_probe_ids: dict[str, list[str]] = {}
     recovered_required_topics: set[str] = set()
     source_missing_required_topics: set[str] = set()
     refreshed_missing_required_topics: set[str] = set()
@@ -402,12 +490,26 @@ def run_scenario_runtime_backend_probe_set(
             blocking_reason_probe_ids.setdefault(reason_code_str, []).append(
                 str(result.get("probe_id") or "")
             )
+            category = _classify_blocking_reason(reason_code_str)
+            blocking_reason_category_counts[category] = (
+                blocking_reason_category_counts.get(category, 0) + 1
+            )
+            blocking_reason_category_probe_ids.setdefault(category, []).append(
+                str(result.get("probe_id") or "")
+            )
         for failure_code in result.get("failure_codes", []) or []:
             failure_code_str = str(failure_code)
             blocking_reason_counts[failure_code_str] = (
                 blocking_reason_counts.get(failure_code_str, 0) + 1
             )
             blocking_reason_probe_ids.setdefault(failure_code_str, []).append(
+                str(result.get("probe_id") or "")
+            )
+            category = _classify_blocking_reason(failure_code_str)
+            blocking_reason_category_counts[category] = (
+                blocking_reason_category_counts.get(category, 0) + 1
+            )
+            blocking_reason_category_probe_ids.setdefault(category, []).append(
                 str(result.get("probe_id") or "")
             )
         recommended_command = str(
@@ -444,6 +546,28 @@ def run_scenario_runtime_backend_probe_set(
             key=lambda item: (-item[1], item[0]),
         )[0][0]
 
+    blocking_reason_summary_rows = []
+    for reason_code, probe_ids in sorted(blocking_reason_probe_ids.items()):
+        category = _classify_blocking_reason(reason_code)
+        blocking_reason_summary_rows.append(
+            {
+                "reason_code": reason_code,
+                "category": category,
+                "count": blocking_reason_counts.get(reason_code, 0),
+                "probe_ids": sorted(probe_ids),
+                "recommended_action": _recommended_action_for_blocking_reason(
+                    reason_code, category
+                ),
+            }
+        )
+
+    recommended_resolution_focus = None
+    if blocking_reason_summary_rows:
+        recommended_resolution_focus = sorted(
+            blocking_reason_summary_rows,
+            key=lambda row: (-int(row.get("count") or 0), str(row.get("reason_code") or "")),
+        )[0]["recommended_action"]
+
     report = {
         "scenario_runtime_backend_probe_set_report_schema_version": SCENARIO_RUNTIME_BACKEND_PROBE_SET_REPORT_SCHEMA_VERSION_V0,
         "generated_at": _utc_now(),
@@ -476,6 +600,13 @@ def run_scenario_runtime_backend_probe_set(
             reason: sorted(probe_ids)
             for reason, probe_ids in sorted(blocking_reason_probe_ids.items())
         },
+        "blocking_reason_category_counts": blocking_reason_category_counts,
+        "blocking_reason_category_probe_ids": {
+            category: sorted(probe_ids)
+            for category, probe_ids in sorted(blocking_reason_category_probe_ids.items())
+        },
+        "blocking_reason_summary_rows": blocking_reason_summary_rows,
+        "recommended_resolution_focus": recommended_resolution_focus,
         "recommended_next_command": recommended_next_command or None,
         "source_missing_required_topics": sorted(source_missing_required_topics),
         "refreshed_missing_required_topics": sorted(refreshed_missing_required_topics),
