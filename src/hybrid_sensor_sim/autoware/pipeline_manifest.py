@@ -360,19 +360,19 @@ def build_autoware_consumer_input_manifest(
             available_topics.append(topic)
         if required and not available:
             missing_required_topics.append(topic)
-        message_type = str(entry.get("message_type", "")).strip() or None
-        frame_id = str(entry.get("frame_id", "")).strip() or None
-        sensor_id = str(entry.get("sensor_id", "")).strip() or None
-        modality = str(entry.get("modality", "")).strip() or None
-        output_role = str(entry.get("output_role", "")).strip() or None
-        availability_mode = str(entry.get("availability_mode", "")).strip() or None
-        output_origin = str(entry.get("output_origin", "")).strip() or None
-        payload_path = str(entry.get("payload_path", "")).strip() or None
+        message_type = _clean_optional_text(entry.get("message_type"))
+        frame_id = _clean_optional_text(entry.get("frame_id"))
+        sensor_id = _clean_optional_text(entry.get("sensor_id"))
+        modality = _clean_optional_text(entry.get("modality"))
+        output_role = _clean_optional_text(entry.get("output_role"))
+        availability_mode = _clean_optional_text(entry.get("availability_mode"))
+        output_origin = _clean_optional_text(entry.get("output_origin"))
+        payload_path = _clean_optional_text(entry.get("payload_path"))
         payload_exists = bool(entry.get("payload_exists"))
-        payload_materialization_mode = (
-            str(entry.get("payload_materialization_mode", "")).strip() or None
+        payload_materialization_mode = _clean_optional_text(
+            entry.get("payload_materialization_mode")
         )
-        export_manifest_path = str(entry.get("export_manifest_path", "")).strip() or None
+        export_manifest_path = _clean_optional_text(entry.get("export_manifest_path"))
         consumer_topic = {
             "topic": topic,
             "message_type": message_type,

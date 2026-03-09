@@ -21,6 +21,13 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
 
 
+def _clean_optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def _topic_export_relative_path(topic: str) -> Path:
     topic_text = str(topic).strip().strip("/")
     if not topic_text:
@@ -138,7 +145,7 @@ def _build_topic_catalog(
         availability_mode = str(topic.get("availability_mode", "")).strip()
         available = bool(topic.get("available"))
         required = bool(topic.get("required"))
-        payload_path = str(topic.get("payload_path", "")).strip() or None
+        payload_path = _clean_optional_text(topic.get("payload_path"))
         payload_exists = bool(payload_path and Path(payload_path).exists())
         if available:
             available_topics.append(topic_name)
@@ -156,20 +163,22 @@ def _build_topic_catalog(
         catalog_entries.append(
             {
                 "topic": topic_name,
-                "sensor_id": str(topic.get("sensor_id", "")).strip() or None,
+                "sensor_id": _clean_optional_text(topic.get("sensor_id")),
                 "modality": modality or None,
-                "output_role": str(topic.get("output_role", "")).strip() or None,
+                "output_role": _clean_optional_text(topic.get("output_role")),
                 "message_type": message_type or None,
-                "frame_id": str(topic.get("frame_id", "")).strip() or None,
+                "frame_id": _clean_optional_text(topic.get("frame_id")),
                 "required": required,
                 "available": available,
                 "availability_mode": availability_mode or None,
-                "output_origin": str(topic.get("output_origin", "")).strip() or None,
+                "output_origin": _clean_optional_text(topic.get("output_origin")),
                 "payload_path": payload_path,
                 "payload_exists": payload_exists,
                 "payload_size_bytes": payload_size_bytes,
-                "payload_materialization_mode": str(topic.get("payload_materialization_mode", "")).strip() or None,
-                "export_manifest_path": str(topic.get("export_manifest_path", "")).strip() or None,
+                "payload_materialization_mode": _clean_optional_text(
+                    topic.get("payload_materialization_mode")
+                ),
+                "export_manifest_path": _clean_optional_text(topic.get("export_manifest_path")),
             }
         )
 

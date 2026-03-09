@@ -27,6 +27,14 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
             )
             tracking.parent.mkdir(parents=True, exist_ok=True)
             tracking.write_text("{}", encoding="utf-8")
+            semantic_primary = (
+                root
+                / "artifacts"
+                / "scenario_runtime_backend_real_awsim_probe_v14"
+                / "scenario_runtime_backend_workflow_report_v0.json"
+            )
+            semantic_primary.parent.mkdir(parents=True, exist_ok=True)
+            semantic_primary.write_text("{}", encoding="utf-8")
             degraded = (
                 root
                 / "artifacts"
@@ -102,14 +110,17 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                 SCENARIO_RUNTIME_BACKEND_PROBE_SET_REPORT_SCHEMA_VERSION_V0,
             )
             self.assertEqual(report["status"], "PASS")
-            self.assertEqual(report["probe_count"], 2)
-            self.assertEqual(report["pass_count"], 2)
+            self.assertEqual(report["probe_count"], 3)
+            self.assertEqual(report["pass_count"], 3)
             self.assertEqual(report["fail_count"], 0)
             self.assertEqual(
                 report["passed_probe_ids"],
-                ["semantic_recovery_ready", "tracking_ready"],
+                ["semantic_primary_ready", "semantic_recovery_ready", "tracking_ready"],
             )
-            self.assertEqual(report["runtime_native_ready_probe_ids"], ["tracking_ready"])
+            self.assertEqual(
+                report["runtime_native_ready_probe_ids"],
+                ["semantic_primary_ready", "tracking_ready"],
+            )
             self.assertEqual(
                 report["supplemental_dependency_probe_ids"],
                 ["semantic_recovery_ready"],
@@ -126,6 +137,7 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
             root = Path(tmp)
             for relative in (
                 "artifacts/scenario_runtime_backend_real_awsim_tracking_ready_probe/scenario_runtime_backend_workflow_report_v0.json",
+                "artifacts/scenario_runtime_backend_real_awsim_probe_v14/scenario_runtime_backend_workflow_report_v0.json",
                 "artifacts/scenario_runtime_backend_real_awsim_degraded_runtime_probe/scenario_runtime_backend_workflow_report_v0.json",
             ):
                 path = root / relative

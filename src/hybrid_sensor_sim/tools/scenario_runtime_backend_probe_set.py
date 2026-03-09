@@ -110,6 +110,18 @@ def _default_probe_set_specs(repo_root: Path) -> dict[str, dict[str, Any]]:
                     "expect_autoware_status": "READY",
                 },
                 {
+                    "probe_id": "semantic_primary_ready",
+                    "runtime_backend_workflow_report_path": (
+                        repo_root
+                        / "artifacts"
+                        / "scenario_runtime_backend_real_awsim_probe_v14"
+                        / "scenario_runtime_backend_workflow_report_v0.json"
+                    ),
+                    "consumer_profile_id": "semantic_perception_v0",
+                    "expect_runtime_status": "SUCCEEDED",
+                    "expect_autoware_status": "READY",
+                },
+                {
                     "probe_id": "semantic_recovery_ready",
                     "runtime_backend_workflow_report_path": (
                         repo_root

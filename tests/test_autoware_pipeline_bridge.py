@@ -23,6 +23,7 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
         include_lidar: bool,
         include_camera_visible: bool = True,
         include_camera_semantic: bool = False,
+        embed_camera_semantic_in_visible: bool = False,
         include_radar: bool = False,
         radar_tracks: bool = False,
     ) -> Path:
@@ -34,7 +35,16 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
         )
         if include_camera_visible:
             camera_output.parent.mkdir(parents=True, exist_ok=True)
-            camera_output.write_text("{}", encoding="utf-8")
+            camera_payload = {}
+            if embed_camera_semantic_in_visible:
+                camera_payload = {
+                    "companion_sensor_types": ["SEMANTIC_SEGMENTATION"],
+                    "preview_semantic_samples": [{"u": 120.0, "v": 32.0, "label": "vehicle"}],
+                }
+            camera_output.write_text(
+                json.dumps(camera_payload, indent=2, ensure_ascii=True) + "\n",
+                encoding="utf-8",
+            )
         if include_camera_semantic:
             camera_semantic_output.parent.mkdir(parents=True, exist_ok=True)
             camera_semantic_output.write_text("{}", encoding="utf-8")
@@ -519,16 +529,51 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
                 "/sensing/camera/cam_front/semantic/image_raw",
                 report["available_topics"],
             )
+
+    def test_bridge_promotes_embedded_camera_semantic_output(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            backend_report_path = self._write_backend_workflow_fixture(
+                root,
+                include_lidar=True,
+                include_camera_visible=True,
+                include_camera_semantic=False,
+                embed_camera_semantic_in_visible=True,
+            )
+            result = run_autoware_pipeline_bridge(
+                backend_smoke_workflow_report_path=str(backend_report_path),
+                runtime_backend_workflow_report_path="",
+                out_root=root / "autoware_bundle",
+                consumer_profile_id="semantic_perception_v0",
+                strict=False,
+            )
+            report = result["report"]
+            self.assertEqual(report["status"], "READY")
+            self.assertEqual(report["missing_required_topic_count"], 0)
+            self.assertEqual(report["missing_required_sensor_count"], 0)
+            self.assertIn(
+                "/sensing/camera/cam_front/semantic/image_raw",
+                report["available_topics"],
+            )
+            consumer_manifest = json.loads(
+                Path(report["artifacts"]["consumer_input_manifest_path"]).read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertTrue(consumer_manifest["consumer_ready"])
+            semantic_topic = next(
+                topic
+                for topic in consumer_manifest["consumer_topics"]
+                if topic["topic"] == "/sensing/camera/cam_front/semantic/image_raw"
+            )
+            self.assertTrue(str(semantic_topic["payload_path"]).endswith("/rgb_frame.json"))
+            self.assertIsNone(semantic_topic["output_origin"])
             topic_catalog = json.loads(
                 Path(report["artifacts"]["topic_catalog_path"]).read_text(
                     encoding="utf-8"
                 )
             )
             self.assertEqual(topic_catalog["missing_required_topic_count"], 0)
-            self.assertEqual(
-                sorted(report["supplemental_backend_smoke_workflow_report_paths"]),
-                [str(supplemental_report_path.resolve())],
-            )
 
     def test_bridge_rebases_workspace_paths_from_handoff_smoke_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

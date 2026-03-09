@@ -477,7 +477,7 @@ python3 scripts/run_scenario_runtime_backend_probe_set.py \
   --out-root artifacts/scenario_runtime_backend_probe_set_runs
 ```
 
-That runs the built-in `tracking READY` and `semantic recovery READY` probes against the pinned real AWSIM runtime artifacts and writes:
+That runs the built-in `tracking READY`, `semantic primary READY`, and `semantic recovery READY` probes against the pinned real AWSIM runtime artifacts and writes:
 
 - `scenario_runtime_backend_probe_set_report_v0.json`
 - `scenario_runtime_backend_probe_set_report_v0.md`
@@ -490,6 +490,13 @@ The probe-set report also separates:
 - `recovered_required_topics`
 
 so the remaining semantic-output gap is visible without opening each individual probe report.
+
+At this point the real AWSIM probe set separates the semantic path into:
+
+- `semantic_primary_ready`
+  - fresh primary runtime artifact is already `runtime-native READY`
+- `semantic_recovery_ready`
+  - older degraded runtime artifact still requires supplemental recovery and is kept as a regression guard
 
 Both `run_scenario_variants.py` and `run_scenario_variant_workflow.py` resolve default scenario-language profiles from:
 

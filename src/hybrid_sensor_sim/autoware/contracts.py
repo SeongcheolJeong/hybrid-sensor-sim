@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 from hybrid_sensor_sim.autoware.profiles import resolve_autoware_consumer_profile
@@ -11,6 +13,13 @@ from hybrid_sensor_sim.autoware.topics import (
 
 
 AUTOWARE_SENSOR_CONTRACT_SCHEMA_VERSION_V0 = "autoware_sensor_contract_v0"
+
+
+def _clean_optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _mounts_by_sensor_id(sensor_mounts: list[dict[str, Any]] | None) -> dict[str, dict[str, Any]]:
@@ -133,6 +142,58 @@ def _merged_output_entries(
     return merged
 
 
+def _load_output_payload(path_text: str | None) -> dict[str, Any] | None:
+    resolved_path = str(path_text or "").strip()
+    if not resolved_path:
+        return None
+    path = Path(resolved_path)
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _camera_semantic_embedded_output(
+    *,
+    visible_output: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not isinstance(visible_output, dict):
+        return None
+    resolved_path = str(visible_output.get("resolved_path", "")).strip()
+    payload = _load_output_payload(resolved_path)
+    if not isinstance(payload, dict):
+        return None
+    companion_sensor_types = {
+        str(sensor_type).strip().upper()
+        for sensor_type in list(payload.get("companion_sensor_types", []) or [])
+        if str(sensor_type).strip()
+    }
+    has_semantic_samples = bool(payload.get("preview_semantic_samples"))
+    additional_outputs = dict(payload.get("additional_outputs", {}) or {})
+    semantic_output_path = str(additional_outputs.get("camera_semantic_json", "")).strip()
+    has_embedded_semantic = (
+        has_semantic_samples
+        or "SEMANTIC_SEGMENTATION" in companion_sensor_types
+        or bool(semantic_output_path)
+    )
+    if not has_embedded_semantic:
+        return None
+    return {
+        "output_role": "camera_semantic",
+        "artifact_type": "embedded_camera_semantic_json",
+        "data_format": "camera_semantic_json",
+        "artifact_key": _clean_optional_text(visible_output.get("artifact_key")) or "camera_projection_json",
+        "resolved_path": semantic_output_path or resolved_path,
+        "exists": bool(semantic_output_path or resolved_path),
+        "output_origin": _clean_optional_text(visible_output.get("output_origin")),
+        "embedded_output": True,
+        "carrier_output_role": "camera_visible",
+    }
+
+
 def build_autoware_sensor_contracts(
     backend_sensor_output_summary: dict[str, Any],
     backend_output_spec: dict[str, Any],
@@ -169,6 +230,12 @@ def build_autoware_sensor_contracts(
         modality = _derive_sensor_modality(mount=mount, summary_sensor=summary_sensor, spec_sensor=spec_sensor)
         enabled = bool(mount.get("enabled", True)) if isinstance(mount, dict) else True
         merged_outputs = _merged_output_entries(summary_sensor=summary_sensor, spec_sensor=spec_sensor)
+        if modality == "camera" and "camera_semantic" not in merged_outputs:
+            semantic_embedded_output = _camera_semantic_embedded_output(
+                visible_output=merged_outputs.get("camera_visible")
+            )
+            if semantic_embedded_output is not None:
+                merged_outputs["camera_semantic"] = semantic_embedded_output
         required_roles = (
             _required_output_roles(
                 modality=modality,
@@ -190,13 +257,12 @@ def build_autoware_sensor_contracts(
                 warnings.append(str(exc))
                 continue
             exists = bool(output.get("exists", False))
-            resolved_path = str(output.get("resolved_path", "")).strip() or None
-            output_origin = str(output.get("output_origin", "")).strip() or None
+            resolved_path = _clean_optional_text(output.get("resolved_path"))
+            output_origin = _clean_optional_text(output.get("output_origin"))
             available = bool(
                 (exists and resolved_path)
                 or (
                     normalized_availability_mode == "planned"
-                    and resolved_path
                     and output_role in required_roles
                 )
             )
@@ -212,13 +278,13 @@ def build_autoware_sensor_contracts(
                     "sensor_id": sensor_id,
                     "modality": modality or None,
                     "output_role": output_role,
-                    "artifact_type": str(output.get("artifact_type", "")).strip() or None,
+                    "artifact_type": _clean_optional_text(output.get("artifact_type")),
                     "autoware_topic": topic,
                     "frame_id": sensor_id,
                     "message_type": message_type,
                     "encoding": encoding,
-                    "data_format": str(output.get("data_format", "")).strip() or None,
-                    "source_artifact_key": str(output.get("artifact_key", "")).strip() or None,
+                    "data_format": _clean_optional_text(output.get("data_format")),
+                    "source_artifact_key": _clean_optional_text(output.get("artifact_key")),
                     "source_resolved_path": resolved_path,
                     "output_origin": output_origin,
                     "required": required,
