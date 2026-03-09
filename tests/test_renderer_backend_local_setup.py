@@ -768,6 +768,45 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
                 summary["acquisition_hints"]["carla"]["local_download_candidates"],
             )
 
+    def test_build_renderer_backend_local_setup_surfaces_download_space_blocker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            repo_root.mkdir(parents=True, exist_ok=True)
+
+            with patch(
+                "hybrid_sensor_sim.tools.renderer_backend_local_setup._inspect_helios_docker_runtime",
+                return_value=_unavailable_docker_runtime(),
+            ), patch(
+                "hybrid_sensor_sim.tools.renderer_backend_local_setup._probe_download_space",
+                return_value=(123456789, False),
+            ):
+                summary = build_renderer_backend_local_setup(
+                    repo_root=repo_root,
+                    search_roots=[],
+                    output_dir=root / "artifacts",
+                    include_default_search_roots=False,
+                )
+
+            carla_hints = summary["acquisition_hints"]["carla"]
+            self.assertEqual(carla_hints["archive_download_name"], "CARLA_UE5_Latest.tar.gz")
+            self.assertEqual(carla_hints["archive_estimated_size_source"], "built_in_size_hint")
+            self.assertEqual(carla_hints["download_directory_status"], "insufficient")
+            self.assertIsNotNone(carla_hints["recommended_download_dir"])
+            self.assertFalse(carla_hints["recommended_download_dir_ready"])
+            self.assertEqual(
+                carla_hints["recommended_download_dir_available_space_bytes"],
+                123456789,
+            )
+            self.assertIn(
+                "DOWNLOAD_SPACE_INSUFFICIENT",
+                summary["runtime_strategy"]["carla"]["reason_codes"],
+            )
+            self.assertEqual(
+                summary["runtime_strategy"]["carla"]["download_directory_status"],
+                "insufficient",
+            )
+
     def test_build_renderer_backend_local_setup_writes_probe_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

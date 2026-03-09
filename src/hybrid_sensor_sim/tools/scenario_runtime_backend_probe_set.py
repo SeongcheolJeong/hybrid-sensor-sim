@@ -23,6 +23,8 @@ def _classify_blocking_reason(reason_code: str) -> str:
         return "unknown"
     if normalized.startswith("AUTOWARE_") or "TOPIC" in normalized:
         return "consumer_contract"
+    if "DOWNLOAD_SPACE" in normalized:
+        return "download_environment"
     if (
         normalized.startswith("LOCAL_RUNTIME_")
         or normalized.endswith("_RUNTIME_MISSING")
@@ -51,10 +53,14 @@ def _recommended_action_for_blocking_reason(reason_code: str, category: str) -> 
         return "Use the linux handoff packaged runtime path."
     if normalized == "AUTOWARE_STATUS_MISMATCH":
         return "Inspect missing and recovered Autoware topics for the selected consumer profile."
+    if normalized == "DOWNLOAD_SPACE_INSUFFICIENT":
+        return "Free space or use a larger download directory before acquiring the packaged runtime."
     if normalized.startswith("DOCKER_") or "STORAGE" in normalized:
         return "Repair the local Docker image store or use a packaged runtime handoff path."
     if category == "runtime_execution":
         return "Inspect the backend runtime workflow report and rerun the selected runtime strategy."
+    if category == "download_environment":
+        return "Pick a download directory with enough free space for the backend archive."
     if category == "consumer_contract":
         return "Reconcile required consumer topics against the bridge output and consumer profile."
     if category == "governance":
@@ -157,6 +163,16 @@ def _build_runtime_strategy_plan(
             ],
         }
     if normalized_strategy == "packaged_runtime_required":
+        if "DOWNLOAD_SPACE_INSUFFICIENT" in normalized_reason_codes:
+            return {
+                "plan_id": "packaged_runtime_required_with_download_space_blocker",
+                "summary": "Acquire a packaged runtime after switching to a directory with enough free space.",
+                "steps": [
+                    "Choose or create a download directory with enough free space for the backend archive.",
+                    "Re-run the package acquire command with --download-dir set to that directory.",
+                    "Stage the packaged runtime into the local runtime workspace and rerun smoke.",
+                ],
+            }
         if "DOCKER_STORAGE_CORRUPT" in normalized_reason_codes:
             return {
                 "plan_id": "packaged_runtime_required_after_docker_failure",
@@ -479,14 +495,29 @@ def _build_local_setup_probe_result(
                         "preferred_runtime_source"
                     ),
                     "backend_runtime_strategy_reason_codes": reason_codes,
-                    "backend_runtime_recommended_command": runtime_strategy.get(
-                        "recommended_command"
-                    ),
-                    "backend_runtime_selected_path": runtime_strategy.get("selected_path"),
-                    "backend_runtime_docker_storage_status": runtime_strategy.get(
-                        "docker_storage_status"
-                    ),
-                },
+                "backend_runtime_recommended_command": runtime_strategy.get(
+                    "recommended_command"
+                ),
+                "backend_runtime_selected_path": runtime_strategy.get("selected_path"),
+                "backend_runtime_docker_storage_status": runtime_strategy.get(
+                    "docker_storage_status"
+                ),
+                "backend_runtime_recommended_download_dir": runtime_strategy.get(
+                    "recommended_download_dir"
+                ),
+                "backend_runtime_recommended_download_dir_ready": runtime_strategy.get(
+                    "recommended_download_dir_ready"
+                ),
+                "backend_runtime_recommended_download_dir_available_space_bytes": runtime_strategy.get(
+                    "recommended_download_dir_available_space_bytes"
+                ),
+                "backend_runtime_download_directory_status": runtime_strategy.get(
+                    "download_directory_status"
+                ),
+                "backend_runtime_archive_estimated_size_bytes": runtime_strategy.get(
+                    "archive_estimated_size_bytes"
+                ),
+            },
                 "rebridge": {
                     "comparison": {
                         "source_runtime_status": runtime_status,

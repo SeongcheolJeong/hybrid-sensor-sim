@@ -9,10 +9,14 @@ import shlex
 import subprocess
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from hybrid_sensor_sim.backends.helios_adapter import HeliosAdapter
 from hybrid_sensor_sim.backends.native_physics import NativePhysicsBackend
 from hybrid_sensor_sim.orchestrator import HybridOrchestrator
+from hybrid_sensor_sim.tools.renderer_backend_package_acquire import (
+    _probe_download_space,
+)
 from hybrid_sensor_sim.tools.renderer_backend_linux_handoff_selftest import (
     run_renderer_backend_linux_handoff_selftest,
 )
@@ -29,6 +33,11 @@ _DEFAULT_HELIOS_DOCKER_BINARY = "/home/jovyan/helios/build/helios++"
 _DEFAULT_HELIOS_DOCKER_MOUNT_POINT = "/workspace"
 _DEFAULT_CARLA_DOCKER_IMAGE = "carlasim/carla:0.10.0"
 _DEFAULT_CARLA_DOCKER_PLATFORM = "linux/amd64"
+_DEFAULT_ARCHIVE_SIZE_HINTS = {
+    "carla": {
+        "carla_ue5_latest.tar.gz": 15723108218,
+    },
+}
 _AWSIM_EXECUTABLE_NAMES = {
     "awsim",
     "awsim.x86_64",
@@ -1066,6 +1075,169 @@ def _host_platform_summary() -> dict[str, str]:
     }
 
 
+def _select_archive_download_option(
+    download_options: list[dict[str, Any]] | None,
+) -> dict[str, str] | None:
+    if not isinstance(download_options, list):
+        return None
+    for item in download_options:
+        if not isinstance(item, dict):
+            continue
+        url = str(item.get("url") or "").strip()
+        name = str(item.get("name") or "").strip()
+        lowered_path = urlparse(url).path.lower()
+        if any(
+            lowered_path.endswith(suffix)
+            for suffix in (".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".7z")
+        ):
+            return {"name": name, "url": url}
+    return None
+
+
+def _archive_size_hint_bytes(
+    *, backend: str, archive_name: str, archive_url: str
+) -> tuple[int | None, str | None]:
+    backend_hints = _DEFAULT_ARCHIVE_SIZE_HINTS.get(backend, {})
+    normalized_names = {
+        archive_name.strip().lower(),
+        Path(urlparse(archive_url).path).name.strip().lower(),
+    }
+    for normalized_name in normalized_names:
+        if normalized_name and normalized_name in backend_hints:
+            return int(backend_hints[normalized_name]), "built_in_size_hint"
+    return None, None
+
+
+def _download_directory_candidates(*, repo_root: Path, backend: str) -> list[Path]:
+    env_candidates = [
+        os.getenv(f"{backend.upper()}_PACKAGE_DOWNLOAD_DIR", ""),
+        os.getenv("BACKEND_PACKAGE_DOWNLOAD_DIR", ""),
+        os.getenv("RENDERER_BACKEND_DOWNLOAD_DIR", ""),
+    ]
+    candidate_paths = [
+        _resolve_runtime_path(raw)
+        for raw in env_candidates
+        if isinstance(raw, str) and raw.strip()
+    ]
+    candidate_paths.extend(
+        [
+            (repo_root / "downloaded_artifacts" / backend).resolve(),
+            (repo_root / "third_party" / "runtime_backends" / backend / "downloads").resolve(),
+            (repo_root / "artifacts" / "backend_downloads" / backend).resolve(),
+            (Path.home() / "Downloads").resolve(),
+        ]
+    )
+    unique_paths: list[Path] = []
+    seen: set[str] = set()
+    for path in candidate_paths:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_paths.append(path)
+    return unique_paths
+
+
+def _probe_directory_space_candidate(
+    *, directory: Path, archive_name: str, estimated_size_bytes: int | None
+) -> dict[str, Any]:
+    available_space_bytes = None
+    download_space_ready = None
+    download_space_status = "unknown"
+    try:
+        available_space_bytes, download_space_ready = _probe_download_space(
+            target_path=directory / archive_name,
+            estimated_size_bytes=estimated_size_bytes,
+        )
+    except Exception:
+        available_space_bytes, download_space_ready = None, None
+    if estimated_size_bytes is None:
+        download_space_status = "unknown"
+    elif download_space_ready is True:
+        download_space_status = "ready"
+    elif download_space_ready is False:
+        download_space_status = "insufficient"
+    return {
+        "path": str(directory),
+        "available_space_bytes": available_space_bytes,
+        "download_space_ready": download_space_ready,
+        "download_space_status": download_space_status,
+    }
+
+
+def _build_download_directory_hints(
+    *, repo_root: Path, backend: str, download_options: list[dict[str, Any]], local_download_candidates: list[str]
+) -> dict[str, Any]:
+    archive_option = _select_archive_download_option(download_options)
+    archive_name = ""
+    archive_url = ""
+    estimated_size_bytes = None
+    estimated_size_source = None
+    if archive_option:
+        archive_name = str(archive_option.get("name") or "").strip()
+        archive_url = str(archive_option.get("url") or "").strip()
+        estimated_size_bytes, estimated_size_source = _archive_size_hint_bytes(
+            backend=backend,
+            archive_name=archive_name,
+            archive_url=archive_url,
+        )
+        if not archive_name:
+            archive_name = Path(urlparse(archive_url).path).name
+    existing_local_archive_paths = [
+        candidate
+        for candidate in local_download_candidates
+        if isinstance(candidate, str) and candidate and Path(candidate).exists()
+    ]
+    directory_candidates: list[dict[str, Any]] = []
+    if archive_name:
+        directory_candidates = [
+            _probe_directory_space_candidate(
+                directory=directory,
+                archive_name=archive_name,
+                estimated_size_bytes=estimated_size_bytes,
+            )
+            for directory in _download_directory_candidates(repo_root=repo_root, backend=backend)
+        ]
+    ready_candidates = [
+        row for row in directory_candidates if row.get("download_space_ready") is True
+    ]
+    recommended_candidate = ready_candidates[0] if ready_candidates else (
+        directory_candidates[0] if directory_candidates else None
+    )
+    if existing_local_archive_paths:
+        download_directory_status = "local_archive_available"
+    elif ready_candidates:
+        download_directory_status = "ready"
+    elif directory_candidates and estimated_size_bytes is not None:
+        download_directory_status = "insufficient"
+    elif directory_candidates:
+        download_directory_status = "unknown"
+    else:
+        download_directory_status = "unavailable"
+    return {
+        "archive_download_name": archive_name or None,
+        "archive_download_url": archive_url or None,
+        "archive_estimated_size_bytes": estimated_size_bytes,
+        "archive_estimated_size_source": estimated_size_source,
+        "existing_local_archive_paths": existing_local_archive_paths,
+        "download_directory_candidates": directory_candidates,
+        "recommended_download_dir": (
+            recommended_candidate.get("path") if isinstance(recommended_candidate, dict) else None
+        ),
+        "recommended_download_dir_ready": (
+            recommended_candidate.get("download_space_ready")
+            if isinstance(recommended_candidate, dict)
+            else None
+        ),
+        "recommended_download_dir_available_space_bytes": (
+            recommended_candidate.get("available_space_bytes")
+            if isinstance(recommended_candidate, dict)
+            else None
+        ),
+        "download_directory_status": download_directory_status,
+    }
+
+
 def _build_acquisition_hints(
     *,
     repo_root: Path,
@@ -1190,6 +1362,14 @@ def _build_acquisition_hints(
         ],
         "local_download_candidates": awsim_download_candidates,
     }
+    awsim_hints.update(
+        _build_download_directory_hints(
+            repo_root=repo_root,
+            backend="awsim",
+            download_options=awsim_hints["download_options"],
+            local_download_candidates=awsim_download_candidates,
+        )
+    )
 
     carla_hints = {
         "status": (
@@ -1244,6 +1424,14 @@ def _build_acquisition_hints(
             "message": carla_docker.get("image_message") or carla_docker.get("daemon_message"),
         },
     }
+    carla_hints.update(
+        _build_download_directory_hints(
+            repo_root=repo_root,
+            backend="carla",
+            download_options=carla_hints["download_options"],
+            local_download_candidates=carla_download_candidates,
+        )
+    )
 
     return {
         "host_platform": host,
@@ -1274,6 +1462,13 @@ def _classify_backend_runtime_strategy(
     backend_hints = acquisition_hints.get(backend, {}) if isinstance(acquisition_hints, dict) else {}
     docker_hints = acquisition_hints.get("docker", {}) if isinstance(acquisition_hints, dict) else {}
     local_download_candidates = backend_hints.get("local_download_candidates", [])
+    recommended_download_dir = backend_hints.get("recommended_download_dir")
+    recommended_download_dir_ready = backend_hints.get("recommended_download_dir_ready")
+    download_directory_status = backend_hints.get("download_directory_status")
+    archive_estimated_size_bytes = backend_hints.get("archive_estimated_size_bytes")
+    recommended_download_dir_available_space_bytes = backend_hints.get(
+        "recommended_download_dir_available_space_bytes"
+    )
     docker_storage_status = docker_hints.get("storage_probe_status")
     recommended_handoff_command = (
         "python3 scripts/run_renderer_backend_workflow.py "
@@ -1345,6 +1540,18 @@ def _classify_backend_runtime_strategy(
                 reason_codes.append("DOCKER_IMAGE_MISSING")
     if backend_hints.get("platform_supported") is False:
         reason_codes.append("PLATFORM_UNSUPPORTED_LOCAL_HOST")
+    if strategy in {"packaged_runtime_required", "docker_or_packaged_runtime_required"}:
+        if download_directory_status == "insufficient":
+            reason_codes.append("DOWNLOAD_SPACE_INSUFFICIENT")
+        if (
+            isinstance(recommended_download_dir, str)
+            and recommended_download_dir.strip()
+            and recommended_download_dir_ready is True
+            and isinstance(recommended_command, str)
+            and recommended_command.strip()
+        ):
+            quoted_dir = shlex.quote(recommended_download_dir)
+            recommended_command = f"{recommended_command} --download-dir {quoted_dir}"
     return {
         "backend": backend,
         "strategy": strategy,
@@ -1355,6 +1562,11 @@ def _classify_backend_runtime_strategy(
         "docker_image": docker_image,
         "docker_storage_status": docker_storage_status,
         "local_download_candidate_count": len(local_download_candidates) if isinstance(local_download_candidates, list) else 0,
+        "recommended_download_dir": recommended_download_dir,
+        "recommended_download_dir_ready": recommended_download_dir_ready,
+        "recommended_download_dir_available_space_bytes": recommended_download_dir_available_space_bytes,
+        "download_directory_status": download_directory_status,
+        "archive_estimated_size_bytes": archive_estimated_size_bytes,
         "reason_codes": sorted(set(reason_codes)),
         "recommended_command": recommended_command,
         "platform_supported": backend_hints.get("platform_supported"),

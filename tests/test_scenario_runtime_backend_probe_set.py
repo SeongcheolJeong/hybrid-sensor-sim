@@ -652,6 +652,98 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                 "Repair the local Docker image store or use a packaged runtime handoff path.",
             )
 
+    def test_builtin_carla_local_probe_set_prefers_download_space_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            local_setup_summary = (
+                root
+                / "artifacts"
+                / "renderer_backend_local_setup_probe_latest"
+                / "renderer_backend_local_setup.json"
+            )
+            local_setup_summary.parent.mkdir(parents=True, exist_ok=True)
+            local_setup_summary.write_text(
+                json.dumps(
+                    {
+                        "runtime_strategy": {
+                            "carla": {
+                                "strategy": "packaged_runtime_required",
+                                "preferred_runtime_source": "packaged",
+                                "selected_path": None,
+                                "docker_storage_status": "healthy",
+                                "reason_codes": [
+                                    "LOCAL_RUNTIME_MISSING",
+                                    "DOWNLOAD_SPACE_INSUFFICIENT",
+                                ],
+                                "recommended_command": "python3 scripts/acquire_renderer_backend_package.py --backend carla",
+                                "recommended_download_dir": "/Volumes/LargeDisk/backend_downloads/carla",
+                                "recommended_download_dir_ready": False,
+                                "recommended_download_dir_available_space_bytes": 123456789,
+                                "download_directory_status": "insufficient",
+                                "archive_estimated_size_bytes": 15723108218,
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_scenario_runtime_backend_probe_set(
+                out_root=root / "probe_set",
+                probe_set_id="carla_local_v0",
+                repo_root=root,
+            )
+
+            report = result["report"]
+            self.assertEqual(report["status"], "FAIL")
+            self.assertEqual(report["primary_runtime_strategy"], "packaged_runtime_required")
+            self.assertEqual(
+                report["primary_runtime_plan_id"],
+                "packaged_runtime_required_with_download_space_blocker",
+            )
+            self.assertEqual(
+                report["blocking_reason_category_counts"],
+                {"download_environment": 2, "runtime_environment": 2},
+            )
+            self.assertEqual(
+                report["runtime_strategy_plan_rows"],
+                [
+                    {
+                        "strategy": "packaged_runtime_required",
+                        "probe_ids": ["carla_local_runtime_strategy"],
+                        "preferred_runtime_source": "packaged",
+                        "docker_storage_statuses": ["healthy"],
+                        "reason_codes": [
+                            "DOWNLOAD_SPACE_INSUFFICIENT",
+                            "LOCAL_RUNTIME_MISSING",
+                        ],
+                        "plan_id": "packaged_runtime_required_with_download_space_blocker",
+                        "plan_summary": "Acquire a packaged runtime after switching to a directory with enough free space.",
+                        "plan_steps": [
+                            "Choose or create a download directory with enough free space for the backend archive.",
+                            "Re-run the package acquire command with --download-dir set to that directory.",
+                            "Stage the packaged runtime into the local runtime workspace and rerun smoke.",
+                        ],
+                    }
+                ],
+            )
+            self.assertEqual(
+                report["recommended_resolution_focus"],
+                "Free space or use a larger download directory before acquiring the packaged runtime.",
+            )
+            self.assertEqual(
+                report["recommended_resolution_steps"],
+                [
+                    "Choose or create a download directory with enough free space for the backend archive.",
+                    "Re-run the package acquire command with --download-dir set to that directory.",
+                    "Stage the packaged runtime into the local runtime workspace and rerun smoke.",
+                    "Acquire and stage a packaged runtime for the selected backend.",
+                    "Run: python3 scripts/acquire_renderer_backend_package.py --backend carla",
+                    "Free space or use a larger download directory before acquiring the packaged runtime.",
+                    "Fix the runtime environment or switch to the recommended handoff path.",
+                ],
+            )
+
     def test_builtin_hybrid_runtime_readiness_probe_set_combines_awsim_and_carla(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
