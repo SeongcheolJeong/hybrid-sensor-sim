@@ -540,4 +540,4 @@ The next concrete code migration should be:
 
 That order increases current feature coverage fastest while keeping repository scope under control.
 
-Auto-acquire now defaults to the local setup `recommended_download_dir` when available, so backend acquisition/staging can continue without manually restating `--download-dir`. Mounted `/Volumes/*` candidates are considered automatically before falling back to repo-local download roots.
+Auto-acquire now defaults to the local setup `recommended_download_dir` when available, and standalone package acquisition follows the same rule when a setup summary is provided. Mounted `/Volumes/*` candidates are considered automatically before falling back to repo-local download roots.

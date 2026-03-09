@@ -56,8 +56,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--download-dir",
         type=Path,
-        default=Path.home() / "Downloads",
-        help="Directory where the package archive will be downloaded or reused.",
+        help=(
+            "Directory where the package archive will be downloaded or reused. "
+            "If omitted, the setup summary recommended_download_dir is used when available, "
+            "otherwise ~/Downloads."
+        ),
     )
     parser.add_argument(
         "--output-root",
@@ -105,6 +108,26 @@ def _resolve_path(raw: str | Path) -> Path:
     if path.is_absolute():
         return path.resolve()
     return (Path.cwd() / path).resolve()
+
+
+def _recommended_download_dir_from_setup_summary(
+    setup_summary: dict[str, Any],
+    backend: str,
+) -> Path | None:
+    runtime_strategy_map = setup_summary.get("runtime_strategy")
+    if isinstance(runtime_strategy_map, dict):
+        runtime_strategy = runtime_strategy_map.get(backend, {})
+        if isinstance(runtime_strategy, dict):
+            raw = runtime_strategy.get("recommended_download_dir")
+            if isinstance(raw, str) and raw.strip():
+                return _resolve_path(raw)
+    hints = setup_summary.get("acquisition_hints", {})
+    backend_hints = hints.get(backend, {}) if isinstance(hints, dict) else {}
+    if isinstance(backend_hints, dict):
+        raw = backend_hints.get("recommended_download_dir")
+        if isinstance(raw, str) and raw.strip():
+            return _resolve_path(raw)
+    return None
 
 
 def _resolve_download_options(setup_summary: dict[str, Any], backend: str) -> list[dict[str, str]]:
@@ -293,11 +316,6 @@ def build_renderer_backend_package_acquire(
     if backend not in _SUPPORTED_BACKENDS:
         raise ValueError(f"Unsupported backend: {backend}")
     repo_root = repo_root.resolve()
-    download_dir = (
-        _resolve_path(download_dir)
-        if download_dir is not None
-        else (Path.home() / "Downloads").resolve()
-    )
     output_root = (
         _resolve_path(output_root)
         if output_root is not None
@@ -309,6 +327,16 @@ def build_renderer_backend_package_acquire(
     if setup_summary_path is not None:
         resolved_setup_summary_path = _resolve_path(setup_summary_path)
         setup_summary = _load_json(resolved_setup_summary_path)
+    if download_dir is not None:
+        download_dir = _resolve_path(download_dir)
+        download_dir_source = "explicit"
+    else:
+        download_dir = _recommended_download_dir_from_setup_summary(setup_summary, backend)
+        if download_dir is not None:
+            download_dir_source = "setup_summary_recommended"
+        else:
+            download_dir = (Path.home() / "Downloads").resolve()
+            download_dir_source = "default"
 
     local_archive_candidates = _resolve_local_archive_candidates(setup_summary, backend)
     selected_local_archive = None if download_url else _select_existing_local_archive(setup_summary, backend)
@@ -464,6 +492,7 @@ def build_renderer_backend_package_acquire(
             "target_path": str(archive_path) if archive_path is not None else None,
             "target_exists": bool(archive_path and archive_path.exists()),
             "download_dir": str(download_dir),
+            "download_dir_source": download_dir_source,
             "estimated_size_bytes": estimated_size_bytes,
             "size_probe_source": size_probe_source,
             "size_probe_message": size_probe_message,
@@ -517,7 +546,7 @@ def main(argv: list[str] | None = None) -> int:
         setup_summary_path=_resolve_path(args.setup_summary) if args.setup_summary is not None else None,
         download_url=args.download_url,
         download_name=args.download_name,
-        download_dir=_resolve_path(args.download_dir),
+        download_dir=_resolve_path(args.download_dir) if args.download_dir is not None else None,
         output_root=_resolve_path(args.output_root) if args.output_root is not None else None,
         dry_run=args.dry_run,
         overwrite_download=args.overwrite_download,
