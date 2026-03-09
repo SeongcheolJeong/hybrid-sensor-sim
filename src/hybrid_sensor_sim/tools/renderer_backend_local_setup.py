@@ -1122,6 +1122,34 @@ def _split_path_list_env(raw: str) -> list[str]:
     ]
 
 
+def _mounted_volume_download_candidates(
+    *, backend: str, volumes_root: Path | None = None
+) -> list[Path]:
+    root = (volumes_root or Path("/Volumes")).resolve()
+    if not root.exists() or not root.is_dir():
+        return []
+    candidates: list[Path] = []
+    for entry in sorted(root.iterdir(), key=lambda path: path.name.lower()):
+        if not entry.is_dir() or entry.name.startswith("."):
+            continue
+        candidates.extend(
+            [
+                (entry / "backend_downloads" / backend).resolve(),
+                (entry / "Downloads").resolve(),
+                entry.resolve(),
+            ]
+        )
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(candidate)
+    return unique
+
+
 def _download_directory_candidates(
     *, repo_root: Path, backend: str, extra_candidates: list[Path] | None = None
 ) -> list[Path]:
@@ -1148,6 +1176,7 @@ def _download_directory_candidates(
         for raw in env_candidate_lists
         if isinstance(raw, str) and raw.strip()
     )
+    candidate_paths.extend(_mounted_volume_download_candidates(backend=backend))
     candidate_paths.extend(
         [
             (repo_root / "downloaded_artifacts" / backend).resolve(),
@@ -1173,9 +1202,12 @@ def _probe_directory_space_candidate(
     available_space_bytes = None
     download_space_ready = None
     download_space_status = "unknown"
+    probe_directory = directory
+    while not probe_directory.exists() and probe_directory.parent != probe_directory:
+        probe_directory = probe_directory.parent
     try:
         available_space_bytes, download_space_ready = _probe_download_space(
-            target_path=directory / archive_name,
+            target_path=probe_directory / archive_name,
             estimated_size_bytes=estimated_size_bytes,
         )
     except Exception:
@@ -1188,6 +1220,7 @@ def _probe_directory_space_candidate(
         download_space_status = "insufficient"
     return {
         "path": str(directory),
+        "probe_directory": str(probe_directory),
         "available_space_bytes": available_space_bytes,
         "download_space_ready": download_space_ready,
         "download_space_status": download_space_status,

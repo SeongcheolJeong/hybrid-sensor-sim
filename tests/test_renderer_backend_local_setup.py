@@ -13,6 +13,7 @@ from unittest.mock import patch
 from hybrid_sensor_sim.tools.renderer_backend_local_setup import (
     _docker_image_present,
     _inspect_executable_host_compatibility,
+    _mounted_volume_download_candidates,
     build_renderer_backend_local_setup,
     main as local_setup_main,
 )
@@ -955,6 +956,65 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
                 summary["acquisition_hints"]["carla"]["recommended_download_dir"],
                 str(env_large.resolve()),
             )
+
+    def test_mounted_volume_download_candidates_include_backend_and_downloads_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            volumes_root = Path(tmp) / "Volumes"
+            volume_a = volumes_root / "FastDisk"
+            volume_b = volumes_root / "ArchiveDisk"
+            (volume_a / "Downloads").mkdir(parents=True, exist_ok=True)
+            volume_b.mkdir(parents=True, exist_ok=True)
+
+            candidates = _mounted_volume_download_candidates(
+                backend="carla",
+                volumes_root=volumes_root,
+            )
+
+            self.assertIn((volume_a / "backend_downloads" / "carla").resolve(), candidates)
+            self.assertIn((volume_a / "Downloads").resolve(), candidates)
+            self.assertIn(volume_a.resolve(), candidates)
+            self.assertIn((volume_b / "backend_downloads" / "carla").resolve(), candidates)
+            self.assertIn(volume_b.resolve(), candidates)
+
+    def test_build_renderer_backend_local_setup_prefers_mounted_volume_candidates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            repo_root.mkdir(parents=True, exist_ok=True)
+            volume_root = root / "Volumes" / "BigDisk"
+            volume_root.mkdir(parents=True, exist_ok=True)
+            mounted_backend_dir = volume_root / "backend_downloads" / "carla"
+
+            def _fake_probe_download_space(*, target_path, estimated_size_bytes):
+                target = Path(target_path).resolve()
+                if target.parent == volume_root.resolve():
+                    return 20_000_000_000, True
+                return 100, False
+
+            with patch(
+                "hybrid_sensor_sim.tools.renderer_backend_local_setup._inspect_helios_docker_runtime",
+                return_value=_unavailable_docker_runtime(),
+            ), patch(
+                "hybrid_sensor_sim.tools.renderer_backend_local_setup._mounted_volume_download_candidates",
+                return_value=[mounted_backend_dir.resolve(), volume_root.resolve()],
+            ), patch(
+                "hybrid_sensor_sim.tools.renderer_backend_local_setup._probe_download_space",
+                side_effect=_fake_probe_download_space,
+            ):
+                summary = build_renderer_backend_local_setup(
+                    repo_root=repo_root,
+                    search_roots=[],
+                    output_dir=root / "artifacts",
+                    include_default_search_roots=False,
+                )
+
+            recommended = summary["acquisition_hints"]["carla"]["recommended_download_dir"]
+            self.assertEqual(recommended, str(mounted_backend_dir.resolve()))
+            candidate_rows = summary["acquisition_hints"]["carla"]["download_directory_candidates"]
+            mounted_row = next(
+                row for row in candidate_rows if row["path"] == str(mounted_backend_dir.resolve())
+            )
+            self.assertEqual(mounted_row["probe_directory"], str(volume_root.resolve()))
 
     def test_build_renderer_backend_local_setup_writes_probe_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

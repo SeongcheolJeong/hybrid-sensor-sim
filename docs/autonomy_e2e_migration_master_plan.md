@@ -101,7 +101,7 @@ Current repository paths:
 - the CARLA package acquire path now prefers archive-style URLs and names the local target from the archive filename, so the current local strategy points at a usable `.tar.gz` acquisition path instead of the GitHub release HTML page
 - the same acquire path now also estimates archive size and compares it against free space in the selected download directory, so `CARLA` package blockers can show up as explicit disk-capacity failures before any download starts
 - local setup now promotes that same download-space diagnosis into `recommended_download_dir` and `DOWNLOAD_SPACE_INSUFFICIENT`, and the `carla_local_v0` probe set converts it into a dedicated runtime plan instead of lumping it into generic packaged-runtime failure
-- local setup now also accepts explicit extra download-volume candidates, plus `*_PACKAGE_DOWNLOAD_DIRS` environment path lists, so runtime strategy can pivot to an external or larger volume before packaged acquire/stage runs
+- local setup now also accepts explicit extra download-volume candidates, inspects mounted `/Volumes/*` roots automatically, and honors `*_PACKAGE_DOWNLOAD_DIRS` environment path lists, so runtime strategy can pivot to an external or larger volume before packaged acquire/stage runs
 - the same local setup/probe-set path now also computes the download-space shortfall for the best candidate directory, so CARLA acquisition blockers are reported as a quantified capacity gap
 - the probe-set summary now also emits a single `recommended_next_command`, so pinned runtime parity checks can point directly at the next backend action without manual drill-down; when the blocker is download space it now prefers the `--download-dir` acquire command
 - the same probe-set surface now also emits `runtime_strategy_plan_rows` and `primary_runtime_plan_id`, so `linux handoff`, `packaged runtime required`, and Docker-storage blocker paths carry strategy-specific recovery steps
@@ -539,4 +539,4 @@ The next concrete code migration should be:
 
 That order increases current feature coverage fastest while keeping repository scope under control.
 
-Auto-acquire now defaults to the local setup `recommended_download_dir` when available, so backend acquisition/staging can continue without manually restating `--download-dir`.
+Auto-acquire now defaults to the local setup `recommended_download_dir` when available, so backend acquisition/staging can continue without manually restating `--download-dir`. Mounted `/Volumes/*` candidates are considered automatically before falling back to repo-local download roots.
