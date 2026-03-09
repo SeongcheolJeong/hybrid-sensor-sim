@@ -1170,6 +1170,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `artifacts.report_path`
 - `probe_readiness` now also surfaces `backend_package_workflow_selftest_ready` / `backend_package_workflow_status`, and `workflow_paths` includes `package_workflow_path_ready`.
 - `probe_readiness.docker_storage_ready=false` means the Docker daemon may be reachable while the local image/content store is already failing. On this machine that is the reason both `CARLA` Docker pull and `HELIOS` Docker image access are blocked.
+- `probe_readiness.docker_storage_status` and `acquisition_hints.docker.storage_probe_status` classify that failure. The current machine reports `image_store_corrupt`, which means the next action is Docker Desktop storage repair, not repository code changes.
 - `renderer_backend_local_report.md` gives a compact runtime/probe/path readiness view without manually inspecting the full JSON.
 - current machine-specific blocker:
   - `AWSIM` is staged locally but remains host-incompatible on `Darwin arm64`, so it must run through Linux handoff

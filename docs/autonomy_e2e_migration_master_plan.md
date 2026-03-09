@@ -122,7 +122,7 @@ Still pending from this master plan:
    - the real AWSIM probe set now distinguishes `semantic_primary_ready` from `semantic_recovery_ready`, making the remaining semantic gap explicit: fresh primary artifacts are runtime-native `READY`, while the older degraded artifact remains as a recovery regression guard
    - the Autoware bridge now exposes run-level lineage so the selected variant, scenario source, smoke-ready scenario, and backend-export roots are all visible in one dataset manifest
    - `autoware_consumer_input_manifest.json` now also carries grouped downstream-ingest structure via `subscription_specs`, `sensor_inputs`, and `static_transforms`, reducing the amount of ad-hoc parsing a downstream Autoware-style consumer has to do
-   - local setup now also has a first-class `CARLA` Docker pull probe and a broader Docker storage probe. On this machine both point at the same blocker: Docker Desktop/containerd image-store failure (`meta.db` and blob I/O errors), not a repository implementation gap.
+   - local setup now also classifies Docker storage failures. On this machine the effective status is `image_store_corrupt`, so the next action is Docker Desktop storage repair or packaged-runtime fallback, not more repository scaffolding.
 3. tighter publish gating that combines scenario/runtime smoke with provenance refresh status
 4. lower-level backend smoke entrypoints should preserve the same provenance-aware publish checks as top-level workflows
 5. top-level runtime/backend workflow should expose backend output comparison drift without requiring manual drill-down into nested smoke reports

@@ -690,9 +690,17 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertIn("docker_storage", summary["probes"])
             self.assertFalse(summary["probes"]["docker_storage"]["success"])
             self.assertFalse(summary["probe_readiness"]["docker_storage_ready"])
+            self.assertEqual(
+                summary["probe_readiness"]["docker_storage_status"],
+                "image_store_corrupt",
+            )
             self.assertIn(
                 "Docker storage probe failed: failed to create lease: write /var/lib/desktop-containerd/daemon/io.containerd.metadata.v1.bolt/meta.db: input/output error",
                 summary["issues"],
+            )
+            self.assertEqual(
+                summary["acquisition_hints"]["docker"]["storage_probe_status"],
+                "image_store_corrupt",
             )
             probe_path = Path(summary["artifacts"]["docker_storage_probe_path"])
             self.assertTrue(probe_path.exists())

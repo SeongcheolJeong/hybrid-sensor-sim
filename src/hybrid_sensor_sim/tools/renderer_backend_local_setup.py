@@ -747,6 +747,26 @@ def _run_docker_storage_probe() -> dict[str, Any]:
     }
 
 
+def _classify_docker_storage_probe(probe: dict[str, Any] | None) -> tuple[str | None, str | None]:
+    if not isinstance(probe, dict) or not probe:
+        return None, None
+    if probe.get("success") is True:
+        return "healthy", None
+    stderr = str(probe.get("stderr") or "").strip()
+    lowered = stderr.lower()
+    if "docker cli is not installed" in lowered:
+        return "docker_cli_missing", stderr
+    if "daemon is not reachable" in lowered:
+        return "daemon_unreachable", stderr
+    if "io.containerd.metadata.v1.bolt/meta.db" in lowered:
+        return "image_store_corrupt", stderr
+    if "blob sha256" in lowered and "input/output error" in lowered:
+        return "content_store_corrupt", stderr
+    if "input/output error" in lowered:
+        return "storage_io_error", stderr
+    return "probe_failed", stderr or None
+
+
 def _discover_backend_candidates(
     *,
     backend: str,
@@ -862,6 +882,10 @@ def _build_probe_readiness(summary: dict[str, Any]) -> dict[str, Any]:
     backend_package_workflow_probe = (
         probes.get("backend_package_workflow_selftest", {}) if isinstance(probes, dict) else {}
     )
+    docker_storage_probe = probes.get("docker_storage", {}) if isinstance(probes, dict) else {}
+    docker_storage_status, _ = _classify_docker_storage_probe(
+        docker_storage_probe if isinstance(docker_storage_probe, dict) else None
+    )
     return {
         "helios_docker_demo_ready": _probe_success(probes, "helios_docker_demo"),
         "linux_handoff_docker_selftest_ready": _probe_success(probes, "linux_handoff_docker_selftest"),
@@ -873,6 +897,7 @@ def _build_probe_readiness(summary: dict[str, Any]) -> dict[str, Any]:
         ),
         "carla_docker_pull_ready": _probe_success(probes, "carla_docker_pull"),
         "docker_storage_ready": _probe_success(probes, "docker_storage"),
+        "docker_storage_status": docker_storage_status,
         "backend_package_workflow_selftest_ready": _probe_success(
             probes,
             "backend_package_workflow_selftest",
@@ -937,6 +962,7 @@ def _render_local_setup_report(summary: dict[str, Any], summary_path: Path) -> s
         f"| backend_workflow_status | `{probe_readiness.get('backend_workflow_status')}` |",
         f"| carla_docker_pull_ready | `{probe_readiness.get('carla_docker_pull_ready')}` |",
         f"| docker_storage_ready | `{probe_readiness.get('docker_storage_ready')}` |",
+        f"| docker_storage_status | `{probe_readiness.get('docker_storage_status')}` |",
         f"| backend_package_workflow_selftest_ready | `{probe_readiness.get('backend_package_workflow_selftest_ready')}` |",
         f"| backend_package_workflow_status | `{probe_readiness.get('backend_package_workflow_status')}` |",
         "",
@@ -1025,6 +1051,7 @@ def _build_acquisition_hints(
     backends: dict[str, Any],
     runtimes: dict[str, Any],
     readiness: dict[str, Any],
+    probes: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     host = _host_platform_summary()
     system = host["system"]
@@ -1033,6 +1060,10 @@ def _build_acquisition_hints(
     carla = backends["carla"]
     helios_docker = runtimes["helios_docker"]
     carla_docker = runtimes["carla_docker"]
+    docker_storage_probe = probes.get("docker_storage", {}) if isinstance(probes, dict) else {}
+    docker_storage_status, docker_storage_message = _classify_docker_storage_probe(
+        docker_storage_probe if isinstance(docker_storage_probe, dict) else None
+    )
     awsim_download_candidates = [
         str(path)
         for path in _scan_archive_candidates(
@@ -1198,6 +1229,15 @@ def _build_acquisition_hints(
 
     return {
         "host_platform": host,
+        "docker": {
+            "storage_probe_status": docker_storage_status,
+            "storage_probe_message": docker_storage_message,
+            "next_actions": [
+                "Restart Docker Desktop and rerun the local setup probes.",
+                "If the storage probe still reports image/content store corruption, repair Docker Desktop image storage before relying on Docker-based CARLA or HELIOS validation.",
+                "Use packaged runtime paths or Linux handoff for backend validation while local Docker storage remains unhealthy.",
+            ],
+        },
         "helios": helios_hints,
         "awsim": awsim_hints,
         "carla": carla_hints,
@@ -1569,6 +1609,7 @@ def build_renderer_backend_local_setup(
             "carla_docker": carla_docker,
         },
         readiness=readiness,
+        probes=probes,
     )
     summary = {
         "generated_at_utc": _format_utc(_utc_now()),
