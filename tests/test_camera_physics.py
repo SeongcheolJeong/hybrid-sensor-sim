@@ -528,6 +528,90 @@ EOF
             self.assertGreater(len(preview["preview_semantic_legend"]), 0)
             self.assertEqual(result.metrics.get("camera_semantic_output_count"), 3.0)
 
+    def test_hybrid_generates_semantic_companion_preview_for_visible_camera(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+
+            fake_helios = root / "fake_helios.sh"
+            fake_helios.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "${out}/demo/2026-01-01_00-00-00"
+rootdir="${out}/demo/2026-01-01_00-00-00"
+echo "Output directory: \\"${rootdir}\\""
+cat > "${rootdir}/scan_points.xyz" <<EOF
+0.0 0.0 10.0
+1.0 1.0 12.0
+8.0 2.0 10.0
+EOF
+""",
+                encoding="utf-8",
+            )
+            fake_helios.chmod(0o755)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "camera_projection_enabled": True,
+                    "camera_sensor_type": "VISIBLE",
+                    "camera_companion_sensor_types": ["SEMANTIC_SEGMENTATION"],
+                    "camera_semantic_params": {
+                        "class_version": "GRANULAR_SEGMENTATION",
+                        "include_material_class": True,
+                    },
+                    "camera_semantic_point_labels": [
+                        {
+                            "point_index": 0,
+                            "semantic_class_id": 1524,
+                            "semantic_class_name": "CROSSWALK",
+                            "actor_id": 77,
+                            "component_id": 88,
+                            "material_class_id": 1200,
+                        }
+                    ],
+                    "camera_intrinsics": {
+                        "fx": 1000.0,
+                        "fy": 1000.0,
+                        "cx": 960.0,
+                        "cy": 540.0,
+                        "width": 1920,
+                        "height": 1080,
+                    },
+                },
+            )
+
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            preview = json.loads(
+                result.artifacts["camera_projection_preview"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(preview["sensor_type"], "VISIBLE")
+            self.assertEqual(preview["output_mode"], "VISIBLE")
+            self.assertEqual(preview["companion_sensor_types"], ["SEMANTIC_SEGMENTATION"])
+            self.assertIn("VISIBLE", preview["available_output_modes"])
+            self.assertIn("SEMANTIC_SEGMENTATION", preview["available_output_modes"])
+            self.assertGreater(len(preview["preview_semantic_samples"]), 0)
+            self.assertGreater(len(preview["preview_semantic_legend"]), 0)
+            self.assertEqual(result.metrics.get("camera_semantic_output_count"), 3.0)
+
     def test_hybrid_rolling_shutter_applies_pose_distortion_with_trajectory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

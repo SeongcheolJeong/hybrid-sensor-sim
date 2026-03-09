@@ -296,6 +296,70 @@ class RendererRuntimeTests(unittest.TestCase):
             )
             self.assertEqual(manifest["frames"][0]["camera"]["data_format"], "camera_semantic_json")
 
+    def test_renderer_runtime_materializes_semantic_camera_companion_output(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            survey = root / "survey.xml"
+            survey.write_text("<document></document>", encoding="utf-8")
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+
+            request = SensorSimRequest(
+                scenario_path=survey,
+                output_dir=root / "out",
+                options={
+                    "execute_helios": True,
+                    "renderer_bridge_enabled": True,
+                    "renderer_backend": "carla",
+                    "renderer_execute": False,
+                    "renderer_command": ["echo", "renderer_plan", "{contract}"],
+                    "camera_projection_enabled": True,
+                    "camera_projection_trajectory_sweep_enabled": True,
+                    "camera_projection_trajectory_sweep_frames": 2,
+                    "camera_sensor_type": "VISIBLE",
+                    "camera_companion_sensor_types": ["SEMANTIC_SEGMENTATION"],
+                    "camera_semantic_params": {
+                        "class_version": "GRANULAR_SEGMENTATION",
+                        "include_material_class": True,
+                    },
+                    "lidar_postprocess_enabled": False,
+                    "radar_postprocess_enabled": False,
+                },
+            )
+            orchestrator = HybridOrchestrator(
+                helios=HeliosAdapter(helios_bin=fake_helios),
+                native=NativePhysicsBackend(),
+            )
+            result = orchestrator.run(request, BackendMode.HYBRID_AUTO)
+
+            self.assertTrue(result.success)
+            contract = json.loads(
+                result.artifacts["renderer_playback_contract"].read_text(encoding="utf-8")
+            )
+            manifest = json.loads(
+                result.artifacts["backend_frame_inputs_manifest"].read_text(encoding="utf-8")
+            )
+            ingestion_profile = json.loads(
+                result.artifacts["backend_ingestion_profile"].read_text(encoding="utf-8")
+            )
+            self.assertEqual(contract["sensor_setup"]["camera"]["sensor_type"], "VISIBLE")
+            self.assertEqual(
+                contract["sensor_setup"]["camera"]["companion_sensor_types"],
+                ["SEMANTIC_SEGMENTATION"],
+            )
+            self.assertEqual(manifest["frames"][0]["camera"]["data_format"], "camera_projection_json")
+            self.assertIn("additional_outputs", manifest["frames"][0]["camera"])
+            additional_outputs = manifest["frames"][0]["camera"]["additional_outputs"]
+            self.assertEqual(len(additional_outputs), 1)
+            self.assertEqual(additional_outputs[0]["data_format"], "camera_semantic_json")
+            self.assertEqual(additional_outputs[0]["output_mode"], "SEMANTIC_SEGMENTATION")
+            data_formats = {
+                (entry["sensor_id"], entry["data_format"])
+                for entry in ingestion_profile["entries"]
+            }
+            self.assertIn(("camera_front", "camera_projection_json"), data_formats)
+            self.assertIn(("camera_front", "camera_semantic_json"), data_formats)
+
     def test_renderer_runtime_uses_radar_track_payload_format(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

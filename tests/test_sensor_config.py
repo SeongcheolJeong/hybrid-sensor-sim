@@ -25,6 +25,7 @@ class SensorConfigTests(unittest.TestCase):
         self.assertEqual(config.coverage.lidar_min_points_on_target, 1)
         self.assertEqual(config.coverage.radar_min_detections_on_target, 1)
         self.assertEqual(config.camera.geometry_model, "pinhole")
+        self.assertEqual(config.camera.companion_sensor_types, [])
         self.assertEqual(config.camera.intrinsics.fx, 1200.0)
         self.assertEqual(config.camera.image_chain.iso, 100)
         self.assertAlmostEqual(config.camera.image_chain.shutter_speed_us, 6000.0)
@@ -375,6 +376,7 @@ class SensorConfigTests(unittest.TestCase):
         self.assertEqual(config.camera.sensor_id, "cam_front")
         self.assertEqual(config.camera.attach_to_actor_id, "ego_vehicle")
         self.assertEqual(config.camera.sensor_type, "DEPTH")
+        self.assertEqual(config.camera.companion_sensor_types, [])
         self.assertEqual(config.camera.geometry_model, "equidistant")
         self.assertFalse(config.camera.projection_enabled)
         self.assertEqual(config.camera.intrinsics.width, 1280)
@@ -819,3 +821,17 @@ class SensorConfigTests(unittest.TestCase):
             self.assertEqual(payload["schema_version"], CONFIG_SCHEMA_VERSION)
             self.assertEqual(payload["sensors"]["camera"]["sensor_id"], "cam_front")
             self.assertEqual(payload["sensors"]["camera"]["geometry_model"], "equidistant")
+
+    def test_build_sensor_sim_config_parses_camera_companion_sensor_types(self) -> None:
+        config = build_sensor_sim_config(
+            options={
+                "camera_sensor_type": "visible",
+                "camera_companion_sensor_types": ["SEMANTIC_SEGMENTATION", "depth"],
+            }
+        )
+
+        self.assertEqual(config.camera.sensor_type, "VISIBLE")
+        self.assertEqual(
+            config.camera.companion_sensor_types,
+            ["SEMANTIC_SEGMENTATION", "DEPTH"],
+        )

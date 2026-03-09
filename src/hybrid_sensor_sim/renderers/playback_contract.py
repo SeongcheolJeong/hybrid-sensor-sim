@@ -74,6 +74,36 @@ def _frame_source(
     return None
 
 
+def _camera_data_format_for_sensor_type(sensor_type: str) -> str:
+    normalized = str(sensor_type).strip().upper()
+    if normalized == "DEPTH":
+        return "camera_depth_json"
+    if normalized == "SEMANTIC_SEGMENTATION":
+        return "camera_semantic_json"
+    return "camera_projection_json"
+
+
+def _camera_additional_outputs(
+    *,
+    camera_source: dict[str, Any],
+    config: SensorSimConfig,
+) -> list[dict[str, Any]]:
+    primary_data_format = _camera_data_format_for_sensor_type(config.camera.sensor_type)
+    additional_outputs: list[dict[str, Any]] = []
+    for sensor_type in config.camera.companion_sensor_types:
+        data_format = _camera_data_format_for_sensor_type(sensor_type)
+        if data_format == primary_data_format:
+            continue
+        additional_outputs.append(
+            {
+                **camera_source,
+                "data_format": data_format,
+                "output_mode": str(sensor_type).strip().upper(),
+            }
+        )
+    return additional_outputs
+
+
 def _build_renderer_sensor_mounts(
     *,
     config: SensorSimConfig,
@@ -237,6 +267,16 @@ def build_renderer_playback_contract(
             frame_index=frame_id,
         )
         if camera_source is not None:
+            camera_source = {
+                **camera_source,
+                "data_format": _camera_data_format_for_sensor_type(config.camera.sensor_type),
+            }
+            additional_outputs = _camera_additional_outputs(
+                camera_source=camera_source,
+                config=config,
+            )
+            if additional_outputs:
+                camera_source["additional_outputs"] = additional_outputs
             frame["camera"] = camera_source
 
         lidar_source = _frame_source(
@@ -314,6 +354,7 @@ def build_renderer_playback_contract(
         "sensor_setup": {
             "camera": {
                 "sensor_type": config.camera.sensor_type,
+                "companion_sensor_types": list(config.camera.companion_sensor_types),
                 "geometry_model": config.camera.geometry_model,
                 "distortion_model": config.camera.distortion_model,
                 "intrinsics": config.camera.intrinsics.to_dict(),

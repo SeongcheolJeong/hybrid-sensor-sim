@@ -464,6 +464,7 @@ BLOCK_CATALOG: list[dict[str, Any]] = [
         "current_paths": [
             "src/hybrid_sensor_sim/orchestrator.py",
             "src/hybrid_sensor_sim/backends/native_physics.py",
+            "src/hybrid_sensor_sim/config.py",
             "src/hybrid_sensor_sim/renderers/playback_contract.py",
         ],
         "current_test_paths": [
@@ -565,6 +566,8 @@ BLOCK_CATALOG: list[dict[str, Any]] = [
         ],
         "current_fixture_paths": [],
         "current_script_paths": [
+            "scripts/renderer_launch_awsim.sh",
+            "scripts/renderer_launch_carla.sh",
             "scripts/run_renderer_backend_smoke.py",
             "scripts/run_renderer_backend_workflow.py",
         ],

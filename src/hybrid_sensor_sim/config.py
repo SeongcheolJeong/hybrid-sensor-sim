@@ -641,6 +641,7 @@ class CameraSensorConfig:
     sensor_id: str = "camera_front"
     attach_to_actor_id: str = "ego"
     sensor_type: str = "VISIBLE"
+    companion_sensor_types: list[str] = field(default_factory=list)
     geometry_model: str = "pinhole"
     distortion_model: str = "brown-conrady"
     projection_enabled: bool = True
@@ -661,6 +662,7 @@ class CameraSensorConfig:
             "sensor_id": self.sensor_id,
             "attach_to_actor_id": self.attach_to_actor_id,
             "sensor_type": self.sensor_type,
+            "companion_sensor_types": list(self.companion_sensor_types),
             "geometry_model": self.geometry_model,
             "distortion_model": self.distortion_model,
             "projection_enabled": self.projection_enabled,
@@ -1182,6 +1184,20 @@ def _parse_camera_semantic(options: Mapping[str, Any]) -> CameraSemanticConfig:
             False,
         ),
     )
+
+
+def _parse_camera_companion_sensor_types(options: Mapping[str, Any]) -> list[str]:
+    raw = options.get("camera_companion_sensor_types")
+    if raw is None:
+        raw = options.get("camera_companion_sensor_type")
+    values = raw if isinstance(raw, list) else ([raw] if raw is not None else [])
+    normalized: list[str] = []
+    for value in values:
+        sensor_type = _as_str(value, "").upper()
+        if not sensor_type or sensor_type in normalized:
+            continue
+        normalized.append(sensor_type)
+    return normalized
 
 
 def _parse_camera_image_chain(options: Mapping[str, Any]) -> CameraImageChainConfig:
@@ -2278,6 +2294,7 @@ def build_sensor_sim_config(
             sensor_id=_as_str(data.get("renderer_camera_sensor_id"), "camera_front"),
             attach_to_actor_id=ego_actor_id,
             sensor_type=_as_str(data.get("camera_sensor_type"), "VISIBLE").upper(),
+            companion_sensor_types=_parse_camera_companion_sensor_types(data),
             geometry_model=_as_str(data.get("camera_geometry"), "pinhole"),
             distortion_model=_as_str(data.get("camera_distortion"), "brown-conrady"),
             projection_enabled=_as_bool(data.get("camera_projection_enabled"), True),

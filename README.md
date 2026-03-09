@@ -438,6 +438,8 @@ For `semantic_perception_v0`, `scenario_backend_smoke_workflow.py` now also supp
 - `off`: never run the supplemental pass
 - `dual_pass`: always run the semantic-only supplemental pass for semantic consumers and merge it into the Autoware bridge bundle
 
+For the primary AWSIM path, the visible camera contract now also supports logical companion outputs. In practice that means the primary `camera_projection_json` payload can declare additional outputs such as `camera_semantic_json`, so semantic consumers can reuse the same primary camera mount/contract instead of requiring a separate camera sensor definition for every output mode.
+
 That means semantic recovery is now policy-driven rather than only reactive.
 That live supplemental pass now uses its own isolated `renderer_backend_workflow` root as well, so semantic recovery cannot accidentally reuse the primary run's nested smoke artifacts.
 `scenario_runtime_backend_workflow_report_v0.json` now lifts that merge state to top-level as well, including merged report count, supplemental semantic status, and supplemental semantic artifact paths, so semantic recovery can be triaged without opening the nested backend smoke report.

@@ -1173,11 +1173,13 @@ def _enrich_resolved_sensor_source(
     if not attach_to:
         attach_to = "ego"
     payload_artifact = str(resolved_source.get("payload_artifact", "")).strip()
-    data_format = _infer_sensor_payload_format(
-        sensor_name=sensor_name,
-        payload_artifact=payload_artifact,
-        contract_payload=contract_payload,
-    )
+    data_format = str(resolved_source.get("data_format", "")).strip()
+    if not data_format:
+        data_format = _infer_sensor_payload_format(
+            sensor_name=sensor_name,
+            payload_artifact=payload_artifact,
+            contract_payload=contract_payload,
+        )
     resolved_source["sensor_name"] = sensor_name
     resolved_source["sensor_type"] = sensor_name
     resolved_source["sensor_id"] = sensor_id
@@ -1250,6 +1252,45 @@ def _build_backend_frame_inputs_manifest(
             if resolved_source.get("available") is True:
                 sensor_binding_count += 1
             materialized_payload_count += materialized_count
+            raw_additional_outputs = source.get("additional_outputs")
+            if isinstance(raw_additional_outputs, list):
+                resolved_additional_outputs: list[dict[str, Any]] = []
+                for raw_additional_output in raw_additional_outputs:
+                    if not isinstance(raw_additional_output, dict):
+                        continue
+                    merged_source = dict(source)
+                    merged_source.update(raw_additional_output)
+                    resolved_additional_source, additional_materialized_count = (
+                        _resolve_backend_frame_source(
+                            source=merged_source,
+                            sensor_name=sensor_name,
+                            frame_index=frame_id,
+                            runtime_dir=runtime_dir,
+                            cwd=cwd,
+                        )
+                    )
+                    resolved_additional_source.update(
+                        {
+                            "data_format": str(
+                                raw_additional_output.get("data_format", "")
+                            ).strip(),
+                            "output_mode": str(
+                                raw_additional_output.get("output_mode", "")
+                            ).strip(),
+                        }
+                    )
+                    _enrich_resolved_sensor_source(
+                        sensor_name=sensor_name,
+                        resolved_source=resolved_additional_source,
+                        mount_index=mount_index,
+                        contract_payload=contract_payload,
+                    )
+                    resolved_additional_outputs.append(resolved_additional_source)
+                    if resolved_additional_source.get("available") is True:
+                        sensor_binding_count += 1
+                    materialized_payload_count += additional_materialized_count
+                if resolved_additional_outputs:
+                    resolved_source["additional_outputs"] = resolved_additional_outputs
         manifest_frames.append(frame_manifest)
 
     manifest_payload = {
@@ -1307,31 +1348,38 @@ def _build_backend_ingestion_profile(
             source = frame.get(sensor_name)
             if not isinstance(source, dict) or not bool(source.get("available", False)):
                 continue
-            payload_artifact = str(source.get("payload_artifact", "")).strip()
-            if not payload_artifact:
-                continue
-            sensor = str(source.get("sensor_name", sensor_name)).strip() or sensor_name
-            sensor_id = str(source.get("sensor_id", "")).strip() or sensor
-            data_format = str(source.get("data_format", "")).strip()
-            attach_to = str(source.get("attach_to_actor_id", "")).strip() or "ego"
-            if backend == "awsim":
-                frame_value = f"{sensor}:{renderer_frame_id}:{payload_artifact}"
-            else:
-                frame_value = f"{renderer_frame_id}:{sensor}:{payload_artifact}"
-            meta_value = f"{sensor}:{sensor_id}:{data_format}:{attach_to}"
-            entries.append(
-                {
-                    "renderer_frame_id": renderer_frame_id,
-                    "sensor_name": sensor,
-                    "sensor_id": sensor_id,
-                    "data_format": data_format,
-                    "payload_artifact": payload_artifact,
-                    "frame_flag": frame_flag,
-                    "frame_value": frame_value,
-                    "meta_flag": meta_flag,
-                    "meta_value": meta_value,
-                }
-            )
+            sources = [source]
+            raw_additional_outputs = source.get("additional_outputs")
+            if isinstance(raw_additional_outputs, list):
+                sources.extend(
+                    item for item in raw_additional_outputs if isinstance(item, dict)
+                )
+            for resolved_source in sources:
+                payload_artifact = str(resolved_source.get("payload_artifact", "")).strip()
+                if not payload_artifact:
+                    continue
+                sensor = str(resolved_source.get("sensor_name", sensor_name)).strip() or sensor_name
+                sensor_id = str(resolved_source.get("sensor_id", "")).strip() or sensor
+                data_format = str(resolved_source.get("data_format", "")).strip()
+                attach_to = str(resolved_source.get("attach_to_actor_id", "")).strip() or "ego"
+                if backend == "awsim":
+                    frame_value = f"{sensor}:{renderer_frame_id}:{payload_artifact}"
+                else:
+                    frame_value = f"{renderer_frame_id}:{sensor}:{payload_artifact}"
+                meta_value = f"{sensor}:{sensor_id}:{data_format}:{attach_to}"
+                entries.append(
+                    {
+                        "renderer_frame_id": renderer_frame_id,
+                        "sensor_name": sensor,
+                        "sensor_id": sensor_id,
+                        "data_format": data_format,
+                        "payload_artifact": payload_artifact,
+                        "frame_flag": frame_flag,
+                        "frame_value": frame_value,
+                        "meta_flag": meta_flag,
+                        "meta_value": meta_value,
+                    }
+                )
 
     profile_payload = {
         "backend": backend,

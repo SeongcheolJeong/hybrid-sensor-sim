@@ -98,7 +98,7 @@ if not isinstance(frames, list):
     raise SystemExit("--frame-manifest payload missing frames list")
 
 allowed_formats = {
-    "camera": {"camera_projection_json"},
+    "camera": {"camera_projection_json", "camera_semantic_json", "camera_depth_json"},
     "lidar": {"lidar_points_xyz", "lidar_points_json", "lidar_points"},
     "radar": {"radar_targets_json"},
 }
@@ -112,40 +112,50 @@ for frame in frames:
     except (TypeError, ValueError):
         rid = 0
     for sensor in ("camera", "lidar", "radar"):
-        source = frame.get(sensor)
-        if not isinstance(source, dict):
+        primary_source = frame.get(sensor)
+        if not isinstance(primary_source, dict):
             continue
-        if not bool(source.get("available", False)):
-            continue
-        sensor_name = str(source.get("sensor_name", sensor)).strip().lower() or sensor
-        if sensor_name not in allowed_formats:
-            raise SystemExit(f"unsupported sensor in frame-manifest: {sensor_name}")
-        sensor_id = str(source.get("sensor_id", "")).strip() or sensor_name
-        data_format = str(source.get("data_format", "")).strip()
-        if not data_format:
-            suffix = os.path.splitext(str(source.get("payload_artifact", "")))[1].lower()
-            if sensor_name == "camera":
-                data_format = "camera_projection_json"
-            elif sensor_name == "lidar":
-                data_format = "lidar_points_xyz" if suffix == ".xyz" else "lidar_points_json"
-            elif sensor_name == "radar":
-                data_format = "radar_targets_json"
-        if data_format not in allowed_formats[sensor_name]:
-            raise SystemExit(
-                f"unsupported data_format for {sensor_name}: {data_format or '<empty>'}"
-            )
-        attach_to = str(source.get("attach_to_actor_id", "")).strip() or "ego"
-        payload_artifact = str(source.get("payload_artifact", "")).strip()
-        if not payload_artifact:
-            continue
-        if not os.path.exists(payload_artifact):
-            raise SystemExit(f"payload artifact does not exist: {payload_artifact}")
-        print(f"FRAME|{sensor_name}|{rid}|{payload_artifact}")
-        meta_key = (sensor_name, sensor_id, data_format, attach_to)
-        if meta_key in seen_meta:
-            continue
-        seen_meta.add(meta_key)
-        print(f"META|{sensor_name}|{sensor_id}|{data_format}|{attach_to}")
+        sources = [primary_source]
+        additional_outputs = primary_source.get("additional_outputs")
+        if isinstance(additional_outputs, list):
+            for additional_source in additional_outputs:
+                if not isinstance(additional_source, dict):
+                    continue
+                merged_source = dict(primary_source)
+                merged_source.update(additional_source)
+                sources.append(merged_source)
+        for source in sources:
+            if not bool(source.get("available", False)):
+                continue
+            sensor_name = str(source.get("sensor_name", sensor)).strip().lower() or sensor
+            if sensor_name not in allowed_formats:
+                raise SystemExit(f"unsupported sensor in frame-manifest: {sensor_name}")
+            sensor_id = str(source.get("sensor_id", "")).strip() or sensor_name
+            data_format = str(source.get("data_format", "")).strip()
+            if not data_format:
+                suffix = os.path.splitext(str(source.get("payload_artifact", "")))[1].lower()
+                if sensor_name == "camera":
+                    data_format = "camera_projection_json"
+                elif sensor_name == "lidar":
+                    data_format = "lidar_points_xyz" if suffix == ".xyz" else "lidar_points_json"
+                elif sensor_name == "radar":
+                    data_format = "radar_targets_json"
+            if data_format not in allowed_formats[sensor_name]:
+                raise SystemExit(
+                    f"unsupported data_format for {sensor_name}: {data_format or '<empty>'}"
+                )
+            attach_to = str(source.get("attach_to_actor_id", "")).strip() or "ego"
+            payload_artifact = str(source.get("payload_artifact", "")).strip()
+            if not payload_artifact:
+                continue
+            if not os.path.exists(payload_artifact):
+                raise SystemExit(f"payload artifact does not exist: {payload_artifact}")
+            print(f"FRAME|{sensor_name}|{rid}|{payload_artifact}")
+            meta_key = (sensor_name, sensor_id, data_format, attach_to)
+            if meta_key in seen_meta:
+                continue
+            seen_meta.add(meta_key)
+            print(f"META|{sensor_name}|{sensor_id}|{data_format}|{attach_to}")
 PY
 )"
       while IFS='|' read -r record field1 field2 field3 field4; do

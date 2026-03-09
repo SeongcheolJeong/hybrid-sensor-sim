@@ -601,12 +601,23 @@ class NativePhysicsBackend(SensorBackend):
         metrics["camera_rolling_shutter_applied"] = (
             1.0 if bool(rolling_runtime.get("applied")) else 0.0
         )
+        camera_companion_outputs = {
+            sensor_type.upper() for sensor_type in camera_config.companion_sensor_types
+        }
         metrics["camera_depth_output_count"] = (
-            float(len(projected)) if camera_config.sensor_type.upper() == "DEPTH" else 0.0
+            float(len(projected))
+            if (
+                camera_config.sensor_type.upper() == "DEPTH"
+                or "DEPTH" in camera_companion_outputs
+            )
+            else 0.0
         )
         metrics["camera_semantic_output_count"] = (
             float(len(projected))
-            if camera_config.sensor_type.upper() == "SEMANTIC_SEGMENTATION"
+            if (
+                camera_config.sensor_type.upper() == "SEMANTIC_SEGMENTATION"
+                or "SEMANTIC_SEGMENTATION" in camera_companion_outputs
+            )
             else 0.0
         )
         metrics["camera_image_chain_enabled"] = (
@@ -641,6 +652,10 @@ class NativePhysicsBackend(SensorBackend):
         preview = {
             "input_point_cloud": str(point_cloud),
             "sensor_type": camera_config.sensor_type,
+            "companion_sensor_types": list(camera_config.companion_sensor_types),
+            "available_output_modes": self._camera_available_output_modes(
+                camera_config=camera_config
+            ),
             "geometry_model": camera_config.geometry_model,
             "input_count": len(points_xyz),
             "output_count": len(projected),
@@ -826,12 +841,23 @@ class NativePhysicsBackend(SensorBackend):
             1.0 if camera_config.rolling_shutter.enabled else 0.0
         )
         metrics["camera_rolling_shutter_applied"] = 1.0 if rolling_applied else 0.0
+        camera_companion_outputs = {
+            sensor_type.upper() for sensor_type in camera_config.companion_sensor_types
+        }
         metrics["camera_depth_trajectory_sweep_total_output_count"] = (
-            float(total_output_count) if camera_config.sensor_type.upper() == "DEPTH" else 0.0
+            float(total_output_count)
+            if (
+                camera_config.sensor_type.upper() == "DEPTH"
+                or "DEPTH" in camera_companion_outputs
+            )
+            else 0.0
         )
         metrics["camera_semantic_trajectory_sweep_total_output_count"] = (
             float(total_output_count)
-            if camera_config.sensor_type.upper() == "SEMANTIC_SEGMENTATION"
+            if (
+                camera_config.sensor_type.upper() == "SEMANTIC_SEGMENTATION"
+                or "SEMANTIC_SEGMENTATION" in camera_companion_outputs
+            )
             else 0.0
         )
         metrics["camera_image_signal_trajectory_sweep_total_output_count"] = (
@@ -847,6 +873,10 @@ class NativePhysicsBackend(SensorBackend):
             "input_point_cloud": str(point_cloud),
             "trajectory_path": str(trajectory_path),
             "sensor_type": camera_config.sensor_type,
+            "companion_sensor_types": list(camera_config.companion_sensor_types),
+            "available_output_modes": self._camera_available_output_modes(
+                camera_config=camera_config
+            ),
             "geometry_model": camera_config.geometry_model,
             "rolling_shutter": self._camera_rolling_shutter_payload(
                 camera_config=camera_config,
@@ -897,6 +927,9 @@ class NativePhysicsBackend(SensorBackend):
         intrinsics: CameraIntrinsics,
         preview_count: int,
     ) -> dict[str, object]:
+        companion_sensor_types = {
+            sensor_type.upper() for sensor_type in camera_config.companion_sensor_types
+        }
         preview_points = projected[:preview_count]
         all_ground_truth_samples = [
             self._camera_semantic_sample(
@@ -926,6 +959,10 @@ class NativePhysicsBackend(SensorBackend):
         )
         payload: dict[str, object] = {
             "output_mode": camera_config.sensor_type,
+            "companion_sensor_types": list(camera_config.companion_sensor_types),
+            "available_output_modes": self._camera_available_output_modes(
+                camera_config=camera_config
+            ),
             "preview_points_uvz": [
                 {"u": float(point["u"]), "v": float(point["v"]), "z": float(point["z"])}
                 for point in preview_points
@@ -945,7 +982,10 @@ class NativePhysicsBackend(SensorBackend):
             ],
             "coverage_targets": coverage_summary["targets"],
         }
-        if camera_config.sensor_type.upper() == "DEPTH":
+        if (
+            camera_config.sensor_type.upper() == "DEPTH"
+            or "DEPTH" in companion_sensor_types
+        ):
             payload["preview_depth_samples"] = [
                 {
                     "u": float(point["u"]),
@@ -959,7 +999,10 @@ class NativePhysicsBackend(SensorBackend):
                 }
                 for point in preview_points
             ]
-        if camera_config.sensor_type.upper() == "SEMANTIC_SEGMENTATION":
+        if (
+            camera_config.sensor_type.upper() == "SEMANTIC_SEGMENTATION"
+            or "SEMANTIC_SEGMENTATION" in companion_sensor_types
+        ):
             semantic_samples = preview_ground_truth_samples
             payload["preview_semantic_samples"] = semantic_samples
             payload["preview_semantic_legend"] = self._camera_semantic_legend(semantic_samples)
@@ -988,6 +1031,18 @@ class NativePhysicsBackend(SensorBackend):
         else:
             payload["preview_readout_samples"] = []
         return payload
+
+    def _camera_available_output_modes(
+        self,
+        *,
+        camera_config: CameraSensorConfig,
+    ) -> list[str]:
+        available_output_modes = [camera_config.sensor_type.upper()]
+        for sensor_type in camera_config.companion_sensor_types:
+            normalized = str(sensor_type).strip().upper()
+            if normalized and normalized not in available_output_modes:
+                available_output_modes.append(normalized)
+        return available_output_modes
 
     def _camera_ground_truth_fields(
         self,

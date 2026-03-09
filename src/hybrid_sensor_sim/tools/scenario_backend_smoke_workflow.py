@@ -525,6 +525,39 @@ def _build_semantic_supplemental_smoke_config(
     return payload
 
 
+def _apply_primary_camera_companion_defaults(
+    *,
+    smoke_input_config: dict[str, Any],
+    backend: str,
+    consumer_profile_id: str,
+) -> bool:
+    if str(backend).strip().lower() != "awsim":
+        return False
+    if str(consumer_profile_id).strip() != "semantic_perception_v0":
+        return False
+    options = dict(smoke_input_config.get("options", {}))
+    primary_sensor_type = str(options.get("camera_sensor_type", "VISIBLE")).strip().upper() or "VISIBLE"
+    if primary_sensor_type != "VISIBLE":
+        return False
+    raw_companion_sensor_types = options.get("camera_companion_sensor_types")
+    companion_sensor_types = (
+        list(raw_companion_sensor_types)
+        if isinstance(raw_companion_sensor_types, list)
+        else ([raw_companion_sensor_types] if raw_companion_sensor_types is not None else [])
+    )
+    normalized_companion_sensor_types: list[str] = []
+    for sensor_type in companion_sensor_types:
+        normalized = str(sensor_type).strip().upper()
+        if normalized and normalized not in normalized_companion_sensor_types:
+            normalized_companion_sensor_types.append(normalized)
+    if "SEMANTIC_SEGMENTATION" in normalized_companion_sensor_types:
+        return False
+    normalized_companion_sensor_types.append("SEMANTIC_SEGMENTATION")
+    options["camera_companion_sensor_types"] = normalized_companion_sensor_types
+    smoke_input_config["options"] = options
+    return True
+
+
 def _autoware_report_missing_semantic_topic(autoware_result: dict[str, Any] | None) -> bool:
     if not isinstance(autoware_result, dict):
         return False
@@ -949,6 +982,12 @@ def run_scenario_backend_smoke_workflow(
         consumer_profile_id=autoware_consumer_profile,
         backend=backend,
     )
+    _apply_primary_camera_companion_defaults(
+        smoke_input_config=smoke_input_config,
+        backend=backend,
+        consumer_profile_id=autoware_consumer_profile,
+    )
+    _write_json(smoke_input_config_path, smoke_input_config)
     renderer_backend_workflow_summary = None
     status = "BRIDGED_ONLY" if skip_smoke else "SMOKE_FAILED"
 
