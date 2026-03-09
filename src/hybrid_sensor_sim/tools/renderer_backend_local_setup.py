@@ -128,6 +128,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Run the packaged backend workflow self-test and store the result summary.",
     )
     parser.add_argument(
+        "--probe-carla-docker-pull",
+        action="store_true",
+        help="Attempt to pull the configured CARLA Docker image and store the result summary.",
+    )
+    parser.add_argument(
         "--package-workflow-selftest-backend",
         choices=("awsim", "carla"),
         default="awsim",
@@ -677,6 +682,38 @@ def _inspect_carla_docker_runtime() -> dict[str, Any]:
     }
 
 
+def _run_carla_docker_pull_probe(*, image: str, platform_name: str) -> dict[str, Any]:
+    command = ["docker", "pull", "--platform", platform_name, image]
+    try:
+        proc = subprocess.run(
+            command,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return {
+            "generated_at_utc": _format_utc(_utc_now()),
+            "image": image,
+            "platform": platform_name,
+            "command": command,
+            "success": False,
+            "return_code": 127,
+            "stdout": "",
+            "stderr": "docker CLI is not installed.",
+        }
+    return {
+        "generated_at_utc": _format_utc(_utc_now()),
+        "image": image,
+        "platform": platform_name,
+        "command": command,
+        "success": proc.returncode == 0,
+        "return_code": proc.returncode,
+        "stdout": proc.stdout,
+        "stderr": proc.stderr,
+    }
+
+
 def _discover_backend_candidates(
     *,
     backend: str,
@@ -801,6 +838,7 @@ def _build_probe_readiness(summary: dict[str, Any]) -> dict[str, Any]:
             if isinstance(backend_workflow_probe, dict)
             else None
         ),
+        "carla_docker_pull_ready": _probe_success(probes, "carla_docker_pull"),
         "backend_package_workflow_selftest_ready": _probe_success(
             probes,
             "backend_package_workflow_selftest",
@@ -863,6 +901,7 @@ def _render_local_setup_report(summary: dict[str, Any], summary_path: Path) -> s
         f"| linux_handoff_docker_selftest_ready | `{probe_readiness.get('linux_handoff_docker_selftest_ready')}` |",
         f"| backend_workflow_selftest_ready | `{probe_readiness.get('backend_workflow_selftest_ready')}` |",
         f"| backend_workflow_status | `{probe_readiness.get('backend_workflow_status')}` |",
+        f"| carla_docker_pull_ready | `{probe_readiness.get('carla_docker_pull_ready')}` |",
         f"| backend_package_workflow_selftest_ready | `{probe_readiness.get('backend_package_workflow_selftest_ready')}` |",
         f"| backend_package_workflow_status | `{probe_readiness.get('backend_package_workflow_status')}` |",
         "",
@@ -1143,6 +1182,7 @@ def build_renderer_backend_local_setup(
     probe_backend_workflow_selftest: bool = False,
     workflow_selftest_backend: str = "awsim",
     probe_backend_workflow_selftest_execute: bool = False,
+    probe_carla_docker_pull: bool = False,
     probe_backend_package_workflow_selftest: bool = False,
     package_workflow_selftest_backend: str = "awsim",
     package_workflow_selftest_archive_source: str = "local_candidate",
@@ -1272,6 +1312,7 @@ def build_renderer_backend_local_setup(
     workflow_selftest_summary_path = (
         workflow_selftest_output_root / "renderer_backend_workflow_selftest.json"
     )
+    carla_docker_pull_summary_path = output_root / "carla_docker_pull_probe.json"
     package_workflow_selftest_output_root = output_root / "backend_package_workflow_selftest_probe"
     package_workflow_selftest_summary_path = (
         package_workflow_selftest_output_root / "renderer_backend_package_workflow_selftest.json"
@@ -1285,6 +1326,10 @@ def build_renderer_backend_local_setup(
         "backend_workflow_selftest": (
             "python3 scripts/discover_renderer_backend_local_env.py "
             f"--probe-backend-workflow-selftest --workflow-selftest-backend {workflow_selftest_backend}"
+        ),
+        "carla_docker_pull_probe": (
+            "python3 scripts/discover_renderer_backend_local_env.py "
+            "--probe-carla-docker-pull"
         ),
         "backend_package_workflow_selftest": (
             "python3 scripts/discover_renderer_backend_local_env.py "
@@ -1421,6 +1466,19 @@ def build_renderer_backend_local_setup(
         probes["backend_workflow_selftest"] = probe_summary
         if not probe_summary.get("success", False):
             issues.append("Backend workflow self-test failed.")
+    if probe_carla_docker_pull:
+        probe_summary = _run_carla_docker_pull_probe(
+            image=str(carla_docker.get("image") or _DEFAULT_CARLA_DOCKER_IMAGE),
+            platform_name=str(carla_docker.get("platform") or _DEFAULT_CARLA_DOCKER_PLATFORM),
+        )
+        _write_json(carla_docker_pull_summary_path, probe_summary)
+        probes["carla_docker_pull"] = probe_summary
+        if not probe_summary.get("success", False):
+            stderr = str(probe_summary.get("stderr") or "").strip()
+            if stderr:
+                issues.append(f"CARLA docker pull probe failed: {stderr}")
+            else:
+                issues.append("CARLA docker pull probe failed.")
     if probe_backend_package_workflow_selftest:
         try:
             from hybrid_sensor_sim.tools.renderer_backend_package_workflow_selftest import (
@@ -1486,6 +1544,7 @@ def build_renderer_backend_local_setup(
             "helios_docker_probe_path": str(probe_path),
             "linux_handoff_docker_selftest_probe_path": str(handoff_selftest_summary_path),
             "backend_workflow_selftest_probe_path": str(workflow_selftest_summary_path),
+            "carla_docker_pull_probe_path": str(carla_docker_pull_summary_path),
             "backend_package_workflow_selftest_probe_path": str(package_workflow_selftest_summary_path),
         },
     }
@@ -1510,6 +1569,7 @@ def main(argv: list[str] | None = None) -> int:
         probe_backend_workflow_selftest=args.probe_backend_workflow_selftest,
         workflow_selftest_backend=args.workflow_selftest_backend,
         probe_backend_workflow_selftest_execute=args.probe_backend_workflow_selftest_execute,
+        probe_carla_docker_pull=args.probe_carla_docker_pull,
         probe_backend_package_workflow_selftest=args.probe_backend_package_workflow_selftest,
         package_workflow_selftest_backend=args.package_workflow_selftest_backend,
         package_workflow_selftest_archive_source=args.package_workflow_selftest_archive_source,

@@ -599,6 +599,62 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
                 docker_error,
             )
 
+    def test_build_renderer_backend_local_setup_writes_carla_docker_pull_probe(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            repo_root.mkdir(parents=True, exist_ok=True)
+
+            probe_result = {
+                "generated_at_utc": "2026-03-09T00:00:00Z",
+                "image": "carlasim/carla:0.10.0",
+                "platform": "linux/amd64",
+                "command": [
+                    "docker",
+                    "pull",
+                    "--platform",
+                    "linux/amd64",
+                    "carlasim/carla:0.10.0",
+                ],
+                "success": False,
+                "return_code": 1,
+                "stdout": "",
+                "stderr": "Error response from daemon: write /var/lib/desktop-containerd/daemon/io.containerd.metadata.v1.bolt/meta.db: input/output error",
+            }
+
+            with patch(
+                "hybrid_sensor_sim.tools.renderer_backend_local_setup._inspect_helios_docker_runtime",
+                return_value=_ready_docker_runtime(),
+            ):
+                with patch(
+                    "hybrid_sensor_sim.tools.renderer_backend_local_setup._run_carla_docker_pull_probe",
+                    return_value=probe_result,
+                ) as mocked_probe:
+                    summary = build_renderer_backend_local_setup(
+                        repo_root=repo_root,
+                        search_roots=[],
+                        output_dir=root / "artifacts",
+                        include_default_search_roots=False,
+                        probe_carla_docker_pull=True,
+                    )
+
+            mocked_probe.assert_called_once()
+            self.assertIn("carla_docker_pull", summary["probes"])
+            self.assertFalse(summary["probes"]["carla_docker_pull"]["success"])
+            self.assertFalse(summary["probe_readiness"]["carla_docker_pull_ready"])
+            self.assertIn(
+                "CARLA docker pull probe failed: Error response from daemon: write /var/lib/desktop-containerd/daemon/io.containerd.metadata.v1.bolt/meta.db: input/output error",
+                summary["issues"],
+            )
+            probe_path = Path(summary["artifacts"]["carla_docker_pull_probe_path"])
+            self.assertTrue(probe_path.exists())
+            probe_payload = json.loads(probe_path.read_text(encoding="utf-8"))
+            self.assertEqual(probe_payload["return_code"], 1)
+            self.assertEqual(
+                probe_payload["image"],
+                "carlasim/carla:0.10.0",
+            )
+
     def test_build_renderer_backend_local_setup_detects_local_download_archives(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

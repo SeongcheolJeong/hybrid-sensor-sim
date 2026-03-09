@@ -1153,6 +1153,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - `--probe-linux-handoff-docker-selftest` runs the synthetic Linux handoff Docker self-test and records the result in `probes.linux_handoff_docker_selftest`.
 - `--probe-backend-workflow-selftest` runs the higher-level workflow self-test and records the result in `probes.backend_workflow_selftest`.
 - `--probe-backend-package-workflow-selftest` runs the packaged backend workflow self-test and records the result in `probes.backend_package_workflow_selftest`.
+- `--probe-carla-docker-pull` attempts `docker pull --platform linux/amd64 carlasim/carla:0.10.0` and records the exact daemon/pull failure in `probes.carla_docker_pull`.
 - the Linux handoff Docker self-test summary carries `generated_at_utc`; workflow also falls back to the probe summary file mtime or setup summary mtime when it needs freshness metadata from older summaries.
 - `run_renderer_backend_workflow.py --run-linux-handoff-docker` reads that probe as a Docker preflight summary. It now tracks `generated_at_utc`, `age_seconds`, `max_age_seconds`, `timestamp_source`, and `stale`.
 - workflow reports:
@@ -1168,6 +1169,9 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `artifacts.report_path`
 - `probe_readiness` now also surfaces `backend_package_workflow_selftest_ready` / `backend_package_workflow_status`, and `workflow_paths` includes `package_workflow_path_ready`.
 - `renderer_backend_local_report.md` gives a compact runtime/probe/path readiness view without manually inspecting the full JSON.
+- current machine-specific blocker:
+  - `AWSIM` is staged locally but remains host-incompatible on `Darwin arm64`, so it must run through Linux handoff
+  - `CARLA` local Docker validation currently fails before smoke because Docker Desktop/containerd returns `write /var/lib/desktop-containerd/daemon/io.containerd.metadata.v1.bolt/meta.db: input/output error` during `docker pull`
 
 ### Local backend package staging
 
