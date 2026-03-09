@@ -133,6 +133,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Attempt to pull the configured CARLA Docker image and store the result summary.",
     )
     parser.add_argument(
+        "--probe-docker-storage",
+        action="store_true",
+        help="Probe whether the local Docker image store is usable and store the result summary.",
+    )
+    parser.add_argument(
         "--package-workflow-selftest-backend",
         choices=("awsim", "carla"),
         default="awsim",
@@ -714,6 +719,34 @@ def _run_carla_docker_pull_probe(*, image: str, platform_name: str) -> dict[str,
     }
 
 
+def _run_docker_storage_probe() -> dict[str, Any]:
+    command = ["docker", "system", "df"]
+    try:
+        proc = subprocess.run(
+            command,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return {
+            "generated_at_utc": _format_utc(_utc_now()),
+            "command": command,
+            "success": False,
+            "return_code": 127,
+            "stdout": "",
+            "stderr": "docker CLI is not installed.",
+        }
+    return {
+        "generated_at_utc": _format_utc(_utc_now()),
+        "command": command,
+        "success": proc.returncode == 0,
+        "return_code": proc.returncode,
+        "stdout": proc.stdout,
+        "stderr": proc.stderr,
+    }
+
+
 def _discover_backend_candidates(
     *,
     backend: str,
@@ -839,6 +872,7 @@ def _build_probe_readiness(summary: dict[str, Any]) -> dict[str, Any]:
             else None
         ),
         "carla_docker_pull_ready": _probe_success(probes, "carla_docker_pull"),
+        "docker_storage_ready": _probe_success(probes, "docker_storage"),
         "backend_package_workflow_selftest_ready": _probe_success(
             probes,
             "backend_package_workflow_selftest",
@@ -902,6 +936,7 @@ def _render_local_setup_report(summary: dict[str, Any], summary_path: Path) -> s
         f"| backend_workflow_selftest_ready | `{probe_readiness.get('backend_workflow_selftest_ready')}` |",
         f"| backend_workflow_status | `{probe_readiness.get('backend_workflow_status')}` |",
         f"| carla_docker_pull_ready | `{probe_readiness.get('carla_docker_pull_ready')}` |",
+        f"| docker_storage_ready | `{probe_readiness.get('docker_storage_ready')}` |",
         f"| backend_package_workflow_selftest_ready | `{probe_readiness.get('backend_package_workflow_selftest_ready')}` |",
         f"| backend_package_workflow_status | `{probe_readiness.get('backend_package_workflow_status')}` |",
         "",
@@ -1183,6 +1218,7 @@ def build_renderer_backend_local_setup(
     workflow_selftest_backend: str = "awsim",
     probe_backend_workflow_selftest_execute: bool = False,
     probe_carla_docker_pull: bool = False,
+    probe_docker_storage: bool = False,
     probe_backend_package_workflow_selftest: bool = False,
     package_workflow_selftest_backend: str = "awsim",
     package_workflow_selftest_archive_source: str = "local_candidate",
@@ -1313,6 +1349,7 @@ def build_renderer_backend_local_setup(
         workflow_selftest_output_root / "renderer_backend_workflow_selftest.json"
     )
     carla_docker_pull_summary_path = output_root / "carla_docker_pull_probe.json"
+    docker_storage_probe_summary_path = output_root / "docker_storage_probe.json"
     package_workflow_selftest_output_root = output_root / "backend_package_workflow_selftest_probe"
     package_workflow_selftest_summary_path = (
         package_workflow_selftest_output_root / "renderer_backend_package_workflow_selftest.json"
@@ -1330,6 +1367,10 @@ def build_renderer_backend_local_setup(
         "carla_docker_pull_probe": (
             "python3 scripts/discover_renderer_backend_local_env.py "
             "--probe-carla-docker-pull"
+        ),
+        "docker_storage_probe": (
+            "python3 scripts/discover_renderer_backend_local_env.py "
+            "--probe-docker-storage"
         ),
         "backend_package_workflow_selftest": (
             "python3 scripts/discover_renderer_backend_local_env.py "
@@ -1479,6 +1520,16 @@ def build_renderer_backend_local_setup(
                 issues.append(f"CARLA docker pull probe failed: {stderr}")
             else:
                 issues.append("CARLA docker pull probe failed.")
+    if probe_docker_storage:
+        probe_summary = _run_docker_storage_probe()
+        _write_json(docker_storage_probe_summary_path, probe_summary)
+        probes["docker_storage"] = probe_summary
+        if not probe_summary.get("success", False):
+            stderr = str(probe_summary.get("stderr") or "").strip()
+            if stderr:
+                issues.append(f"Docker storage probe failed: {stderr}")
+            else:
+                issues.append("Docker storage probe failed.")
     if probe_backend_package_workflow_selftest:
         try:
             from hybrid_sensor_sim.tools.renderer_backend_package_workflow_selftest import (
@@ -1545,6 +1596,7 @@ def build_renderer_backend_local_setup(
             "linux_handoff_docker_selftest_probe_path": str(handoff_selftest_summary_path),
             "backend_workflow_selftest_probe_path": str(workflow_selftest_summary_path),
             "carla_docker_pull_probe_path": str(carla_docker_pull_summary_path),
+            "docker_storage_probe_path": str(docker_storage_probe_summary_path),
             "backend_package_workflow_selftest_probe_path": str(package_workflow_selftest_summary_path),
         },
     }
@@ -1570,6 +1622,7 @@ def main(argv: list[str] | None = None) -> int:
         workflow_selftest_backend=args.workflow_selftest_backend,
         probe_backend_workflow_selftest_execute=args.probe_backend_workflow_selftest_execute,
         probe_carla_docker_pull=args.probe_carla_docker_pull,
+        probe_docker_storage=args.probe_docker_storage,
         probe_backend_package_workflow_selftest=args.probe_backend_package_workflow_selftest,
         package_workflow_selftest_backend=args.package_workflow_selftest_backend,
         package_workflow_selftest_archive_source=args.package_workflow_selftest_archive_source,

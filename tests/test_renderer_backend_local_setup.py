@@ -655,6 +655,51 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
                 "carlasim/carla:0.10.0",
             )
 
+    def test_build_renderer_backend_local_setup_writes_docker_storage_probe(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            repo_root.mkdir(parents=True, exist_ok=True)
+
+            probe_result = {
+                "generated_at_utc": "2026-03-09T00:00:00Z",
+                "command": ["docker", "system", "df"],
+                "success": False,
+                "return_code": 1,
+                "stdout": "",
+                "stderr": "failed to create lease: write /var/lib/desktop-containerd/daemon/io.containerd.metadata.v1.bolt/meta.db: input/output error",
+            }
+
+            with patch(
+                "hybrid_sensor_sim.tools.renderer_backend_local_setup._inspect_helios_docker_runtime",
+                return_value=_ready_docker_runtime(),
+            ):
+                with patch(
+                    "hybrid_sensor_sim.tools.renderer_backend_local_setup._run_docker_storage_probe",
+                    return_value=probe_result,
+                ) as mocked_probe:
+                    summary = build_renderer_backend_local_setup(
+                        repo_root=repo_root,
+                        search_roots=[],
+                        output_dir=root / "artifacts",
+                        include_default_search_roots=False,
+                        probe_docker_storage=True,
+                    )
+
+            mocked_probe.assert_called_once()
+            self.assertIn("docker_storage", summary["probes"])
+            self.assertFalse(summary["probes"]["docker_storage"]["success"])
+            self.assertFalse(summary["probe_readiness"]["docker_storage_ready"])
+            self.assertIn(
+                "Docker storage probe failed: failed to create lease: write /var/lib/desktop-containerd/daemon/io.containerd.metadata.v1.bolt/meta.db: input/output error",
+                summary["issues"],
+            )
+            probe_path = Path(summary["artifacts"]["docker_storage_probe_path"])
+            self.assertTrue(probe_path.exists())
+            probe_payload = json.loads(probe_path.read_text(encoding="utf-8"))
+            self.assertEqual(probe_payload["return_code"], 1)
+            self.assertEqual(probe_payload["command"], ["docker", "system", "df"])
+
     def test_build_renderer_backend_local_setup_detects_local_download_archives(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
