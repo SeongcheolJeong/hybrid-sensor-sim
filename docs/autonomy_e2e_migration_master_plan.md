@@ -94,6 +94,7 @@ Current repository paths:
 - existing real runtime/backend smoke artifacts can now be re-bridged into refreshed top-level runtime summaries and Autoware bundles without rerunning batch selection or backend smoke
 - that rebridge path now also emits source-vs-refreshed status comparison data, making runtime bridge drift review possible from one report
 - for `semantic_perception_v0`, rebridge can now also reconstruct a semantic-only supplemental smoke pass from the source backend smoke report when the original runtime artifact is missing the semantic topic and no supplemental report path was persisted
+- that semantic supplemental rerun now uses an isolated `renderer_backend_workflow` root, so refreshed reports can promote a real degraded AWSIM handoff artifact to `READY` when the semantic-only pass succeeds
 - `src/hybrid_sensor_sim/tools/sensor_rig_sweep.py`
 - `src/hybrid_sensor_sim/maps/convert.py`
 - `src/hybrid_sensor_sim/maps/validate.py`

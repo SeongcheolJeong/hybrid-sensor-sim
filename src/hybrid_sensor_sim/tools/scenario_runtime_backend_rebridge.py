@@ -579,14 +579,10 @@ def _maybe_run_semantic_supplemental_from_backend_report(
         or docker_handoff_status in {"HANDOFF_DOCKER_EXECUTED", "HANDOFF_DOCKER_OUTPUT_READY"}
     )
 
-    renderer_backend_workflow_output_root = ""
-    renderer_backend_summary_path = _optional_text(renderer_backend_workflow.get("summary_path"))
-    if renderer_backend_summary_path:
-        renderer_backend_workflow_output_root = str(
-            Path(renderer_backend_summary_path).resolve().parent
-        )
-
     supplemental_root = out_root / "supplemental_semantic"
+    renderer_backend_workflow_output_root = str(
+        (supplemental_root / "renderer_backend_workflow").resolve()
+    )
     supplemental_output_root = supplemental_root / "smoke_run"
     supplemental_smoke_config = _build_semantic_supplemental_smoke_config(
         smoke_input_config=smoke_input_config,

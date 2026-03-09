@@ -549,6 +549,11 @@ class ScenarioRuntimeBackendRebridgeTests(unittest.TestCase):
                 )
 
             mocked_supplemental.assert_called_once()
+            supplemental_kwargs = mocked_supplemental.call_args.kwargs
+            self.assertEqual(
+                Path(supplemental_kwargs["renderer_backend_workflow_output_root"]).resolve(),
+                (root / "rebridge_auto_semantic" / "supplemental_semantic" / "renderer_backend_workflow").resolve(),
+            )
             report = result["workflow_report"]
             self.assertEqual(report["status"], "SUCCEEDED")
             self.assertEqual(
