@@ -547,6 +547,92 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
                 "Town12",
             )
 
+    def test_run_scenario_backend_smoke_workflow_lifts_runtime_strategy_from_setup_summary(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            variant_result = run_scenario_variant_workflow(
+                logical_scenarios_path="",
+                scenario_language_profile="highway_mixed_payloads_v0",
+                scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                out_root=root / "variant_workflow",
+                sampling="full",
+                sample_size=0,
+                seed=7,
+                max_variants_per_scenario=1000,
+                execution_max_variants=2,
+                sds_version="sds_test",
+                sim_version="sim_test",
+                fidelity_profile="dev-fast",
+            )
+            fake_helios = root / "fake_helios.sh"
+            _write_fake_helios_script(fake_helios)
+            fake_backend = root / "fake_backend_success.sh"
+            _write_fake_backend_success(fake_backend)
+            smoke_config = _write_smoke_base_config(
+                root=root,
+                helios_bin=fake_helios,
+                output_dir=root / "smoke_placeholder",
+            )
+            setup_summary = root / "renderer_backend_local_setup.json"
+            setup_summary.write_text(
+                json.dumps(
+                    {
+                        "selection": {
+                            "AWSIM_BIN": str(fake_backend.resolve()),
+                            "AWSIM_RENDERER_MAP": "Town12",
+                        },
+                        "runtime_strategy": {
+                            "awsim": {
+                                "strategy": "linux_handoff_packaged_runtime",
+                                "preferred_runtime_source": "packaged_runtime",
+                                "reason_codes": ["HOST_INCOMPATIBLE_PACKAGED_RUNTIME"],
+                                "recommended_command": "python3 scripts/run_renderer_backend_workflow.py --backend awsim --dry-run",
+                                "selected_path": str(fake_backend.resolve()),
+                                "docker_storage_status": "healthy",
+                                "host_compatible": False,
+                            }
+                        },
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = run_scenario_backend_smoke_workflow(
+                variant_workflow_report_path=str(variant_result["workflow_report_path"]),
+                batch_workflow_report_path="",
+                smoke_config_path=smoke_config,
+                backend="awsim",
+                out_root=root / "backend_smoke_workflow",
+                selection_strategy="first_successful_variant",
+                selected_variant_id="",
+                lane_spacing_m=4.0,
+                smoke_output_dir="",
+                setup_summary_path=str(setup_summary),
+                backend_workflow_summary_path="",
+                backend_bin="",
+                renderer_map="",
+                option_overrides=[],
+                skip_smoke=False,
+            )
+
+            runtime_selection = result["workflow_report"]["runtime_selection"]
+            self.assertEqual(
+                runtime_selection["runtime_strategy"]["strategy"],
+                "linux_handoff_packaged_runtime",
+            )
+            self.assertEqual(
+                runtime_selection["runtime_strategy_source"],
+                "setup_summary.runtime_strategy",
+            )
+            self.assertEqual(
+                runtime_selection["runtime_strategy"]["recommended_command"],
+                "python3 scripts/run_renderer_backend_workflow.py --backend awsim --dry-run",
+            )
+
     def test_run_scenario_backend_smoke_workflow_auto_discovers_setup_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

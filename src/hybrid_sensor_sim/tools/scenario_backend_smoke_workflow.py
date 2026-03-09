@@ -16,6 +16,7 @@ from hybrid_sensor_sim.tools.renderer_backend_workflow import (
     run_renderer_backend_workflow,
 )
 from hybrid_sensor_sim.tools.renderer_backend_local_setup import (
+    _build_runtime_strategy,
     _inspect_executable_host_compatibility,
 )
 from hybrid_sensor_sim.tools.autonomy_e2e_history_guard import (
@@ -834,6 +835,59 @@ def _resolve_runtime_selection(
     }
 
 
+def _resolve_runtime_strategy(
+    *,
+    backend: str,
+    setup_summary_path: str,
+    backend_workflow_summary_path: str,
+) -> dict[str, Any]:
+    backend_name = str(backend).strip().lower()
+    setup_summary_text = _optional_text(setup_summary_path)
+    backend_workflow_summary_text = _optional_text(backend_workflow_summary_path)
+
+    if backend_workflow_summary_text:
+        workflow_payload = _load_json_object(Path(backend_workflow_summary_text).resolve())
+        candidates = [
+            ("backend_workflow.runtime_strategy", workflow_payload.get("runtime_strategy")),
+            (
+                "backend_workflow.setup.runtime_strategy",
+                dict(workflow_payload.get("setup", {})).get("runtime_strategy"),
+            ),
+            (
+                "backend_workflow.refreshed_setup.runtime_strategy",
+                dict(workflow_payload.get("refreshed_setup", {})).get("runtime_strategy"),
+            ),
+        ]
+        for source, runtime_strategy_map in candidates:
+            if not isinstance(runtime_strategy_map, dict):
+                continue
+            runtime_strategy = runtime_strategy_map.get(backend_name)
+            if isinstance(runtime_strategy, dict) and runtime_strategy:
+                resolved = dict(runtime_strategy)
+                resolved["source"] = source
+                return resolved
+
+    if setup_summary_text:
+        setup_summary_file = Path(setup_summary_text).resolve()
+        setup_payload = _load_json_object(setup_summary_file)
+        runtime_strategy_map = setup_payload.get("runtime_strategy")
+        source = "setup_summary.runtime_strategy"
+        if not isinstance(runtime_strategy_map, dict):
+            runtime_strategy_map = _build_runtime_strategy(
+                setup_payload,
+                summary_path=setup_summary_file,
+            )
+            source = "setup_summary.computed_runtime_strategy"
+        if isinstance(runtime_strategy_map, dict):
+            runtime_strategy = runtime_strategy_map.get(backend_name)
+            if isinstance(runtime_strategy, dict) and runtime_strategy:
+                resolved = dict(runtime_strategy)
+                resolved["source"] = source
+                return resolved
+
+    return {}
+
+
 def run_scenario_backend_smoke_workflow(
     *,
     variant_workflow_report_path: str,
@@ -966,6 +1020,13 @@ def run_scenario_backend_smoke_workflow(
             "backend_file_description": backend_compatibility.get("file_description") or None,
         }
     )
+    runtime_strategy = _resolve_runtime_strategy(
+        backend=backend,
+        setup_summary_path=setup_summary_path,
+        backend_workflow_summary_path=backend_workflow_summary_path,
+    )
+    runtime_selection["runtime_strategy"] = runtime_strategy
+    runtime_selection["runtime_strategy_source"] = runtime_strategy.get("source")
 
     smoke_stdout_path = out_root / "scenario_backend_smoke_stdout.log"
     smoke_stderr_path = out_root / "scenario_backend_smoke_stderr.log"

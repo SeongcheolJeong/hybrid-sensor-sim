@@ -1175,6 +1175,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `linux_handoff_packaged_runtime` when a staged packaged runtime exists but the host cannot execute it directly
   - `local_docker_runtime` when Docker is the preferred local runtime
   - `packaged_runtime_required` or `docker_or_packaged_runtime_required` when no usable local runtime is present yet
+- `scenario_backend_smoke_workflow_report_v0.json` and `scenario_runtime_backend_workflow_report_v0.json` now lift that same `runtime_strategy` into their top-level summaries, so scenario-driven smoke runs expose the practical execution route without reopening local setup or renderer workflow artifacts.
 - on this machine the current strategies are:
   - `AWSIM -> linux_handoff_packaged_runtime`
   - `CARLA -> packaged_runtime_required`

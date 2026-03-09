@@ -188,6 +188,7 @@ Implemented in the current repository:
    - if explicit summary paths are omitted, both workflows now auto-discover the canonical checked-in artifact locations under `artifacts/renderer_backend_local_setup/`, `artifacts/renderer_backend_workflow/<backend>/`, and `third_party/runtime_backends/<backend>/`
    - local setup now also classifies Docker storage failures, so the current machine can distinguish `image missing` from `content_store_corrupt`; right now the concrete blocker is Docker Desktop/containerd content-store corruption, not an unresolved code path in the repo
    - local setup and backend workflow now also emit an explicit `runtime_strategy`, so the practical execution route is visible immediately: on this machine `AWSIM` is `linux_handoff_packaged_runtime`, while `CARLA` remains `packaged_runtime_required` until a packaged runtime or healthy Docker image is available
+   - `scenario_backend_smoke_workflow` and `scenario_runtime_backend_workflow` now lift that same `runtime_strategy` into their own top-level report surface, so scenario-driven smoke runs can expose the selected execution route without opening nested local-setup or renderer-workflow artifacts
 44. provenance-aware runtime smoke governance
    - `src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py` can now optionally run the checked-in Autonomy-E2E history guard as part of the top-level runtime/backend workflow
    - this makes publish-time scenario smoke runs report whether migrated result paths were changed without refreshing `metadata/autonomy_e2e`

@@ -435,6 +435,8 @@ def _build_status_summary(
     smoke_summary = dict(backend_report.get("smoke", {}).get("summary", {}))
     autoware_summary = dict(backend_report.get("autoware", {}))
     backend_artifacts = dict(backend_report.get("artifacts", {}))
+    runtime_selection = dict(backend_report.get("runtime_selection", {}))
+    runtime_strategy = dict(runtime_selection.get("runtime_strategy", {}))
     history_guard_summary = dict(history_guard_report or {})
     return {
         "final_status_source": final_status_source,
@@ -499,6 +501,24 @@ def _build_status_summary(
         ),
         "backend_output_quality": handoff_output_quality,
         "backend_output_usable": handoff_output_usable,
+        "backend_runtime_strategy": runtime_strategy.get("strategy"),
+        "backend_runtime_strategy_source": runtime_selection.get(
+            "runtime_strategy_source"
+        ),
+        "backend_runtime_preferred_runtime_source": runtime_strategy.get(
+            "preferred_runtime_source"
+        ),
+        "backend_runtime_strategy_reason_codes": list(
+            runtime_strategy.get("reason_codes", [])
+        ),
+        "backend_runtime_recommended_command": runtime_strategy.get(
+            "recommended_command"
+        ),
+        "backend_runtime_selected_path": runtime_strategy.get("selected_path"),
+        "backend_runtime_docker_storage_status": runtime_strategy.get(
+            "docker_storage_status"
+        ),
+        "backend_runtime_host_compatible": runtime_strategy.get("host_compatible"),
         "backend_logical_scenario_id": backend_report.get("selection", {}).get("logical_scenario_id"),
         "backend_scenario_id": backend_report.get("bridge", {}).get("scenario_id"),
         "backend_source_payload_kind": backend_report.get("bridge", {}).get("source_payload_kind"),
@@ -654,6 +674,13 @@ def _build_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Handoff bundle: `{summary.get('backend_handoff_bundle_path') or '-'}`",
         f"- Output quality: `{summary.get('backend_output_quality') or '-'}`",
         f"- Output usable: `{summary.get('backend_output_usable') if summary.get('backend_output_usable') is not None else '-'}`",
+        f"- Runtime strategy: `{summary.get('backend_runtime_strategy') or '-'}`",
+        f"- Runtime strategy source: `{summary.get('backend_runtime_strategy_source') or '-'}`",
+        f"- Preferred runtime source: `{summary.get('backend_runtime_preferred_runtime_source') or '-'}`",
+        f"- Runtime strategy reason codes: `{', '.join(summary.get('backend_runtime_strategy_reason_codes', [])) or '-'}`",
+        f"- Runtime strategy recommended command: `{summary.get('backend_runtime_recommended_command') or '-'}`",
+        f"- Runtime strategy selected path: `{summary.get('backend_runtime_selected_path') or '-'}`",
+        f"- Runtime strategy docker storage: `{summary.get('backend_runtime_docker_storage_status') or '-'}`",
         "",
         "## Autoware Bridge",
         "",
