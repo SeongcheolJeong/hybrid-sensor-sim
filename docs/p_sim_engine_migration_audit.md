@@ -198,6 +198,7 @@ Implemented in the current repository:
 - the same local setup path now accepts explicit extra download-volume candidates, auto-inspects mounted `/Volumes/*` roots, and honors `*_PACKAGE_DOWNLOAD_DIRS` path-list env vars, so package acquisition can be redirected to a larger external volume without changing the downstream runtime workflows
 - that same CARLA recovery plan now also reports the shortfall for the best current download directory, so the remaining acquisition blocker is quantified in the pinned probe surface
    - the same probe-set surface now also publishes a single `recommended_next_command`, so parity triage can point directly at the next backend action without reopening individual probe reports; for download-space blockers it now points at the `--download-dir` acquire command instead of the plain acquire command
+   - the same probe-set summary now also lifts the recommended download directory itself plus directory-status counts and available-space/shortfall bytes into top-level fields, so the CARLA blocker can be read directly from the summary header
    - it now also emits `runtime_strategy_plan_rows` and `primary_runtime_plan_id`, so `linux handoff`, `packaged runtime required`, and Docker-storage blocker cases show strategy-specific recovery steps instead of a generic fallback
    - that probe-set report now also aggregates blocker counts and blocker-to-probe mappings, so the pinned runtime parity surface can show both the next command and the concrete blocker codes together
 44. provenance-aware runtime smoke governance

@@ -488,6 +488,7 @@ That runs the built-in `tracking READY`, `semantic primary READY`, and `semantic
 - the same download-space plan now also includes the shortfall in bytes/GiB for the best currently-known download directory, so the CARLA blocker is quantified instead of only described abstractly
 - built-in probe set `hybrid_runtime_readiness_v0` combines the pinned real AWSIM runtime probes with the current `carla_local_v0` blocker probe, so one report can show both downstream-ready AWSIM paths and the current CARLA acquisition/runtime blocker
 - the same probe-set report now also exposes a single `recommended_next_command`, choosing the most relevant backend action from the probe results; for download-space blockers it prefers the `--download-dir` acquire command over the plain acquire command so runtime triage stays one-shot
+- the same probe-set report now also lifts `recommended_download_dir_counts`, `download_directory_status_counts`, and the `primary_recommended_download_dir` with its available-space/shortfall bytes into the top-level summary, so CARLA download blockers can be read without drilling into per-probe rows
 - the probe-set report now also emits `runtime_strategy_plan_rows` and `primary_runtime_plan_id`, so `linux handoff`, `packaged runtime required`, and Docker-storage blocker cases carry strategy-specific recovery steps instead of a generic action list
 - the same probe-set report also aggregates `blocking_reason_counts` and `blocking_reason_probe_ids`, so the execution blocker and the next command appear together in one compact surface
 

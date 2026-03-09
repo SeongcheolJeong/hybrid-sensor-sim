@@ -753,6 +753,34 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                 report["recommended_next_command"],
                 "python3 scripts/acquire_renderer_backend_package.py --backend carla --download-dir /Volumes/LargeDisk/backend_downloads/carla",
             )
+            self.assertEqual(
+                report["recommended_download_dir_counts"],
+                {"/Volumes/LargeDisk/backend_downloads/carla": 1},
+            )
+            self.assertEqual(
+                report["recommended_download_dir_probe_ids"],
+                {
+                    "/Volumes/LargeDisk/backend_downloads/carla": [
+                        "carla_local_runtime_strategy"
+                    ]
+                },
+            )
+            self.assertEqual(
+                report["download_directory_status_counts"],
+                {"insufficient": 1},
+            )
+            self.assertEqual(
+                report["primary_recommended_download_dir"],
+                "/Volumes/LargeDisk/backend_downloads/carla",
+            )
+            self.assertEqual(
+                report["primary_recommended_download_dir_available_space_bytes"],
+                123456789,
+            )
+            self.assertEqual(
+                report["primary_recommended_download_dir_shortfall_bytes"],
+                15723108218 - 123456789,
+            )
 
     def test_builtin_hybrid_runtime_readiness_probe_set_combines_awsim_and_carla(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

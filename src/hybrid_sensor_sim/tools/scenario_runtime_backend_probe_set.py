@@ -601,6 +601,15 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
     recommended_command_probe_ids = dict(
         report.get("runtime_strategy_recommended_command_probe_ids", {}) or {}
     )
+    recommended_download_dir_counts = dict(
+        report.get("recommended_download_dir_counts", {}) or {}
+    )
+    recommended_download_dir_probe_ids = dict(
+        report.get("recommended_download_dir_probe_ids", {}) or {}
+    )
+    download_directory_status_counts = dict(
+        report.get("download_directory_status_counts", {}) or {}
+    )
     blocking_reason_counts = dict(report.get("blocking_reason_counts", {}) or {})
     blocking_reason_probe_ids = dict(report.get("blocking_reason_probe_ids", {}) or {})
     blocking_reason_category_counts = dict(
@@ -638,6 +647,9 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
         f"- Primary blocking category: `{report.get('primary_blocking_category') or '-'}`",
         f"- Recommended resolution focus: `{report.get('recommended_resolution_focus') or '-'}`",
         f"- Recommended next command: `{report.get('recommended_next_command') or '-'}`",
+        f"- Recommended download dir counts: `{json.dumps(recommended_download_dir_counts, sort_keys=True) if recommended_download_dir_counts else '-'}`",
+        f"- Download directory status counts: `{json.dumps(download_directory_status_counts, sort_keys=True) if download_directory_status_counts else '-'}`",
+        f"- Primary recommended download dir: `{report.get('primary_recommended_download_dir') or '-'}`",
         "",
         "## Runtime Strategies",
         "",
@@ -704,6 +716,19 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
     for command, probe_ids in sorted(recommended_command_probe_ids.items()):
         lines.append(
             f"| {command or '-'} | {', '.join(probe_ids or []) or '-'} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Download Directories",
+            "",
+            "| Directory | Probe IDs |",
+            "| --- | --- |",
+        ]
+    )
+    for directory, probe_ids in sorted(recommended_download_dir_probe_ids.items()):
+        lines.append(
+            f"| {directory or '-'} | {', '.join(probe_ids or []) or '-'} |"
         )
     lines.extend(
         [
@@ -984,6 +1009,9 @@ def run_scenario_runtime_backend_probe_set(
     runtime_strategy_reason_code_counts: dict[str, int] = {}
     runtime_strategy_recommended_command_counts: dict[str, int] = {}
     runtime_strategy_recommended_command_probe_ids: dict[str, list[str]] = {}
+    recommended_download_dir_counts: dict[str, int] = {}
+    recommended_download_dir_probe_ids: dict[str, list[str]] = {}
+    download_directory_status_counts: dict[str, int] = {}
     blocking_reason_counts: dict[str, int] = {}
     blocking_reason_probe_ids: dict[str, list[str]] = {}
     blocking_reason_category_counts: dict[str, int] = {}
@@ -1048,6 +1076,23 @@ def run_scenario_runtime_backend_probe_set(
             runtime_strategy_recommended_command_probe_ids.setdefault(
                 recommended_command, []
             ).append(str(result.get("probe_id") or ""))
+        recommended_download_dir = str(
+            result.get("backend_runtime_recommended_download_dir") or ""
+        ).strip()
+        if recommended_download_dir:
+            recommended_download_dir_counts[recommended_download_dir] = (
+                recommended_download_dir_counts.get(recommended_download_dir, 0) + 1
+            )
+            recommended_download_dir_probe_ids.setdefault(
+                recommended_download_dir, []
+            ).append(str(result.get("probe_id") or ""))
+        download_directory_status = str(
+            result.get("backend_runtime_download_directory_status") or ""
+        ).strip()
+        if download_directory_status:
+            download_directory_status_counts[download_directory_status] = (
+                download_directory_status_counts.get(download_directory_status, 0) + 1
+            )
         recovered_required_topics.update(result.get("recovered_required_topics", []) or [])
         source_missing_required_topics.update(
             result.get("source_missing_required_topics", []) or []
@@ -1203,6 +1248,9 @@ def run_scenario_runtime_backend_probe_set(
     recommended_runtime_action = None
     primary_runtime_plan_id = None
     recommended_runtime_plan_steps: list[str] = []
+    primary_recommended_download_dir = None
+    primary_recommended_download_dir_available_space_bytes = None
+    primary_recommended_download_dir_shortfall_bytes = None
     primary_blocking_reason_code = None
     primary_blocking_category = None
     if runtime_strategy_summary_rows:
@@ -1227,6 +1275,39 @@ def run_scenario_runtime_backend_probe_set(
         recommended_runtime_plan_steps = list(
             primary_runtime_plan_row.get("plan_steps", []) or []
         )
+    if recommended_download_dir_probe_ids:
+        primary_recommended_download_dir = sorted(
+            recommended_download_dir_probe_ids.items(),
+            key=lambda item: (-len(item[1]), item[0]),
+        )[0][0]
+        primary_download_results = [
+            result
+            for result in probe_results
+            if str(result.get("backend_runtime_recommended_download_dir") or "").strip()
+            == primary_recommended_download_dir
+        ]
+        available_space_values = [
+            result.get("backend_runtime_recommended_download_dir_available_space_bytes")
+            for result in primary_download_results
+            if isinstance(
+                result.get("backend_runtime_recommended_download_dir_available_space_bytes"),
+                int,
+            )
+        ]
+        shortfall_values = [
+            result.get("backend_runtime_recommended_download_dir_shortfall_bytes")
+            for result in primary_download_results
+            if isinstance(
+                result.get("backend_runtime_recommended_download_dir_shortfall_bytes"),
+                int,
+            )
+        ]
+        if available_space_values:
+            primary_recommended_download_dir_available_space_bytes = max(
+                available_space_values
+            )
+        if shortfall_values:
+            primary_recommended_download_dir_shortfall_bytes = min(shortfall_values)
     if blocking_reason_summary_rows:
         primary_row = sorted(
             blocking_reason_summary_rows,
@@ -1281,10 +1362,19 @@ def run_scenario_runtime_backend_probe_set(
                 runtime_strategy_recommended_command_probe_ids.items()
             )
         },
+        "recommended_download_dir_counts": recommended_download_dir_counts,
+        "recommended_download_dir_probe_ids": {
+            directory: sorted(probe_ids)
+            for directory, probe_ids in sorted(recommended_download_dir_probe_ids.items())
+        },
+        "download_directory_status_counts": download_directory_status_counts,
         "primary_runtime_strategy": primary_runtime_strategy,
         "recommended_runtime_action": recommended_runtime_action,
         "primary_runtime_plan_id": primary_runtime_plan_id,
         "recommended_runtime_plan_steps": recommended_runtime_plan_steps,
+        "primary_recommended_download_dir": primary_recommended_download_dir,
+        "primary_recommended_download_dir_available_space_bytes": primary_recommended_download_dir_available_space_bytes,
+        "primary_recommended_download_dir_shortfall_bytes": primary_recommended_download_dir_shortfall_bytes,
         "blocking_reason_counts": blocking_reason_counts,
         "blocking_reason_probe_ids": {
             reason: sorted(probe_ids)
