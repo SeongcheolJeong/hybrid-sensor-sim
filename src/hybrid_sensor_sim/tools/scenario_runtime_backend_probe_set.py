@@ -24,6 +24,13 @@ def _classify_blocking_reason(reason_code: str) -> str:
     if normalized.startswith("AUTOWARE_") or "TOPIC" in normalized:
         return "consumer_contract"
     if (
+        normalized.startswith("LOCAL_RUNTIME_")
+        or normalized.endswith("_RUNTIME_MISSING")
+        or normalized == "DOCKER_IMAGE_MISSING"
+        or normalized == "PLATFORM_UNSUPPORTED_LOCAL_HOST"
+    ):
+        return "runtime_environment"
+    if (
         "DOCKER" in normalized
         or "HOST_INCOMPATIBLE" in normalized
         or "PACKAGED_RUNTIME" in normalized
@@ -64,17 +71,145 @@ def _recommended_action_for_runtime_strategy(
     normalized_source = str(preferred_runtime_source or "").strip()
     if normalized_strategy == "linux_handoff_packaged_runtime":
         return "Prepare and execute the linux handoff packaged runtime workflow."
-    if normalized_strategy == "docker_runtime":
+    if normalized_strategy in {"docker_runtime", "local_docker_runtime"}:
         return "Repair the Docker runtime and rerun the backend through the Docker execution path."
-    if normalized_strategy == "host_packaged_runtime":
+    if normalized_strategy in {"host_packaged_runtime", "local_packaged_runtime"}:
         return "Rerun the packaged backend directly on the host runtime path."
     if normalized_strategy == "host_native_runtime":
         return "Rerun the native backend directly on the host runtime path."
+    if normalized_strategy == "packaged_runtime_required":
+        return "Acquire and stage a packaged runtime for the selected backend."
+    if normalized_strategy == "docker_or_packaged_runtime_required":
+        return "Choose a Docker image or packaged runtime and rerun the backend workflow."
     if normalized_source == "packaged_runtime":
         return "Use the selected packaged runtime path and rerun the backend workflow."
     if normalized_source == "docker_image":
         return "Use the selected Docker image path and rerun the backend workflow."
     return "Inspect the selected runtime strategy and rerun the backend workflow."
+
+
+def _build_runtime_strategy_plan(
+    *,
+    strategy: str,
+    preferred_runtime_source: str,
+    docker_storage_status: str,
+    reason_codes: list[str],
+) -> dict[str, Any]:
+    normalized_strategy = str(strategy or "").strip()
+    normalized_source = str(preferred_runtime_source or "").strip()
+    normalized_storage = str(docker_storage_status or "").strip()
+    normalized_reason_codes = sorted(
+        {
+            str(reason_code or "").strip()
+            for reason_code in reason_codes or []
+            if str(reason_code or "").strip()
+        }
+    )
+    if normalized_strategy == "linux_handoff_packaged_runtime":
+        return {
+            "plan_id": "linux_handoff_packaged_runtime",
+            "summary": "Use the packaged runtime through the linux handoff workflow.",
+            "steps": [
+                "Confirm the selected packaged runtime path is present and current.",
+                "Generate or refresh the linux handoff bundle for the packaged runtime.",
+                "Execute the linux handoff workflow and rerun the backend smoke path.",
+            ],
+        }
+    if normalized_strategy == "docker_runtime":
+        if normalized_storage in {
+            "image_store_corrupt",
+            "content_store_corrupt",
+            "storage_io_error",
+        }:
+            return {
+                "plan_id": "docker_storage_repair",
+                "summary": "Repair the local Docker storage before using the Docker runtime path.",
+                "steps": [
+                    "Repair the local Docker Desktop or containerd image store.",
+                    "Re-run the Docker pull or verify step for the selected backend image.",
+                    "Rerun the backend smoke workflow through the Docker runtime path.",
+                ],
+            }
+        return {
+            "plan_id": "docker_runtime_rerun",
+            "summary": "Use the Docker runtime path directly.",
+            "steps": [
+                "Verify the selected Docker image is present and healthy.",
+                "Rerun the backend smoke workflow through the Docker runtime path.",
+            ],
+        }
+    if normalized_strategy == "local_packaged_runtime":
+        return {
+            "plan_id": "local_packaged_runtime",
+            "summary": "Use the host-compatible packaged runtime directly.",
+            "steps": [
+                "Verify the packaged runtime binary and related assets are present.",
+                "Rerun the backend smoke workflow using the packaged runtime on the host.",
+            ],
+        }
+    if normalized_strategy == "host_native_runtime":
+        return {
+            "plan_id": "host_native_runtime",
+            "summary": "Use the native runtime directly on the host.",
+            "steps": [
+                "Verify the native runtime path is available on the host.",
+                "Rerun the backend smoke workflow using the native runtime path.",
+            ],
+        }
+    if normalized_strategy == "packaged_runtime_required":
+        if "DOCKER_STORAGE_CORRUPT" in normalized_reason_codes:
+            return {
+                "plan_id": "packaged_runtime_required_after_docker_failure",
+                "summary": "Docker is blocked, so acquire and stage a packaged runtime.",
+                "steps": [
+                    "Acquire or locate a packaged runtime for the selected backend.",
+                    "Stage the packaged runtime into the local runtime workspace.",
+                    "Use the packaged runtime path or linux handoff workflow to rerun smoke.",
+                ],
+            }
+        return {
+            "plan_id": "packaged_runtime_required",
+            "summary": "Acquire and stage a packaged runtime for the selected backend.",
+            "steps": [
+                "Acquire or locate a packaged runtime for the selected backend.",
+                "Stage the packaged runtime into the local runtime workspace.",
+                "Rerun the backend smoke workflow with the packaged runtime path.",
+            ],
+        }
+    if normalized_strategy == "docker_or_packaged_runtime_required":
+        if normalized_storage in {
+            "image_store_corrupt",
+            "content_store_corrupt",
+            "storage_io_error",
+        }:
+            return {
+                "plan_id": "prefer_packaged_runtime_due_to_docker_storage",
+                "summary": "Prefer a packaged runtime because Docker storage is unhealthy.",
+                "steps": [
+                    "Acquire or locate a packaged runtime for the selected backend.",
+                    "Stage the packaged runtime into the local runtime workspace.",
+                    "Rerun the backend smoke workflow with the packaged runtime path or linux handoff workflow.",
+                ],
+            }
+        if normalized_source == "docker_or_packaged":
+            return {
+                "plan_id": "choose_docker_or_packaged_runtime",
+                "summary": "Pick an available Docker image or packaged runtime and rerun.",
+                "steps": [
+                    "Try the recommended Docker pull or packaged runtime acquisition command.",
+                    "Use whichever runtime source becomes available first.",
+                    "Rerun the backend smoke workflow with the selected runtime source.",
+                ],
+            }
+    return {
+        "plan_id": "generic_runtime_strategy",
+        "summary": "Inspect the runtime strategy and apply the recommended backend rerun path.",
+        "steps": [
+            "Inspect the selected runtime strategy and preferred runtime source.",
+            "Follow the recommended runtime command for the selected backend.",
+            "Rerun the backend smoke workflow and inspect the updated probe result.",
+        ],
+    }
 
 
 def _utc_now() -> str:
@@ -283,6 +418,28 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
+            "## Runtime Strategy Plans",
+            "",
+            "| Strategy | Plan ID | Probe IDs | Summary |",
+            "| --- | --- | --- | --- |",
+        ]
+    )
+    for row in report.get("runtime_strategy_plan_rows", []) or []:
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    str(row.get("strategy") or "-"),
+                    str(row.get("plan_id") or "-"),
+                    str(", ".join(row.get("probe_ids", [])) or "-"),
+                    str(row.get("plan_summary") or "-"),
+                ]
+            )
+            + " |"
+        )
+    lines.extend(
+        [
+            "",
             "## Runtime Commands",
             "",
             "| Command | Probe IDs |",
@@ -352,6 +509,14 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
     )
     for index, step in enumerate(report.get("recommended_resolution_steps", []) or [], start=1):
         lines.append(f"| {index} | {step} |")
+    lines.extend(
+        [
+            "",
+            "## Primary Runtime Plan",
+            "",
+            f"- Plan ID: `{report.get('primary_runtime_plan_id') or '-'}`",
+        ]
+    )
     lines.extend(
         [
             "",
@@ -611,6 +776,7 @@ def run_scenario_runtime_backend_probe_set(
         )[0][0]
 
     runtime_strategy_summary_rows = []
+    runtime_strategy_plan_rows = []
     for strategy, probe_ids in sorted(runtime_strategy_probe_ids.items()):
         preferred_sources = [
             source
@@ -622,6 +788,30 @@ def run_scenario_runtime_backend_probe_set(
             preferred_runtime_source = sorted(
                 {str(source) for source in preferred_sources}
             )[0]
+        docker_storage_statuses = sorted(
+            {
+                str(result.get("backend_runtime_docker_storage_status") or "").strip()
+                for result in probe_results
+                if str(result.get("backend_runtime_strategy") or "") == strategy
+                and str(result.get("backend_runtime_docker_storage_status") or "").strip()
+            }
+        )
+        reason_codes = sorted(
+            {
+                str(reason_code or "").strip()
+                for result in probe_results
+                if str(result.get("backend_runtime_strategy") or "") == strategy
+                for reason_code in result.get("backend_runtime_strategy_reason_codes", [])
+                or []
+                if str(reason_code or "").strip()
+            }
+        )
+        runtime_plan = _build_runtime_strategy_plan(
+            strategy=strategy,
+            preferred_runtime_source=preferred_runtime_source or "",
+            docker_storage_status=docker_storage_statuses[0] if docker_storage_statuses else "",
+            reason_codes=reason_codes,
+        )
         runtime_strategy_summary_rows.append(
             {
                 "strategy": strategy,
@@ -630,6 +820,18 @@ def run_scenario_runtime_backend_probe_set(
                 "recommended_action": _recommended_action_for_runtime_strategy(
                     strategy, preferred_runtime_source or ""
                 ),
+            }
+        )
+        runtime_strategy_plan_rows.append(
+            {
+                "strategy": strategy,
+                "probe_ids": sorted(probe_ids),
+                "preferred_runtime_source": preferred_runtime_source,
+                "docker_storage_statuses": docker_storage_statuses,
+                "reason_codes": reason_codes,
+                "plan_id": runtime_plan["plan_id"],
+                "plan_summary": runtime_plan["summary"],
+                "plan_steps": list(runtime_plan.get("steps", []) or []),
             }
         )
 
@@ -651,6 +853,8 @@ def run_scenario_runtime_backend_probe_set(
     recommended_resolution_focus = None
     primary_runtime_strategy = None
     recommended_runtime_action = None
+    primary_runtime_plan_id = None
+    recommended_runtime_plan_steps: list[str] = []
     primary_blocking_reason_code = None
     primary_blocking_category = None
     if runtime_strategy_summary_rows:
@@ -663,6 +867,18 @@ def run_scenario_runtime_backend_probe_set(
         )[0]
         primary_runtime_strategy = primary_strategy_row["strategy"]
         recommended_runtime_action = primary_strategy_row["recommended_action"]
+    if runtime_strategy_plan_rows:
+        primary_runtime_plan_row = sorted(
+            runtime_strategy_plan_rows,
+            key=lambda row: (
+                -len(list(row.get("probe_ids", []) or [])),
+                str(row.get("strategy") or ""),
+            ),
+        )[0]
+        primary_runtime_plan_id = primary_runtime_plan_row["plan_id"]
+        recommended_runtime_plan_steps = list(
+            primary_runtime_plan_row.get("plan_steps", []) or []
+        )
     if blocking_reason_summary_rows:
         primary_row = sorted(
             blocking_reason_summary_rows,
@@ -673,7 +889,10 @@ def run_scenario_runtime_backend_probe_set(
         primary_blocking_category = primary_row["category"]
 
     recommended_resolution_steps: list[str] = []
-    if recommended_runtime_action:
+    for step in recommended_runtime_plan_steps:
+        if step and step not in recommended_resolution_steps:
+            recommended_resolution_steps.append(step)
+    if recommended_runtime_action and recommended_runtime_action not in recommended_resolution_steps:
         recommended_resolution_steps.append(recommended_runtime_action)
     if recommended_next_command:
         recommended_resolution_steps.append(f"Run: {recommended_next_command}")
@@ -705,6 +924,7 @@ def run_scenario_runtime_backend_probe_set(
             for strategy, probe_ids in sorted(runtime_strategy_probe_ids.items())
         },
         "runtime_strategy_summary_rows": runtime_strategy_summary_rows,
+        "runtime_strategy_plan_rows": runtime_strategy_plan_rows,
         "runtime_strategy_reason_code_counts": runtime_strategy_reason_code_counts,
         "runtime_strategy_recommended_command_counts": runtime_strategy_recommended_command_counts,
         "runtime_strategy_recommended_command_probe_ids": {
@@ -715,6 +935,8 @@ def run_scenario_runtime_backend_probe_set(
         },
         "primary_runtime_strategy": primary_runtime_strategy,
         "recommended_runtime_action": recommended_runtime_action,
+        "primary_runtime_plan_id": primary_runtime_plan_id,
+        "recommended_runtime_plan_steps": recommended_runtime_plan_steps,
         "blocking_reason_counts": blocking_reason_counts,
         "blocking_reason_probe_ids": {
             reason: sorted(probe_ids)

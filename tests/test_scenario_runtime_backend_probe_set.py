@@ -164,12 +164,47 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                 ],
             )
             self.assertEqual(
+                report["runtime_strategy_plan_rows"],
+                [
+                    {
+                        "strategy": "linux_handoff_packaged_runtime",
+                        "probe_ids": [
+                            "semantic_primary_ready",
+                            "semantic_recovery_ready",
+                            "tracking_ready",
+                        ],
+                        "preferred_runtime_source": "packaged_runtime",
+                        "docker_storage_statuses": ["healthy"],
+                        "reason_codes": ["HOST_INCOMPATIBLE_PACKAGED_RUNTIME"],
+                        "plan_id": "linux_handoff_packaged_runtime",
+                        "plan_summary": "Use the packaged runtime through the linux handoff workflow.",
+                        "plan_steps": [
+                            "Confirm the selected packaged runtime path is present and current.",
+                            "Generate or refresh the linux handoff bundle for the packaged runtime.",
+                            "Execute the linux handoff workflow and rerun the backend smoke path.",
+                        ],
+                    }
+                ],
+            )
+            self.assertEqual(
                 report["primary_runtime_strategy"],
                 "linux_handoff_packaged_runtime",
             )
             self.assertEqual(
                 report["recommended_runtime_action"],
                 "Prepare and execute the linux handoff packaged runtime workflow.",
+            )
+            self.assertEqual(
+                report["primary_runtime_plan_id"],
+                "linux_handoff_packaged_runtime",
+            )
+            self.assertEqual(
+                report["recommended_runtime_plan_steps"],
+                [
+                    "Confirm the selected packaged runtime path is present and current.",
+                    "Generate or refresh the linux handoff bundle for the packaged runtime.",
+                    "Execute the linux handoff workflow and rerun the backend smoke path.",
+                ],
             )
             self.assertEqual(
                 report["runtime_strategy_reason_code_counts"],
@@ -222,6 +257,9 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
             self.assertEqual(
                 report["recommended_resolution_steps"],
                 [
+                    "Confirm the selected packaged runtime path is present and current.",
+                    "Generate or refresh the linux handoff bundle for the packaged runtime.",
+                    "Execute the linux handoff workflow and rerun the backend smoke path.",
                     "Prepare and execute the linux handoff packaged runtime workflow.",
                     "Run: python3 scripts/run_renderer_backend_workflow.py --backend awsim --dry-run",
                     "Use the linux handoff packaged runtime path.",
@@ -346,6 +384,18 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                 "Prepare and execute the linux handoff packaged runtime workflow.",
             )
             self.assertEqual(
+                report["primary_runtime_plan_id"],
+                "linux_handoff_packaged_runtime",
+            )
+            self.assertEqual(
+                report["recommended_runtime_plan_steps"],
+                [
+                    "Confirm the selected packaged runtime path is present and current.",
+                    "Generate or refresh the linux handoff bundle for the packaged runtime.",
+                    "Execute the linux handoff workflow and rerun the backend smoke path.",
+                ],
+            )
+            self.assertEqual(
                 report["primary_blocking_reason_code"],
                 "HOST_INCOMPATIBLE_PACKAGED_RUNTIME",
             )
@@ -360,6 +410,9 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
             self.assertEqual(
                 report["recommended_resolution_steps"],
                 [
+                    "Confirm the selected packaged runtime path is present and current.",
+                    "Generate or refresh the linux handoff bundle for the packaged runtime.",
+                    "Execute the linux handoff workflow and rerun the backend smoke path.",
                     "Prepare and execute the linux handoff packaged runtime workflow.",
                     "Run: python3 scripts/run_renderer_backend_workflow.py --backend awsim --dry-run",
                     "Use the linux handoff packaged runtime path.",
@@ -369,6 +422,146 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
             self.assertEqual(
                 report["recommended_next_command"],
                 "python3 scripts/run_renderer_backend_workflow.py --backend awsim --dry-run",
+            )
+
+    def test_probe_set_builds_docker_storage_repair_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            runtime_report = (
+                root
+                / "artifacts"
+                / "scenario_runtime_backend_real_carla_probe"
+                / "scenario_runtime_backend_workflow_report_v0.json"
+            )
+            runtime_report.parent.mkdir(parents=True, exist_ok=True)
+            runtime_report.write_text("{}", encoding="utf-8")
+
+            def _fake_probe(**kwargs):
+                out_root = Path(kwargs["out_root"])
+                report_path = out_root / "scenario_runtime_backend_probe_report_v0.json"
+                markdown_path = out_root / "scenario_runtime_backend_probe_report_v0.md"
+                out_root.mkdir(parents=True, exist_ok=True)
+                report = {
+                    "probe_id": kwargs["probe_id"],
+                    "consumer_profile_id": kwargs["consumer_profile_id"],
+                    "status": "FAIL",
+                    "summary": {
+                        "runtime_status": "FAILED",
+                        "autoware_pipeline_status": "DEGRADED",
+                        "semantic_topic_recovered": False,
+                    },
+                    "evaluation": {
+                        "failure_codes": ["LOCAL_RUNTIME_MISSING"],
+                    },
+                }
+                report_path.write_text(json.dumps(report), encoding="utf-8")
+                markdown_path.write_text("# fail\n", encoding="utf-8")
+                return {
+                    "report_path": report_path,
+                    "markdown_path": markdown_path,
+                    "report": report,
+                    "rebridge_result": {
+                        "workflow_report": {
+                            "status_summary": {
+                                "backend_runtime_strategy": "packaged_runtime_required",
+                                "backend_runtime_strategy_source": "setup_summary.runtime_strategy",
+                                "backend_runtime_preferred_runtime_source": "packaged",
+                                "backend_runtime_strategy_reason_codes": [
+                                    "LOCAL_RUNTIME_MISSING",
+                                    "DOCKER_STORAGE_CORRUPT",
+                                ],
+                                "backend_runtime_recommended_command": "python3 scripts/acquire_renderer_backend_package.py --backend carla",
+                                "backend_runtime_selected_path": None,
+                                "backend_runtime_docker_storage_status": "content_store_corrupt",
+                            },
+                            "rebridge": {
+                                "comparison": {
+                                    "source_runtime_status": "FAILED",
+                                    "source_autoware_pipeline_status": "DEGRADED",
+                                    "source_missing_required_topics": [],
+                                    "refreshed_missing_required_topics": [],
+                                    "recovered_required_topics": [],
+                                }
+                            },
+                        }
+                    },
+                }
+
+            with patch(
+                "hybrid_sensor_sim.tools.scenario_runtime_backend_probe_set.run_scenario_runtime_backend_probe",
+                side_effect=_fake_probe,
+            ), patch(
+                "hybrid_sensor_sim.tools.scenario_runtime_backend_probe_set._default_probe_set_specs",
+                return_value={
+                    "carla_local_v0": {
+                        "probe_set_id": "carla_local_v0",
+                        "description": "CARLA local runtime blockers",
+                        "probes": [
+                            {
+                                "probe_id": "carla_runtime_missing",
+                                "runtime_backend_workflow_report_path": runtime_report,
+                                "consumer_profile_id": "tracking_fusion_v0",
+                                "expect_runtime_status": "SUCCEEDED",
+                                "expect_autoware_status": "READY",
+                            }
+                        ],
+                    }
+                },
+            ):
+                result = run_scenario_runtime_backend_probe_set(
+                    out_root=root / "probe_set",
+                    probe_set_id="carla_local_v0",
+                    repo_root=root,
+                )
+
+            report = result["report"]
+            self.assertEqual(report["status"], "FAIL")
+            self.assertEqual(report["primary_runtime_strategy"], "packaged_runtime_required")
+            self.assertEqual(
+                report["primary_runtime_plan_id"],
+                "packaged_runtime_required_after_docker_failure",
+            )
+            self.assertEqual(
+                report["recommended_runtime_plan_steps"],
+                [
+                    "Acquire or locate a packaged runtime for the selected backend.",
+                    "Stage the packaged runtime into the local runtime workspace.",
+                    "Use the packaged runtime path or linux handoff workflow to rerun smoke.",
+                ],
+            )
+            self.assertEqual(
+                report["runtime_strategy_plan_rows"],
+                [
+                    {
+                        "strategy": "packaged_runtime_required",
+                        "probe_ids": ["carla_runtime_missing"],
+                        "preferred_runtime_source": "packaged",
+                        "docker_storage_statuses": ["content_store_corrupt"],
+                        "reason_codes": [
+                            "DOCKER_STORAGE_CORRUPT",
+                            "LOCAL_RUNTIME_MISSING",
+                        ],
+                        "plan_id": "packaged_runtime_required_after_docker_failure",
+                        "plan_summary": "Docker is blocked, so acquire and stage a packaged runtime.",
+                        "plan_steps": [
+                            "Acquire or locate a packaged runtime for the selected backend.",
+                            "Stage the packaged runtime into the local runtime workspace.",
+                            "Use the packaged runtime path or linux handoff workflow to rerun smoke.",
+                        ],
+                    }
+                ],
+            )
+            self.assertEqual(
+                report["recommended_resolution_steps"],
+                [
+                    "Acquire or locate a packaged runtime for the selected backend.",
+                    "Stage the packaged runtime into the local runtime workspace.",
+                    "Use the packaged runtime path or linux handoff workflow to rerun smoke.",
+                    "Acquire and stage a packaged runtime for the selected backend.",
+                    "Run: python3 scripts/acquire_renderer_backend_package.py --backend carla",
+                    "Fix the runtime environment or switch to the recommended handoff path.",
+                    "Repair the local Docker image store or use a packaged runtime handoff path.",
+                ],
             )
 
     def test_probe_set_script_bootstraps_src_path(self) -> None:

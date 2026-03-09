@@ -191,6 +191,7 @@ Implemented in the current repository:
    - `scenario_backend_smoke_workflow` and `scenario_runtime_backend_workflow` now lift that same `runtime_strategy` into their own top-level report surface, so scenario-driven smoke runs can expose the selected execution route without opening nested local-setup or renderer-workflow artifacts
    - `scenario_runtime_backend_probe_set.py` now also aggregates runtime-strategy counts, strategy summary rows, blocker categories, recommended actions, and ordered resolution steps, so the pinned real AWSIM probe set can report execution-route intent, downstream readiness, and the immediate troubleshooting sequence in one compact surface
    - the same probe-set surface now also publishes a single `recommended_next_command`, so parity triage can point directly at the next backend action without reopening individual probe reports
+   - it now also emits `runtime_strategy_plan_rows` and `primary_runtime_plan_id`, so `linux handoff`, `packaged runtime required`, and Docker-storage blocker cases show strategy-specific recovery steps instead of a generic fallback
    - that probe-set report now also aggregates blocker counts and blocker-to-probe mappings, so the pinned runtime parity surface can show both the next command and the concrete blocker codes together
 44. provenance-aware runtime smoke governance
    - `src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py` can now optionally run the checked-in Autonomy-E2E history guard as part of the top-level runtime/backend workflow

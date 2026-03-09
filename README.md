@@ -483,6 +483,7 @@ That runs the built-in `tracking READY`, `semantic primary READY`, and `semantic
 - `scenario_runtime_backend_probe_set_report_v0.md`
 - the probe-set report now also aggregates `runtime_strategy_counts`, `runtime_strategy_probe_ids`, strategy summary rows, blocker reason categories, per-reason recommended actions, and ordered `recommended_resolution_steps`, so one real AWSIM/CARLA probe set can show downstream readiness, execution route, and the next troubleshooting sequence in one surface
 - the same probe-set report now also exposes a single `recommended_next_command`, choosing the most relevant backend action from the probe results so runtime triage stays one-shot
+- the probe-set report now also emits `runtime_strategy_plan_rows` and `primary_runtime_plan_id`, so `linux handoff`, `packaged runtime required`, and Docker-storage blocker cases carry strategy-specific recovery steps instead of a generic action list
 - the same probe-set report also aggregates `blocking_reason_counts` and `blocking_reason_probe_ids`, so the execution blocker and the next command appear together in one compact surface
 
 The probe-set report also separates:
