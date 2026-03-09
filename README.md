@@ -467,6 +467,19 @@ python3 scripts/run_scenario_runtime_backend_probe.py \
 
 That writes `scenario_runtime_backend_probe_report_v0.json` and a short Markdown summary, making it easier to pin repeatable real AWSIM `tracking READY` or `semantic recovery READY` probes.
 
+If you want both canonical real AWSIM probes in one pass, use the named probe-set wrapper:
+
+```bash
+python3 scripts/run_scenario_runtime_backend_probe_set.py \
+  --probe-set-id awsim_real_v0 \
+  --out-root artifacts/scenario_runtime_backend_probe_set_runs
+```
+
+That runs the built-in `tracking READY` and `semantic recovery READY` probes against the pinned real AWSIM runtime artifacts and writes:
+
+- `scenario_runtime_backend_probe_set_report_v0.json`
+- `scenario_runtime_backend_probe_set_report_v0.md`
+
 Both `run_scenario_variants.py` and `run_scenario_variant_workflow.py` resolve default scenario-language profiles from:
 
 - `tests/fixtures/autonomy_e2e/p_validation`

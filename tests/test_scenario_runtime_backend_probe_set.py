@@ -1,0 +1,161 @@
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from hybrid_sensor_sim.tools.scenario_runtime_backend_probe_set import (
+    DEFAULT_SCENARIO_RUNTIME_BACKEND_PROBE_SET_ID,
+    SCENARIO_RUNTIME_BACKEND_PROBE_SET_REPORT_SCHEMA_VERSION_V0,
+    run_scenario_runtime_backend_probe_set,
+)
+
+
+class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
+    def test_run_scenario_runtime_backend_probe_set_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tracking = (
+                root
+                / "artifacts"
+                / "scenario_runtime_backend_real_awsim_tracking_ready_probe"
+                / "scenario_runtime_backend_workflow_report_v0.json"
+            )
+            tracking.parent.mkdir(parents=True, exist_ok=True)
+            tracking.write_text("{}", encoding="utf-8")
+            degraded = (
+                root
+                / "artifacts"
+                / "scenario_runtime_backend_real_awsim_degraded_runtime_probe"
+                / "scenario_runtime_backend_workflow_report_v0.json"
+            )
+            degraded.parent.mkdir(parents=True, exist_ok=True)
+            degraded.write_text("{}", encoding="utf-8")
+
+            def _fake_probe(**kwargs):
+                out_root = Path(kwargs["out_root"])
+                probe_id = kwargs["probe_id"]
+                report_path = out_root / "scenario_runtime_backend_probe_report_v0.json"
+                markdown_path = out_root / "scenario_runtime_backend_probe_report_v0.md"
+                out_root.mkdir(parents=True, exist_ok=True)
+                report = {
+                    "probe_id": probe_id,
+                    "consumer_profile_id": kwargs["consumer_profile_id"],
+                    "status": "PASS",
+                    "summary": {
+                        "runtime_status": kwargs["expect_runtime_status"],
+                        "autoware_pipeline_status": kwargs["expect_autoware_status"],
+                        "semantic_topic_recovered": probe_id == "semantic_recovery_ready",
+                    },
+                    "evaluation": {"failure_codes": []},
+                }
+                report_path.write_text(json.dumps(report), encoding="utf-8")
+                markdown_path.write_text("# ok\n", encoding="utf-8")
+                return {
+                    "report_path": report_path,
+                    "markdown_path": markdown_path,
+                    "report": report,
+                }
+
+            with patch(
+                "hybrid_sensor_sim.tools.scenario_runtime_backend_probe_set.run_scenario_runtime_backend_probe",
+                side_effect=_fake_probe,
+            ):
+                result = run_scenario_runtime_backend_probe_set(
+                    out_root=root / "probe_set",
+                    probe_set_id=DEFAULT_SCENARIO_RUNTIME_BACKEND_PROBE_SET_ID,
+                    repo_root=root,
+                )
+
+            report = result["report"]
+            self.assertEqual(
+                report["scenario_runtime_backend_probe_set_report_schema_version"],
+                SCENARIO_RUNTIME_BACKEND_PROBE_SET_REPORT_SCHEMA_VERSION_V0,
+            )
+            self.assertEqual(report["status"], "PASS")
+            self.assertEqual(report["probe_count"], 2)
+            self.assertEqual(report["pass_count"], 2)
+            self.assertEqual(report["fail_count"], 0)
+            self.assertEqual(
+                report["passed_probe_ids"],
+                ["semantic_recovery_ready", "tracking_ready"],
+            )
+            self.assertTrue(result["report_path"].is_file())
+            self.assertTrue(result["markdown_path"].is_file())
+
+    def test_run_scenario_runtime_backend_probe_set_fails_when_probe_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for relative in (
+                "artifacts/scenario_runtime_backend_real_awsim_tracking_ready_probe/scenario_runtime_backend_workflow_report_v0.json",
+                "artifacts/scenario_runtime_backend_real_awsim_degraded_runtime_probe/scenario_runtime_backend_workflow_report_v0.json",
+            ):
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("{}", encoding="utf-8")
+
+            def _fake_probe(**kwargs):
+                out_root = Path(kwargs["out_root"])
+                probe_id = kwargs["probe_id"]
+                report_path = out_root / "scenario_runtime_backend_probe_report_v0.json"
+                markdown_path = out_root / "scenario_runtime_backend_probe_report_v0.md"
+                out_root.mkdir(parents=True, exist_ok=True)
+                status = "FAIL" if probe_id == "semantic_recovery_ready" else "PASS"
+                report = {
+                    "probe_id": probe_id,
+                    "consumer_profile_id": kwargs["consumer_profile_id"],
+                    "status": status,
+                    "summary": {
+                        "runtime_status": kwargs["expect_runtime_status"],
+                        "autoware_pipeline_status": kwargs["expect_autoware_status"],
+                        "semantic_topic_recovered": False,
+                    },
+                    "evaluation": {
+                        "failure_codes": ["AUTOWARE_STATUS_MISMATCH"] if status == "FAIL" else []
+                    },
+                }
+                report_path.write_text(json.dumps(report), encoding="utf-8")
+                markdown_path.write_text("# ok\n", encoding="utf-8")
+                return {
+                    "report_path": report_path,
+                    "markdown_path": markdown_path,
+                    "report": report,
+                }
+
+            with patch(
+                "hybrid_sensor_sim.tools.scenario_runtime_backend_probe_set.run_scenario_runtime_backend_probe",
+                side_effect=_fake_probe,
+            ):
+                result = run_scenario_runtime_backend_probe_set(
+                    out_root=root / "probe_set",
+                    probe_set_id=DEFAULT_SCENARIO_RUNTIME_BACKEND_PROBE_SET_ID,
+                    repo_root=root,
+                )
+
+            report = result["report"]
+            self.assertEqual(report["status"], "FAIL")
+            self.assertEqual(report["fail_count"], 1)
+            self.assertEqual(report["failed_probe_ids"], ["semantic_recovery_ready"])
+
+    def test_probe_set_script_bootstraps_src_path(self) -> None:
+        script_path = (
+            Path(__file__).resolve().parents[1]
+            / "scripts"
+            / "run_scenario_runtime_backend_probe_set.py"
+        )
+        completed = subprocess.run(
+            [sys.executable, str(script_path), "--help"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("named set of compact runtime/backend probes", completed.stdout)
+
+
+if __name__ == "__main__":
+    unittest.main()

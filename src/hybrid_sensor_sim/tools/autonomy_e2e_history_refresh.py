@@ -420,12 +420,14 @@ BLOCK_CATALOG: list[dict[str, Any]] = [
             "src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py",
             "src/hybrid_sensor_sim/tools/scenario_runtime_backend_rebridge.py",
             "src/hybrid_sensor_sim/tools/scenario_runtime_backend_probe.py",
+            "src/hybrid_sensor_sim/tools/scenario_runtime_backend_probe_set.py",
         ],
         "current_test_paths": [
             "tests/test_scenario_backend_smoke_workflow.py",
             "tests/test_scenario_runtime_backend_workflow.py",
             "tests/test_scenario_runtime_backend_rebridge.py",
             "tests/test_scenario_runtime_backend_probe.py",
+            "tests/test_scenario_runtime_backend_probe_set.py",
         ],
         "current_fixture_paths": [],
         "current_script_paths": [
@@ -433,6 +435,7 @@ BLOCK_CATALOG: list[dict[str, Any]] = [
             "scripts/run_scenario_runtime_backend_workflow.py",
             "scripts/run_scenario_runtime_backend_rebridge.py",
             "scripts/run_scenario_runtime_backend_probe.py",
+            "scripts/run_scenario_runtime_backend_probe_set.py",
         ],
         "current_doc_paths": [
             "README.md",
