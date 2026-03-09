@@ -193,6 +193,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Optional Autoware consumer profile ID for stricter downstream topic expectations",
     )
     parser.add_argument(
+        "--autoware-semantic-supplemental-strategy",
+        choices=("auto", "off", "dual_pass"),
+        default="auto",
+        help="Semantic supplemental execution strategy for semantic_perception_v0 consumers",
+    )
+    parser.add_argument(
         "--autoware-strict",
         action="store_true",
         help="Fail Autoware bridge if required sensor outputs are missing",
@@ -502,6 +508,15 @@ def _build_status_summary(
         "autoware_consumer_profile_description": autoware_summary.get(
             "consumer_profile_description"
         ),
+        "autoware_supplemental_semantic_strategy_requested": autoware_summary.get(
+            "supplemental_semantic_strategy_requested"
+        ),
+        "autoware_supplemental_semantic_strategy_effective": autoware_summary.get(
+            "supplemental_semantic_strategy_effective"
+        ),
+        "autoware_supplemental_semantic_strategy_reason": autoware_summary.get(
+            "supplemental_semantic_strategy_reason"
+        ),
         "autoware_available_sensor_count": autoware_summary.get("available_sensor_count"),
         "autoware_missing_required_sensor_count": autoware_summary.get("missing_required_sensor_count"),
         "autoware_available_topics": list(autoware_summary.get("available_topics", [])),
@@ -635,6 +650,9 @@ def _build_markdown_report(workflow_report: dict[str, Any]) -> str:
         "",
         f"- Status: `{summary.get('autoware_pipeline_status') or '-'}`",
         f"- Availability mode: `{summary.get('autoware_availability_mode') or '-'}`",
+        f"- Semantic supplemental strategy: `{summary.get('autoware_supplemental_semantic_strategy_effective') or '-'}`",
+        f"- Semantic supplemental strategy requested: `{summary.get('autoware_supplemental_semantic_strategy_requested') or '-'}`",
+        f"- Semantic supplemental strategy reason: `{summary.get('autoware_supplemental_semantic_strategy_reason') or '-'}`",
         f"- Available sensors: `{summary.get('autoware_available_sensor_count') if summary.get('autoware_available_sensor_count') is not None else '-'}`",
         f"- Missing required sensors: `{summary.get('autoware_missing_required_sensor_count') if summary.get('autoware_missing_required_sensor_count') is not None else '-'}`",
         f"- Consumer ready: `{summary.get('autoware_consumer_ready') if summary.get('autoware_consumer_ready') is not None else '-'}`",
@@ -768,6 +786,7 @@ def run_scenario_runtime_backend_workflow(
     skip_autoware_bridge: bool = False,
     autoware_base_frame: str = "base_link",
     autoware_consumer_profile: str = "",
+    autoware_semantic_supplemental_strategy: str = "auto",
     autoware_strict: bool = False,
     run_history_guard: bool = False,
     history_guard_metadata_root: str | Path | None = None,
@@ -850,6 +869,7 @@ def run_scenario_runtime_backend_workflow(
         skip_autoware_bridge=skip_autoware_bridge,
         autoware_base_frame=autoware_base_frame,
         autoware_consumer_profile=autoware_consumer_profile,
+        autoware_semantic_supplemental_strategy=autoware_semantic_supplemental_strategy,
         autoware_strict=autoware_strict,
     )
 
@@ -1140,6 +1160,7 @@ def main(argv: list[str] | None = None) -> int:
             skip_autoware_bridge=bool(args.skip_autoware_bridge),
             autoware_base_frame=args.autoware_base_frame,
             autoware_consumer_profile=args.autoware_consumer_profile,
+            autoware_semantic_supplemental_strategy=args.autoware_semantic_supplemental_strategy,
             autoware_strict=bool(args.autoware_strict),
             run_history_guard=bool(args.run_history_guard),
             history_guard_metadata_root=args.history_guard_metadata_root,

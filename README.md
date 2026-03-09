@@ -433,7 +433,12 @@ Consumer profiles now let the same runtime-origin export set be graded against s
 This means a real backend run can now be `DEGRADED` even when output comparison is `MATCHED` and output smoke is `COMPLETE`, if the chosen downstream consumer profile still lacks a required topic.
 The current AWSIM Linux-handoff path now reproduces that state with runtime-origin outputs as well: using `semantic_perception_v0`, the workflow stays `MATCHED` + `COMPLETE` + `BACKEND_RUNTIME_ONLY` but becomes top-level `DEGRADED` because `/sensing/camera/<sensor>/semantic/image_raw` is still missing.
 The same real AWSIM Linux-handoff path also now reproduces a `tracking_fusion_v0` runtime `READY` case when radar tracks are enabled: the top-level workflow remains `SUCCEEDED`, the Autoware pipeline remains `READY`, and the available topics include `/sensing/radar/<sensor>/tracks`.
-For `semantic_perception_v0`, `scenario_backend_smoke_workflow.py` now also supports a supplemental semantic-only smoke pass: if the primary runtime output is missing `/semantic/image_raw`, the workflow can run a second semantic camera pass and merge that report into one Autoware bridge bundle instead of leaving the top-level result permanently degraded.
+For `semantic_perception_v0`, `scenario_backend_smoke_workflow.py` now also supports a supplemental semantic-only smoke pass with an explicit strategy surface:
+- `auto`: run the semantic-only supplemental pass only when the primary runtime output is missing `/semantic/image_raw`
+- `off`: never run the supplemental pass
+- `dual_pass`: always run the semantic-only supplemental pass for semantic consumers and merge it into the Autoware bridge bundle
+
+That means semantic recovery is now policy-driven rather than only reactive.
 That live supplemental pass now uses its own isolated `renderer_backend_workflow` root as well, so semantic recovery cannot accidentally reuse the primary run's nested smoke artifacts.
 `scenario_runtime_backend_workflow_report_v0.json` now lifts that merge state to top-level as well, including merged report count, supplemental semantic status, and supplemental semantic artifact paths, so semantic recovery can be triaged without opening the nested backend smoke report.
 

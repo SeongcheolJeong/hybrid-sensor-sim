@@ -410,6 +410,9 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
                             "status": "READY",
                             "availability_mode": "runtime",
                             "consumer_profile_id": "semantic_perception_v0",
+                            "supplemental_semantic_strategy_requested": "dual_pass",
+                            "supplemental_semantic_strategy_effective": "dual_pass",
+                            "supplemental_semantic_strategy_reason": "semantic_profile_enabled",
                             "available_sensor_count": 4,
                             "missing_required_sensor_count": 0,
                             "available_topics": [
@@ -494,6 +497,14 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
             self.assertEqual(report["status"], "SUCCEEDED")
             self.assertEqual(report["status_summary"]["autoware_pipeline_status"], "READY")
             self.assertEqual(report["status_summary"]["autoware_merged_report_count"], 2)
+            self.assertEqual(
+                report["status_summary"]["autoware_supplemental_semantic_strategy_requested"],
+                "dual_pass",
+            )
+            self.assertEqual(
+                report["status_summary"]["autoware_supplemental_semantic_strategy_effective"],
+                "dual_pass",
+            )
             self.assertEqual(
                 report["status_summary"]["autoware_supplemental_backend_smoke_workflow_report_count"],
                 1,

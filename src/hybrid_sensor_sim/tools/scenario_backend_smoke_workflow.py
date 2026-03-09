@@ -131,6 +131,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Optional Autoware consumer profile ID for stricter downstream topic expectations",
     )
     parser.add_argument(
+        "--autoware-semantic-supplemental-strategy",
+        choices=("auto", "off", "dual_pass"),
+        default="auto",
+        help="Semantic supplemental execution strategy for semantic_perception_v0 consumers",
+    )
+    parser.add_argument(
         "--autoware-strict",
         action="store_true",
         help="Fail Autoware bridge if required sensor outputs are missing",
@@ -535,6 +541,30 @@ def _autoware_report_missing_semantic_topic(autoware_result: dict[str, Any] | No
     return any(topic.endswith("/semantic/image_raw") for topic in missing_required_topics)
 
 
+def _resolve_semantic_supplemental_strategy(
+    *,
+    requested_strategy: str,
+    consumer_profile_id: str,
+) -> dict[str, str]:
+    requested = str(requested_strategy or "").strip() or "auto"
+    if requested not in {"auto", "off", "dual_pass"}:
+        raise ValueError(
+            "autoware semantic supplemental strategy must be one of: auto, off, dual_pass"
+        )
+    consumer_profile = str(consumer_profile_id or "").strip()
+    if consumer_profile != "semantic_perception_v0":
+        return {
+            "requested": requested,
+            "effective": "off",
+            "reason": "consumer_profile_not_semantic",
+        }
+    return {
+        "requested": requested,
+        "effective": requested,
+        "reason": "semantic_profile_enabled",
+    }
+
+
 def _normalized_topic_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -793,6 +823,7 @@ def run_scenario_backend_smoke_workflow(
     skip_autoware_bridge: bool = False,
     autoware_base_frame: str = "base_link",
     autoware_consumer_profile: str = "",
+    autoware_semantic_supplemental_strategy: str = "auto",
     autoware_strict: bool = False,
     run_history_guard: bool = False,
     history_guard_metadata_root: str | Path | None = None,
@@ -905,6 +936,10 @@ def run_scenario_backend_smoke_workflow(
     autoware_result = None
     supplemental_semantic_result = None
     supplemental_semantic_config_path = None
+    semantic_supplemental_strategy = _resolve_semantic_supplemental_strategy(
+        requested_strategy=autoware_semantic_supplemental_strategy,
+        consumer_profile_id=autoware_consumer_profile,
+    )
     renderer_backend_workflow_summary = None
     status = "BRIDGED_ONLY" if skip_smoke else "SMOKE_FAILED"
 
@@ -1151,6 +1186,15 @@ def run_scenario_backend_smoke_workflow(
             "strict": bool(autoware_strict),
             "base_frame": str(autoware_base_frame).strip() or "base_link",
             "consumer_profile_id": str(autoware_consumer_profile).strip() or None,
+            "supplemental_semantic_strategy_requested": semantic_supplemental_strategy.get(
+                "requested"
+            ),
+            "supplemental_semantic_strategy_effective": semantic_supplemental_strategy.get(
+                "effective"
+            ),
+            "supplemental_semantic_strategy_reason": semantic_supplemental_strategy.get(
+                "reason"
+            ),
             "available_sensor_count": (
                 dict(autoware_result.get("report", {})).get("available_sensor_count")
                 if isinstance(autoware_result, dict)
@@ -1355,9 +1399,14 @@ def run_scenario_backend_smoke_workflow(
         )
         if (
             enable_semantic_supplemental
-            and str(autoware_consumer_profile).strip() == "semantic_perception_v0"
             and isinstance(smoke_summary, dict)
-            and _autoware_report_missing_semantic_topic(autoware_result)
+            and (
+                semantic_supplemental_strategy["effective"] == "dual_pass"
+                or (
+                    semantic_supplemental_strategy["effective"] == "auto"
+                    and _autoware_report_missing_semantic_topic(autoware_result)
+                )
+            )
         ):
             supplemental_root = out_root / "supplemental_semantic"
             supplemental_output_root = supplemental_root / "smoke_run"
@@ -1402,6 +1451,7 @@ def run_scenario_backend_smoke_workflow(
                 skip_autoware_bridge=True,
                 autoware_base_frame=autoware_base_frame,
                 autoware_consumer_profile=autoware_consumer_profile,
+                autoware_semantic_supplemental_strategy="off",
                 autoware_strict=autoware_strict,
                 run_history_guard=False,
                 history_guard_metadata_root=history_guard_metadata_root,
@@ -1447,6 +1497,15 @@ def run_scenario_backend_smoke_workflow(
             "consumer_profile_id": autoware_report.get("consumer_profile_id"),
             "consumer_profile_description": autoware_report.get(
                 "consumer_profile_description"
+            ),
+            "supplemental_semantic_strategy_requested": semantic_supplemental_strategy.get(
+                "requested"
+            ),
+            "supplemental_semantic_strategy_effective": semantic_supplemental_strategy.get(
+                "effective"
+            ),
+            "supplemental_semantic_strategy_reason": semantic_supplemental_strategy.get(
+                "reason"
             ),
             "available_sensor_count": autoware_report.get("available_sensor_count"),
             "missing_required_sensor_count": autoware_report.get("missing_required_sensor_count"),
@@ -1580,6 +1639,7 @@ def main(argv: list[str] | None = None) -> int:
             skip_autoware_bridge=bool(args.skip_autoware_bridge),
             autoware_base_frame=args.autoware_base_frame,
             autoware_consumer_profile=args.autoware_consumer_profile,
+            autoware_semantic_supplemental_strategy=args.autoware_semantic_supplemental_strategy,
             autoware_strict=bool(args.autoware_strict),
             run_history_guard=bool(args.run_history_guard),
             history_guard_metadata_root=args.history_guard_metadata_root,
