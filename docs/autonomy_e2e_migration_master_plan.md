@@ -92,6 +92,7 @@ Current repository paths:
 - host-incompatible staged packaged backends are now surfaced as `renderer_backend_workflow` Linux handoff plans through the scenario smoke workflows, rather than only as generic smoke failures
 - scenario smoke/runtime workflows now also surface packaged-runtime crash diagnostics such as runtime exit code, failed plugin basenames, missing shared libraries, and crash signatures when nested Linux handoff smoke runs abort
 - existing real runtime/backend smoke artifacts can now be re-bridged into refreshed top-level runtime summaries and Autoware bundles without rerunning batch selection or backend smoke
+- that rebridge path now also emits source-vs-refreshed status comparison data, making runtime bridge drift review possible from one report
 - `src/hybrid_sensor_sim/tools/sensor_rig_sweep.py`
 - `src/hybrid_sensor_sim/maps/convert.py`
 - `src/hybrid_sensor_sim/maps/validate.py`

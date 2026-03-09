@@ -402,7 +402,23 @@ class ScenarioRuntimeBackendRebridgeTests(unittest.TestCase):
                 report["status_summary"]["autoware_pipeline_status"],
                 "READY",
             )
+            self.assertEqual(
+                report["rebridge"]["comparison"]["source_runtime_status"],
+                "ATTENTION",
+            )
+            self.assertEqual(
+                report["rebridge"]["comparison"]["refreshed_runtime_status"],
+                "SUCCEEDED",
+            )
+            self.assertTrue(report["rebridge"]["comparison"]["status_changed"])
             self.assertEqual(report["status_summary"]["autoware_merged_report_count"], 2)
+            self.assertEqual(
+                report["rebridge"]["comparison"]["refreshed_autoware_merged_report_count"],
+                2,
+            )
+            self.assertTrue(
+                report["rebridge"]["comparison"]["merged_report_count_changed"]
+            )
             self.assertEqual(
                 report["status_summary"]["autoware_missing_required_sensor_count"],
                 0,
@@ -442,6 +458,8 @@ class ScenarioRuntimeBackendRebridgeTests(unittest.TestCase):
             report = result["workflow_report"]
             self.assertEqual(report["status"], "SUCCEEDED")
             self.assertEqual(report["batch_workflow"]["status"], "SUCCEEDED")
+            self.assertIsNone(report["rebridge"]["comparison"]["source_runtime_status"])
+            self.assertTrue(report["rebridge"]["comparison"]["status_changed"])
             self.assertIsNone(report["artifacts"]["source_runtime_backend_workflow_report_path"])
             self.assertIsNone(report["rebridge"]["source_batch_workflow_report_path"])
             self.assertEqual(

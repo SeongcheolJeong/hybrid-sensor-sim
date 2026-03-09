@@ -449,6 +449,65 @@ def _load_batch_context(
     return None, {"status": "SUCCEEDED", "status_summary": {}}
 
 
+def _build_rebridge_comparison(
+    *,
+    source_runtime_report: dict[str, Any] | None,
+    refreshed_backend_report: dict[str, Any],
+    refreshed_workflow_status: str,
+    supplemental_report_paths: list[str],
+) -> dict[str, Any]:
+    source_status_summary = (
+        dict(source_runtime_report.get("status_summary", {}))
+        if isinstance(source_runtime_report, dict)
+        else {}
+    )
+    source_status = (
+        str(source_runtime_report.get("status", "")).strip()
+        if isinstance(source_runtime_report, dict)
+        else None
+    )
+    source_backend_status = (
+        str((source_runtime_report.get("backend_smoke_workflow") or {}).get("status", "")).strip()
+        if isinstance(source_runtime_report, dict)
+        else None
+    )
+    source_autoware_status = str(
+        source_status_summary.get("autoware_pipeline_status", "")
+    ).strip() or None
+    source_merged_report_count = (
+        source_status_summary.get("autoware_merged_report_count")
+        if isinstance(source_status_summary.get("autoware_merged_report_count"), int)
+        else None
+    )
+
+    refreshed_autoware = dict(refreshed_backend_report.get("autoware", {}))
+    refreshed_autoware_status = str(refreshed_autoware.get("status", "")).strip() or None
+    refreshed_merged_report_count = refreshed_autoware.get("merged_report_count")
+    refreshed_backend_status = str(refreshed_backend_report.get("status", "")).strip() or None
+
+    normalized_source_merged = source_merged_report_count or 0
+    normalized_refreshed_merged = (
+        int(refreshed_merged_report_count)
+        if isinstance(refreshed_merged_report_count, int)
+        else 0
+    )
+
+    return {
+        "source_runtime_status": source_status,
+        "source_backend_smoke_status": source_backend_status,
+        "source_autoware_pipeline_status": source_autoware_status,
+        "source_autoware_merged_report_count": source_merged_report_count,
+        "refreshed_runtime_status": refreshed_workflow_status,
+        "refreshed_backend_smoke_status": refreshed_backend_status,
+        "refreshed_autoware_pipeline_status": refreshed_autoware_status,
+        "refreshed_autoware_merged_report_count": refreshed_merged_report_count,
+        "status_changed": source_status != refreshed_workflow_status,
+        "autoware_status_changed": source_autoware_status != refreshed_autoware_status,
+        "merged_report_count_changed": normalized_source_merged != normalized_refreshed_merged,
+        "supplemental_backend_smoke_workflow_report_count": len(supplemental_report_paths),
+    }
+
+
 def run_scenario_runtime_backend_rebridge(
     *,
     runtime_backend_workflow_report_path: str,
@@ -576,6 +635,12 @@ def run_scenario_runtime_backend_rebridge(
             else None
         ),
     )
+    rebridge_comparison = _build_rebridge_comparison(
+        source_runtime_report=source_runtime_report,
+        refreshed_backend_report=refreshed_backend_report,
+        refreshed_workflow_status=workflow_status,
+        supplemental_report_paths=supplemental_report_paths,
+    )
 
     batch_workflow_section = (
         dict(source_runtime_report.get("batch_workflow", {}))
@@ -613,6 +678,7 @@ def run_scenario_runtime_backend_rebridge(
             "supplemental_backend_smoke_workflow_report_paths": [
                 str(Path(path).resolve()) for path in supplemental_report_paths
             ],
+            "comparison": rebridge_comparison,
         },
         "batch_workflow": batch_workflow_section,
         "backend_smoke_workflow": {

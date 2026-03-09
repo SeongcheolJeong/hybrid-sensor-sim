@@ -446,6 +446,7 @@ python3 scripts/run_scenario_runtime_backend_rebridge.py \
 ```
 
 This re-reads the existing backend smoke workflow report, optionally merges supplemental semantic smoke reports, regenerates the current Autoware bridge artifacts, and emits a fresh top-level runtime-style report and Markdown summary.
+The rebridge report also records a `rebridge.comparison` section so source-vs-refreshed runtime status, Autoware status, and merged supplemental-report count changes are visible immediately.
 
 Both `run_scenario_variants.py` and `run_scenario_variant_workflow.py` resolve default scenario-language profiles from:
 
