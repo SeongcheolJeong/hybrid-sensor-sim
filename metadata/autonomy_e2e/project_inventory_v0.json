@@ -1,6 +1,6 @@
 {
   "schema_version": "autonomy_e2e_project_inventory_v0",
-  "generated_at_utc": "2026-03-09T11:17:03+00:00",
+  "generated_at_utc": "2026-03-09T11:55:41+00:00",
   "source_repo_root": "/Users/seongcheoljeong/Documents/Autonomy-E2E/Autonomy-E2E",
   "integration_baseline_commit": "8d2353f",
   "projects": [
@@ -1193,6 +1193,7 @@
         "docs/p_sim_engine_migration_audit.md",
         "docs/sensor_sim_master_plan.md",
         "scripts/acquire_renderer_backend_package.py",
+        "scripts/discover_renderer_backend_local_env.py",
         "scripts/renderer_launch_awsim.sh",
         "scripts/renderer_launch_carla.sh",
         "scripts/run_log_replay.py",
@@ -1224,6 +1225,7 @@
         "src/hybrid_sensor_sim/scenarios/replay.py",
         "src/hybrid_sensor_sim/scenarios/schema.py",
         "src/hybrid_sensor_sim/tools/renderer_backend_linux_handoff_docker.py",
+        "src/hybrid_sensor_sim/tools/renderer_backend_local_setup.py",
         "src/hybrid_sensor_sim/tools/renderer_backend_package_acquire.py",
         "src/hybrid_sensor_sim/tools/renderer_backend_package_stage.py",
         "src/hybrid_sensor_sim/tools/renderer_backend_smoke.py",
@@ -1256,6 +1258,7 @@
         "tests/test_log_replay.py",
         "tests/test_object_sim.py",
         "tests/test_renderer_backend_linux_handoff_docker.py",
+        "tests/test_renderer_backend_local_setup.py",
         "tests/test_renderer_backend_package_acquire.py",
         "tests/test_renderer_backend_package_stage.py",
         "tests/test_renderer_backend_smoke.py",

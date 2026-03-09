@@ -492,12 +492,14 @@ BLOCK_CATALOG: list[dict[str, Any]] = [
         ],
         "migration_status": "superseded",
         "current_paths": [
+            "src/hybrid_sensor_sim/tools/renderer_backend_local_setup.py",
             "src/hybrid_sensor_sim/tools/renderer_backend_linux_handoff_docker.py",
             "src/hybrid_sensor_sim/tools/renderer_backend_package_acquire.py",
             "src/hybrid_sensor_sim/tools/renderer_backend_package_stage.py",
             "src/hybrid_sensor_sim/tools/renderer_backend_workflow.py",
         ],
         "current_test_paths": [
+            "tests/test_renderer_backend_local_setup.py",
             "tests/test_renderer_backend_linux_handoff_docker.py",
             "tests/test_renderer_backend_package_acquire.py",
             "tests/test_renderer_backend_package_stage.py",
@@ -505,6 +507,7 @@ BLOCK_CATALOG: list[dict[str, Any]] = [
         ],
         "current_fixture_paths": [],
         "current_script_paths": [
+            "scripts/discover_renderer_backend_local_env.py",
             "scripts/acquire_renderer_backend_package.py",
             "scripts/stage_renderer_backend_package.py",
             "scripts/run_renderer_backend_workflow.py",

@@ -1,13 +1,13 @@
 {
   "schema_version": "autonomy_e2e_history_report_v0",
-  "generated_at_utc": "2026-03-09T03:26:49+00:00",
+  "generated_at_utc": "2026-03-09T11:55:46+00:00",
   "overview": {
     "integration_baseline_commit": "8d2353f",
-    "current_repo_head_commit": "1c6d99a30378cced4b211a90ffa0002b429ea052",
+    "current_repo_head_commit": "0c85a3af31a3202aca40aa6a6c908c526dd5cbca",
     "source_head_commit": "6b09d63e42c2446def0c56f3259e1fb019ccff23",
     "project_count": 7,
     "block_count": 24,
-    "traceability_path_count": 118,
+    "traceability_path_count": 121,
     "project_scope_counts": {
       "excluded": 1,
       "reference_only": 3,
@@ -79,7 +79,7 @@
       "migration_scope": "selected_source",
       "integration_status": "mapped",
       "prototype_file_count": 56,
-      "current_equivalent_count": 84,
+      "current_equivalent_count": 87,
       "unmapped_selected_file_count": 0
     },
     {
@@ -97,30 +97,7 @@
     "new_unmapped_prototype_files": [],
     "orphan_current_paths": [],
     "changed_registry_blocks": [
-      "p_autoware_workspace_ci.data_contract_bridge",
-      "p_autoware_workspace_ci.hil_sequence_reference",
-      "p_cloud_engine.local_batch_pattern",
-      "p_data_lake.run_ingest_reference",
-      "p_e2e_stack.runtime_evidence_compare_reference",
-      "p_map_toolset.canonical_route",
-      "p_map_toolset.convert_map",
-      "p_map_toolset.validate_canonical_map",
-      "p_sim_engine.batch_workflow",
-      "p_sim_engine.log_replay",
-      "p_sim_engine.log_scene_augment",
-      "p_sim_engine.matrix_sweep",
-      "p_sim_engine.neural_sensor_reference",
-      "p_sim_engine.object_sim_core",
-      "p_sim_engine.route_aware_avoidance",
-      "p_sim_engine.route_aware_semantics",
-      "p_sim_engine.runtime_asset_prepare",
-      "p_sim_engine.runtime_interop_reference",
-      "p_sim_engine.scenario_runtime_smoke_bridge",
-      "p_sim_engine.sensor_rig_sweep",
-      "p_sim_engine.sensor_sim_bridge",
-      "p_sim_engine.vehicle_dynamics",
-      "p_validation.release_report_reference",
-      "p_validation.scenario_variants"
+      "p_sim_engine.runtime_asset_prepare"
     ],
     "warnings": []
   }

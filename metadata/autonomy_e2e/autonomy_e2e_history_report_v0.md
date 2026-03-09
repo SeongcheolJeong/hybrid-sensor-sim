@@ -3,11 +3,11 @@
 ## Overview
 
 - Integration baseline commit: `8d2353f`
-- Current repo head commit: `1c6d99a30378cced4b211a90ffa0002b429ea052`
+- Current repo head commit: `0c85a3af31a3202aca40aa6a6c908c526dd5cbca`
 - Source repo head commit: `6b09d63e42c2446def0c56f3259e1fb019ccff23`
 - Project count: `7`
 - Registry block count: `24`
-- Traceability path count: `118`
+- Traceability path count: `121`
 - Selected-source unmapped prototype files: `0`
 - Orphan current paths: `0`
 
@@ -34,7 +34,7 @@
 | P_Data-Lake-and-Explorer | data | excluded | mapped | 8 | 1 | 0 |
 | P_E2E_Stack | stack | reference_only | partially_mapped | 97 | 7 | 52 |
 | P_Map-Toolset-MVP | map | selected_source | mapped | 9 | 11 | 0 |
-| P_Sim-Engine | sim | selected_source | mapped | 56 | 84 | 0 |
+| P_Sim-Engine | sim | selected_source | mapped | 56 | 87 | 0 |
 | P_Validation-Tooling-MVP | validation | selected_source | mapped | 397 | 13 | 0 |
 
 ## Unmapped Selected Prototype Files
