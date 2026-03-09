@@ -14,7 +14,10 @@ from hybrid_sensor_sim.tools.autoware_pipeline_bridge import (
     run_autoware_pipeline_bridge,
 )
 from hybrid_sensor_sim.tools.scenario_backend_smoke_workflow import (
+    _autoware_report_missing_semantic_topic,
+    _build_semantic_supplemental_smoke_config,
     _extract_backend_runtime_diagnostics,
+    run_scenario_backend_smoke_workflow,
 )
 from hybrid_sensor_sim.tools.scenario_runtime_backend_workflow import (
     SCENARIO_RUNTIME_BACKEND_WORKFLOW_REPORT_SCHEMA_VERSION_V0,
@@ -124,6 +127,13 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 
 def _deep_copy(payload: dict[str, Any]) -> dict[str, Any]:
     return json.loads(json.dumps(payload))
+
+
+def _optional_text(value: Any) -> str:
+    text = str(value).strip()
+    if not text or text.lower() == "none":
+        return ""
+    return text
 
 
 def _load_runtime_workflow_report(path: Path) -> dict[str, Any]:
@@ -508,6 +518,127 @@ def _build_rebridge_comparison(
     }
 
 
+def _maybe_run_semantic_supplemental_from_backend_report(
+    *,
+    backend_report: dict[str, Any],
+    source_batch_report_path: Path | None,
+    out_root: Path,
+    base_frame: str,
+    consumer_profile_id: str,
+    autoware_result: dict[str, Any] | None,
+    existing_supplemental_report_paths: list[str],
+) -> dict[str, Any] | None:
+    if consumer_profile_id != "semantic_perception_v0":
+        return None
+    if existing_supplemental_report_paths:
+        return None
+    if not _autoware_report_missing_semantic_topic(autoware_result):
+        return None
+    if not _optional_text(backend_report.get("smoke", {}).get("summary_path")):
+        return None
+
+    selection = dict(backend_report.get("selection", {}))
+    report_kind = _optional_text(selection.get("report_kind"))
+    source_report_path = _optional_text(selection.get("source_report_path"))
+    selected_variant_id = _optional_text(selection.get("variant_id"))
+    if not selected_variant_id:
+        return None
+
+    variant_workflow_report_path = ""
+    batch_workflow_report_path = ""
+    if report_kind == "variant_workflow_report" and source_report_path:
+        variant_workflow_report_path = source_report_path
+    elif report_kind == "batch_workflow_report":
+        batch_workflow_report_path = source_report_path or (
+            str(source_batch_report_path.resolve()) if source_batch_report_path is not None else ""
+        )
+    else:
+        batch_workflow_report_path = (
+            str(source_batch_report_path.resolve()) if source_batch_report_path is not None else ""
+        )
+
+    if not variant_workflow_report_path and not batch_workflow_report_path:
+        return None
+
+    smoke_input_config_path = _optional_text(
+        backend_report.get("artifacts", {}).get("smoke_input_config_path")
+    )
+    if not smoke_input_config_path:
+        return None
+    smoke_input_config = _load_json_object(Path(smoke_input_config_path).resolve())
+
+    runtime_selection = dict(backend_report.get("runtime_selection", {}))
+    renderer_backend_workflow = dict(backend_report.get("renderer_backend_workflow", {}))
+    backend_status = _optional_text(backend_report.get("status"))
+    docker_handoff_status = _optional_text(renderer_backend_workflow.get("docker_handoff_status"))
+    use_linux_handoff_docker = backend_status.startswith("HANDOFF_DOCKER_") or docker_handoff_status.startswith(
+        "HANDOFF_DOCKER_"
+    )
+    docker_handoff_execute = (
+        backend_status in {"HANDOFF_DOCKER_EXECUTED", "HANDOFF_DOCKER_OUTPUT_READY"}
+        or docker_handoff_status in {"HANDOFF_DOCKER_EXECUTED", "HANDOFF_DOCKER_OUTPUT_READY"}
+    )
+
+    renderer_backend_workflow_output_root = ""
+    renderer_backend_summary_path = _optional_text(renderer_backend_workflow.get("summary_path"))
+    if renderer_backend_summary_path:
+        renderer_backend_workflow_output_root = str(
+            Path(renderer_backend_summary_path).resolve().parent
+        )
+
+    supplemental_root = out_root / "supplemental_semantic"
+    supplemental_output_root = supplemental_root / "smoke_run"
+    supplemental_smoke_config = _build_semantic_supplemental_smoke_config(
+        smoke_input_config=smoke_input_config,
+        smoke_output_dir=supplemental_output_root,
+    )
+    supplemental_smoke_config_path = supplemental_root / "supplemental_semantic_smoke_base.json"
+    _write_json(supplemental_smoke_config_path, supplemental_smoke_config)
+
+    supplemental_result = run_scenario_backend_smoke_workflow(
+        variant_workflow_report_path=variant_workflow_report_path,
+        batch_workflow_report_path=batch_workflow_report_path,
+        smoke_config_path=supplemental_smoke_config_path,
+        backend=_optional_text(backend_report.get("backend")),
+        out_root=supplemental_root,
+        selection_strategy="variant_id",
+        selected_variant_id=selected_variant_id,
+        lane_spacing_m=float(dict(backend_report.get("bridge", {})).get("lane_spacing_m", 4.0)),
+        smoke_output_dir="",
+        setup_summary_path=_optional_text(runtime_selection.get("setup_summary_path")),
+        backend_workflow_summary_path=_optional_text(
+            runtime_selection.get("backend_workflow_summary_path")
+        ),
+        backend_bin=_optional_text(runtime_selection.get("backend_bin")),
+        renderer_map=_optional_text(runtime_selection.get("renderer_map")),
+        option_overrides=[],
+        renderer_backend_workflow_output_root=renderer_backend_workflow_output_root,
+        run_linux_handoff_docker=use_linux_handoff_docker,
+        docker_handoff_execute=docker_handoff_execute,
+        skip_autoware_bridge=True,
+        autoware_base_frame=base_frame,
+        autoware_consumer_profile=consumer_profile_id,
+        autoware_strict=False,
+        run_history_guard=False,
+        enable_semantic_supplemental=False,
+    )
+    supplemental_report_path = str(
+        Path(str(supplemental_result["workflow_report_path"])).resolve()
+    )
+    supplemental_workflow_report = dict(supplemental_result.get("workflow_report", {}))
+    supplemental_summary_path = _optional_text(
+        supplemental_workflow_report.get("smoke", {}).get("summary_path")
+    )
+    return {
+        "requested": True,
+        "status": _optional_text(supplemental_workflow_report.get("status")) or None,
+        "report_path": supplemental_report_path,
+        "smoke_config_path": str(supplemental_smoke_config_path.resolve()),
+        "smoke_summary_path": supplemental_summary_path or None,
+        "mergeable": bool(supplemental_summary_path),
+    }
+
+
 def run_scenario_runtime_backend_rebridge(
     *,
     runtime_backend_workflow_report_path: str,
@@ -587,17 +718,59 @@ def run_scenario_runtime_backend_rebridge(
             consumer_profile_id=consumer_profile_id,
             strict=bool(autoware_strict),
         )
+        backend_report_for_autoware = _deep_copy(backend_report)
+        supplemental_semantic_result = _maybe_run_semantic_supplemental_from_backend_report(
+            backend_report=backend_report_for_autoware,
+            source_batch_report_path=source_batch_report_path,
+            out_root=out_root,
+            base_frame=autoware_base_frame,
+            consumer_profile_id=consumer_profile_id,
+            autoware_result=autoware_result,
+            existing_supplemental_report_paths=supplemental_report_paths,
+        )
+        if isinstance(supplemental_semantic_result, dict):
+            backend_report_for_autoware.setdefault("autoware", {})
+            backend_report_for_autoware["autoware"][
+                "supplemental_semantic_requested"
+            ] = bool(supplemental_semantic_result.get("requested"))
+            backend_report_for_autoware["autoware"][
+                "supplemental_semantic_status"
+            ] = supplemental_semantic_result.get("status")
+            backend_report_for_autoware["autoware"][
+                "supplemental_semantic_report_path"
+            ] = supplemental_semantic_result.get("report_path")
+            if bool(supplemental_semantic_result.get("mergeable")):
+                supplemental_report_paths = [supplemental_semantic_result["report_path"]]
+                autoware_result = run_autoware_pipeline_bridge(
+                    backend_smoke_workflow_report_path=str(source_backend_report_path),
+                    supplemental_backend_smoke_workflow_report_paths=supplemental_report_paths,
+                    runtime_backend_workflow_report_path="",
+                    out_root=out_root / "autoware",
+                    base_frame=autoware_base_frame,
+                    consumer_profile_id=consumer_profile_id,
+                    strict=bool(autoware_strict),
+                )
+            backend_report_for_autoware["autoware"][
+                "supplemental_backend_smoke_workflow_report_paths"
+            ] = list(supplemental_report_paths)
         refreshed_backend_report["autoware"] = _build_backend_autoware_section(
-            backend_report=backend_report,
+            backend_report=backend_report_for_autoware,
             autoware_result=autoware_result,
             base_frame=autoware_base_frame,
             consumer_profile_id=consumer_profile_id,
             strict=bool(autoware_strict),
         )
         refreshed_backend_report["artifacts"] = _build_backend_artifacts(
-            backend_report=backend_report,
+            backend_report=backend_report_for_autoware,
             autoware_result=autoware_result,
         )
+        if isinstance(supplemental_semantic_result, dict):
+            refreshed_backend_report["artifacts"][
+                "supplemental_semantic_smoke_config_path"
+            ] = supplemental_semantic_result.get("smoke_config_path")
+            refreshed_backend_report["artifacts"][
+                "supplemental_semantic_backend_smoke_workflow_report_path"
+            ] = supplemental_semantic_result.get("report_path")
 
     history_guard_report = None
     history_guard_report_path = None

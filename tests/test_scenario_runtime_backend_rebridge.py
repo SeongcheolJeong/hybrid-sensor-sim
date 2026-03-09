@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from hybrid_sensor_sim.tools.scenario_runtime_backend_rebridge import (
     SCENARIO_RUNTIME_BACKEND_REBRIDGE_REPORT_SCHEMA_VERSION_V0,
@@ -85,6 +86,22 @@ class ScenarioRuntimeBackendRebridgeTests(unittest.TestCase):
                 }
             )
         _write_json(playback_contract_path, {"renderer_sensor_mounts": sensor_mounts})
+        smoke_input_config_path = root / "smoke_input_config.json"
+        _write_json(
+            smoke_input_config_path,
+            {
+                "scenario_path": str((root / "smoke_scenario.json").resolve()),
+                "output_dir": str((root / "smoke_run").resolve()),
+                "options": {
+                    "camera_projection_enabled": bool(include_camera_visible),
+                    "camera_sensor_type": (
+                        "SEMANTIC_SEGMENTATION" if include_camera_semantic else "VISIBLE"
+                    ),
+                    "lidar_postprocess_enabled": bool(include_lidar),
+                    "radar_postprocess_enabled": bool(include_radar),
+                },
+            },
+        )
 
         backend_output_spec_path = root / "backend_output_spec.json"
         expected_outputs_by_sensor: list[dict[str, object]] = [
@@ -274,10 +291,17 @@ class ScenarioRuntimeBackendRebridgeTests(unittest.TestCase):
                 "backend": "awsim",
                 "status": backend_status,
                 "selection": {"variant_id": "var_001", "logical_scenario_id": "scn_001"},
+                "runtime_selection": {
+                    "backend_bin": "/tmp/AWSIM-Demo.x86_64",
+                    "renderer_map": "SampleMap",
+                    "setup_summary_path": "/tmp/renderer_backend_local_setup.json",
+                    "backend_workflow_summary_path": None,
+                },
                 "bridge": {
                     "scenario_id": "SCN_001",
                     "source_payload_kind": "scenario_definition_v0",
                     "source_payload_path": str((root / "scenario.json").resolve()),
+                    "lane_spacing_m": 4.0,
                 },
                 "smoke": smoke_payload,
                 "renderer_backend_workflow": {
@@ -289,7 +313,7 @@ class ScenarioRuntimeBackendRebridgeTests(unittest.TestCase):
                 "autoware": {},
                 "artifacts": {
                     "smoke_scenario_path": str((root / "smoke_scenario.json").resolve()),
-                    "smoke_input_config_path": str((root / "smoke_input_config.json").resolve()),
+                    "smoke_input_config_path": str(smoke_input_config_path.resolve()),
                 },
             },
         )
@@ -465,6 +489,99 @@ class ScenarioRuntimeBackendRebridgeTests(unittest.TestCase):
             self.assertEqual(
                 report["status_summary"]["autoware_pipeline_status"],
                 "READY",
+            )
+
+    def test_rebridge_can_auto_run_semantic_supplemental_from_source_backend_report(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            primary_backend_report = self._write_backend_workflow_fixture(
+                root / "primary",
+                include_lidar=True,
+                include_camera_visible=True,
+                include_camera_semantic=False,
+            )
+            supplemental_backend_report = self._write_backend_workflow_fixture(
+                root / "supplemental",
+                include_lidar=False,
+                include_camera_visible=False,
+                include_camera_semantic=True,
+            )
+            batch_report = self._write_batch_workflow_report(
+                root / "batch" / "scenario_batch_workflow_report_v0.json"
+            )
+            runtime_report_path = self._write_runtime_workflow_report(
+                root / "runtime" / "scenario_runtime_backend_workflow_report_v0.json",
+                backend_report_path=primary_backend_report,
+                batch_report_path=batch_report,
+                consumer_profile_id="semantic_perception_v0",
+            )
+            primary_backend_payload = json.loads(
+                primary_backend_report.read_text(encoding="utf-8")
+            )
+            primary_backend_payload["selection"].update(
+                {
+                    "report_kind": "batch_workflow_report",
+                    "source_report_path": str(batch_report.resolve()),
+                    "selection_strategy": "worst_logical_scenario",
+                    "variant_id": "scn_001",
+                }
+            )
+            _write_json(primary_backend_report, primary_backend_payload)
+
+            with patch(
+                "hybrid_sensor_sim.tools.scenario_runtime_backend_rebridge.run_scenario_backend_smoke_workflow",
+                return_value={
+                    "workflow_report_path": supplemental_backend_report,
+                    "workflow_report": json.loads(
+                        supplemental_backend_report.read_text(encoding="utf-8")
+                    ),
+                },
+            ) as mocked_supplemental:
+                result = run_scenario_runtime_backend_rebridge(
+                    runtime_backend_workflow_report_path=str(runtime_report_path),
+                    backend_smoke_workflow_report_path="",
+                    batch_workflow_report_path="",
+                    supplemental_backend_smoke_workflow_report_paths=[],
+                    out_root=root / "rebridge_auto_semantic",
+                    autoware_base_frame="base_link",
+                    autoware_consumer_profile="",
+                    autoware_strict=False,
+                )
+
+            mocked_supplemental.assert_called_once()
+            report = result["workflow_report"]
+            self.assertEqual(report["status"], "SUCCEEDED")
+            self.assertEqual(
+                report["status_summary"]["autoware_pipeline_status"],
+                "READY",
+            )
+            self.assertEqual(
+                report["status_summary"]["autoware_merged_report_count"],
+                2,
+            )
+            self.assertEqual(
+                report["rebridge"]["comparison"]["refreshed_autoware_merged_report_count"],
+                2,
+            )
+            self.assertTrue(
+                report["rebridge"]["comparison"]["merged_report_count_changed"]
+            )
+            self.assertEqual(
+                report["backend_smoke_workflow"]["autoware"]["supplemental_semantic_status"],
+                "HANDOFF_DOCKER_OUTPUT_READY",
+            )
+            self.assertEqual(
+                report["artifacts"]["supplemental_semantic_backend_smoke_workflow_report_path"],
+                str(supplemental_backend_report.resolve()),
+            )
+            self.assertTrue(
+                Path(
+                    report["artifacts"]["supplemental_semantic_smoke_config_path"]
+                ).is_file()
+            )
+            self.assertIn(
+                "/sensing/camera/cam_front/semantic/image_raw",
+                report["status_summary"]["autoware_available_topics"],
             )
 
     def test_script_help_bootstraps(self) -> None:
