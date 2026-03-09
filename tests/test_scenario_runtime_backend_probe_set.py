@@ -149,6 +149,29 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                 ["semantic_primary_ready", "semantic_recovery_ready", "tracking_ready"],
             )
             self.assertEqual(
+                report["runtime_strategy_summary_rows"],
+                [
+                    {
+                        "strategy": "linux_handoff_packaged_runtime",
+                        "probe_ids": [
+                            "semantic_primary_ready",
+                            "semantic_recovery_ready",
+                            "tracking_ready",
+                        ],
+                        "preferred_runtime_source": "packaged_runtime",
+                        "recommended_action": "Prepare and execute the linux handoff packaged runtime workflow.",
+                    }
+                ],
+            )
+            self.assertEqual(
+                report["primary_runtime_strategy"],
+                "linux_handoff_packaged_runtime",
+            )
+            self.assertEqual(
+                report["recommended_runtime_action"],
+                "Prepare and execute the linux handoff packaged runtime workflow.",
+            )
+            self.assertEqual(
                 report["runtime_strategy_reason_code_counts"],
                 {"HOST_INCOMPATIBLE_PACKAGED_RUNTIME": 3},
             )
@@ -198,7 +221,11 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
             )
             self.assertEqual(
                 report["recommended_resolution_steps"],
-                ["Use the linux handoff packaged runtime path."],
+                [
+                    "Prepare and execute the linux handoff packaged runtime workflow.",
+                    "Run: python3 scripts/run_renderer_backend_workflow.py --backend awsim --dry-run",
+                    "Use the linux handoff packaged runtime path.",
+                ],
             )
             self.assertEqual(
                 report["runtime_strategy_recommended_command_counts"],
@@ -311,6 +338,14 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                 ["semantic_recovery_ready"],
             )
             self.assertEqual(
+                report["primary_runtime_strategy"],
+                "linux_handoff_packaged_runtime",
+            )
+            self.assertEqual(
+                report["recommended_runtime_action"],
+                "Prepare and execute the linux handoff packaged runtime workflow.",
+            )
+            self.assertEqual(
                 report["primary_blocking_reason_code"],
                 "HOST_INCOMPATIBLE_PACKAGED_RUNTIME",
             )
@@ -325,6 +360,8 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
             self.assertEqual(
                 report["recommended_resolution_steps"],
                 [
+                    "Prepare and execute the linux handoff packaged runtime workflow.",
+                    "Run: python3 scripts/run_renderer_backend_workflow.py --backend awsim --dry-run",
                     "Use the linux handoff packaged runtime path.",
                     "Inspect missing and recovered Autoware topics for the selected consumer profile.",
                 ],

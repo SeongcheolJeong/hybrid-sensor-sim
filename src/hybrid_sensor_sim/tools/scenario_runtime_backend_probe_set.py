@@ -57,6 +57,26 @@ def _recommended_action_for_blocking_reason(reason_code: str, category: str) -> 
     return "Inspect the probe report for the blocking reason details."
 
 
+def _recommended_action_for_runtime_strategy(
+    strategy: str, preferred_runtime_source: str
+) -> str:
+    normalized_strategy = str(strategy or "").strip()
+    normalized_source = str(preferred_runtime_source or "").strip()
+    if normalized_strategy == "linux_handoff_packaged_runtime":
+        return "Prepare and execute the linux handoff packaged runtime workflow."
+    if normalized_strategy == "docker_runtime":
+        return "Repair the Docker runtime and rerun the backend through the Docker execution path."
+    if normalized_strategy == "host_packaged_runtime":
+        return "Rerun the packaged backend directly on the host runtime path."
+    if normalized_strategy == "host_native_runtime":
+        return "Rerun the native backend directly on the host runtime path."
+    if normalized_source == "packaged_runtime":
+        return "Use the selected packaged runtime path and rerun the backend workflow."
+    if normalized_source == "docker_image":
+        return "Use the selected Docker image path and rerun the backend workflow."
+    return "Inspect the selected runtime strategy and rerun the backend workflow."
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace(
         "+00:00", "Z"
@@ -199,6 +219,9 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
     blocking_reason_category_probe_ids = dict(
         report.get("blocking_reason_category_probe_ids", {}) or {}
     )
+    runtime_strategy_summary_rows = list(
+        report.get("runtime_strategy_summary_rows", []) or []
+    )
     blocking_reason_summary_rows = list(
         report.get("blocking_reason_summary_rows", []) or []
     )
@@ -217,6 +240,8 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
         f"- Recovered required topics: `{', '.join(report.get('recovered_required_topics', [])) or '-'}`",
         f"- Runtime strategy counts: `{json.dumps(runtime_strategy_counts, sort_keys=True) if runtime_strategy_counts else '-'}`",
         f"- Runtime strategy reason counts: `{json.dumps(runtime_strategy_reason_code_counts, sort_keys=True) if runtime_strategy_reason_code_counts else '-'}`",
+        f"- Primary runtime strategy: `{report.get('primary_runtime_strategy') or '-'}`",
+        f"- Recommended runtime action: `{report.get('recommended_runtime_action') or '-'}`",
         f"- Blocking reason counts: `{json.dumps(blocking_reason_counts, sort_keys=True) if blocking_reason_counts else '-'}`",
         f"- Blocking reason category counts: `{json.dumps(blocking_reason_category_counts, sort_keys=True) if blocking_reason_category_counts else '-'}`",
         f"- Primary blocking reason: `{report.get('primary_blocking_reason_code') or '-'}`",
@@ -232,6 +257,28 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
     for strategy, probe_ids in sorted(runtime_strategy_probe_ids.items()):
         lines.append(
             f"| {strategy or '-'} | {', '.join(probe_ids or []) or '-'} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Runtime Strategy Actions",
+            "",
+            "| Strategy | Preferred Source | Probe IDs | Action |",
+            "| --- | --- | --- | --- |",
+        ]
+    )
+    for row in runtime_strategy_summary_rows:
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    str(row.get("strategy") or "-"),
+                    str(row.get("preferred_runtime_source") or "-"),
+                    str(", ".join(row.get("probe_ids", [])) or "-"),
+                    str(row.get("recommended_action") or "-"),
+                ]
+            )
+            + " |"
         )
     lines.extend(
         [
@@ -472,6 +519,7 @@ def run_scenario_runtime_backend_probe_set(
     status_counts: dict[str, int] = {}
     runtime_strategy_counts: dict[str, int] = {}
     runtime_strategy_probe_ids: dict[str, list[str]] = {}
+    runtime_strategy_preferred_runtime_sources: dict[str, list[str]] = {}
     runtime_strategy_reason_code_counts: dict[str, int] = {}
     runtime_strategy_recommended_command_counts: dict[str, int] = {}
     runtime_strategy_recommended_command_probe_ids: dict[str, list[str]] = {}
@@ -491,6 +539,9 @@ def run_scenario_runtime_backend_probe_set(
         )
         runtime_strategy_probe_ids.setdefault(runtime_strategy, []).append(
             str(result.get("probe_id") or "")
+        )
+        runtime_strategy_preferred_runtime_sources.setdefault(runtime_strategy, []).append(
+            str(result.get("backend_runtime_preferred_runtime_source") or "")
         )
         for reason_code in result.get("backend_runtime_strategy_reason_codes", []) or []:
             reason_code_str = str(reason_code)
@@ -559,6 +610,29 @@ def run_scenario_runtime_backend_probe_set(
             key=lambda item: (-item[1], item[0]),
         )[0][0]
 
+    runtime_strategy_summary_rows = []
+    for strategy, probe_ids in sorted(runtime_strategy_probe_ids.items()):
+        preferred_sources = [
+            source
+            for source in runtime_strategy_preferred_runtime_sources.get(strategy, [])
+            if str(source or "").strip()
+        ]
+        preferred_runtime_source = None
+        if preferred_sources:
+            preferred_runtime_source = sorted(
+                {str(source) for source in preferred_sources}
+            )[0]
+        runtime_strategy_summary_rows.append(
+            {
+                "strategy": strategy,
+                "probe_ids": sorted(probe_ids),
+                "preferred_runtime_source": preferred_runtime_source,
+                "recommended_action": _recommended_action_for_runtime_strategy(
+                    strategy, preferred_runtime_source or ""
+                ),
+            }
+        )
+
     blocking_reason_summary_rows = []
     for reason_code, probe_ids in sorted(blocking_reason_probe_ids.items()):
         category = _classify_blocking_reason(reason_code)
@@ -575,8 +649,20 @@ def run_scenario_runtime_backend_probe_set(
         )
 
     recommended_resolution_focus = None
+    primary_runtime_strategy = None
+    recommended_runtime_action = None
     primary_blocking_reason_code = None
     primary_blocking_category = None
+    if runtime_strategy_summary_rows:
+        primary_strategy_row = sorted(
+            runtime_strategy_summary_rows,
+            key=lambda row: (
+                -len(list(row.get("probe_ids", []) or [])),
+                str(row.get("strategy") or ""),
+            ),
+        )[0]
+        primary_runtime_strategy = primary_strategy_row["strategy"]
+        recommended_runtime_action = primary_strategy_row["recommended_action"]
     if blocking_reason_summary_rows:
         primary_row = sorted(
             blocking_reason_summary_rows,
@@ -587,6 +673,10 @@ def run_scenario_runtime_backend_probe_set(
         primary_blocking_category = primary_row["category"]
 
     recommended_resolution_steps: list[str] = []
+    if recommended_runtime_action:
+        recommended_resolution_steps.append(recommended_runtime_action)
+    if recommended_next_command:
+        recommended_resolution_steps.append(f"Run: {recommended_next_command}")
     for row in sorted(
         blocking_reason_summary_rows,
         key=lambda row: (-int(row.get("count") or 0), str(row.get("reason_code") or "")),
@@ -614,6 +704,7 @@ def run_scenario_runtime_backend_probe_set(
             strategy: sorted(probe_ids)
             for strategy, probe_ids in sorted(runtime_strategy_probe_ids.items())
         },
+        "runtime_strategy_summary_rows": runtime_strategy_summary_rows,
         "runtime_strategy_reason_code_counts": runtime_strategy_reason_code_counts,
         "runtime_strategy_recommended_command_counts": runtime_strategy_recommended_command_counts,
         "runtime_strategy_recommended_command_probe_ids": {
@@ -622,6 +713,8 @@ def run_scenario_runtime_backend_probe_set(
                 runtime_strategy_recommended_command_probe_ids.items()
             )
         },
+        "primary_runtime_strategy": primary_runtime_strategy,
+        "recommended_runtime_action": recommended_runtime_action,
         "blocking_reason_counts": blocking_reason_counts,
         "blocking_reason_probe_ids": {
             reason: sorted(probe_ids)
