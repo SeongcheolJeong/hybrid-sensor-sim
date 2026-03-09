@@ -514,6 +514,15 @@ def _build_status_summary(
         "autoware_missing_required_topic_count": autoware_summary.get(
             "missing_required_topic_count"
         ),
+        "autoware_missing_required_topics": list(
+            autoware_summary.get("missing_required_topics", [])
+        ),
+        "autoware_source_missing_required_topics": list(
+            autoware_summary.get("source_missing_required_topics", [])
+        ),
+        "autoware_recovered_required_topics": list(
+            autoware_summary.get("recovered_required_topics", [])
+        ),
         "autoware_subscription_spec_count": autoware_summary.get(
             "subscription_spec_count"
         ),
@@ -633,6 +642,9 @@ def _build_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Materialized topic exports: `{summary.get('autoware_materialized_topic_export_count') if summary.get('autoware_materialized_topic_export_count') is not None else '-'}`",
         f"- Required topics: `{summary.get('autoware_required_topic_count') if summary.get('autoware_required_topic_count') is not None else '-'}`",
         f"- Missing required topics: `{summary.get('autoware_missing_required_topic_count') if summary.get('autoware_missing_required_topic_count') is not None else '-'}`",
+        f"- Missing required topic list: `{', '.join(summary.get('autoware_missing_required_topics', [])) or '-'}`",
+        f"- Source missing topic list: `{', '.join(summary.get('autoware_source_missing_required_topics', [])) or '-'}`",
+        f"- Recovered required topics: `{', '.join(summary.get('autoware_recovered_required_topics', [])) or '-'}`",
         f"- Subscription specs: `{summary.get('autoware_subscription_spec_count') if summary.get('autoware_subscription_spec_count') is not None else '-'}`",
         f"- Sensor inputs: `{summary.get('autoware_sensor_input_count') if summary.get('autoware_sensor_input_count') is not None else '-'}`",
         f"- Static transforms: `{summary.get('autoware_static_transform_count') if summary.get('autoware_static_transform_count') is not None else '-'}`",
@@ -654,7 +666,10 @@ def _build_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Semantic topic recovered: `{summary.get('autoware_semantic_topic_recovered') if summary.get('autoware_semantic_topic_recovered') is not None else '-'}`",
         f"- Semantic recovery source: `{summary.get('autoware_semantic_recovery_source') or '-'}`",
         f"- Source missing required topics: `{summary.get('source_autoware_missing_required_topic_count') if summary.get('source_autoware_missing_required_topic_count') is not None else '-'}`",
+        f"- Source missing topic list: `{', '.join(summary.get('source_autoware_missing_required_topics', [])) or '-'}`",
         f"- Refreshed missing required topics: `{summary.get('refreshed_autoware_missing_required_topic_count') if summary.get('refreshed_autoware_missing_required_topic_count') is not None else '-'}`",
+        f"- Refreshed missing topic list: `{', '.join(summary.get('refreshed_autoware_missing_required_topics', [])) or '-'}`",
+        f"- Recovered topic list: `{', '.join(summary.get('autoware_recovered_required_topics', [])) or '-'}`",
         f"- Message types: `{', '.join(summary.get('autoware_available_message_types', [])) or '-'}`",
         f"- Available modalities: `{', '.join(summary.get('autoware_available_modalities', [])) or '-'}`",
         f"- Available topics: `{', '.join(summary.get('autoware_available_topics', [])) or '-'}`",

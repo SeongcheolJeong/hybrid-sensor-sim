@@ -417,6 +417,13 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
                                 "/sensing/camera/camera_front/semantic/image_raw",
                                 "/sensing/lidar/lidar_top/pointcloud",
                             ],
+                            "source_missing_required_topics": [
+                                "/sensing/camera/camera_front/semantic/image_raw"
+                            ],
+                            "missing_required_topics": [],
+                            "recovered_required_topics": [
+                                "/sensing/camera/camera_front/semantic/image_raw"
+                            ],
                             "required_topics_complete": True,
                             "frame_tree_complete": True,
                             "merged_report_count": 2,
@@ -501,6 +508,18 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
             self.assertEqual(
                 report["status_summary"]["autoware_supplemental_semantic_report_path"],
                 str(supplemental_report),
+            )
+            self.assertEqual(
+                report["status_summary"]["autoware_source_missing_required_topics"],
+                ["/sensing/camera/camera_front/semantic/image_raw"],
+            )
+            self.assertEqual(
+                report["status_summary"]["autoware_missing_required_topics"],
+                [],
+            )
+            self.assertEqual(
+                report["status_summary"]["autoware_recovered_required_topics"],
+                ["/sensing/camera/camera_front/semantic/image_raw"],
             )
             self.assertEqual(
                 report["artifacts"]["supplemental_semantic_smoke_config_path"],

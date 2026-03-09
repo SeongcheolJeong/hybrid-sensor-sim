@@ -1461,6 +1461,15 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
             self.assertEqual(autoware_bridge.call_count, 2)
             self.assertEqual(workflow_report["autoware"]["status"], "READY")
             self.assertEqual(workflow_report["autoware"]["merged_report_count"], 2)
+            self.assertEqual(
+                workflow_report["autoware"]["source_missing_required_topics"],
+                ["/sensing/camera/camera_front/semantic/image_raw"],
+            )
+            self.assertEqual(workflow_report["autoware"]["missing_required_topics"], [])
+            self.assertEqual(
+                workflow_report["autoware"]["recovered_required_topics"],
+                ["/sensing/camera/camera_front/semantic/image_raw"],
+            )
             self.assertTrue(workflow_report["autoware"]["supplemental_semantic_requested"])
             self.assertEqual(
                 workflow_report["autoware"]["supplemental_semantic_status"],

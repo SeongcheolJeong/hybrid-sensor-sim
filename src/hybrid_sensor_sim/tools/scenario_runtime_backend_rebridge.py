@@ -338,6 +338,7 @@ def _build_backend_autoware_section(
         "missing_required_topic_count": autoware_report.get(
             "missing_required_topic_count"
         ),
+        "missing_required_topics": list(autoware_report.get("missing_required_topics", [])),
         "available_message_types": list(
             autoware_report.get("available_message_types", [])
         ),
@@ -431,6 +432,30 @@ def _build_backend_artifacts(
     return artifacts
 
 
+def _autoware_summary_topic_list(summary: dict[str, Any], key: str) -> list[str]:
+    topics = [
+        str(topic).strip()
+        for topic in list(summary.get(key, []) or [])
+        if str(topic).strip()
+    ]
+    if topics:
+        return sorted(dict.fromkeys(topics))
+    topic_catalog_path = str(summary.get("topic_catalog_path", "")).strip()
+    if not topic_catalog_path:
+        return []
+    topic_catalog_file = Path(topic_catalog_path)
+    if not topic_catalog_file.is_file():
+        return []
+    topic_catalog = _load_json_object(topic_catalog_file)
+    return sorted(
+        dict.fromkeys(
+            str(topic).strip()
+            for topic in list(topic_catalog.get(key, []) or [])
+            if str(topic).strip()
+        )
+    )
+
+
 def _load_batch_context(
     *,
     runtime_report: dict[str, Any] | None,
@@ -492,6 +517,15 @@ def _build_rebridge_comparison(
         if isinstance(source_status_summary.get("autoware_missing_required_topic_count"), int)
         else None
     )
+    source_missing_required_topics = _autoware_summary_topic_list(
+        source_status_summary,
+        "autoware_missing_required_topics",
+    )
+    if not source_missing_required_topics and isinstance(source_runtime_report, dict):
+        source_missing_required_topics = _autoware_summary_topic_list(
+            dict(((source_runtime_report.get("backend_smoke_workflow") or {}).get("autoware") or {})),
+            "missing_required_topics",
+        )
     source_merged_report_count = (
         source_status_summary.get("autoware_merged_report_count")
         if isinstance(source_status_summary.get("autoware_merged_report_count"), int)
@@ -507,6 +541,10 @@ def _build_rebridge_comparison(
         refreshed_autoware.get("missing_required_topic_count")
         if isinstance(refreshed_autoware.get("missing_required_topic_count"), int)
         else None
+    )
+    refreshed_missing_required_topics = _autoware_summary_topic_list(
+        refreshed_autoware,
+        "missing_required_topics",
     )
     refreshed_merged_report_count = refreshed_autoware.get("merged_report_count")
     refreshed_backend_status = str(refreshed_backend_report.get("status", "")).strip() or None
@@ -526,6 +564,9 @@ def _build_rebridge_comparison(
         and refreshed_missing_required_topic_count == 0
         and len(supplemental_report_paths) > 0
     )
+    recovered_required_topics = sorted(
+        set(source_missing_required_topics) - set(refreshed_missing_required_topics)
+    )
 
     return {
         "source_runtime_status": source_status,
@@ -533,12 +574,14 @@ def _build_rebridge_comparison(
         "source_autoware_pipeline_status": source_autoware_status,
         "source_autoware_consumer_profile_id": source_consumer_profile_id,
         "source_missing_required_topic_count": source_missing_required_topic_count,
+        "source_missing_required_topics": source_missing_required_topics,
         "source_autoware_merged_report_count": source_merged_report_count,
         "refreshed_runtime_status": refreshed_workflow_status,
         "refreshed_backend_smoke_status": refreshed_backend_status,
         "refreshed_autoware_pipeline_status": refreshed_autoware_status,
         "refreshed_autoware_consumer_profile_id": refreshed_consumer_profile_id,
         "refreshed_missing_required_topic_count": refreshed_missing_required_topic_count,
+        "refreshed_missing_required_topics": refreshed_missing_required_topics,
         "refreshed_autoware_merged_report_count": refreshed_merged_report_count,
         "status_changed": source_status != refreshed_workflow_status,
         "autoware_status_changed": source_autoware_status != refreshed_autoware_status,
@@ -548,6 +591,7 @@ def _build_rebridge_comparison(
         "semantic_recovery_source": (
             "supplemental_merge" if semantic_topic_recovered else None
         ),
+        "recovered_required_topics": recovered_required_topics,
     }
 
 
@@ -1007,6 +1051,15 @@ def run_scenario_runtime_backend_rebridge(
     )
     workflow_report["status_summary"]["refreshed_autoware_missing_required_topic_count"] = rebridge_comparison.get(
         "refreshed_missing_required_topic_count"
+    )
+    workflow_report["status_summary"]["source_autoware_missing_required_topics"] = rebridge_comparison.get(
+        "source_missing_required_topics", []
+    )
+    workflow_report["status_summary"]["refreshed_autoware_missing_required_topics"] = rebridge_comparison.get(
+        "refreshed_missing_required_topics", []
+    )
+    workflow_report["status_summary"]["autoware_recovered_required_topics"] = rebridge_comparison.get(
+        "recovered_required_topics", []
     )
 
     report_path = out_root / "scenario_runtime_backend_rebridge_report_v0.json"

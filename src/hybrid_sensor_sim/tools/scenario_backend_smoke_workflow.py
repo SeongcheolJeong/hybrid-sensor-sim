@@ -535,6 +535,34 @@ def _autoware_report_missing_semantic_topic(autoware_result: dict[str, Any] | No
     return any(topic.endswith("/semantic/image_raw") for topic in missing_required_topics)
 
 
+def _normalized_topic_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    normalized: list[str] = []
+    for item in value:
+        text = str(item).strip()
+        if text:
+            normalized.append(text)
+    return sorted(dict.fromkeys(normalized))
+
+
+def _autoware_report_topic_list(
+    report: dict[str, Any],
+    key: str,
+) -> list[str]:
+    topics = _normalized_topic_list(report.get(key, []))
+    if topics:
+        return topics
+    topic_catalog_path = str(report.get("artifacts", {}).get("topic_catalog_path", "")).strip()
+    if not topic_catalog_path:
+        return []
+    topic_catalog_file = Path(topic_catalog_path)
+    if not topic_catalog_file.is_file():
+        return []
+    topic_catalog = _load_json_object(topic_catalog_file)
+    return _normalized_topic_list(topic_catalog.get(key, []))
+
+
 def _discover_runtime_selection_paths(
     *,
     backend: str,
@@ -1320,6 +1348,11 @@ def run_scenario_backend_smoke_workflow(
             consumer_profile_id=autoware_consumer_profile,
             strict=bool(autoware_strict),
         )
+        source_autoware_report = dict(autoware_result.get("report", {}))
+        source_missing_required_topics = _autoware_report_topic_list(
+            source_autoware_report,
+            "missing_required_topics",
+        )
         if (
             enable_semantic_supplemental
             and str(autoware_consumer_profile).strip() == "semantic_perception_v0"
@@ -1398,6 +1431,13 @@ def run_scenario_backend_smoke_workflow(
         if dict(autoware_result.get("report", {})).get("status") == "FAILED":
             workflow_report["status"] = "FAILED"
         autoware_report = dict(autoware_result.get("report", {}))
+        refreshed_missing_required_topics = _autoware_report_topic_list(
+            autoware_report,
+            "missing_required_topics",
+        )
+        recovered_required_topics = sorted(
+            set(source_missing_required_topics) - set(refreshed_missing_required_topics)
+        )
         workflow_report["autoware"] = {
             "requested": True,
             "status": autoware_report.get("status"),
@@ -1420,6 +1460,9 @@ def run_scenario_backend_smoke_workflow(
             "missing_required_topic_count": autoware_report.get(
                 "missing_required_topic_count"
             ),
+            "missing_required_topics": refreshed_missing_required_topics,
+            "source_missing_required_topics": source_missing_required_topics,
+            "recovered_required_topics": recovered_required_topics,
             "available_message_types": list(
                 autoware_report.get("available_message_types", [])
             ),

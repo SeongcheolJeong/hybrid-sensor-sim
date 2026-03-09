@@ -92,7 +92,7 @@ Current repository paths:
 - host-incompatible staged packaged backends are now surfaced as `renderer_backend_workflow` Linux handoff plans through the scenario smoke workflows, rather than only as generic smoke failures
 - scenario smoke/runtime workflows now also surface packaged-runtime crash diagnostics such as runtime exit code, failed plugin basenames, missing shared libraries, and crash signatures when nested Linux handoff smoke runs abort
 - existing real runtime/backend smoke artifacts can now be re-bridged into refreshed top-level runtime summaries and Autoware bundles without rerunning batch selection or backend smoke
-- that rebridge path now also emits source-vs-refreshed status comparison data, including semantic recovery source and missing-required-topic delta, making runtime bridge drift review possible from one report
+- that rebridge path now also emits source-vs-refreshed status comparison data, including semantic recovery source, missing-required-topic delta, and recovered-topic lists, making runtime bridge drift review possible from one report
 - for `semantic_perception_v0`, rebridge can now also reconstruct a semantic-only supplemental smoke pass from the source backend smoke report when the original runtime artifact is missing the semantic topic and no supplemental report path was persisted
 - that semantic supplemental rerun now uses an isolated `renderer_backend_workflow` root, so refreshed reports can promote a real degraded AWSIM handoff artifact to `READY` when the semantic-only pass succeeds
 - `src/hybrid_sensor_sim/tools/sensor_rig_sweep.py`

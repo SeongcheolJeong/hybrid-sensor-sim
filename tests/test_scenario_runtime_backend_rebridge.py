@@ -398,6 +398,9 @@ class ScenarioRuntimeBackendRebridgeTests(unittest.TestCase):
                 status_summary_overrides={
                     "autoware_pipeline_status": "DEGRADED",
                     "autoware_missing_required_topic_count": 1,
+                    "autoware_missing_required_topics": [
+                        "/sensing/camera/camera_front/semantic/image_raw"
+                    ],
                 },
             )
             primary_backend_payload = json.loads(
@@ -443,6 +446,10 @@ class ScenarioRuntimeBackendRebridgeTests(unittest.TestCase):
                 1,
             )
             self.assertEqual(
+                report["rebridge"]["comparison"]["source_missing_required_topics"],
+                ["/sensing/camera/camera_front/semantic/image_raw"],
+            )
+            self.assertEqual(
                 report["rebridge"]["comparison"]["refreshed_runtime_status"],
                 "SUCCEEDED",
             )
@@ -450,17 +457,37 @@ class ScenarioRuntimeBackendRebridgeTests(unittest.TestCase):
                 report["rebridge"]["comparison"]["refreshed_missing_required_topic_count"],
                 0,
             )
+            self.assertEqual(
+                report["rebridge"]["comparison"]["refreshed_missing_required_topics"],
+                [],
+            )
             self.assertTrue(report["rebridge"]["comparison"]["status_changed"])
             self.assertTrue(report["rebridge"]["comparison"]["semantic_topic_recovered"])
             self.assertEqual(
                 report["rebridge"]["comparison"]["semantic_recovery_source"],
                 "supplemental_merge",
             )
+            self.assertEqual(
+                report["rebridge"]["comparison"]["recovered_required_topics"],
+                ["/sensing/camera/camera_front/semantic/image_raw"],
+            )
             self.assertEqual(report["status_summary"]["autoware_merged_report_count"], 2)
             self.assertTrue(report["status_summary"]["autoware_semantic_topic_recovered"])
             self.assertEqual(
                 report["status_summary"]["autoware_semantic_recovery_source"],
                 "supplemental_merge",
+            )
+            self.assertEqual(
+                report["status_summary"]["source_autoware_missing_required_topics"],
+                ["/sensing/camera/camera_front/semantic/image_raw"],
+            )
+            self.assertEqual(
+                report["status_summary"]["refreshed_autoware_missing_required_topics"],
+                [],
+            )
+            self.assertEqual(
+                report["status_summary"]["autoware_recovered_required_topics"],
+                ["/sensing/camera/camera_front/semantic/image_raw"],
             )
             self.assertEqual(
                 report["rebridge"]["comparison"]["refreshed_autoware_merged_report_count"],
@@ -543,6 +570,9 @@ class ScenarioRuntimeBackendRebridgeTests(unittest.TestCase):
                 status_summary_overrides={
                     "autoware_pipeline_status": "DEGRADED",
                     "autoware_missing_required_topic_count": 1,
+                    "autoware_missing_required_topics": [
+                        "/sensing/camera/camera_front/semantic/image_raw"
+                    ],
                 },
             )
             primary_backend_payload = json.loads(
@@ -607,6 +637,10 @@ class ScenarioRuntimeBackendRebridgeTests(unittest.TestCase):
                 "supplemental_merge",
             )
             self.assertEqual(
+                report["rebridge"]["comparison"]["recovered_required_topics"],
+                ["/sensing/camera/camera_front/semantic/image_raw"],
+            )
+            self.assertEqual(
                 report["backend_smoke_workflow"]["autoware"]["supplemental_semantic_status"],
                 "HANDOFF_DOCKER_OUTPUT_READY",
             )
@@ -618,6 +652,18 @@ class ScenarioRuntimeBackendRebridgeTests(unittest.TestCase):
             self.assertEqual(
                 report["status_summary"]["refreshed_autoware_missing_required_topic_count"],
                 0,
+            )
+            self.assertEqual(
+                report["status_summary"]["source_autoware_missing_required_topics"],
+                ["/sensing/camera/camera_front/semantic/image_raw"],
+            )
+            self.assertEqual(
+                report["status_summary"]["refreshed_autoware_missing_required_topics"],
+                [],
+            )
+            self.assertEqual(
+                report["status_summary"]["autoware_recovered_required_topics"],
+                ["/sensing/camera/camera_front/semantic/image_raw"],
             )
             self.assertEqual(
                 report["artifacts"]["supplemental_semantic_backend_smoke_workflow_report_path"],
