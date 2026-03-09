@@ -1,6 +1,6 @@
 {
   "schema_version": "autonomy_e2e_project_inventory_v0",
-  "generated_at_utc": "2026-03-09T02:52:05+00:00",
+  "generated_at_utc": "2026-03-09T03:26:44+00:00",
   "source_repo_root": "/Users/seongcheoljeong/Documents/Autonomy-E2E/Autonomy-E2E",
   "integration_baseline_commit": "8d2353f",
   "projects": [
@@ -1193,6 +1193,8 @@
         "docs/p_sim_engine_migration_audit.md",
         "docs/sensor_sim_master_plan.md",
         "scripts/acquire_renderer_backend_package.py",
+        "scripts/renderer_launch_awsim.sh",
+        "scripts/renderer_launch_carla.sh",
         "scripts/run_log_replay.py",
         "scripts/run_log_scene_augment.py",
         "scripts/run_object_sim.py",
@@ -1210,6 +1212,7 @@
         "scripts/run_vehicle_dynamics_trace.py",
         "scripts/stage_renderer_backend_package.py",
         "src/hybrid_sensor_sim/backends/native_physics.py",
+        "src/hybrid_sensor_sim/config.py",
         "src/hybrid_sensor_sim/orchestrator.py",
         "src/hybrid_sensor_sim/physics/vehicle_dynamics.py",
         "src/hybrid_sensor_sim/renderers/backend_runner.py",

@@ -1,13 +1,13 @@
 {
   "schema_version": "autonomy_e2e_history_report_v0",
-  "generated_at_utc": "2026-03-08T20:19:54+00:00",
+  "generated_at_utc": "2026-03-09T03:26:49+00:00",
   "overview": {
     "integration_baseline_commit": "8d2353f",
-    "current_repo_head_commit": "7180dbc8bef164719a19ba254f596a58533294cd",
+    "current_repo_head_commit": "1c6d99a30378cced4b211a90ffa0002b429ea052",
     "source_head_commit": "6b09d63e42c2446def0c56f3259e1fb019ccff23",
     "project_count": 7,
     "block_count": 24,
-    "traceability_path_count": 105,
+    "traceability_path_count": 118,
     "project_scope_counts": {
       "excluded": 1,
       "reference_only": 3,
@@ -34,7 +34,7 @@
       "migration_scope": "reference_only",
       "integration_status": "mapped",
       "prototype_file_count": 5,
-      "current_equivalent_count": 20,
+      "current_equivalent_count": 21,
       "unmapped_selected_file_count": 0
     },
     {
@@ -79,7 +79,7 @@
       "migration_scope": "selected_source",
       "integration_status": "mapped",
       "prototype_file_count": 56,
-      "current_equivalent_count": 72,
+      "current_equivalent_count": 84,
       "unmapped_selected_file_count": 0
     },
     {
