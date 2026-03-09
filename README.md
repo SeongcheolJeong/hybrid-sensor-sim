@@ -38,7 +38,7 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `scripts/run_renderer_backend_smoke.py`: AWSIM/CARLA smoke launcher that forces direct backend execution plus output-contract inspection.
 - `scripts/discover_renderer_backend_local_env.py`: discovers local HELIOS/AWSIM/CARLA runtime candidates and writes a reusable env file plus readiness summary.
 - `scripts/acquire_renderer_backend_package.py`: resolves an official AWSIM/CARLA package URL from `renderer_backend_local_setup.json`, prefers direct archive-style URLs over HTML release pages, estimates archive size when possible, checks local free space in the selected download directory, downloads the archive, and optionally stages it into a runnable backend directory.
-- `scripts/discover_renderer_backend_local_env.py`: now also surfaces per-backend `recommended_download_dir`, free-space readiness, and explicit `DOWNLOAD_SPACE_INSUFFICIENT` blockers so packaged runtime acquisition does not fail late.
+- `scripts/discover_renderer_backend_local_env.py`: now also surfaces per-backend `recommended_download_dir`, free-space readiness, and explicit `DOWNLOAD_SPACE_INSUFFICIENT` blockers so packaged runtime acquisition does not fail late. It also accepts extra `--download-dir-candidate` paths, and honors `*_PACKAGE_DOWNLOAD_DIRS` / `BACKEND_PACKAGE_DOWNLOAD_DIRS` / `RENDERER_BACKEND_DOWNLOAD_DIRS` path lists when selecting the best download volume.
 - `scripts/stage_renderer_backend_package.py`: extracts packaged AWSIM/CARLA archives into `third_party/runtime_backends/<backend>` and writes a staging env file for smoke runs.
 - `scripts/run_renderer_backend_workflow.py`: runs `discover/load setup -> optional acquire -> smoke` as one workflow and writes a single workflow summary.
 - `scripts/run_renderer_backend_package_workflow_selftest.py`: synthesizes a packaged backend archive and exercises `acquire -> stage -> refresh discover -> smoke`.
@@ -1302,4 +1302,4 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - Add optional `vehicle_dynamics` coupling into the current object-sim ego longitudinal update.
 - Deepen map-aware scenario/object-sim consumption on top of the new canonical map utilities.
 
-When local setup exposes a `recommended_download_dir`, `renderer_backend_workflow --auto-acquire` now reuses it automatically if `--download-dir` is not provided.
+When local setup exposes a `recommended_download_dir`, `renderer_backend_workflow --auto-acquire` now reuses it automatically if `--download-dir` is not provided. If the default candidates are not large enough, pass extra `--download-dir-candidate` paths to `scripts/discover_renderer_backend_local_env.py` or set `CARLA_PACKAGE_DOWNLOAD_DIRS` / `AWSIM_PACKAGE_DOWNLOAD_DIRS` to point at larger volumes first.

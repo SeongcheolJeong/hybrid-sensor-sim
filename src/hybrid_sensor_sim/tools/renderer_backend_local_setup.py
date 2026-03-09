@@ -80,6 +80,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Additional root to scan for local backend binaries or source checkouts.",
     )
     parser.add_argument(
+        "--download-dir-candidate",
+        action="append",
+        default=[],
+        help="Additional candidate directory to consider when choosing where backend archives should be downloaded.",
+    )
+    parser.add_argument(
         "--summary-path",
         type=Path,
         help="Where to write renderer_backend_local_setup.json. Defaults under output_dir.",
@@ -1108,17 +1114,40 @@ def _archive_size_hint_bytes(
     return None, None
 
 
-def _download_directory_candidates(*, repo_root: Path, backend: str) -> list[Path]:
+def _split_path_list_env(raw: str) -> list[str]:
+    return [
+        item.strip()
+        for item in str(raw or "").split(os.pathsep)
+        if item.strip()
+    ]
+
+
+def _download_directory_candidates(
+    *, repo_root: Path, backend: str, extra_candidates: list[Path] | None = None
+) -> list[Path]:
     env_candidates = [
         os.getenv(f"{backend.upper()}_PACKAGE_DOWNLOAD_DIR", ""),
         os.getenv("BACKEND_PACKAGE_DOWNLOAD_DIR", ""),
         os.getenv("RENDERER_BACKEND_DOWNLOAD_DIR", ""),
+    ]
+    env_candidate_lists = [
+        *_split_path_list_env(os.getenv(f"{backend.upper()}_PACKAGE_DOWNLOAD_DIRS", "")),
+        *_split_path_list_env(os.getenv("BACKEND_PACKAGE_DOWNLOAD_DIRS", "")),
+        *_split_path_list_env(os.getenv("RENDERER_BACKEND_DOWNLOAD_DIRS", "")),
     ]
     candidate_paths = [
         _resolve_runtime_path(raw)
         for raw in env_candidates
         if isinstance(raw, str) and raw.strip()
     ]
+    candidate_paths.extend(
+        path.resolve() for path in (extra_candidates or []) if isinstance(path, Path)
+    )
+    candidate_paths.extend(
+        _resolve_runtime_path(raw)
+        for raw in env_candidate_lists
+        if isinstance(raw, str) and raw.strip()
+    )
     candidate_paths.extend(
         [
             (repo_root / "downloaded_artifacts" / backend).resolve(),
@@ -1166,7 +1195,12 @@ def _probe_directory_space_candidate(
 
 
 def _build_download_directory_hints(
-    *, repo_root: Path, backend: str, download_options: list[dict[str, Any]], local_download_candidates: list[str]
+    *,
+    repo_root: Path,
+    backend: str,
+    download_options: list[dict[str, Any]],
+    local_download_candidates: list[str],
+    extra_download_dir_candidates: list[Path] | None = None,
 ) -> dict[str, Any]:
     archive_option = _select_archive_download_option(download_options)
     archive_name = ""
@@ -1196,7 +1230,11 @@ def _build_download_directory_hints(
                 archive_name=archive_name,
                 estimated_size_bytes=estimated_size_bytes,
             )
-            for directory in _download_directory_candidates(repo_root=repo_root, backend=backend)
+            for directory in _download_directory_candidates(
+                repo_root=repo_root,
+                backend=backend,
+                extra_candidates=extra_download_dir_candidates,
+            )
         ]
     ready_candidates = [
         row for row in directory_candidates if row.get("download_space_ready") is True
@@ -1267,6 +1305,7 @@ def _build_acquisition_hints(
     runtimes: dict[str, Any],
     readiness: dict[str, Any],
     probes: dict[str, Any] | None = None,
+    extra_download_dir_candidates: list[Path] | None = None,
 ) -> dict[str, Any]:
     host = _host_platform_summary()
     system = host["system"]
@@ -1389,6 +1428,7 @@ def _build_acquisition_hints(
             backend="awsim",
             download_options=awsim_hints["download_options"],
             local_download_candidates=awsim_download_candidates,
+            extra_download_dir_candidates=extra_download_dir_candidates,
         )
     )
 
@@ -1451,6 +1491,7 @@ def _build_acquisition_hints(
             backend="carla",
             download_options=carla_hints["download_options"],
             local_download_candidates=carla_download_candidates,
+            extra_download_dir_candidates=extra_download_dir_candidates,
         )
     )
 
@@ -1647,6 +1688,7 @@ def build_renderer_backend_local_setup(
     *,
     repo_root: Path,
     search_roots: list[Path] | None = None,
+    download_dir_candidates: list[Path] | None = None,
     output_dir: Path | None = None,
     include_default_search_roots: bool = True,
     probe_helios_docker_demo: bool = False,
@@ -1664,6 +1706,7 @@ def build_renderer_backend_local_setup(
 ) -> dict[str, Any]:
     repo_root = repo_root.resolve()
     extra_roots = [_resolve_runtime_path(path) for path in (search_roots or [])]
+    extra_download_dirs = [_resolve_runtime_path(path) for path in (download_dir_candidates or [])]
     default_roots = [repo_root]
     if include_default_search_roots:
         default_roots.extend(
@@ -2009,10 +2052,12 @@ def build_renderer_backend_local_setup(
         },
         readiness=readiness,
         probes=probes,
+        extra_download_dir_candidates=extra_download_dirs,
     )
     summary = {
         "generated_at_utc": _format_utc(_utc_now()),
         "search_roots": [str(path) for path in all_search_roots],
+        "download_dir_candidates": [str(path) for path in extra_download_dirs],
         "backends": {
             "helios": helios,
             "awsim": awsim,
@@ -2053,6 +2098,9 @@ def main(argv: list[str] | None = None) -> int:
     summary = build_renderer_backend_local_setup(
         repo_root=repo_root,
         search_roots=[_resolve_runtime_path(path) for path in args.search_root],
+        download_dir_candidates=[
+            _resolve_runtime_path(path) for path in args.download_dir_candidate
+        ],
         output_dir=output_dir,
         include_default_search_roots=not args.no_default_search_roots,
         probe_helios_docker_demo=args.probe_helios_docker_demo,
