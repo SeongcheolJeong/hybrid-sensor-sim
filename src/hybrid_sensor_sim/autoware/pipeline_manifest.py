@@ -8,6 +8,9 @@ from hybrid_sensor_sim.autoware.profiles import resolve_autoware_consumer_profil
 AUTOWARE_PIPELINE_MANIFEST_SCHEMA_VERSION_V0 = "autoware_pipeline_manifest_v0"
 AUTOWARE_DATASET_MANIFEST_SCHEMA_VERSION_V0 = "autoware_dataset_manifest_v0"
 AUTOWARE_CONSUMER_INPUT_MANIFEST_SCHEMA_VERSION_V0 = "autoware_consumer_input_manifest_v0"
+AUTOWARE_PROCESSING_STAGE_BUNDLE_INDEX_SCHEMA_VERSION_V0 = (
+    "autoware_processing_stage_bundle_index_v0"
+)
 
 
 def _clean_optional_text(value: Any) -> str | None:
@@ -542,4 +545,106 @@ def build_autoware_consumer_input_manifest(
         "sensor_inputs": sensor_inputs,
         "static_transforms": static_transforms,
         "processing_stages": processing_stages,
+    }
+
+
+def build_autoware_processing_stage_bundle_index(
+    *,
+    consumer_input_manifest: dict[str, Any],
+) -> dict[str, Any]:
+    topic_by_name: dict[str, dict[str, Any]] = {}
+    for topic in list(consumer_input_manifest.get("consumer_topics", []) or []):
+        if not isinstance(topic, dict):
+            continue
+        topic_name = str(topic.get("topic", "")).strip()
+        if topic_name:
+            topic_by_name[topic_name] = topic
+
+    sensor_input_by_id: dict[str, dict[str, Any]] = {}
+    for sensor_input in list(consumer_input_manifest.get("sensor_inputs", []) or []):
+        if not isinstance(sensor_input, dict):
+            continue
+        sensor_id = str(sensor_input.get("sensor_id", "")).strip()
+        if sensor_id:
+            sensor_input_by_id[sensor_id] = sensor_input
+
+    transform_by_sensor_id: dict[str, dict[str, Any]] = {}
+    for transform in list(consumer_input_manifest.get("static_transforms", []) or []):
+        if not isinstance(transform, dict):
+            continue
+        sensor_id = str(transform.get("sensor_id", "")).strip()
+        if sensor_id:
+            transform_by_sensor_id[sensor_id] = transform
+
+    stage_entries: list[dict[str, Any]] = []
+    for stage in list(consumer_input_manifest.get("processing_stages", []) or []):
+        if not isinstance(stage, dict):
+            continue
+        stage_id = str(stage.get("stage_id", "")).strip()
+        if not stage_id:
+            continue
+        required_topics = list(stage.get("required_topics", []) or [])
+        available_topics = list(stage.get("available_topics", []) or [])
+        missing_required_topics = list(stage.get("missing_required_topics", []) or [])
+        topic_entries = [
+            dict(topic_by_name[topic_name])
+            for topic_name in required_topics
+            if topic_name in topic_by_name
+        ]
+        relevant_sensor_ids = sorted(
+            {
+                str(sensor_id).strip()
+                for sensor_id in (
+                    list(stage.get("required_sensor_ids", []) or [])
+                    + list(stage.get("available_sensor_ids", []) or [])
+                )
+                if str(sensor_id).strip()
+            }
+        )
+        sensor_inputs = [
+            dict(sensor_input_by_id[sensor_id])
+            for sensor_id in relevant_sensor_ids
+            if sensor_id in sensor_input_by_id
+        ]
+        static_transforms = [
+            dict(transform_by_sensor_id[sensor_id])
+            for sensor_id in relevant_sensor_ids
+            if sensor_id in transform_by_sensor_id
+        ]
+        stage_entries.append(
+            {
+                "stage_id": stage_id,
+                "description": _clean_optional_text(stage.get("description")),
+                "ready": bool(stage.get("ready")),
+                "required_output_roles": list(stage.get("required_output_roles", []) or []),
+                "required_topic_count": int(stage.get("required_topic_count", 0) or 0),
+                "available_topic_count": int(stage.get("available_topic_count", 0) or 0),
+                "missing_required_topic_count": int(
+                    stage.get("missing_required_topic_count", 0) or 0
+                ),
+                "required_topics": required_topics,
+                "available_topics": available_topics,
+                "missing_required_topics": missing_required_topics,
+                "required_sensor_ids": list(stage.get("required_sensor_ids", []) or []),
+                "available_sensor_ids": list(stage.get("available_sensor_ids", []) or []),
+                "topic_entries": topic_entries,
+                "sensor_inputs": sensor_inputs,
+                "static_transforms": static_transforms,
+            }
+        )
+
+    ready_stage_count = sum(1 for stage in stage_entries if bool(stage.get("ready")))
+    return {
+        "schema_version": AUTOWARE_PROCESSING_STAGE_BUNDLE_INDEX_SCHEMA_VERSION_V0,
+        "consumer_profile_id": _clean_optional_text(
+            consumer_input_manifest.get("consumer_profile_id")
+        ),
+        "consumer_profile_description": _clean_optional_text(
+            consumer_input_manifest.get("consumer_profile_description")
+        ),
+        "consumer_ready": bool(consumer_input_manifest.get("consumer_ready")),
+        "processing_stage_bundle_count": len(stage_entries),
+        "ready_processing_stage_bundle_count": ready_stage_count,
+        "degraded_processing_stage_bundle_count": len(stage_entries) - ready_stage_count,
+        "processing_stages": stage_entries,
     }

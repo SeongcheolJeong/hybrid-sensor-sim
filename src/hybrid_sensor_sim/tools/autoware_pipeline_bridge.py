@@ -655,6 +655,13 @@ def run_autoware_pipeline_bridge(
         "degraded_processing_stage_count": bundle.get(
             "degraded_processing_stage_count"
         ),
+        "processing_stage_bundle_count": bundle.get("processing_stage_bundle_count"),
+        "ready_processing_stage_bundle_count": bundle.get(
+            "ready_processing_stage_bundle_count"
+        ),
+        "degraded_processing_stage_bundle_count": bundle.get(
+            "degraded_processing_stage_bundle_count"
+        ),
         "available_modalities": list(bundle.get("available_modalities", [])),
         "data_roots": list(bundle.get("data_roots", [])),
         "recording_style": bundle.get("recording_style"),

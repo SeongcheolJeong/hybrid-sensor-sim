@@ -382,13 +382,27 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
             self.assertEqual(report["processing_stage_count"], 4)
             self.assertEqual(report["ready_processing_stage_count"], 4)
             self.assertEqual(report["degraded_processing_stage_count"], 0)
+            self.assertEqual(report["processing_stage_bundle_count"], 4)
+            self.assertEqual(report["ready_processing_stage_bundle_count"], 4)
+            self.assertEqual(report["degraded_processing_stage_bundle_count"], 0)
             self.assertIn("/sensing/radar/radar_front/tracks", report["available_topics"])
             self.assertIn(
                 "autoware_auto_perception_msgs/msg/TrackedObjects",
                 report["available_message_types"],
             )
+            self.assertTrue(
+                Path(report["artifacts"]["processing_stage_bundle_root"]).is_dir()
+            )
+            self.assertTrue(
+                Path(report["artifacts"]["processing_stage_bundle_index_path"]).is_file()
+            )
             consumer_manifest = json.loads(
                 Path(report["artifacts"]["consumer_input_manifest_path"]).read_text(
+                    encoding="utf-8"
+                )
+            )
+            bundle_index = json.loads(
+                Path(report["artifacts"]["processing_stage_bundle_index_path"]).read_text(
                     encoding="utf-8"
                 )
             )
@@ -401,6 +415,9 @@ class AutowarePipelineBridgeTests(unittest.TestCase):
             self.assertEqual(consumer_manifest["processing_stage_count"], 4)
             self.assertEqual(consumer_manifest["ready_processing_stage_count"], 4)
             self.assertEqual(consumer_manifest["degraded_processing_stage_count"], 0)
+            self.assertEqual(bundle_index["processing_stage_bundle_count"], 4)
+            self.assertEqual(bundle_index["ready_processing_stage_bundle_count"], 4)
+            self.assertEqual(bundle_index["degraded_processing_stage_bundle_count"], 0)
             self.assertEqual(radar_sensor_input["required_topic_count"], 2)
             self.assertEqual(len(radar_sensor_input["subscriptions"]), 2)
             self.assertEqual(radar_sensor_input["frame_id"], "radar_front")

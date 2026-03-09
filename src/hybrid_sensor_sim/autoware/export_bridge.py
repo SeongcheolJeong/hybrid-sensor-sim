@@ -12,6 +12,7 @@ from hybrid_sensor_sim.autoware.pipeline_manifest import (
     build_autoware_consumer_input_manifest,
     build_autoware_dataset_manifest,
     build_autoware_pipeline_manifest,
+    build_autoware_processing_stage_bundle_index,
 )
 from hybrid_sensor_sim.renderers.backend_runner import _build_sensor_expected_output_entries
 
@@ -202,6 +203,37 @@ def _build_topic_catalog(
     topic_catalog_path = autoware_root / "autoware_topic_catalog.json"
     _write_json(topic_catalog_path, topic_catalog)
     return topic_catalog, topic_catalog_path
+
+
+def _write_processing_stage_bundles(
+    *,
+    autoware_root: Path,
+    consumer_input_manifest: dict[str, Any],
+) -> tuple[dict[str, Any], Path, Path]:
+    stage_root = autoware_root / "processing_stages"
+    stage_root.mkdir(parents=True, exist_ok=True)
+    bundle_index = build_autoware_processing_stage_bundle_index(
+        consumer_input_manifest=consumer_input_manifest
+    )
+    stage_entries: list[dict[str, Any]] = []
+    for stage in list(bundle_index.get("processing_stages", []) or []):
+        if not isinstance(stage, dict):
+            continue
+        stage_id = str(stage.get("stage_id", "")).strip()
+        if not stage_id:
+            continue
+        stage_dir = stage_root / stage_id
+        stage_manifest_path = stage_dir / "stage_input_manifest.json"
+        stage_dir.mkdir(parents=True, exist_ok=True)
+        stage_payload = dict(stage)
+        stage_payload["stage_dir"] = str(stage_dir.resolve())
+        stage_payload["stage_manifest_path"] = str(stage_manifest_path.resolve())
+        _write_json(stage_manifest_path, stage_payload)
+        stage_entries.append(stage_payload)
+    bundle_index["processing_stages"] = stage_entries
+    bundle_index_path = autoware_root / "autoware_processing_stage_bundle_index.json"
+    _write_json(bundle_index_path, bundle_index)
+    return bundle_index, stage_root, bundle_index_path
 
 
 def _sensor_mount(
@@ -539,6 +571,12 @@ def write_autoware_export_bundle(
         artifacts=artifacts,
     )
     _write_json(consumer_input_manifest_path, consumer_input_manifest)
+    processing_stage_bundle_index, processing_stage_bundle_root, processing_stage_bundle_index_path = (
+        _write_processing_stage_bundles(
+            autoware_root=autoware_root,
+            consumer_input_manifest=consumer_input_manifest,
+        )
+    )
     warnings = list(sensor_contracts.get("warnings", []))
     if strict_failed:
         warnings.append("strict_mode_missing_required_sensor_outputs")
@@ -580,6 +618,19 @@ def write_autoware_export_bundle(
         "degraded_processing_stage_count": int(
             consumer_input_manifest.get("degraded_processing_stage_count", 0) or 0
         ),
+        "processing_stage_bundle_count": int(
+            processing_stage_bundle_index.get("processing_stage_bundle_count", 0) or 0
+        ),
+        "ready_processing_stage_bundle_count": int(
+            processing_stage_bundle_index.get("ready_processing_stage_bundle_count", 0)
+            or 0
+        ),
+        "degraded_processing_stage_bundle_count": int(
+            processing_stage_bundle_index.get(
+                "degraded_processing_stage_bundle_count", 0
+            )
+            or 0
+        ),
         "available_modalities": list(dataset_manifest.get("available_modalities", [])),
         "data_roots": list(dataset_manifest.get("data_roots", [])),
         "recording_style": dataset_manifest.get("recording_style"),
@@ -601,9 +652,14 @@ def write_autoware_export_bundle(
             "topic_export_root": str(topic_export_root.resolve()),
             "topic_export_index_path": str(topic_export_index_path.resolve()),
             "topic_catalog_path": str(topic_catalog_path.resolve()),
+            "processing_stage_bundle_root": str(processing_stage_bundle_root.resolve()),
+            "processing_stage_bundle_index_path": str(
+                processing_stage_bundle_index_path.resolve()
+            ),
         },
         "topic_export_index": topic_export_index,
         "topic_catalog": topic_catalog,
+        "processing_stage_bundle_index": processing_stage_bundle_index,
         "sensor_contracts": sensor_contracts,
         "frame_tree": frame_tree,
         "pipeline_manifest": pipeline_manifest,
@@ -724,6 +780,12 @@ def write_autoware_planned_export_bundle(
         artifacts=artifacts,
     )
     _write_json(consumer_input_manifest_path, consumer_input_manifest)
+    processing_stage_bundle_index, processing_stage_bundle_root, processing_stage_bundle_index_path = (
+        _write_processing_stage_bundles(
+            autoware_root=autoware_root,
+            consumer_input_manifest=consumer_input_manifest,
+        )
+    )
     warnings = list(sensor_contracts.get("warnings", []))
     if strict_failed:
         warnings.append("strict_mode_missing_required_sensor_outputs")
@@ -765,6 +827,19 @@ def write_autoware_planned_export_bundle(
         "degraded_processing_stage_count": int(
             consumer_input_manifest.get("degraded_processing_stage_count", 0) or 0
         ),
+        "processing_stage_bundle_count": int(
+            processing_stage_bundle_index.get("processing_stage_bundle_count", 0) or 0
+        ),
+        "ready_processing_stage_bundle_count": int(
+            processing_stage_bundle_index.get("ready_processing_stage_bundle_count", 0)
+            or 0
+        ),
+        "degraded_processing_stage_bundle_count": int(
+            processing_stage_bundle_index.get(
+                "degraded_processing_stage_bundle_count", 0
+            )
+            or 0
+        ),
         "available_modalities": list(dataset_manifest.get("available_modalities", [])),
         "data_roots": list(dataset_manifest.get("data_roots", [])),
         "recording_style": dataset_manifest.get("recording_style"),
@@ -786,6 +861,10 @@ def write_autoware_planned_export_bundle(
             "topic_export_root": str(topic_export_root.resolve()),
             "topic_export_index_path": str(topic_export_index_path.resolve()),
             "topic_catalog_path": str(topic_catalog_path.resolve()),
+            "processing_stage_bundle_root": str(processing_stage_bundle_root.resolve()),
+            "processing_stage_bundle_index_path": str(
+                processing_stage_bundle_index_path.resolve()
+            ),
             "backend_output_spec_path": str(backend_output_spec.get("__source_path", "")),
             "backend_sensor_output_summary_path": str(
                 backend_sensor_output_summary.get("__source_path", "")
@@ -793,6 +872,7 @@ def write_autoware_planned_export_bundle(
         },
         "topic_export_index": topic_export_index,
         "topic_catalog": topic_catalog,
+        "processing_stage_bundle_index": processing_stage_bundle_index,
         "sensor_contracts": sensor_contracts,
         "frame_tree": frame_tree,
         "pipeline_manifest": pipeline_manifest,

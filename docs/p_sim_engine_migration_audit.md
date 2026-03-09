@@ -353,6 +353,6 @@ The highest-value next migration from `Autonomy-E2E` is now:
 2. connect scenario batch outputs to runtime/backend smoke so scenario evaluation and backend execution share one end-to-end path
 3. only then deepen map-aware scenario generation and validation
 
-The current downstream bridge now also emits profile-derived Autoware processing-stage readiness, so future runtime/backend work should use that stage surface instead of inventing another ingest summary layer.
+The current downstream bridge now also emits profile-derived Autoware processing-stage readiness and materialized stage-input bundle manifests, so future runtime/backend work should use that stage surface instead of inventing another ingest summary layer.
 
 That order increases current feature coverage without destabilizing the newly migrated scenario and rig-sweep blocks.

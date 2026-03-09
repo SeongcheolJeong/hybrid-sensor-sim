@@ -1583,6 +1583,15 @@ def run_scenario_backend_smoke_workflow(
             "degraded_processing_stage_count": autoware_report.get(
                 "degraded_processing_stage_count"
             ),
+            "processing_stage_bundle_count": autoware_report.get(
+                "processing_stage_bundle_count"
+            ),
+            "ready_processing_stage_bundle_count": autoware_report.get(
+                "ready_processing_stage_bundle_count"
+            ),
+            "degraded_processing_stage_bundle_count": autoware_report.get(
+                "degraded_processing_stage_bundle_count"
+            ),
             "available_modalities": list(autoware_report.get("available_modalities", [])),
             "data_roots": list(autoware_report.get("data_roots", [])),
             "recording_style": autoware_report.get("recording_style"),
@@ -1602,6 +1611,12 @@ def run_scenario_backend_smoke_workflow(
             ),
             "consumer_input_manifest_path": autoware_report.get("artifacts", {}).get(
                 "consumer_input_manifest_path"
+            ),
+            "processing_stage_bundle_root": autoware_report.get("artifacts", {}).get(
+                "processing_stage_bundle_root"
+            ),
+            "processing_stage_bundle_index_path": autoware_report.get("artifacts", {}).get(
+                "processing_stage_bundle_index_path"
             ),
             "merged_report_count": autoware_report.get("merged_report_count"),
             "supplemental_backend_smoke_workflow_report_paths": list(
@@ -1635,6 +1650,8 @@ def run_scenario_backend_smoke_workflow(
         workflow_report["artifacts"]["autoware_topic_export_root"] = autoware_report.get("artifacts", {}).get("topic_export_root")
         workflow_report["artifacts"]["autoware_topic_export_index_path"] = autoware_report.get("artifacts", {}).get("topic_export_index_path")
         workflow_report["artifacts"]["autoware_topic_catalog_path"] = autoware_report.get("artifacts", {}).get("topic_catalog_path")
+        workflow_report["artifacts"]["autoware_processing_stage_bundle_root"] = autoware_report.get("artifacts", {}).get("processing_stage_bundle_root")
+        workflow_report["artifacts"]["autoware_processing_stage_bundle_index_path"] = autoware_report.get("artifacts", {}).get("processing_stage_bundle_index_path")
         workflow_report["artifacts"]["supplemental_semantic_smoke_config_path"] = (
             str(supplemental_semantic_config_path.resolve())
             if supplemental_semantic_config_path is not None

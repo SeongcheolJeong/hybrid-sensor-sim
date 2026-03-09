@@ -27,6 +27,8 @@ _DEFAULT_BACKEND_MAPS = {
 _DEFAULT_HELIOS_DOCKER_IMAGE = "heliosplusplus:cli"
 _DEFAULT_HELIOS_DOCKER_BINARY = "/home/jovyan/helios/build/helios++"
 _DEFAULT_HELIOS_DOCKER_MOUNT_POINT = "/workspace"
+_DEFAULT_CARLA_DOCKER_IMAGE = "carlasim/carla:0.10.0"
+_DEFAULT_CARLA_DOCKER_PLATFORM = "linux/amd64"
 _AWSIM_EXECUTABLE_NAMES = {
     "awsim",
     "awsim.x86_64",
@@ -656,6 +658,25 @@ def _inspect_helios_docker_runtime() -> dict[str, Any]:
     }
 
 
+def _inspect_carla_docker_runtime() -> dict[str, Any]:
+    image = os.getenv("CARLA_DOCKER_IMAGE", _DEFAULT_CARLA_DOCKER_IMAGE).strip()
+    platform_name = os.getenv("CARLA_DOCKER_PLATFORM", _DEFAULT_CARLA_DOCKER_PLATFORM).strip()
+    daemon_ready, daemon_message = _docker_daemon_status()
+    image_ready = False
+    image_message = "docker daemon unavailable."
+    if daemon_ready:
+        image_ready, image_message = _docker_image_present(image)
+    return {
+        "image": image,
+        "platform": platform_name,
+        "daemon_ready": daemon_ready,
+        "daemon_message": daemon_message,
+        "image_ready": image_ready,
+        "image_message": image_message,
+        "ready": daemon_ready and image_ready,
+    }
+
+
 def _discover_backend_candidates(
     *,
     backend: str,
@@ -721,6 +742,7 @@ def _render_env_file(summary: dict[str, Any]) -> str:
         "AWSIM_BIN",
         "AWSIM_RENDERER_MAP",
         "CARLA_BIN",
+        "CARLA_DOCKER_IMAGE",
         "CARLA_RENDERER_MAP",
     ):
         value = selection.get(env_key)
@@ -737,6 +759,7 @@ def _render_env_file(summary: dict[str, Any]) -> str:
             f"# awsim_host_compatible={readiness.get('awsim_host_compatible', False)}",
             f"# awsim_smoke_ready={readiness.get('awsim_smoke_ready', False)}",
             f"# carla_host_compatible={readiness.get('carla_host_compatible', False)}",
+            f"# carla_docker_ready={readiness.get('carla_docker_ready', False)}",
             f"# carla_smoke_ready={readiness.get('carla_smoke_ready', False)}",
             "#",
             "# Example:",
@@ -799,6 +822,7 @@ def _build_workflow_paths(readiness: dict[str, Any], probe_readiness: dict[str, 
     )
     return {
         "helios_docker_available": helios_docker_ready,
+        "carla_docker_available": bool(readiness.get("carla_docker_ready")),
         "linux_handoff_docker_path_ready": helios_docker_ready and handoff_selftest_ready,
         "backend_workflow_path_ready": workflow_selftest_ready,
         "package_workflow_path_ready": package_workflow_selftest_ready,
@@ -830,6 +854,7 @@ def _render_local_setup_report(summary: dict[str, Any], summary_path: Path) -> s
         f"| awsim_host_compatible | `{readiness.get('awsim_host_compatible')}` |",
         f"| carla_ready | `{readiness.get('carla_ready')}` |",
         f"| carla_host_compatible | `{readiness.get('carla_host_compatible')}` |",
+        f"| carla_docker_ready | `{readiness.get('carla_docker_ready')}` |",
         "",
         "## Probe Readiness",
         "| Probe | Value |",
@@ -845,6 +870,7 @@ def _render_local_setup_report(summary: dict[str, Any], summary_path: Path) -> s
         "| Path | Value |",
         "| --- | --- |",
         f"| helios_docker_available | `{workflow_paths.get('helios_docker_available')}` |",
+        f"| carla_docker_available | `{workflow_paths.get('carla_docker_available')}` |",
         f"| linux_handoff_docker_path_ready | `{workflow_paths.get('linux_handoff_docker_path_ready')}` |",
         f"| backend_workflow_path_ready | `{workflow_paths.get('backend_workflow_path_ready')}` |",
         f"| package_workflow_path_ready | `{workflow_paths.get('package_workflow_path_ready')}` |",
@@ -861,6 +887,7 @@ def _render_local_setup_report(summary: dict[str, Any], summary_path: Path) -> s
         "AWSIM_BIN",
         "AWSIM_RENDERER_MAP",
         "CARLA_BIN",
+        "CARLA_DOCKER_IMAGE",
         "CARLA_RENDERER_MAP",
     ):
         lines.append(f"| {key} | `{selection.get(key)}` |")
@@ -931,6 +958,7 @@ def _build_acquisition_hints(
     awsim = backends["awsim"]
     carla = backends["carla"]
     helios_docker = runtimes["helios_docker"]
+    carla_docker = runtimes["carla_docker"]
     awsim_download_candidates = [
         str(path)
         for path in _scan_archive_candidates(
@@ -1038,7 +1066,9 @@ def _build_acquisition_hints(
 
     carla_hints = {
         "status": (
-            "runtime_incompatible_host"
+            "docker_runtime_available"
+            if carla_docker.get("ready")
+            else "runtime_incompatible_host"
             if carla.get("ready") and not carla.get("host_compatible_ready")
             else "runtime_available"
             if carla.get("ready")
@@ -1048,7 +1078,7 @@ def _build_acquisition_hints(
         ),
         "platform_supported": system in {"Linux", "Windows"},
         "platform_note": (
-            "CARLA UE5 package docs target Ubuntu 22.04 or Windows 11. On this host, use a Linux or Windows runner."
+            "CARLA packaged runtime docs target Ubuntu 22.04 or Windows 11. Docker image can still be validated locally if available."
             if system not in {"Linux", "Windows"}
             else "CARLA UE5 docs target Ubuntu 22.04 or Windows 11."
         ),
@@ -1063,14 +1093,14 @@ def _build_acquisition_hints(
             },
             {
                 "name": "CARLA Docker image",
-                "command": "docker pull carlasim/carla:0.10.0",
+                "command": "docker pull --platform linux/amd64 carlasim/carla:0.10.0",
             },
         ],
         "next_actions": [
-            "Use a packaged CARLA release or Linux Docker image on a supported Linux/Windows runner.",
+            "Use a packaged CARLA release or the CARLA Docker image on a supported Linux/Windows runner.",
             f"Run python3 scripts/acquire_renderer_backend_package.py --backend carla --setup-summary {shlex.quote(str((repo_root / 'artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json').resolve()))} to download and stage the package automatically.",
-            "If building from source, run ./CarlaSetup.sh --interactive in a Linux CARLA UE5 checkout.",
-            "Export CARLA_BIN to CarlaUnreal.sh or the packaged launcher path and re-run local discovery.",
+            "If the Docker image is available locally, validate it with docker image inspect or a lightweight docker run probe.",
+            "Export CARLA_BIN to CarlaUnreal.sh or the packaged launcher path when using packaged runtime discovery.",
         ],
         "reference_docs": [
             _existing_path_or_none(
@@ -1084,6 +1114,12 @@ def _build_acquisition_hints(
             ),
         ],
         "local_download_candidates": carla_download_candidates,
+        "docker": {
+            "image": carla_docker.get("image"),
+            "platform": carla_docker.get("platform"),
+            "ready": carla_docker.get("ready"),
+            "message": carla_docker.get("image_message") or carla_docker.get("daemon_message"),
+        },
     }
 
     return {
@@ -1136,6 +1172,7 @@ def build_renderer_backend_local_setup(
     reference_roots = _discover_reference_roots(all_search_roots)
     repo_candidates = _candidate_paths_for_repo(repo_root)
     helios_docker = _inspect_helios_docker_runtime()
+    carla_docker = _inspect_carla_docker_runtime()
     helios = _discover_backend_candidates(
         backend="helios",
         repo_root=repo_root,
@@ -1171,6 +1208,7 @@ def build_renderer_backend_local_setup(
         "AWSIM_BIN": awsim.get("selected_path"),
         "AWSIM_RENDERER_MAP": os.getenv("AWSIM_RENDERER_MAP", _DEFAULT_BACKEND_MAPS["awsim"]),
         "CARLA_BIN": carla.get("selected_path"),
+        "CARLA_DOCKER_IMAGE": carla_docker["image"],
         "CARLA_RENDERER_MAP": os.getenv("CARLA_RENDERER_MAP", _DEFAULT_BACKEND_MAPS["carla"]),
     }
     readiness = {
@@ -1181,6 +1219,7 @@ def build_renderer_backend_local_setup(
         "awsim_host_compatible": bool(awsim.get("host_compatible_ready")),
         "carla_ready": bool(carla.get("ready")),
         "carla_host_compatible": bool(carla.get("host_compatible_ready")),
+        "carla_docker_ready": bool(carla_docker.get("ready")),
     }
     readiness["helios_ready"] = readiness["helios_binary_host_compatible"] or readiness["helios_docker_ready"]
     readiness["awsim_smoke_ready_binary"] = readiness["helios_binary_host_compatible"] and readiness["awsim_host_compatible"]
@@ -1193,6 +1232,7 @@ def build_renderer_backend_local_setup(
     readiness["carla_smoke_ready"] = (
         readiness["carla_smoke_ready_binary"] or readiness["carla_smoke_ready_docker"]
     )
+    readiness["carla_local_runtime_ready"] = readiness["carla_ready"] or readiness["carla_docker_ready"]
 
     issues: list[str] = []
     if not readiness["helios_binary_ready"] and not readiness["helios_docker_ready"]:
@@ -1207,9 +1247,13 @@ def build_renderer_backend_local_setup(
         issues.append("AWSIM runtime binary is not resolved.")
     elif not readiness["awsim_host_compatible"]:
         issues.append("AWSIM runtime binary is resolved but incompatible with the current host.")
-    if not readiness["carla_ready"]:
+    if not readiness["carla_ready"] and not readiness["carla_docker_ready"]:
         issues.append("CARLA runtime binary is not resolved.")
-    elif not readiness["carla_host_compatible"]:
+        if not carla_docker["daemon_ready"]:
+            issues.append(f"CARLA docker runtime unavailable: {carla_docker['daemon_message']}")
+        elif not carla_docker["image_ready"]:
+            issues.append(f"CARLA docker image unavailable: {carla_docker['image_message']}")
+    elif readiness["carla_ready"] and not readiness["carla_host_compatible"] and not readiness["carla_docker_ready"]:
         issues.append("CARLA runtime binary is resolved but incompatible with the current host.")
 
     output_root = (
@@ -1255,6 +1299,11 @@ def build_renderer_backend_local_setup(
         "carla_acquire": (
             "python3 scripts/acquire_renderer_backend_package.py "
             f"--backend carla --setup-summary {shlex.quote(str(summary_path))}"
+        ),
+        "carla_docker_pull": "docker pull --platform linux/amd64 carlasim/carla:0.10.0",
+        "carla_docker_verify": (
+            "docker image inspect carlasim/carla:0.10.0 >/dev/null && "
+            "echo 'CARLA docker image is available locally.'"
         ),
         "awsim_smoke_binary": (
             f"source {shlex.quote(str(env_path))} && "
@@ -1408,6 +1457,7 @@ def build_renderer_backend_local_setup(
         },
         runtimes={
             "helios_docker": helios_docker,
+            "carla_docker": carla_docker,
         },
         readiness=readiness,
     )
@@ -1421,6 +1471,7 @@ def build_renderer_backend_local_setup(
         },
         "runtimes": {
             "helios_docker": helios_docker,
+            "carla_docker": carla_docker,
         },
         "probes": probes,
         "acquisition_hints": acquisition_hints,

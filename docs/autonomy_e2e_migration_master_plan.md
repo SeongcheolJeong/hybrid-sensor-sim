@@ -513,7 +513,7 @@ Avoid these migration mistakes:
 2. connect scenario/object-sim tooling to the new canonical map layer
 3. only then extend batch/orchestration patterns from `P_Cloud-Engine`
 
-The current runtime/backend bridge already exports Autoware ingest-oriented manifests with profile-based processing-stage readiness, so downstream integration work should build on that surface rather than adding parallel topic-summary schemas.
+The current runtime/backend bridge already exports Autoware ingest-oriented manifests with profile-based processing-stage readiness and concrete processing-stage bundle manifests, so downstream integration work should build on that surface rather than adding parallel topic-summary schemas.
 
 ## Immediate Next Action
 

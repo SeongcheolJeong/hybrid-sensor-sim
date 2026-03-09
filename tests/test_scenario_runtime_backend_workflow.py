@@ -326,6 +326,19 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
             self.assertIsNotNone(
                 report["status_summary"]["autoware_degraded_processing_stage_count"]
             )
+            self.assertIsNotNone(
+                report["status_summary"]["autoware_processing_stage_bundle_count"]
+            )
+            self.assertIsNotNone(
+                report["status_summary"][
+                    "autoware_ready_processing_stage_bundle_count"
+                ]
+            )
+            self.assertIsNotNone(
+                report["status_summary"][
+                    "autoware_degraded_processing_stage_bundle_count"
+                ]
+            )
             self.assertTrue(report["status_summary"]["autoware_available_message_types"])
             self.assertTrue(report["status_summary"]["autoware_data_roots"])
             self.assertEqual(
@@ -353,6 +366,14 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
             self.assertTrue(Path(report["artifacts"]["autoware_topic_catalog_path"]).is_file())
             self.assertTrue(
                 Path(report["artifacts"]["autoware_consumer_input_manifest_path"]).is_file()
+            )
+            self.assertTrue(
+                Path(report["artifacts"]["autoware_processing_stage_bundle_root"]).is_dir()
+            )
+            self.assertTrue(
+                Path(
+                    report["artifacts"]["autoware_processing_stage_bundle_index_path"]
+                ).is_file()
             )
             self.assertTrue(Path(report["artifacts"]["smoke_scenario_path"]).is_file())
             self.assertTrue(Path(result["workflow_markdown_path"]).is_file())

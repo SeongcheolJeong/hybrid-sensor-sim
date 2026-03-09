@@ -554,6 +554,15 @@ def _build_status_summary(
         "autoware_degraded_processing_stage_count": autoware_summary.get(
             "degraded_processing_stage_count"
         ),
+        "autoware_processing_stage_bundle_count": autoware_summary.get(
+            "processing_stage_bundle_count"
+        ),
+        "autoware_ready_processing_stage_bundle_count": autoware_summary.get(
+            "ready_processing_stage_bundle_count"
+        ),
+        "autoware_degraded_processing_stage_bundle_count": autoware_summary.get(
+            "degraded_processing_stage_bundle_count"
+        ),
         "autoware_available_message_types": list(
             autoware_summary.get("available_message_types", [])
         ),
@@ -669,6 +678,9 @@ def _build_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Processing stages: `{summary.get('autoware_processing_stage_count') if summary.get('autoware_processing_stage_count') is not None else '-'}`",
         f"- Ready processing stages: `{summary.get('autoware_ready_processing_stage_count') if summary.get('autoware_ready_processing_stage_count') is not None else '-'}`",
         f"- Degraded processing stages: `{summary.get('autoware_degraded_processing_stage_count') if summary.get('autoware_degraded_processing_stage_count') is not None else '-'}`",
+        f"- Processing stage bundles: `{summary.get('autoware_processing_stage_bundle_count') if summary.get('autoware_processing_stage_bundle_count') is not None else '-'}`",
+        f"- Ready processing stage bundles: `{summary.get('autoware_ready_processing_stage_bundle_count') if summary.get('autoware_ready_processing_stage_bundle_count') is not None else '-'}`",
+        f"- Degraded processing stage bundles: `{summary.get('autoware_degraded_processing_stage_bundle_count') if summary.get('autoware_degraded_processing_stage_bundle_count') is not None else '-'}`",
         f"- Dataset ready: `{summary.get('autoware_dataset_ready') if summary.get('autoware_dataset_ready') is not None else '-'}`",
         f"- Recording style: `{summary.get('autoware_recording_style') or '-'}`",
         f"- Required topics complete: `{summary.get('autoware_required_topics_complete') if summary.get('autoware_required_topics_complete') is not None else '-'}`",
@@ -715,6 +727,8 @@ def _build_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Autoware topic export root: `{workflow_report['artifacts'].get('autoware_topic_export_root') or '-'}`",
         f"- Autoware topic export index: `{workflow_report['artifacts'].get('autoware_topic_export_index_path') or '-'}`",
         f"- Autoware topic catalog: `{workflow_report['artifacts'].get('autoware_topic_catalog_path') or '-'}`",
+        f"- Autoware processing stage bundle root: `{workflow_report['artifacts'].get('autoware_processing_stage_bundle_root') or '-'}`",
+        f"- Autoware processing stage bundle index: `{workflow_report['artifacts'].get('autoware_processing_stage_bundle_index_path') or '-'}`",
         f"- History guard report: `{workflow_report['artifacts'].get('history_guard_report_path') or '-'}`",
         "",
     ]
@@ -993,6 +1007,8 @@ def run_scenario_runtime_backend_workflow(
             "autoware_topic_export_root": backend_report["artifacts"].get("autoware_topic_export_root"),
             "autoware_topic_export_index_path": backend_report["artifacts"].get("autoware_topic_export_index_path"),
             "autoware_topic_catalog_path": backend_report["artifacts"].get("autoware_topic_catalog_path"),
+            "autoware_processing_stage_bundle_root": backend_report["artifacts"].get("autoware_processing_stage_bundle_root"),
+            "autoware_processing_stage_bundle_index_path": backend_report["artifacts"].get("autoware_processing_stage_bundle_index_path"),
             "supplemental_semantic_smoke_config_path": backend_report["artifacts"].get(
                 "supplemental_semantic_smoke_config_path"
             ),

@@ -43,7 +43,41 @@ def _unavailable_docker_runtime() -> dict[str, object]:
     }
 
 
+def _ready_carla_docker_runtime() -> dict[str, object]:
+    return {
+        "image": "carlasim/carla:0.10.0",
+        "platform": "linux/amd64",
+        "daemon_ready": True,
+        "daemon_message": "",
+        "image_ready": True,
+        "image_message": "",
+        "ready": True,
+    }
+
+
+def _unavailable_carla_docker_runtime(
+    message: str = "docker image not found: carlasim/carla:0.10.0",
+) -> dict[str, object]:
+    return {
+        "image": "carlasim/carla:0.10.0",
+        "platform": "linux/amd64",
+        "daemon_ready": True,
+        "daemon_message": "",
+        "image_ready": False,
+        "image_message": message,
+        "ready": False,
+    }
+
+
 class RendererBackendLocalSetupTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._carla_docker_patch = patch(
+            "hybrid_sensor_sim.tools.renderer_backend_local_setup._inspect_carla_docker_runtime",
+            return_value=_unavailable_carla_docker_runtime(),
+        )
+        self._carla_docker_patch.start()
+        self.addCleanup(self._carla_docker_patch.stop)
+
     def test_inspect_executable_host_compatibility_requires_rosetta_for_macho_x86_64(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             binary = Path(tmp) / "AWSIM"
@@ -493,6 +527,78 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertEqual(summary["commands"]["awsim_smoke"], summary["commands"]["awsim_smoke_docker"])
             self.assertEqual(summary["acquisition_hints"]["helios"]["recommended_runtime"], "docker")
 
+    def test_build_renderer_backend_local_setup_detects_carla_docker_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            repo_root.mkdir(parents=True, exist_ok=True)
+
+            with patch(
+                "hybrid_sensor_sim.tools.renderer_backend_local_setup._inspect_helios_docker_runtime",
+                return_value=_ready_docker_runtime(),
+            ):
+                with patch(
+                    "hybrid_sensor_sim.tools.renderer_backend_local_setup._inspect_carla_docker_runtime",
+                    return_value=_ready_carla_docker_runtime(),
+                ):
+                    summary = build_renderer_backend_local_setup(
+                        repo_root=repo_root,
+                        search_roots=[],
+                        output_dir=root / "artifacts",
+                        include_default_search_roots=False,
+                    )
+
+            self.assertFalse(summary["readiness"]["carla_ready"])
+            self.assertTrue(summary["readiness"]["carla_docker_ready"])
+            self.assertTrue(summary["readiness"]["carla_local_runtime_ready"])
+            self.assertEqual(
+                summary["selection"]["CARLA_DOCKER_IMAGE"],
+                "carlasim/carla:0.10.0",
+            )
+            self.assertEqual(
+                summary["acquisition_hints"]["carla"]["status"],
+                "docker_runtime_available",
+            )
+            self.assertTrue(summary["acquisition_hints"]["carla"]["docker"]["ready"])
+            self.assertNotIn("CARLA runtime binary is not resolved.", summary["issues"])
+            self.assertEqual(
+                summary["commands"]["carla_docker_pull"],
+                "docker pull --platform linux/amd64 carlasim/carla:0.10.0",
+            )
+            self.assertIn("docker image inspect carlasim/carla:0.10.0", summary["commands"]["carla_docker_verify"])
+
+    def test_build_renderer_backend_local_setup_reports_carla_docker_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            repo_root.mkdir(parents=True, exist_ok=True)
+            docker_error = "blob sha256:deadbeef: input/output error"
+
+            with patch(
+                "hybrid_sensor_sim.tools.renderer_backend_local_setup._inspect_helios_docker_runtime",
+                return_value=_ready_docker_runtime(),
+            ):
+                with patch(
+                    "hybrid_sensor_sim.tools.renderer_backend_local_setup._inspect_carla_docker_runtime",
+                    return_value=_unavailable_carla_docker_runtime(docker_error),
+                ):
+                    summary = build_renderer_backend_local_setup(
+                        repo_root=repo_root,
+                        search_roots=[],
+                        output_dir=root / "artifacts",
+                        include_default_search_roots=False,
+                    )
+
+            self.assertFalse(summary["readiness"]["carla_docker_ready"])
+            self.assertIn(
+                f"CARLA docker image unavailable: {docker_error}",
+                summary["issues"],
+            )
+            self.assertEqual(
+                summary["acquisition_hints"]["carla"]["docker"]["message"],
+                docker_error,
+            )
+
     def test_build_renderer_backend_local_setup_detects_local_download_archives(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -785,7 +891,9 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertEqual(summary["selection"]["HELIOS_DOCKER_IMAGE"], "heliosplusplus:cli")
             self.assertEqual(summary["selection"]["AWSIM_BIN"], str(awsim_bin.resolve()))
             self.assertIsNone(summary["selection"]["CARLA_BIN"])
+            self.assertEqual(summary["selection"]["CARLA_DOCKER_IMAGE"], "carlasim/carla:0.10.0")
             self.assertFalse(summary["readiness"]["carla_smoke_ready"])
+            self.assertFalse(summary["readiness"]["carla_docker_ready"])
             self.assertIn("probe_readiness", summary)
             self.assertIn("workflow_paths", summary)
             self.assertIn("acquisition_hints", summary)
@@ -794,9 +902,11 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertIn("export HELIOS_DOCKER_BINARY=", env_text)
             self.assertIn("export AWSIM_BIN=", env_text)
             self.assertIn("# export CARLA_BIN=<set-me>", env_text)
+            self.assertIn("export CARLA_DOCKER_IMAGE=", env_text)
             self.assertIn("# helios_binary_host_compatible=", env_text)
             self.assertIn("# awsim_host_compatible=", env_text)
             self.assertIn("# carla_host_compatible=", env_text)
+            self.assertIn("# carla_docker_ready=", env_text)
             self.assertIn("python3 scripts/discover_renderer_backend_local_env.py --probe-helios-docker-demo", env_text)
             self.assertIn(
                 "python3 scripts/discover_renderer_backend_local_env.py --probe-linux-handoff-docker-selftest --probe-linux-handoff-docker-selftest-execute",

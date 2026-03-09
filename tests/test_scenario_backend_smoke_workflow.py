@@ -301,6 +301,15 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
             self.assertIsNotNone(
                 workflow_report["autoware"]["degraded_processing_stage_count"]
             )
+            self.assertIsNotNone(
+                workflow_report["autoware"]["processing_stage_bundle_count"]
+            )
+            self.assertIsNotNone(
+                workflow_report["autoware"]["ready_processing_stage_bundle_count"]
+            )
+            self.assertIsNotNone(
+                workflow_report["autoware"]["degraded_processing_stage_bundle_count"]
+            )
             self.assertTrue(workflow_report["autoware"]["available_message_types"])
             self.assertIn("camera", workflow_report["autoware"]["available_modalities"])
             self.assertEqual(
@@ -320,6 +329,20 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
                 Path(
                     workflow_report["artifacts"][
                         "autoware_consumer_input_manifest_path"
+                    ]
+                ).is_file()
+            )
+            self.assertTrue(
+                Path(
+                    workflow_report["artifacts"][
+                        "autoware_processing_stage_bundle_root"
+                    ]
+                ).is_dir()
+            )
+            self.assertTrue(
+                Path(
+                    workflow_report["artifacts"][
+                        "autoware_processing_stage_bundle_index_path"
                     ]
                 ).is_file()
             )
