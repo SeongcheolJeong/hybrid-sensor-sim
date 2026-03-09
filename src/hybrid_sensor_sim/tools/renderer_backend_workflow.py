@@ -327,6 +327,24 @@ def _default_linux_handoff_docker_platform(
     return None
 
 
+def _recommended_download_dir_from_setup(
+    *,
+    backend: str,
+    setup_summary: dict[str, Any],
+    summary_path: Path,
+) -> Path | None:
+    runtime_strategy_map = setup_summary.get("runtime_strategy")
+    if not isinstance(runtime_strategy_map, dict):
+        runtime_strategy_map = _build_runtime_strategy(setup_summary, summary_path=summary_path)
+    runtime_strategy = runtime_strategy_map.get(backend, {}) if isinstance(runtime_strategy_map, dict) else {}
+    if not isinstance(runtime_strategy, dict):
+        return None
+    recommended_download_dir = runtime_strategy.get("recommended_download_dir")
+    if not isinstance(recommended_download_dir, str) or not recommended_download_dir.strip():
+        return None
+    return _resolve_path(recommended_download_dir)
+
+
 def _render_workflow_env_file(summary: dict[str, Any]) -> str:
     selection = summary.get("final_selection", {})
     lines = [
@@ -1786,6 +1804,16 @@ def build_renderer_backend_workflow(
     )
     selected_renderer_map = renderer_map_override or _selection_value(setup_selection, map_env_var)
 
+    effective_download_dir = (
+        _resolve_path(download_dir)
+        if download_dir is not None
+        else _recommended_download_dir_from_setup(
+            backend=backend,
+            setup_summary=setup_summary,
+            summary_path=resolved_setup_summary_path,
+        )
+    )
+
     if selected_backend_bin is None and auto_acquire:
         acquire_output_root = repo_root / "third_party" / "runtime_backends" / backend
         acquire_summary = build_renderer_backend_package_acquire(
@@ -1794,7 +1822,7 @@ def build_renderer_backend_workflow(
             setup_summary_path=resolved_setup_summary_path,
             download_url=download_url,
             download_name=download_name,
-            download_dir=download_dir,
+            download_dir=effective_download_dir,
             output_root=acquire_output_root,
             dry_run=dry_run,
             overwrite_download=overwrite_download,
@@ -2118,6 +2146,8 @@ def build_renderer_backend_workflow(
             if refreshed_setup_summary is not None
             else None
         ),
+        "acquire_download_dir": str(effective_download_dir) if effective_download_dir is not None else None,
+        "acquire_download_dir_source": "explicit" if download_dir is not None else ("setup_runtime_strategy" if effective_download_dir is not None else None),
         "acquire": acquire_summary,
         "smoke": {
             "ready": smoke_ready,

@@ -537,3 +537,5 @@ The next concrete code migration should be:
 2. connect scenario batch outputs to runtime/backend smoke so scenario evaluation and backend execution share one end-to-end path
 
 That order increases current feature coverage fastest while keeping repository scope under control.
+
+Auto-acquire now defaults to the local setup `recommended_download_dir` when available, so backend acquisition/staging can continue without manually restating `--download-dir`.

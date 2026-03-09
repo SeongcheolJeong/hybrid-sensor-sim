@@ -1301,3 +1301,5 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 
 - Add optional `vehicle_dynamics` coupling into the current object-sim ego longitudinal update.
 - Deepen map-aware scenario/object-sim consumption on top of the new canonical map utilities.
+
+When local setup exposes a `recommended_download_dir`, `renderer_backend_workflow --auto-acquire` now reuses it automatically if `--download-dir` is not provided.

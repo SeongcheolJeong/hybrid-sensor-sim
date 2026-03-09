@@ -369,3 +369,5 @@ The highest-value next migration from `Autonomy-E2E` is now:
 The current downstream bridge now also emits profile-derived Autoware processing-stage readiness and materialized stage-input bundle manifests, so future runtime/backend work should use that stage surface instead of inventing another ingest summary layer.
 
 That order increases current feature coverage without destabilizing the newly migrated scenario and rig-sweep blocks.
+
+Backend runtime workflows now reuse the local setup `recommended_download_dir` during auto-acquire, reducing manual CARLA/AWSIM package recovery steps once a valid download volume is available.
