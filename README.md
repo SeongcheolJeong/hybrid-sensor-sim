@@ -37,7 +37,7 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `scripts/setup_helios.sh`: bootstrap helper for cloning/building HELIOS.
 - `scripts/run_renderer_backend_smoke.py`: AWSIM/CARLA smoke launcher that forces direct backend execution plus output-contract inspection.
 - `scripts/discover_renderer_backend_local_env.py`: discovers local HELIOS/AWSIM/CARLA runtime candidates and writes a reusable env file plus readiness summary.
-- `scripts/acquire_renderer_backend_package.py`: resolves an official AWSIM/CARLA package URL from `renderer_backend_local_setup.json`, prefers direct archive-style URLs over HTML release pages, downloads the archive, and optionally stages it into a runnable backend directory.
+- `scripts/acquire_renderer_backend_package.py`: resolves an official AWSIM/CARLA package URL from `renderer_backend_local_setup.json`, prefers direct archive-style URLs over HTML release pages, estimates archive size when possible, checks local free space in the selected download directory, downloads the archive, and optionally stages it into a runnable backend directory.
 - `scripts/stage_renderer_backend_package.py`: extracts packaged AWSIM/CARLA archives into `third_party/runtime_backends/<backend>` and writes a staging env file for smoke runs.
 - `scripts/run_renderer_backend_workflow.py`: runs `discover/load setup -> optional acquire -> smoke` as one workflow and writes a single workflow summary.
 - `scripts/run_renderer_backend_package_workflow_selftest.py`: synthesizes a packaged backend archive and exercises `acquire -> stage -> refresh discover -> smoke`.
@@ -1217,6 +1217,8 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
 - behavior:
   - if `acquisition_hints.<backend>.local_download_candidates` already points to an existing archive, that local archive is reused before any network download
   - resolves the first `acquisition_hints.<backend>.download_options[*].url`
+  - dry-run estimates remote archive size when available and reports `available_download_space_bytes` plus `download_space_status`
+  - if free space is insufficient for the estimated archive size, acquire fails before any download starts
   - downloads the archive into `~/Downloads` by default
   - reuses an existing archive unless `--overwrite-download` is set
   - stages the archive automatically unless `--download-only` is set

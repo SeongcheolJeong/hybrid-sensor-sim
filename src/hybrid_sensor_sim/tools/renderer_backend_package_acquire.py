@@ -8,7 +8,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 from hybrid_sensor_sim.tools.renderer_backend_package_stage import (
     _render_env_file,
@@ -235,6 +235,47 @@ def _download_archive(
     return True, False, total_bytes, ""
 
 
+def _probe_remote_archive_size_bytes(url: str) -> tuple[int | None, str | None, str | None]:
+    parsed = urlparse(url)
+    if parsed.scheme == "file":
+        local_path = Path(parsed.path)
+        if local_path.exists():
+            return local_path.stat().st_size, "file_stat", None
+        return None, "file_stat", f"Local file archive does not exist: {local_path}"
+    try:
+        request = Request(url, method="HEAD")
+        with urlopen(request) as response:
+            length = response.headers.get("Content-Length")
+            if length:
+                return int(length), "http_head", None
+    except Exception as exc:
+        head_error = str(exc)
+    else:
+        head_error = None
+    try:
+        request = Request(url, headers={"Range": "bytes=0-0"})
+        with urlopen(request) as response:
+            length = response.headers.get("Content-Length")
+            if length:
+                return int(length), "http_range_get", None
+    except Exception as exc:
+        range_error = str(exc)
+    else:
+        range_error = None
+    return None, None, range_error or head_error
+
+
+def _probe_download_space(*, target_path: Path, estimated_size_bytes: int | None) -> tuple[int | None, bool | None]:
+    try:
+        disk_usage = shutil.disk_usage(target_path.parent)
+    except OSError:
+        return None, None
+    free_bytes = disk_usage.free if hasattr(disk_usage, "free") else disk_usage[2]
+    if estimated_size_bytes is None:
+        return free_bytes, None
+    return free_bytes, free_bytes >= estimated_size_bytes
+
+
 def build_renderer_backend_package_acquire(
     *,
     backend: str,
@@ -292,29 +333,75 @@ def build_renderer_backend_package_acquire(
     download_message = ""
     stage_summary: dict[str, Any] | None = None
     stage_after_download = not download_only
+    estimated_size_bytes: int | None = None
+    size_probe_source: str | None = None
+    size_probe_message: str | None = None
+    available_download_space_bytes: int | None = None
+    download_space_ready: bool | None = None
+    download_space_status = "not_required"
 
     if selected_local_archive is not None and archive_path is not None:
         download_succeeded = True
         download_reused_existing = True
         download_bytes = archive_path.stat().st_size
         download_message = "Using existing local archive candidate."
+        estimated_size_bytes = download_bytes
+        available_download_space_bytes, download_space_ready = _probe_download_space(
+            target_path=archive_path,
+            estimated_size_bytes=None,
+        )
+        download_space_ready = True
     elif resolved_url is not None and archive_path is not None:
+        (
+            estimated_size_bytes,
+            size_probe_source,
+            size_probe_message,
+        ) = _probe_remote_archive_size_bytes(resolved_url)
+        (
+            available_download_space_bytes,
+            download_space_ready,
+        ) = _probe_download_space(
+            target_path=archive_path,
+            estimated_size_bytes=estimated_size_bytes,
+        )
+        if estimated_size_bytes is not None and download_space_ready is False:
+            issues.append(
+                "Insufficient local download space for "
+                f"{backend}: need {estimated_size_bytes} bytes, have "
+                f"{available_download_space_bytes} bytes in {archive_path.parent}."
+            )
+        if estimated_size_bytes is None:
+            download_space_status = "unknown"
+        elif download_space_ready:
+            download_space_status = "ready"
+        else:
+            download_space_status = "insufficient"
         if dry_run:
             download_succeeded = archive_path.exists()
             download_reused_existing = archive_path.exists()
+            if estimated_size_bytes is not None and download_space_ready is False:
+                download_succeeded = False
         else:
-            (
-                download_succeeded,
-                download_reused_existing,
-                download_bytes,
-                download_message,
-            ) = _download_archive(
-                url=resolved_url,
-                target_path=archive_path,
-                overwrite=overwrite_download,
-            )
-            if not download_succeeded:
-                issues.append(download_message or f"Failed to download archive for {backend}.")
+            if estimated_size_bytes is not None and download_space_ready is False:
+                download_succeeded = False
+                download_message = (
+                    f"Not downloading {backend}: insufficient space in {archive_path.parent}."
+                )
+            else:
+                (
+                    download_succeeded,
+                    download_reused_existing,
+                    download_bytes,
+                    download_message,
+                ) = _download_archive(
+                    url=resolved_url,
+                    target_path=archive_path,
+                    overwrite=overwrite_download,
+                )
+                if not download_succeeded:
+                    issues.append(download_message or f"Failed to download archive for {backend}.")
+    if selected_local_archive is not None:
+        download_space_status = "not_required"
 
     if (
         stage_after_download
@@ -358,6 +445,7 @@ def build_renderer_backend_package_acquire(
     readiness = {
         "download_url_resolved": resolved_url is not None or selected_local_archive is not None,
         "download_ready": bool(archive_path and archive_path.exists()),
+        "download_space_ready": download_space_ready,
         "download_performed": bool(not dry_run and download_succeeded and not download_reused_existing),
         "download_reused_existing": download_reused_existing,
         "stage_requested": stage_after_download,
@@ -376,6 +464,12 @@ def build_renderer_backend_package_acquire(
             "target_path": str(archive_path) if archive_path is not None else None,
             "target_exists": bool(archive_path and archive_path.exists()),
             "download_dir": str(download_dir),
+            "estimated_size_bytes": estimated_size_bytes,
+            "size_probe_source": size_probe_source,
+            "size_probe_message": size_probe_message,
+            "available_download_space_bytes": available_download_space_bytes,
+            "download_space_ready": download_space_ready,
+            "download_space_status": download_space_status,
             "bytes_downloaded": download_bytes,
             "message": download_message,
             "candidate_options": candidate_options,
@@ -439,6 +533,8 @@ def main(argv: list[str] | None = None) -> int:
     print(json.dumps(summary, indent=2))
 
     success = summary["readiness"]["download_url_resolved"]
+    if summary["readiness"].get("download_space_ready") is False:
+        success = False
     if not args.dry_run:
         success = success and summary["readiness"]["download_ready"]
         if not args.download_only:

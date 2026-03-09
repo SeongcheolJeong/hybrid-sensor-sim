@@ -99,6 +99,7 @@ Current repository paths:
 - the probe-set layer now also supports `carla_local_v0`, which reads the latest `renderer_backend_local_setup.json` directly and emits a compact CARLA runtime-readiness/blocker view before a real packaged-runtime workflow report exists
 - the probe-set layer also exposes `hybrid_runtime_readiness_v0`, combining the pinned real AWSIM probes with the latest CARLA local-runtime blocker probe so cross-backend readiness can be triaged in one surface
 - the CARLA package acquire path now prefers archive-style URLs and names the local target from the archive filename, so the current local strategy points at a usable `.tar.gz` acquisition path instead of the GitHub release HTML page
+- the same acquire path now also estimates archive size and compares it against free space in the selected download directory, so `CARLA` package blockers can show up as explicit disk-capacity failures before any download starts
 - the probe-set summary now also emits a single `recommended_next_command`, so pinned runtime parity checks can point directly at the next backend action without manual drill-down
 - the same probe-set surface now also emits `runtime_strategy_plan_rows` and `primary_runtime_plan_id`, so `linux handoff`, `packaged runtime required`, and Docker-storage blocker paths carry strategy-specific recovery steps
 - the same probe-set layer now aggregates blocker counts and blocker-to-probe mappings, so runtime parity triage can show both the next command and the concrete reason codes in one report

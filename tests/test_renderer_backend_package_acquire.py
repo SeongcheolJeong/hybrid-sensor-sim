@@ -7,6 +7,7 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 from hybrid_sensor_sim.tools.renderer_backend_package_acquire import (
     build_renderer_backend_package_acquire,
@@ -200,6 +201,7 @@ class RendererBackendPackageAcquireTests(unittest.TestCase):
 
             self.assertTrue(summary["readiness"]["download_url_resolved"])
             self.assertFalse(summary["readiness"]["download_ready"])
+            self.assertIsNone(summary["readiness"]["download_space_ready"])
             self.assertFalse((root / "downloads" / "CARLA_UE5_Latest.tar.gz").exists())
             self.assertIsNone(summary["stage"])
 
@@ -294,6 +296,83 @@ class RendererBackendPackageAcquireTests(unittest.TestCase):
 
             self.assertFalse(summary["readiness"]["download_url_resolved"])
             self.assertIn("No download URL resolved for awsim", "\n".join(summary["issues"]))
+
+    def test_build_acquire_reports_insufficient_download_space(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            setup_summary = root / "renderer_backend_local_setup.json"
+            setup_summary.write_text(
+                json.dumps(
+                    {
+                        "acquisition_hints": {
+                            "carla": {
+                                "download_options": [
+                                    {
+                                        "name": "CARLA_UE5_Latest.tar.gz",
+                                        "url": "https://example.invalid/CARLA_UE5_Latest.tar.gz",
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch(
+                "hybrid_sensor_sim.tools.renderer_backend_package_acquire._probe_remote_archive_size_bytes",
+                return_value=(1024, "http_head", None),
+            ):
+                with patch(
+                    "hybrid_sensor_sim.tools.renderer_backend_package_acquire.shutil.disk_usage",
+                    return_value=(10_000, 9_500, 512),
+                ):
+                    summary = build_renderer_backend_package_acquire(
+                        backend="carla",
+                        repo_root=root / "repo",
+                        setup_summary_path=setup_summary,
+                        download_dir=root / "downloads",
+                        output_root=root / "runtime_backends" / "carla",
+                        dry_run=True,
+                    )
+
+            self.assertFalse(summary["readiness"]["download_space_ready"])
+            self.assertEqual(summary["download"]["estimated_size_bytes"], 1024)
+            self.assertEqual(summary["download"]["available_download_space_bytes"], 512)
+            self.assertEqual(summary["download"]["download_space_status"], "insufficient")
+            self.assertIn("Insufficient local download space for carla", "\n".join(summary["issues"]))
+
+    def test_build_acquire_marks_local_archive_space_check_not_required(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            local_archive = root / "Downloads" / "CARLA_UE5_Latest.tar.gz"
+            local_archive.parent.mkdir(parents=True, exist_ok=True)
+            local_archive.write_text("archive", encoding="utf-8")
+            setup_summary = root / "renderer_backend_local_setup.json"
+            setup_summary.write_text(
+                json.dumps(
+                    {
+                        "acquisition_hints": {
+                            "carla": {
+                                "local_download_candidates": [str(local_archive)],
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            summary = build_renderer_backend_package_acquire(
+                backend="carla",
+                repo_root=root / "repo",
+                setup_summary_path=setup_summary,
+                output_root=root / "runtime_backends" / "carla",
+                dry_run=True,
+                download_only=True,
+            )
+
+            self.assertTrue(summary["readiness"]["download_space_ready"])
+            self.assertEqual(summary["download"]["download_space_status"], "not_required")
 
     def test_main_writes_summary_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
