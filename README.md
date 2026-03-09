@@ -481,6 +481,7 @@ That runs the built-in `tracking READY`, `semantic primary READY`, and `semantic
 
 - `scenario_runtime_backend_probe_set_report_v0.json`
 - `scenario_runtime_backend_probe_set_report_v0.md`
+- the probe-set report now also aggregates `runtime_strategy_counts`, `runtime_strategy_probe_ids`, and strategy reason-code counts, so one real AWSIM/CARLA probe set can show both downstream readiness and the intended execution route
 
 The probe-set report also separates:
 

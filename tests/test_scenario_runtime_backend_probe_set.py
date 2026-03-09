@@ -69,6 +69,17 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                     "report": report,
                     "rebridge_result": {
                         "workflow_report": {
+                            "status_summary": {
+                                "backend_runtime_strategy": "linux_handoff_packaged_runtime",
+                                "backend_runtime_strategy_source": "setup_summary.runtime_strategy",
+                                "backend_runtime_preferred_runtime_source": "packaged_runtime",
+                                "backend_runtime_strategy_reason_codes": [
+                                    "HOST_INCOMPATIBLE_PACKAGED_RUNTIME"
+                                ],
+                                "backend_runtime_recommended_command": "python3 scripts/run_renderer_backend_workflow.py --backend awsim --dry-run",
+                                "backend_runtime_selected_path": "/tmp/AWSIM-Demo.x86_64",
+                                "backend_runtime_docker_storage_status": "healthy",
+                            },
                             "rebridge": {
                                 "comparison": {
                                     "source_runtime_status": "DEGRADED"
@@ -129,6 +140,18 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                 report["recovered_required_topics"],
                 ["/sensing/camera/camera_front/semantic/image_raw"],
             )
+            self.assertEqual(
+                report["runtime_strategy_counts"],
+                {"linux_handoff_packaged_runtime": 3},
+            )
+            self.assertEqual(
+                report["runtime_strategy_probe_ids"]["linux_handoff_packaged_runtime"],
+                ["semantic_primary_ready", "semantic_recovery_ready", "tracking_ready"],
+            )
+            self.assertEqual(
+                report["runtime_strategy_reason_code_counts"],
+                {"HOST_INCOMPATIBLE_PACKAGED_RUNTIME": 3},
+            )
             self.assertTrue(result["report_path"].is_file())
             self.assertTrue(result["markdown_path"].is_file())
 
@@ -172,6 +195,17 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                     "report": report,
                     "rebridge_result": {
                         "workflow_report": {
+                            "status_summary": {
+                                "backend_runtime_strategy": "linux_handoff_packaged_runtime",
+                                "backend_runtime_strategy_source": "setup_summary.runtime_strategy",
+                                "backend_runtime_preferred_runtime_source": "packaged_runtime",
+                                "backend_runtime_strategy_reason_codes": [
+                                    "HOST_INCOMPATIBLE_PACKAGED_RUNTIME"
+                                ],
+                                "backend_runtime_recommended_command": "python3 scripts/run_renderer_backend_workflow.py --backend awsim --dry-run",
+                                "backend_runtime_selected_path": "/tmp/AWSIM-Demo.x86_64",
+                                "backend_runtime_docker_storage_status": "healthy",
+                            },
                             "rebridge": {
                                 "comparison": {
                                     "source_runtime_status": "DEGRADED",

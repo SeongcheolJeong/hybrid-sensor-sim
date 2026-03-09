@@ -140,6 +140,11 @@ def _default_probe_set_specs(repo_root: Path) -> dict[str, dict[str, Any]]:
 
 def _build_markdown_report(report: dict[str, Any]) -> str:
     probe_rows = list(report.get("probes", []) or [])
+    runtime_strategy_counts = dict(report.get("runtime_strategy_counts", {}) or {})
+    runtime_strategy_probe_ids = dict(report.get("runtime_strategy_probe_ids", {}) or {})
+    runtime_strategy_reason_code_counts = dict(
+        report.get("runtime_strategy_reason_code_counts", {}) or {}
+    )
     lines = [
         "# Scenario Runtime Backend Probe Set",
         "",
@@ -153,12 +158,27 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
         f"- Runtime-native READY probes: `{', '.join(report.get('runtime_native_ready_probe_ids', [])) or '-'}`",
         f"- Supplemental-dependent probes: `{', '.join(report.get('supplemental_dependency_probe_ids', [])) or '-'}`",
         f"- Recovered required topics: `{', '.join(report.get('recovered_required_topics', [])) or '-'}`",
+        f"- Runtime strategy counts: `{json.dumps(runtime_strategy_counts, sort_keys=True) if runtime_strategy_counts else '-'}`",
+        f"- Runtime strategy reason counts: `{json.dumps(runtime_strategy_reason_code_counts, sort_keys=True) if runtime_strategy_reason_code_counts else '-'}`",
         "",
+        "## Runtime Strategies",
+        "",
+        "| Strategy | Probe IDs |",
+        "| --- | --- |",
+    ]
+    for strategy, probe_ids in sorted(runtime_strategy_probe_ids.items()):
+        lines.append(
+            f"| {strategy or '-'} | {', '.join(probe_ids or []) or '-'} |"
+        )
+    lines.extend(
+        [
+            "",
         "## Probes",
         "",
-        "| Probe | Status | Source Runtime | Refreshed Runtime | Source Autoware | Refreshed Autoware | Consumer | Supplemental Dep | Recovered Topics |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
-    ]
+        "| Probe | Status | Strategy | Source Runtime | Refreshed Runtime | Source Autoware | Refreshed Autoware | Consumer | Supplemental Dep | Recovered Topics |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        ]
+    )
     for probe in probe_rows:
         lines.append(
             "| "
@@ -166,6 +186,7 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
                 [
                     str(probe.get("probe_id") or "-"),
                     str(probe.get("status") or "-"),
+                    str(probe.get("backend_runtime_strategy") or "-"),
                     str(probe.get("source_runtime_status") or "-"),
                     str(probe.get("runtime_status") or "-"),
                     str(probe.get("source_autoware_pipeline_status") or "-"),
@@ -228,6 +249,7 @@ def run_scenario_runtime_backend_probe_set(
         rebridge_report = dict(
             probe_result.get("rebridge_result", {}).get("workflow_report", {})
         )
+        rebridge_status_summary = dict(rebridge_report.get("status_summary", {}))
         rebridge_comparison = dict(
             rebridge_report.get("rebridge", {}).get("comparison", {})
         )
@@ -260,6 +282,30 @@ def run_scenario_runtime_backend_probe_set(
                     probe_summary.get("semantic_topic_recovered")
                 ),
                 "supplemental_dependency": supplemental_dependency,
+                "backend_runtime_strategy": rebridge_status_summary.get(
+                    "backend_runtime_strategy"
+                ),
+                "backend_runtime_strategy_source": rebridge_status_summary.get(
+                    "backend_runtime_strategy_source"
+                ),
+                "backend_runtime_preferred_runtime_source": rebridge_status_summary.get(
+                    "backend_runtime_preferred_runtime_source"
+                ),
+                "backend_runtime_strategy_reason_codes": list(
+                    rebridge_status_summary.get(
+                        "backend_runtime_strategy_reason_codes", []
+                    )
+                    or []
+                ),
+                "backend_runtime_recommended_command": rebridge_status_summary.get(
+                    "backend_runtime_recommended_command"
+                ),
+                "backend_runtime_selected_path": rebridge_status_summary.get(
+                    "backend_runtime_selected_path"
+                ),
+                "backend_runtime_docker_storage_status": rebridge_status_summary.get(
+                    "backend_runtime_docker_storage_status"
+                ),
                 "source_missing_required_topics": source_missing_required_topics,
                 "refreshed_missing_required_topics": refreshed_missing_required_topics,
                 "recovered_required_topics": recovered_required_topics,
@@ -289,12 +335,27 @@ def run_scenario_runtime_backend_probe_set(
         if result.get("supplemental_dependency")
     )
     status_counts: dict[str, int] = {}
+    runtime_strategy_counts: dict[str, int] = {}
+    runtime_strategy_probe_ids: dict[str, list[str]] = {}
+    runtime_strategy_reason_code_counts: dict[str, int] = {}
     recovered_required_topics: set[str] = set()
     source_missing_required_topics: set[str] = set()
     refreshed_missing_required_topics: set[str] = set()
     for result in probe_results:
         status_key = str(result.get("status") or "UNKNOWN")
         status_counts[status_key] = status_counts.get(status_key, 0) + 1
+        runtime_strategy = str(result.get("backend_runtime_strategy") or "UNKNOWN")
+        runtime_strategy_counts[runtime_strategy] = (
+            runtime_strategy_counts.get(runtime_strategy, 0) + 1
+        )
+        runtime_strategy_probe_ids.setdefault(runtime_strategy, []).append(
+            str(result.get("probe_id") or "")
+        )
+        for reason_code in result.get("backend_runtime_strategy_reason_codes", []) or []:
+            reason_code_str = str(reason_code)
+            runtime_strategy_reason_code_counts[reason_code_str] = (
+                runtime_strategy_reason_code_counts.get(reason_code_str, 0) + 1
+            )
         recovered_required_topics.update(result.get("recovered_required_topics", []) or [])
         source_missing_required_topics.update(
             result.get("source_missing_required_topics", []) or []
@@ -317,6 +378,12 @@ def run_scenario_runtime_backend_probe_set(
         "runtime_native_ready_probe_ids": runtime_native_ready_probe_ids,
         "supplemental_dependency_probe_ids": supplemental_dependency_probe_ids,
         "status_counts": status_counts,
+        "runtime_strategy_counts": runtime_strategy_counts,
+        "runtime_strategy_probe_ids": {
+            strategy: sorted(probe_ids)
+            for strategy, probe_ids in sorted(runtime_strategy_probe_ids.items())
+        },
+        "runtime_strategy_reason_code_counts": runtime_strategy_reason_code_counts,
         "source_missing_required_topics": sorted(source_missing_required_topics),
         "refreshed_missing_required_topics": sorted(refreshed_missing_required_topics),
         "recovered_required_topics": sorted(recovered_required_topics),
