@@ -138,11 +138,14 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
         f"- Pass count: `{report.get('pass_count') or 0}`",
         f"- Fail count: `{report.get('fail_count') or 0}`",
         f"- Failed probe IDs: `{', '.join(report.get('failed_probe_ids', [])) or '-'}`",
+        f"- Runtime-native READY probes: `{', '.join(report.get('runtime_native_ready_probe_ids', [])) or '-'}`",
+        f"- Supplemental-dependent probes: `{', '.join(report.get('supplemental_dependency_probe_ids', [])) or '-'}`",
+        f"- Recovered required topics: `{', '.join(report.get('recovered_required_topics', [])) or '-'}`",
         "",
         "## Probes",
         "",
-        "| Probe | Status | Runtime | Autoware | Consumer | Semantic Recovered |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "| Probe | Status | Source Runtime | Refreshed Runtime | Source Autoware | Refreshed Autoware | Consumer | Supplemental Dep | Recovered Topics |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for probe in probe_rows:
         lines.append(
@@ -151,10 +154,13 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
                 [
                     str(probe.get("probe_id") or "-"),
                     str(probe.get("status") or "-"),
+                    str(probe.get("source_runtime_status") or "-"),
                     str(probe.get("runtime_status") or "-"),
+                    str(probe.get("source_autoware_pipeline_status") or "-"),
                     str(probe.get("autoware_pipeline_status") or "-"),
                     str(probe.get("consumer_profile_id") or "-"),
-                    str(bool(probe.get("semantic_topic_recovered"))),
+                    str(bool(probe.get("supplemental_dependency"))),
+                    str(", ".join(probe.get("recovered_required_topics", [])) or "-"),
                 ]
             )
             + " |"
@@ -207,18 +213,44 @@ def run_scenario_runtime_backend_probe_set(
         )
         probe_report = dict(probe_result.get("report", {}))
         probe_summary = dict(probe_report.get("summary", {}))
+        rebridge_report = dict(
+            probe_result.get("rebridge_result", {}).get("workflow_report", {})
+        )
+        rebridge_comparison = dict(
+            rebridge_report.get("rebridge", {}).get("comparison", {})
+        )
+        recovered_required_topics = list(
+            rebridge_comparison.get("recovered_required_topics", []) or []
+        )
+        source_missing_required_topics = list(
+            rebridge_comparison.get("source_missing_required_topics", []) or []
+        )
+        refreshed_missing_required_topics = list(
+            rebridge_comparison.get("refreshed_missing_required_topics", []) or []
+        )
+        supplemental_dependency = bool(
+            recovered_required_topics or probe_summary.get("semantic_topic_recovered")
+        )
         probe_results.append(
             {
                 "probe_id": probe_report.get("probe_id"),
                 "status": probe_report.get("status"),
                 "consumer_profile_id": probe_report.get("consumer_profile_id"),
+                "source_runtime_status": rebridge_comparison.get("source_runtime_status"),
                 "runtime_status": probe_summary.get("runtime_status"),
+                "source_autoware_pipeline_status": rebridge_comparison.get(
+                    "source_autoware_pipeline_status"
+                ),
                 "autoware_pipeline_status": probe_summary.get(
                     "autoware_pipeline_status"
                 ),
                 "semantic_topic_recovered": bool(
                     probe_summary.get("semantic_topic_recovered")
                 ),
+                "supplemental_dependency": supplemental_dependency,
+                "source_missing_required_topics": source_missing_required_topics,
+                "refreshed_missing_required_topics": refreshed_missing_required_topics,
+                "recovered_required_topics": recovered_required_topics,
                 "runtime_backend_workflow_report_path": str(runtime_report_path),
                 "report_path": str(probe_result["report_path"]),
                 "markdown_path": str(probe_result["markdown_path"]),
@@ -234,10 +266,30 @@ def run_scenario_runtime_backend_probe_set(
     failed_probe_ids = sorted(
         result["probe_id"] for result in probe_results if result.get("status") != "PASS"
     )
+    runtime_native_ready_probe_ids = sorted(
+        result["probe_id"]
+        for result in probe_results
+        if result.get("status") == "PASS" and not result.get("supplemental_dependency")
+    )
+    supplemental_dependency_probe_ids = sorted(
+        result["probe_id"]
+        for result in probe_results
+        if result.get("supplemental_dependency")
+    )
     status_counts: dict[str, int] = {}
+    recovered_required_topics: set[str] = set()
+    source_missing_required_topics: set[str] = set()
+    refreshed_missing_required_topics: set[str] = set()
     for result in probe_results:
         status_key = str(result.get("status") or "UNKNOWN")
         status_counts[status_key] = status_counts.get(status_key, 0) + 1
+        recovered_required_topics.update(result.get("recovered_required_topics", []) or [])
+        source_missing_required_topics.update(
+            result.get("source_missing_required_topics", []) or []
+        )
+        refreshed_missing_required_topics.update(
+            result.get("refreshed_missing_required_topics", []) or []
+        )
 
     report = {
         "scenario_runtime_backend_probe_set_report_schema_version": SCENARIO_RUNTIME_BACKEND_PROBE_SET_REPORT_SCHEMA_VERSION_V0,
@@ -250,7 +302,12 @@ def run_scenario_runtime_backend_probe_set(
         "fail_count": len(failed_probe_ids),
         "passed_probe_ids": passed_probe_ids,
         "failed_probe_ids": failed_probe_ids,
+        "runtime_native_ready_probe_ids": runtime_native_ready_probe_ids,
+        "supplemental_dependency_probe_ids": supplemental_dependency_probe_ids,
         "status_counts": status_counts,
+        "source_missing_required_topics": sorted(source_missing_required_topics),
+        "refreshed_missing_required_topics": sorted(refreshed_missing_required_topics),
+        "recovered_required_topics": sorted(recovered_required_topics),
         "probes": probe_results,
         "repo_root": str(resolved_repo_root),
     }

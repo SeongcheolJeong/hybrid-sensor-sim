@@ -59,6 +59,31 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                     "report_path": report_path,
                     "markdown_path": markdown_path,
                     "report": report,
+                    "rebridge_result": {
+                        "workflow_report": {
+                            "rebridge": {
+                                "comparison": {
+                                    "source_runtime_status": "DEGRADED"
+                                    if probe_id == "semantic_recovery_ready"
+                                    else "SUCCEEDED",
+                                    "source_autoware_pipeline_status": "DEGRADED"
+                                    if probe_id == "semantic_recovery_ready"
+                                    else "READY",
+                                    "source_missing_required_topics": (
+                                        ["/sensing/camera/camera_front/semantic/image_raw"]
+                                        if probe_id == "semantic_recovery_ready"
+                                        else []
+                                    ),
+                                    "refreshed_missing_required_topics": [],
+                                    "recovered_required_topics": (
+                                        ["/sensing/camera/camera_front/semantic/image_raw"]
+                                        if probe_id == "semantic_recovery_ready"
+                                        else []
+                                    ),
+                                }
+                            }
+                        }
+                    },
                 }
 
             with patch(
@@ -83,6 +108,15 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
             self.assertEqual(
                 report["passed_probe_ids"],
                 ["semantic_recovery_ready", "tracking_ready"],
+            )
+            self.assertEqual(report["runtime_native_ready_probe_ids"], ["tracking_ready"])
+            self.assertEqual(
+                report["supplemental_dependency_probe_ids"],
+                ["semantic_recovery_ready"],
+            )
+            self.assertEqual(
+                report["recovered_required_topics"],
+                ["/sensing/camera/camera_front/semantic/image_raw"],
             )
             self.assertTrue(result["report_path"].is_file())
             self.assertTrue(result["markdown_path"].is_file())
@@ -124,6 +158,19 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                     "report_path": report_path,
                     "markdown_path": markdown_path,
                     "report": report,
+                    "rebridge_result": {
+                        "workflow_report": {
+                            "rebridge": {
+                                "comparison": {
+                                    "source_runtime_status": "DEGRADED",
+                                    "source_autoware_pipeline_status": "DEGRADED",
+                                    "source_missing_required_topics": [],
+                                    "refreshed_missing_required_topics": [],
+                                    "recovered_required_topics": [],
+                                }
+                            }
+                        }
+                    },
                 }
 
             with patch(

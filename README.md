@@ -480,6 +480,15 @@ That runs the built-in `tracking READY` and `semantic recovery READY` probes aga
 - `scenario_runtime_backend_probe_set_report_v0.json`
 - `scenario_runtime_backend_probe_set_report_v0.md`
 
+The probe-set report also separates:
+
+- `runtime_native_ready_probe_ids`
+- `supplemental_dependency_probe_ids`
+- `source_missing_required_topics`
+- `recovered_required_topics`
+
+so the remaining semantic-output gap is visible without opening each individual probe report.
+
 Both `run_scenario_variants.py` and `run_scenario_variant_workflow.py` resolve default scenario-language profiles from:
 
 - `tests/fixtures/autonomy_e2e/p_validation`
