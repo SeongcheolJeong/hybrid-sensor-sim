@@ -341,7 +341,11 @@ class ScenarioRuntimeBackendRebridgeTests(unittest.TestCase):
         backend_report_path: Path,
         batch_report_path: Path | None,
         consumer_profile_id: str = "",
+        status_summary_overrides: dict[str, object] | None = None,
     ) -> Path:
+        status_summary = {"autoware_consumer_profile_id": consumer_profile_id}
+        if isinstance(status_summary_overrides, dict):
+            status_summary.update(status_summary_overrides)
         _write_json(
             path,
             {
@@ -357,7 +361,7 @@ class ScenarioRuntimeBackendRebridgeTests(unittest.TestCase):
                     },
                 },
                 "backend_smoke_workflow": {"status": "HANDOFF_DOCKER_OUTPUT_READY"},
-                "status_summary": {"autoware_consumer_profile_id": consumer_profile_id},
+                "status_summary": status_summary,
                 "artifacts": {
                     "backend_smoke_workflow_report_path": str(backend_report_path.resolve()),
                     "batch_workflow_report_path": (
@@ -391,6 +395,10 @@ class ScenarioRuntimeBackendRebridgeTests(unittest.TestCase):
                 backend_report_path=primary_backend_report,
                 batch_report_path=batch_report,
                 consumer_profile_id="semantic_perception_v0",
+                status_summary_overrides={
+                    "autoware_pipeline_status": "DEGRADED",
+                    "autoware_missing_required_topic_count": 1,
+                },
             )
             primary_backend_payload = json.loads(
                 primary_backend_report.read_text(encoding="utf-8")
@@ -431,11 +439,29 @@ class ScenarioRuntimeBackendRebridgeTests(unittest.TestCase):
                 "ATTENTION",
             )
             self.assertEqual(
+                report["rebridge"]["comparison"]["source_missing_required_topic_count"],
+                1,
+            )
+            self.assertEqual(
                 report["rebridge"]["comparison"]["refreshed_runtime_status"],
                 "SUCCEEDED",
             )
+            self.assertEqual(
+                report["rebridge"]["comparison"]["refreshed_missing_required_topic_count"],
+                0,
+            )
             self.assertTrue(report["rebridge"]["comparison"]["status_changed"])
+            self.assertTrue(report["rebridge"]["comparison"]["semantic_topic_recovered"])
+            self.assertEqual(
+                report["rebridge"]["comparison"]["semantic_recovery_source"],
+                "supplemental_merge",
+            )
             self.assertEqual(report["status_summary"]["autoware_merged_report_count"], 2)
+            self.assertTrue(report["status_summary"]["autoware_semantic_topic_recovered"])
+            self.assertEqual(
+                report["status_summary"]["autoware_semantic_recovery_source"],
+                "supplemental_merge",
+            )
             self.assertEqual(
                 report["rebridge"]["comparison"]["refreshed_autoware_merged_report_count"],
                 2,
@@ -514,6 +540,10 @@ class ScenarioRuntimeBackendRebridgeTests(unittest.TestCase):
                 backend_report_path=primary_backend_report,
                 batch_report_path=batch_report,
                 consumer_profile_id="semantic_perception_v0",
+                status_summary_overrides={
+                    "autoware_pipeline_status": "DEGRADED",
+                    "autoware_missing_required_topic_count": 1,
+                },
             )
             primary_backend_payload = json.loads(
                 primary_backend_report.read_text(encoding="utf-8")
@@ -571,9 +601,23 @@ class ScenarioRuntimeBackendRebridgeTests(unittest.TestCase):
             self.assertTrue(
                 report["rebridge"]["comparison"]["merged_report_count_changed"]
             )
+            self.assertTrue(report["rebridge"]["comparison"]["semantic_topic_recovered"])
+            self.assertEqual(
+                report["rebridge"]["comparison"]["semantic_recovery_source"],
+                "supplemental_merge",
+            )
             self.assertEqual(
                 report["backend_smoke_workflow"]["autoware"]["supplemental_semantic_status"],
                 "HANDOFF_DOCKER_OUTPUT_READY",
+            )
+            self.assertTrue(report["status_summary"]["autoware_semantic_topic_recovered"])
+            self.assertEqual(
+                report["status_summary"]["source_autoware_missing_required_topic_count"],
+                1,
+            )
+            self.assertEqual(
+                report["status_summary"]["refreshed_autoware_missing_required_topic_count"],
+                0,
             )
             self.assertEqual(
                 report["artifacts"]["supplemental_semantic_backend_smoke_workflow_report_path"],

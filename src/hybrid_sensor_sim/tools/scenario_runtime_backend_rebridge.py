@@ -484,6 +484,14 @@ def _build_rebridge_comparison(
     source_autoware_status = str(
         source_status_summary.get("autoware_pipeline_status", "")
     ).strip() or None
+    source_consumer_profile_id = str(
+        source_status_summary.get("autoware_consumer_profile_id", "")
+    ).strip() or None
+    source_missing_required_topic_count = (
+        source_status_summary.get("autoware_missing_required_topic_count")
+        if isinstance(source_status_summary.get("autoware_missing_required_topic_count"), int)
+        else None
+    )
     source_merged_report_count = (
         source_status_summary.get("autoware_merged_report_count")
         if isinstance(source_status_summary.get("autoware_merged_report_count"), int)
@@ -492,6 +500,14 @@ def _build_rebridge_comparison(
 
     refreshed_autoware = dict(refreshed_backend_report.get("autoware", {}))
     refreshed_autoware_status = str(refreshed_autoware.get("status", "")).strip() or None
+    refreshed_consumer_profile_id = str(
+        refreshed_autoware.get("consumer_profile_id", "")
+    ).strip() or None
+    refreshed_missing_required_topic_count = (
+        refreshed_autoware.get("missing_required_topic_count")
+        if isinstance(refreshed_autoware.get("missing_required_topic_count"), int)
+        else None
+    )
     refreshed_merged_report_count = refreshed_autoware.get("merged_report_count")
     refreshed_backend_status = str(refreshed_backend_report.get("status", "")).strip() or None
 
@@ -501,20 +517,37 @@ def _build_rebridge_comparison(
         if isinstance(refreshed_merged_report_count, int)
         else 0
     )
+    consumer_profile_id = refreshed_consumer_profile_id or source_consumer_profile_id
+    semantic_topic_recovered = (
+        consumer_profile_id == "semantic_perception_v0"
+        and isinstance(source_missing_required_topic_count, int)
+        and source_missing_required_topic_count > 0
+        and isinstance(refreshed_missing_required_topic_count, int)
+        and refreshed_missing_required_topic_count == 0
+        and len(supplemental_report_paths) > 0
+    )
 
     return {
         "source_runtime_status": source_status,
         "source_backend_smoke_status": source_backend_status,
         "source_autoware_pipeline_status": source_autoware_status,
+        "source_autoware_consumer_profile_id": source_consumer_profile_id,
+        "source_missing_required_topic_count": source_missing_required_topic_count,
         "source_autoware_merged_report_count": source_merged_report_count,
         "refreshed_runtime_status": refreshed_workflow_status,
         "refreshed_backend_smoke_status": refreshed_backend_status,
         "refreshed_autoware_pipeline_status": refreshed_autoware_status,
+        "refreshed_autoware_consumer_profile_id": refreshed_consumer_profile_id,
+        "refreshed_missing_required_topic_count": refreshed_missing_required_topic_count,
         "refreshed_autoware_merged_report_count": refreshed_merged_report_count,
         "status_changed": source_status != refreshed_workflow_status,
         "autoware_status_changed": source_autoware_status != refreshed_autoware_status,
         "merged_report_count_changed": normalized_source_merged != normalized_refreshed_merged,
         "supplemental_backend_smoke_workflow_report_count": len(supplemental_report_paths),
+        "semantic_topic_recovered": semantic_topic_recovered,
+        "semantic_recovery_source": (
+            "supplemental_merge" if semantic_topic_recovered else None
+        ),
     }
 
 
@@ -962,6 +995,18 @@ def run_scenario_runtime_backend_rebridge(
         batch_report=batch_report,
         backend_report=refreshed_backend_report,
         history_guard_report=history_guard_report,
+    )
+    workflow_report["status_summary"]["autoware_semantic_topic_recovered"] = rebridge_comparison.get(
+        "semantic_topic_recovered"
+    )
+    workflow_report["status_summary"]["autoware_semantic_recovery_source"] = rebridge_comparison.get(
+        "semantic_recovery_source"
+    )
+    workflow_report["status_summary"]["source_autoware_missing_required_topic_count"] = rebridge_comparison.get(
+        "source_missing_required_topic_count"
+    )
+    workflow_report["status_summary"]["refreshed_autoware_missing_required_topic_count"] = rebridge_comparison.get(
+        "refreshed_missing_required_topic_count"
     )
 
     report_path = out_root / "scenario_runtime_backend_rebridge_report_v0.json"
