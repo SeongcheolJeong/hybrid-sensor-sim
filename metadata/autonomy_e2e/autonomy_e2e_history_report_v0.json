@@ -1,9 +1,9 @@
 {
   "schema_version": "autonomy_e2e_history_report_v0",
-  "generated_at_utc": "2026-03-09T15:10:19+00:00",
+  "generated_at_utc": "2026-03-09T18:03:37+00:00",
   "overview": {
     "integration_baseline_commit": "8d2353f",
-    "current_repo_head_commit": "35912a0e5d073a409d863f6b4a2125134b20710b",
+    "current_repo_head_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79",
     "source_head_commit": "6b09d63e42c2446def0c56f3259e1fb019ccff23",
     "project_count": 7,
     "block_count": 24,
