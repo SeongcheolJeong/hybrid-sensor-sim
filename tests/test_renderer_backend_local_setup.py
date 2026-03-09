@@ -213,7 +213,7 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
                 " ".join(summary["acquisition_hints"]["awsim"]["next_actions"]),
             )
             self.assertIn(
-                "https://github.com/carla-simulator/carla/releases/tag/0.10.0",
+                "https://s3.us-east-005.backblazeb2.com/carla-releases/Linux/Dev/CARLA_UE5_Latest.tar.gz",
                 [
                     item["url"]
                     for item in summary["acquisition_hints"]["carla"]["download_options"]

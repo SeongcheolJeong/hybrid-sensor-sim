@@ -794,8 +794,10 @@ def _resolve_runtime_selection(
 
     if package_acquire_summary_text and not resolved_backend_bin:
         package_acquire_payload = _load_json_object(Path(package_acquire_summary_text).resolve())
+        package_acquire_stage = package_acquire_payload.get("stage")
+        package_acquire_stage_dict = package_acquire_stage if isinstance(package_acquire_stage, dict) else {}
         candidate = _selection_value(
-            dict(dict(package_acquire_payload.get("stage", {})).get("selection", {})),
+            dict(package_acquire_stage_dict.get("selection", {})),
             backend_env_var,
         )
         if candidate:
@@ -803,8 +805,10 @@ def _resolve_runtime_selection(
             backend_bin_source = "package_acquire_summary"
     if package_acquire_summary_text and not resolved_renderer_map:
         package_acquire_payload = _load_json_object(Path(package_acquire_summary_text).resolve())
+        package_acquire_stage = package_acquire_payload.get("stage")
+        package_acquire_stage_dict = package_acquire_stage if isinstance(package_acquire_stage, dict) else {}
         candidate = _selection_value(
-            dict(dict(package_acquire_payload.get("stage", {})).get("selection", {})),
+            dict(package_acquire_stage_dict.get("selection", {})),
             map_env_var,
         )
         if candidate:

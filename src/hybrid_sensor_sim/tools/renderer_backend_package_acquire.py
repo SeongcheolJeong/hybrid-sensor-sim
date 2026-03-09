@@ -19,6 +19,15 @@ from hybrid_sensor_sim.tools.renderer_backend_package_stage import (
 
 
 _SUPPORTED_BACKENDS = ("awsim", "carla")
+_ARCHIVE_SUFFIXES = (
+    ".zip",
+    ".tar",
+    ".tar.gz",
+    ".tgz",
+    ".tar.bz2",
+    ".tbz2",
+    ".7z",
+)
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -120,6 +129,17 @@ def _resolve_download_options(setup_summary: dict[str, Any], backend: str) -> li
     return options
 
 
+def _is_probable_archive_url(url: str) -> bool:
+    parsed = urlparse(url)
+    lowered_path = parsed.path.lower()
+    return any(lowered_path.endswith(suffix) for suffix in _ARCHIVE_SUFFIXES)
+
+
+def _looks_like_archive_filename(name: str) -> bool:
+    lowered = name.lower().strip()
+    return any(lowered.endswith(suffix) for suffix in _ARCHIVE_SUFFIXES)
+
+
 def _resolve_local_archive_candidates(setup_summary: dict[str, Any], backend: str) -> list[Path]:
     hints = setup_summary.get("acquisition_hints", {})
     backend_hints = hints.get(backend, {}) if isinstance(hints, dict) else {}
@@ -154,18 +174,25 @@ def _resolve_download_choice(
         source = "explicit"
         selected_name = explicit_name.strip() if explicit_name else ""
     elif options:
-        download_url = options[0]["url"]
+        archive_options = [item for item in options if _is_probable_archive_url(item["url"])]
+        if not archive_options:
+            issues.append(
+                f"No archive-style download URL resolved for {backend}. Provide --download-url or update acquisition_hints.{backend}.download_options."
+            )
+            return None, None, None, issues, options
+        download_url = archive_options[0]["url"]
         source = "setup_summary"
-        selected_name = explicit_name.strip() if explicit_name else options[0]["name"]
+        selected_name = explicit_name.strip() if explicit_name else archive_options[0]["name"]
     else:
         issues.append(
             f"No download URL resolved for {backend}. Provide --download-url or a setup summary with acquisition_hints.{backend}.download_options."
         )
         return None, None, None, issues, options
 
-    if not selected_name:
-        parsed = urlparse(download_url)
-        selected_name = Path(parsed.path).name
+    parsed = urlparse(download_url)
+    url_filename = Path(parsed.path).name
+    if not selected_name or not _looks_like_archive_filename(selected_name):
+        selected_name = url_filename or selected_name
     if not selected_name:
         issues.append(f"Could not determine a download filename for {backend}.")
         return None, None, source, issues, options

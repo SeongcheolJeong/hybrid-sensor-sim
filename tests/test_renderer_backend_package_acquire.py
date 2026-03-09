@@ -203,6 +203,83 @@ class RendererBackendPackageAcquireTests(unittest.TestCase):
             self.assertFalse((root / "downloads" / "CARLA_UE5_Latest.tar.gz").exists())
             self.assertIsNone(summary["stage"])
 
+    def test_build_acquire_prefers_archive_style_url_over_release_page(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            setup_summary = root / "renderer_backend_local_setup.json"
+            setup_summary.write_text(
+                json.dumps(
+                    {
+                        "acquisition_hints": {
+                            "carla": {
+                                "download_options": [
+                                    {
+                                        "name": "CARLA release page",
+                                        "url": "https://github.com/carla-simulator/carla/releases/tag/0.10.0",
+                                    },
+                                    {
+                                        "name": "CARLA_UE5_Latest.tar.gz",
+                                        "url": "https://example.invalid/CARLA_UE5_Latest.tar.gz",
+                                    },
+                                ]
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            summary = build_renderer_backend_package_acquire(
+                backend="carla",
+                repo_root=root / "repo",
+                setup_summary_path=setup_summary,
+                download_dir=root / "downloads",
+                output_root=root / "runtime_backends" / "carla",
+                dry_run=True,
+            )
+
+            self.assertTrue(summary["readiness"]["download_url_resolved"])
+            self.assertEqual(summary["download"]["url"], "https://example.invalid/CARLA_UE5_Latest.tar.gz")
+            self.assertEqual(summary["download"]["name"], "CARLA_UE5_Latest.tar.gz")
+            self.assertEqual(
+                summary["download"]["target_path"],
+                str((root / "downloads" / "CARLA_UE5_Latest.tar.gz").resolve()),
+            )
+
+    def test_build_acquire_reports_missing_archive_style_url(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            setup_summary = root / "renderer_backend_local_setup.json"
+            setup_summary.write_text(
+                json.dumps(
+                    {
+                        "acquisition_hints": {
+                            "carla": {
+                                "download_options": [
+                                    {
+                                        "name": "CARLA release page",
+                                        "url": "https://github.com/carla-simulator/carla/releases/tag/0.10.0",
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            summary = build_renderer_backend_package_acquire(
+                backend="carla",
+                repo_root=root / "repo",
+                setup_summary_path=setup_summary,
+                download_dir=root / "downloads",
+                output_root=root / "runtime_backends" / "carla",
+                dry_run=True,
+            )
+
+            self.assertFalse(summary["readiness"]["download_url_resolved"])
+            self.assertIn("No archive-style download URL resolved for carla", "\n".join(summary["issues"]))
+
     def test_build_acquire_reports_missing_download_url(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

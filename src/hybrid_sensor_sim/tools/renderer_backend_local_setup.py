@@ -1211,11 +1211,7 @@ def _build_acquisition_hints(
         ),
         "download_options": [
             {
-                "name": "CARLA 0.10.0 release page",
-                "url": "https://github.com/carla-simulator/carla/releases/tag/0.10.0",
-            },
-            {
-                "name": "CARLA Nightly Build (Linux)",
+                "name": "CARLA_UE5_Latest.tar.gz",
                 "url": "https://s3.us-east-005.backblazeb2.com/carla-releases/Linux/Dev/CARLA_UE5_Latest.tar.gz",
             },
             {
