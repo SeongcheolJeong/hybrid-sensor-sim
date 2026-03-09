@@ -1,6 +1,6 @@
 {
   "schema_version": "autonomy_e2e_project_inventory_v0",
-  "generated_at_utc": "2026-03-09T02:27:33+00:00",
+  "generated_at_utc": "2026-03-09T02:45:21+00:00",
   "source_repo_root": "/Users/seongcheoljeong/Documents/Autonomy-E2E/Autonomy-E2E",
   "integration_baseline_commit": "8d2353f",
   "projects": [
@@ -1203,6 +1203,7 @@
         "scripts/run_scenario_batch_workflow.py",
         "scripts/run_scenario_matrix_sweep.py",
         "scripts/run_scenario_runtime_backend_probe.py",
+        "scripts/run_scenario_runtime_backend_probe_set.py",
         "scripts/run_scenario_runtime_backend_rebridge.py",
         "scripts/run_scenario_runtime_backend_workflow.py",
         "scripts/run_sensor_rig_sweep.py",
@@ -1226,6 +1227,7 @@
         "src/hybrid_sensor_sim/tools/renderer_backend_workflow.py",
         "src/hybrid_sensor_sim/tools/scenario_backend_smoke_workflow.py",
         "src/hybrid_sensor_sim/tools/scenario_runtime_backend_probe.py",
+        "src/hybrid_sensor_sim/tools/scenario_runtime_backend_probe_set.py",
         "src/hybrid_sensor_sim/tools/scenario_runtime_backend_rebridge.py",
         "src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py",
         "src/hybrid_sensor_sim/tools/scenario_runtime_bridge.py",
@@ -1261,6 +1263,7 @@
         "tests/test_scenario_batch_workflow.py",
         "tests/test_scenario_matrix_sweep.py",
         "tests/test_scenario_runtime_backend_probe.py",
+        "tests/test_scenario_runtime_backend_probe_set.py",
         "tests/test_scenario_runtime_backend_rebridge.py",
         "tests/test_scenario_runtime_backend_workflow.py",
         "tests/test_sensor_config.py",
