@@ -454,6 +454,19 @@ python3 scripts/run_scenario_runtime_backend_rebridge.py \
 This re-reads the existing backend smoke workflow report, optionally merges supplemental semantic smoke reports, regenerates the current Autoware bridge artifacts, and emits a fresh top-level runtime-style report and Markdown summary.
 The rebridge report also records a `rebridge.comparison` section so source-vs-refreshed runtime status, Autoware status, merged supplemental-report count changes, semantic-topic recovery, missing-required-topic delta, and missing-vs-recovered topic lists are visible immediately. For `semantic_perception_v0`, the rebridge path can also reconstruct a semantic-only supplemental smoke run from the source backend smoke report when the original runtime artifact is missing the semantic topic. That supplemental rerun now uses its own isolated `renderer_backend_workflow` root, so real degraded AWSIM handoff artifacts can be re-bridged into `READY` when the semantic-only supplemental pass succeeds.
 
+If you want a compact pass/fail probe instead of the full rebridge report, you can wrap that same path with:
+
+```bash
+python3 scripts/run_scenario_runtime_backend_probe.py \
+  --runtime-backend-workflow-report artifacts/scenario_runtime_backend_actual_awsim_run/scenario_runtime_backend_workflow_report_v0.json \
+  --out-root artifacts/scenario_runtime_backend_probe_runs \
+  --consumer-profile semantic_perception_v0 \
+  --expect-runtime-status SUCCEEDED \
+  --expect-autoware-status READY
+```
+
+That writes `scenario_runtime_backend_probe_report_v0.json` and a short Markdown summary, making it easier to pin repeatable real AWSIM `tracking READY` or `semantic recovery READY` probes.
+
 Both `run_scenario_variants.py` and `run_scenario_variant_workflow.py` resolve default scenario-language profiles from:
 
 - `tests/fixtures/autonomy_e2e/p_validation`
