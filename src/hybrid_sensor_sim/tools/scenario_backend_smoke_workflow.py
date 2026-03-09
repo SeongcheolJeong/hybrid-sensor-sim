@@ -545,6 +545,7 @@ def _resolve_semantic_supplemental_strategy(
     *,
     requested_strategy: str,
     consumer_profile_id: str,
+    backend: str,
 ) -> dict[str, str]:
     requested = str(requested_strategy or "").strip() or "auto"
     if requested not in {"auto", "off", "dual_pass"}:
@@ -557,6 +558,13 @@ def _resolve_semantic_supplemental_strategy(
             "requested": requested,
             "effective": "off",
             "reason": "consumer_profile_not_semantic",
+        }
+    normalized_backend = str(backend or "").strip().lower()
+    if requested == "auto" and normalized_backend == "awsim":
+        return {
+            "requested": requested,
+            "effective": "dual_pass",
+            "reason": "semantic_profile_awsim_default_dual_pass",
         }
     return {
         "requested": requested,
@@ -939,6 +947,7 @@ def run_scenario_backend_smoke_workflow(
     semantic_supplemental_strategy = _resolve_semantic_supplemental_strategy(
         requested_strategy=autoware_semantic_supplemental_strategy,
         consumer_profile_id=autoware_consumer_profile,
+        backend=backend,
     )
     renderer_backend_workflow_summary = None
     status = "BRIDGED_ONLY" if skip_smoke else "SMOKE_FAILED"

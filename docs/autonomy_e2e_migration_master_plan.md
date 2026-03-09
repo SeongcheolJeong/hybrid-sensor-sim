@@ -112,7 +112,7 @@ Still pending from this master plan:
    - that `DEGRADED` classification is now reproduced on the real AWSIM Linux handoff path, not only in mocked tests
    - the same real AWSIM Linux handoff path now also reproduces a runtime-origin `READY` case for `tracking_fusion_v0` when radar tracks are enabled
    - for `semantic_perception_v0`, the backend smoke workflow can now run a supplemental semantic-only smoke pass and merge it into the Autoware bridge bundle, giving the runtime path a concrete recovery path for missing semantic camera output
-   - that supplemental semantic path now has an explicit strategy control: `auto`, `off`, and `dual_pass`, so semantic consumers can choose whether the second semantic pass is reactive, disabled, or always-on
+   - that supplemental semantic path now has an explicit strategy control: `auto`, `off`, and `dual_pass`; for `semantic_perception_v0` on `AWSIM`, `auto` now promotes to an effective `dual_pass`, so the real packaged handoff path can recover semantic output without a separate manual flag
    - that live supplemental semantic pass now uses its own isolated `renderer_backend_workflow` root, so recovery cannot accidentally reuse the primary run's nested smoke artifacts
    - the top-level runtime workflow now surfaces merged-report count and supplemental semantic report details directly, so semantic recovery is visible in the first report instead of only in nested backend-smoke artifacts
    - the Autoware bridge now exposes run-level lineage so the selected variant, scenario source, smoke-ready scenario, and backend-export roots are all visible in one dataset manifest
