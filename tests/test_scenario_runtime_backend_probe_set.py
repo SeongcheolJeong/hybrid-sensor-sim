@@ -152,6 +152,16 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                 report["runtime_strategy_reason_code_counts"],
                 {"HOST_INCOMPATIBLE_PACKAGED_RUNTIME": 3},
             )
+            self.assertEqual(
+                report["runtime_strategy_recommended_command_counts"],
+                {
+                    "python3 scripts/run_renderer_backend_workflow.py --backend awsim --dry-run": 3
+                },
+            )
+            self.assertEqual(
+                report["recommended_next_command"],
+                "python3 scripts/run_renderer_backend_workflow.py --backend awsim --dry-run",
+            )
             self.assertTrue(result["report_path"].is_file())
             self.assertTrue(result["markdown_path"].is_file())
 
@@ -233,6 +243,10 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
             self.assertEqual(report["status"], "FAIL")
             self.assertEqual(report["fail_count"], 1)
             self.assertEqual(report["failed_probe_ids"], ["semantic_recovery_ready"])
+            self.assertEqual(
+                report["recommended_next_command"],
+                "python3 scripts/run_renderer_backend_workflow.py --backend awsim --dry-run",
+            )
 
     def test_probe_set_script_bootstraps_src_path(self) -> None:
         script_path = (

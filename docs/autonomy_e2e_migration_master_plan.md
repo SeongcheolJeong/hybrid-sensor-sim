@@ -96,6 +96,7 @@ Current repository paths:
 - local setup and backend workflow now also emit a normalized `runtime_strategy`, so the canonical repo can state the intended execution route directly instead of inferring it from low-level readiness flags
 - scenario-driven smoke/runtime workflows now lift that same `runtime_strategy` into their own top-level summaries, so migrated scenario execution can report the intended backend route without reopening local setup artifacts
 - the real runtime probe-set layer now also aggregates `runtime_strategy` by probe, so one pinned AWSIM/CARLA probe set can show readiness, recovery dependence, and execution-route intent together
+- the probe-set summary now also emits a single `recommended_next_command`, so pinned runtime parity checks can point directly at the next backend action without manual drill-down
 - existing real runtime/backend smoke artifacts can now be re-bridged into refreshed top-level runtime summaries and Autoware bundles without rerunning batch selection or backend smoke
 - that rebridge path now also emits source-vs-refreshed status comparison data, including semantic recovery source, missing-required-topic delta, and recovered-topic lists, making runtime bridge drift review possible from one report
 - for `semantic_perception_v0`, rebridge can now also reconstruct a semantic-only supplemental smoke pass from the source backend smoke report when the original runtime artifact is missing the semantic topic and no supplemental report path was persisted

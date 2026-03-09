@@ -145,6 +145,12 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
     runtime_strategy_reason_code_counts = dict(
         report.get("runtime_strategy_reason_code_counts", {}) or {}
     )
+    recommended_command_counts = dict(
+        report.get("runtime_strategy_recommended_command_counts", {}) or {}
+    )
+    recommended_command_probe_ids = dict(
+        report.get("runtime_strategy_recommended_command_probe_ids", {}) or {}
+    )
     lines = [
         "# Scenario Runtime Backend Probe Set",
         "",
@@ -160,6 +166,7 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
         f"- Recovered required topics: `{', '.join(report.get('recovered_required_topics', [])) or '-'}`",
         f"- Runtime strategy counts: `{json.dumps(runtime_strategy_counts, sort_keys=True) if runtime_strategy_counts else '-'}`",
         f"- Runtime strategy reason counts: `{json.dumps(runtime_strategy_reason_code_counts, sort_keys=True) if runtime_strategy_reason_code_counts else '-'}`",
+        f"- Recommended next command: `{report.get('recommended_next_command') or '-'}`",
         "",
         "## Runtime Strategies",
         "",
@@ -169,6 +176,19 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
     for strategy, probe_ids in sorted(runtime_strategy_probe_ids.items()):
         lines.append(
             f"| {strategy or '-'} | {', '.join(probe_ids or []) or '-'} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Runtime Commands",
+            "",
+            "| Command | Probe IDs |",
+            "| --- | --- |",
+        ]
+    )
+    for command, probe_ids in sorted(recommended_command_probe_ids.items()):
+        lines.append(
+            f"| {command or '-'} | {', '.join(probe_ids or []) or '-'} |"
         )
     lines.extend(
         [
@@ -338,6 +358,8 @@ def run_scenario_runtime_backend_probe_set(
     runtime_strategy_counts: dict[str, int] = {}
     runtime_strategy_probe_ids: dict[str, list[str]] = {}
     runtime_strategy_reason_code_counts: dict[str, int] = {}
+    runtime_strategy_recommended_command_counts: dict[str, int] = {}
+    runtime_strategy_recommended_command_probe_ids: dict[str, list[str]] = {}
     recovered_required_topics: set[str] = set()
     source_missing_required_topics: set[str] = set()
     refreshed_missing_required_topics: set[str] = set()
@@ -356,6 +378,17 @@ def run_scenario_runtime_backend_probe_set(
             runtime_strategy_reason_code_counts[reason_code_str] = (
                 runtime_strategy_reason_code_counts.get(reason_code_str, 0) + 1
             )
+        recommended_command = str(
+            result.get("backend_runtime_recommended_command") or ""
+        ).strip()
+        if recommended_command:
+            runtime_strategy_recommended_command_counts[recommended_command] = (
+                runtime_strategy_recommended_command_counts.get(recommended_command, 0)
+                + 1
+            )
+            runtime_strategy_recommended_command_probe_ids.setdefault(
+                recommended_command, []
+            ).append(str(result.get("probe_id") or ""))
         recovered_required_topics.update(result.get("recovered_required_topics", []) or [])
         source_missing_required_topics.update(
             result.get("source_missing_required_topics", []) or []
@@ -363,6 +396,21 @@ def run_scenario_runtime_backend_probe_set(
         refreshed_missing_required_topics.update(
             result.get("refreshed_missing_required_topics", []) or []
         )
+
+    recommended_next_command = ""
+    if failed_probe_ids:
+        for result in probe_results:
+            if result.get("probe_id") in failed_probe_ids:
+                recommended_next_command = str(
+                    result.get("backend_runtime_recommended_command") or ""
+                ).strip()
+                if recommended_next_command:
+                    break
+    if not recommended_next_command and runtime_strategy_recommended_command_counts:
+        recommended_next_command = sorted(
+            runtime_strategy_recommended_command_counts.items(),
+            key=lambda item: (-item[1], item[0]),
+        )[0][0]
 
     report = {
         "scenario_runtime_backend_probe_set_report_schema_version": SCENARIO_RUNTIME_BACKEND_PROBE_SET_REPORT_SCHEMA_VERSION_V0,
@@ -384,6 +432,14 @@ def run_scenario_runtime_backend_probe_set(
             for strategy, probe_ids in sorted(runtime_strategy_probe_ids.items())
         },
         "runtime_strategy_reason_code_counts": runtime_strategy_reason_code_counts,
+        "runtime_strategy_recommended_command_counts": runtime_strategy_recommended_command_counts,
+        "runtime_strategy_recommended_command_probe_ids": {
+            command: sorted(probe_ids)
+            for command, probe_ids in sorted(
+                runtime_strategy_recommended_command_probe_ids.items()
+            )
+        },
+        "recommended_next_command": recommended_next_command or None,
         "source_missing_required_topics": sorted(source_missing_required_topics),
         "refreshed_missing_required_topics": sorted(refreshed_missing_required_topics),
         "recovered_required_topics": sorted(recovered_required_topics),
