@@ -1472,6 +1472,28 @@ class ScenarioBackendSmokeWorkflowTests(unittest.TestCase):
                 ]
             )
             self.assertTrue(supplemental_report_path.is_file())
+            supplemental_workflow_report = json.loads(
+                supplemental_report_path.read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                Path(supplemental_workflow_report["smoke"]["summary_path"]).resolve(),
+                (
+                    root
+                    / "backend_smoke_workflow"
+                    / "supplemental_semantic"
+                    / "smoke_run"
+                    / "renderer_backend_smoke_summary.json"
+                ).resolve(),
+            )
+            self.assertEqual(
+                Path(supplemental_workflow_report["artifacts"]["smoke_input_config_path"]).resolve(),
+                (
+                    root
+                    / "backend_smoke_workflow"
+                    / "supplemental_semantic"
+                    / "scenario_backend_smoke_input_config.json"
+                ).resolve(),
+            )
             second_call = autoware_bridge.call_args_list[1]
             self.assertTrue(
                 second_call.kwargs["supplemental_backend_smoke_workflow_report_paths"]
