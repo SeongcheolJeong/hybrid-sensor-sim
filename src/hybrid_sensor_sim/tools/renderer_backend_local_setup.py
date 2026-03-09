@@ -933,6 +933,7 @@ def _render_local_setup_report(summary: dict[str, Any], summary_path: Path) -> s
     readiness = summary.get("readiness", {})
     probe_readiness = summary.get("probe_readiness", {})
     workflow_paths = summary.get("workflow_paths", {})
+    runtime_strategy = summary.get("runtime_strategy", {})
     selection = summary.get("selection", {})
     commands = summary.get("commands", {})
     issues = summary.get("issues", [])
@@ -976,10 +977,31 @@ def _render_local_setup_report(summary: dict[str, Any], summary_path: Path) -> s
         f"| package_workflow_path_ready | `{workflow_paths.get('package_workflow_path_ready')}` |",
         f"| local_backend_smoke_ready | `{workflow_paths.get('local_backend_smoke_ready')}` |",
         "",
+        "## Runtime Strategy",
+        "| Backend | Strategy | Preferred Source | Recommended Command | Reason Codes |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for backend in ("awsim", "carla"):
+        strategy_entry = runtime_strategy.get(backend, {}) if isinstance(runtime_strategy, dict) else {}
+        reason_codes = strategy_entry.get("reason_codes", [])
+        reason_text = ", ".join(str(item) for item in reason_codes) if isinstance(reason_codes, list) else "-"
+        lines.append(
+            "| {backend} | `{strategy}` | `{source}` | `{recommended}` | `{reasons}` |".format(
+                backend=backend,
+                strategy=strategy_entry.get("strategy"),
+                source=strategy_entry.get("preferred_runtime_source"),
+                recommended=strategy_entry.get("recommended_command"),
+                reasons=reason_text,
+            )
+        )
+    lines.extend(
+        [
+            "",
         "## Selection",
         "| Key | Value |",
         "| --- | --- |",
-    ]
+        ]
+    )
     for key in (
         "HELIOS_BIN",
         "HELIOS_DOCKER_IMAGE",
@@ -1241,6 +1263,137 @@ def _build_acquisition_hints(
         "helios": helios_hints,
         "awsim": awsim_hints,
         "carla": carla_hints,
+    }
+
+
+def _classify_backend_runtime_strategy(
+    *,
+    backend: str,
+    selection: dict[str, Any],
+    readiness: dict[str, Any],
+    acquisition_hints: dict[str, Any],
+    commands: dict[str, Any],
+    summary_path: Path | None = None,
+) -> dict[str, Any]:
+    backend_hints = acquisition_hints.get(backend, {}) if isinstance(acquisition_hints, dict) else {}
+    docker_hints = acquisition_hints.get("docker", {}) if isinstance(acquisition_hints, dict) else {}
+    local_download_candidates = backend_hints.get("local_download_candidates", [])
+    docker_storage_status = docker_hints.get("storage_probe_status")
+    recommended_handoff_command = (
+        "python3 scripts/run_renderer_backend_workflow.py "
+        f"--backend {backend}"
+        + (
+            f" --setup-summary {shlex.quote(str(summary_path))}"
+            if isinstance(summary_path, Path)
+            else ""
+        )
+        + " --dry-run"
+    )
+    strategy = "packaged_runtime_required"
+    preferred_runtime_source = "packaged"
+    recommended_command = commands.get(f"{backend}_acquire")
+    reason_codes: list[str] = []
+    selected_path = None
+    host_compatible = None
+    docker_ready = None
+    docker_image = None
+    if backend == "awsim":
+        selected_path = selection.get("AWSIM_BIN")
+        local_ready = bool(readiness.get("awsim_ready")) or bool(selected_path)
+        host_compatible = bool(readiness.get("awsim_host_compatible"))
+        if local_ready and host_compatible:
+            strategy = "local_packaged_runtime"
+            preferred_runtime_source = "packaged"
+            recommended_command = commands.get("awsim_smoke_binary") or commands.get("awsim_smoke")
+        elif local_ready and not host_compatible:
+            strategy = "linux_handoff_packaged_runtime"
+            preferred_runtime_source = "linux_handoff_packaged"
+            recommended_command = recommended_handoff_command
+            reason_codes.append("HOST_INCOMPATIBLE_PACKAGED_RUNTIME")
+        else:
+            strategy = "packaged_runtime_required"
+            preferred_runtime_source = "packaged"
+            recommended_command = commands.get("awsim_acquire")
+            reason_codes.append("LOCAL_RUNTIME_MISSING")
+    elif backend == "carla":
+        selected_path = selection.get("CARLA_BIN")
+        local_ready = bool(readiness.get("carla_ready")) or bool(selected_path)
+        host_compatible = bool(readiness.get("carla_host_compatible"))
+        docker_ready = bool(readiness.get("carla_docker_ready"))
+        docker_image = selection.get("CARLA_DOCKER_IMAGE")
+        if docker_ready:
+            strategy = "local_docker_runtime"
+            preferred_runtime_source = "docker"
+            recommended_command = commands.get("carla_smoke_docker") or commands.get("carla_smoke")
+            reason_codes.append("DOCKER_RUNTIME_AVAILABLE")
+        elif local_ready and host_compatible:
+            strategy = "local_packaged_runtime"
+            preferred_runtime_source = "packaged"
+            recommended_command = commands.get("carla_smoke_binary") or commands.get("carla_smoke")
+        elif local_ready and not host_compatible:
+            strategy = "linux_handoff_packaged_runtime"
+            preferred_runtime_source = "linux_handoff_packaged"
+            recommended_command = recommended_handoff_command
+            reason_codes.append("HOST_INCOMPATIBLE_PACKAGED_RUNTIME")
+        elif docker_storage_status in {"image_store_corrupt", "content_store_corrupt", "storage_io_error"}:
+            strategy = "packaged_runtime_required"
+            preferred_runtime_source = "packaged"
+            recommended_command = commands.get("carla_acquire")
+            reason_codes.extend(["LOCAL_RUNTIME_MISSING", "DOCKER_STORAGE_CORRUPT"])
+        else:
+            strategy = "docker_or_packaged_runtime_required"
+            preferred_runtime_source = "docker_or_packaged"
+            recommended_command = commands.get("carla_docker_pull") or commands.get("carla_acquire")
+            reason_codes.append("LOCAL_RUNTIME_MISSING")
+            if not docker_ready:
+                reason_codes.append("DOCKER_IMAGE_MISSING")
+    if backend_hints.get("platform_supported") is False:
+        reason_codes.append("PLATFORM_UNSUPPORTED_LOCAL_HOST")
+    return {
+        "backend": backend,
+        "strategy": strategy,
+        "preferred_runtime_source": preferred_runtime_source,
+        "selected_path": selected_path,
+        "host_compatible": host_compatible,
+        "docker_ready": docker_ready,
+        "docker_image": docker_image,
+        "docker_storage_status": docker_storage_status,
+        "local_download_candidate_count": len(local_download_candidates) if isinstance(local_download_candidates, list) else 0,
+        "reason_codes": sorted(set(reason_codes)),
+        "recommended_command": recommended_command,
+        "platform_supported": backend_hints.get("platform_supported"),
+        "platform_note": backend_hints.get("platform_note"),
+    }
+
+
+def _build_runtime_strategy(summary: dict[str, Any], *, summary_path: Path | None = None) -> dict[str, Any]:
+    selection = summary.get("selection", {})
+    readiness = summary.get("readiness", {})
+    acquisition_hints = summary.get("acquisition_hints", {})
+    commands = summary.get("commands", {})
+    resolved_summary_path = summary_path
+    if resolved_summary_path is None:
+        artifacts = summary.get("artifacts", {})
+        raw_summary_path = artifacts.get("summary_path") if isinstance(artifacts, dict) else None
+        if raw_summary_path:
+            resolved_summary_path = Path(str(raw_summary_path))
+    return {
+        "awsim": _classify_backend_runtime_strategy(
+            backend="awsim",
+            selection=selection,
+            readiness=readiness,
+            acquisition_hints=acquisition_hints,
+            commands=commands,
+            summary_path=resolved_summary_path,
+        ),
+        "carla": _classify_backend_runtime_strategy(
+            backend="carla",
+            selection=selection,
+            readiness=readiness,
+            acquisition_hints=acquisition_hints,
+            commands=commands,
+            summary_path=resolved_summary_path,
+        ),
     }
 
 
@@ -1643,6 +1796,7 @@ def build_renderer_backend_local_setup(
     }
     summary["probe_readiness"] = _build_probe_readiness(summary)
     summary["workflow_paths"] = _build_workflow_paths(readiness, summary["probe_readiness"])
+    summary["runtime_strategy"] = _build_runtime_strategy(summary, summary_path=summary_path)
     return summary
 
 

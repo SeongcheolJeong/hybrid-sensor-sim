@@ -430,6 +430,14 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertFalse(summary["readiness"]["awsim_smoke_ready_binary"])
             self.assertFalse(summary["readiness"]["awsim_smoke_ready_docker"])
             self.assertEqual(summary["acquisition_hints"]["awsim"]["status"], "runtime_incompatible_host")
+            self.assertEqual(
+                summary["runtime_strategy"]["awsim"]["strategy"],
+                "linux_handoff_packaged_runtime",
+            )
+            self.assertIn(
+                "HOST_INCOMPATIBLE_PACKAGED_RUNTIME",
+                summary["runtime_strategy"]["awsim"]["reason_codes"],
+            )
             self.assertIn(
                 "AWSIM runtime binary is resolved but incompatible with the current host.",
                 summary["issues"],
@@ -558,6 +566,14 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertEqual(
                 summary["acquisition_hints"]["carla"]["status"],
                 "docker_runtime_available",
+            )
+            self.assertEqual(
+                summary["runtime_strategy"]["carla"]["strategy"],
+                "local_docker_runtime",
+            )
+            self.assertEqual(
+                summary["runtime_strategy"]["carla"]["preferred_runtime_source"],
+                "docker",
             )
             self.assertTrue(summary["acquisition_hints"]["carla"]["docker"]["ready"])
             self.assertNotIn("CARLA runtime binary is not resolved.", summary["issues"])
@@ -701,6 +717,18 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertEqual(
                 summary["acquisition_hints"]["docker"]["storage_probe_status"],
                 "image_store_corrupt",
+            )
+            self.assertEqual(
+                summary["runtime_strategy"]["carla"]["strategy"],
+                "packaged_runtime_required",
+            )
+            self.assertIn(
+                "DOCKER_STORAGE_CORRUPT",
+                summary["runtime_strategy"]["carla"]["reason_codes"],
+            )
+            self.assertEqual(
+                summary["runtime_strategy"]["carla"]["recommended_command"],
+                summary["commands"]["carla_acquire"],
             )
             probe_path = Path(summary["artifacts"]["docker_storage_probe_path"])
             self.assertTrue(probe_path.exists())

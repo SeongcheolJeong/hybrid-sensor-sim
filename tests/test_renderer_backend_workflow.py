@@ -376,6 +376,14 @@ class RendererBackendWorkflowTests(unittest.TestCase):
             self.assertEqual(summary["smoke"]["backend_binary_format"], "elf")
             self.assertEqual(summary["smoke"]["backend_binary_architectures"], None)
             self.assertEqual(summary["smoke"]["backend_translation_required"], None)
+            self.assertEqual(
+                summary["runtime_strategy"]["strategy"],
+                "linux_handoff_packaged_runtime",
+            )
+            self.assertIn(
+                "HOST_INCOMPATIBLE_PACKAGED_RUNTIME",
+                summary["runtime_strategy"]["reason_codes"],
+            )
             self.assertIn("ELF binary is not supported on Darwin", summary["issues"])
             self.assertTrue(summary["linux_handoff"]["ready"])
             self.assertIn("AWSIM_BIN", summary["linux_handoff"]["required_env_vars"])

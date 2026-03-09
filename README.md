@@ -1170,7 +1170,14 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `artifacts.report_path`
 - `probe_readiness` now also surfaces `backend_package_workflow_selftest_ready` / `backend_package_workflow_status`, and `workflow_paths` includes `package_workflow_path_ready`.
 - `probe_readiness.docker_storage_ready=false` means the Docker daemon may be reachable while the local image/content store is already failing. On this machine that is the reason both `CARLA` Docker pull and `HELIOS` Docker image access are blocked.
-- `probe_readiness.docker_storage_status` and `acquisition_hints.docker.storage_probe_status` classify that failure. The current machine reports `image_store_corrupt`, which means the next action is Docker Desktop storage repair, not repository code changes.
+- `probe_readiness.docker_storage_status` and `acquisition_hints.docker.storage_probe_status` classify that failure. The current machine reports `content_store_corrupt`, which means the next action is Docker Desktop storage repair, not repository code changes.
+- `runtime_strategy.<backend>` now makes the preferred runtime path explicit:
+  - `linux_handoff_packaged_runtime` when a staged packaged runtime exists but the host cannot execute it directly
+  - `local_docker_runtime` when Docker is the preferred local runtime
+  - `packaged_runtime_required` or `docker_or_packaged_runtime_required` when no usable local runtime is present yet
+- on this machine the current strategies are:
+  - `AWSIM -> linux_handoff_packaged_runtime`
+  - `CARLA -> packaged_runtime_required`
 - `renderer_backend_local_report.md` gives a compact runtime/probe/path readiness view without manually inspecting the full JSON.
 - current machine-specific blocker:
   - `AWSIM` is staged locally but remains host-incompatible on `Darwin arm64`, so it must run through Linux handoff
@@ -1256,6 +1263,7 @@ Expected artifacts under `artifacts/survey_mapping_demo/helios_raw`:
   - `artifacts/renderer_backend_workflow/<backend>/local_setup_refreshed/renderer_backend_local.env.sh`
   - plus smoke artifacts/reports when smoke executes
 - the workflow summary/report now includes structured blocker codes, a recommended next command, and Linux handoff transfer/env requirements when the selected runtime must move to a Linux runner
+- the workflow summary/report now also includes a normalized `runtime_strategy` block so downstream tools do not need to re-derive whether the next action is local packaged execution, Linux handoff packaged execution, or runtime acquisition
 - when the selected packaged runtime is an x86_64 ELF build, Docker handoff now defaults to `--platform linux/amd64` so local macOS arm64 verification uses the correct container architecture automatically
 - the Linux handoff path also emits a transfer manifest with per-file verification data, a local pack script, a bundle manifest, and a Linux unpack/verify script so the required inputs can be bundled and revalidated before smoke execution
 - `scripts/run_renderer_backend_linux_handoff.py` is the runner-side helper that consumes the bundle plus manifests, revalidates checksums, and optionally executes the extracted handoff script

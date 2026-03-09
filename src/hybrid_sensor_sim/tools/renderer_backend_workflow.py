@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from hybrid_sensor_sim.tools.renderer_backend_local_setup import (
+    _build_runtime_strategy,
     _render_env_file as _render_local_setup_env_file,
 )
 from hybrid_sensor_sim.tools.renderer_backend_local_setup import (
@@ -444,6 +445,24 @@ def _render_workflow_markdown_report(summary: dict[str, Any], summary_path: Path
         for key in sorted(final_selection):
             lines.append(f"| {key} | `{_inline(final_selection[key])}` |")
         lines.append("")
+    runtime_strategy = summary.get("runtime_strategy")
+    if isinstance(runtime_strategy, dict) and runtime_strategy:
+        reason_codes = runtime_strategy.get("reason_codes", [])
+        reason_text = ", ".join(str(item) for item in reason_codes) if isinstance(reason_codes, list) else "-"
+        lines.extend(
+            [
+                "## Runtime Strategy",
+                f"- strategy: `{_inline(runtime_strategy.get('strategy'))}`",
+                f"- preferred_runtime_source: `{_inline(runtime_strategy.get('preferred_runtime_source'))}`",
+                f"- selected_path: `{_inline(runtime_strategy.get('selected_path'))}`",
+                f"- host_compatible: `{_inline(runtime_strategy.get('host_compatible'))}`",
+                f"- docker_ready: `{_inline(runtime_strategy.get('docker_ready'))}`",
+                f"- docker_storage_status: `{_inline(runtime_strategy.get('docker_storage_status'))}`",
+                f"- recommended_command: `{_inline(runtime_strategy.get('recommended_command'))}`",
+                f"- reason_codes: `{reason_text}`",
+                "",
+            ]
+        )
     smoke = summary.get("smoke", {})
     if isinstance(smoke, dict):
         lines.extend(
@@ -2059,6 +2078,13 @@ def build_renderer_backend_workflow(
             run_linux_handoff_docker=run_linux_handoff_docker,
             docker_handoff_preflight=docker_handoff_preflight,
         )
+    runtime_strategy_map = active_setup_summary.get("runtime_strategy")
+    if not isinstance(runtime_strategy_map, dict):
+        runtime_strategy_map = _build_runtime_strategy(
+            active_setup_summary,
+            summary_path=resolved_setup_summary_path,
+        )
+    runtime_strategy = runtime_strategy_map.get(backend, {}) if isinstance(runtime_strategy_map, dict) else {}
     return {
         "backend": backend,
         "status": status,
@@ -2069,6 +2095,7 @@ def build_renderer_backend_workflow(
         "warning_codes": [],
         "blockers": blockers,
         "final_selection": final_selection,
+        "runtime_strategy": runtime_strategy,
         "recommended_next_command": recommended_next_command,
         "setup": {
             "summary_path": str(resolved_setup_summary_path),
@@ -2076,6 +2103,7 @@ def build_renderer_backend_workflow(
             "selection": setup_selection,
             "probes": setup_summary.get("probes"),
             "commands": setup_summary.get("commands"),
+            "runtime_strategy": runtime_strategy_map,
         },
         "refreshed_setup": (
             {
@@ -2085,6 +2113,7 @@ def build_renderer_backend_workflow(
                 "selection": refreshed_setup_summary.get("selection"),
                 "probes": refreshed_setup_summary.get("probes"),
                 "commands": refreshed_setup_summary.get("commands"),
+                "runtime_strategy": refreshed_setup_summary.get("runtime_strategy"),
             }
             if refreshed_setup_summary is not None
             else None

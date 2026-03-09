@@ -93,6 +93,7 @@ Current repository paths:
 - canonical staged-runtime artifact reuse is now automatic: scenario smoke workflows auto-discover `artifacts/renderer_backend_local_setup/renderer_backend_local_setup.json` and `artifacts/renderer_backend_workflow/<backend>/renderer_backend_workflow_summary.json` when explicit summary paths are not supplied
 - host-incompatible staged packaged backends are now surfaced as `renderer_backend_workflow` Linux handoff plans through the scenario smoke workflows, rather than only as generic smoke failures
 - scenario smoke/runtime workflows now also surface packaged-runtime crash diagnostics such as runtime exit code, failed plugin basenames, missing shared libraries, and crash signatures when nested Linux handoff smoke runs abort
+- local setup and backend workflow now also emit a normalized `runtime_strategy`, so the canonical repo can state the intended execution route directly instead of inferring it from low-level readiness flags
 - existing real runtime/backend smoke artifacts can now be re-bridged into refreshed top-level runtime summaries and Autoware bundles without rerunning batch selection or backend smoke
 - that rebridge path now also emits source-vs-refreshed status comparison data, including semantic recovery source, missing-required-topic delta, and recovered-topic lists, making runtime bridge drift review possible from one report
 - for `semantic_perception_v0`, rebridge can now also reconstruct a semantic-only supplemental smoke pass from the source backend smoke report when the original runtime artifact is missing the semantic topic and no supplemental report path was persisted
@@ -122,7 +123,8 @@ Still pending from this master plan:
    - the real AWSIM probe set now distinguishes `semantic_primary_ready` from `semantic_recovery_ready`, making the remaining semantic gap explicit: fresh primary artifacts are runtime-native `READY`, while the older degraded artifact remains as a recovery regression guard
    - the Autoware bridge now exposes run-level lineage so the selected variant, scenario source, smoke-ready scenario, and backend-export roots are all visible in one dataset manifest
    - `autoware_consumer_input_manifest.json` now also carries grouped downstream-ingest structure via `subscription_specs`, `sensor_inputs`, and `static_transforms`, reducing the amount of ad-hoc parsing a downstream Autoware-style consumer has to do
-   - local setup now also classifies Docker storage failures. On this machine the effective status is `image_store_corrupt`, so the next action is Docker Desktop storage repair or packaged-runtime fallback, not more repository scaffolding.
+   - local setup now also classifies Docker storage failures. On this machine the effective status is `content_store_corrupt`, so the next action is Docker Desktop storage repair or packaged-runtime fallback, not more repository scaffolding.
+   - the same local setup summary now also classifies a preferred `runtime_strategy` per backend, which currently resolves to `AWSIM -> linux_handoff_packaged_runtime` and `CARLA -> packaged_runtime_required` on this machine
 3. tighter publish gating that combines scenario/runtime smoke with provenance refresh status
 4. lower-level backend smoke entrypoints should preserve the same provenance-aware publish checks as top-level workflows
 5. top-level runtime/backend workflow should expose backend output comparison drift without requiring manual drill-down into nested smoke reports
