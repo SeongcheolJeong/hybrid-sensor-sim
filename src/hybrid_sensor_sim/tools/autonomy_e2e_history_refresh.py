@@ -418,15 +418,18 @@ BLOCK_CATALOG: list[dict[str, Any]] = [
             "src/hybrid_sensor_sim/tools/scenario_runtime_bridge.py",
             "src/hybrid_sensor_sim/tools/scenario_backend_smoke_workflow.py",
             "src/hybrid_sensor_sim/tools/scenario_runtime_backend_workflow.py",
+            "src/hybrid_sensor_sim/tools/scenario_runtime_backend_rebridge.py",
         ],
         "current_test_paths": [
             "tests/test_scenario_backend_smoke_workflow.py",
             "tests/test_scenario_runtime_backend_workflow.py",
+            "tests/test_scenario_runtime_backend_rebridge.py",
         ],
         "current_fixture_paths": [],
         "current_script_paths": [
             "scripts/run_scenario_backend_smoke_workflow.py",
             "scripts/run_scenario_runtime_backend_workflow.py",
+            "scripts/run_scenario_runtime_backend_rebridge.py",
         ],
         "current_doc_paths": [
             "README.md",
@@ -436,7 +439,8 @@ BLOCK_CATALOG: list[dict[str, Any]] = [
         "working_result_kind": ["workflow", "cli", "test", "doc"],
         "result_summary": (
             "Scenario batch outputs can now bridge into runtime smoke and reuse staged "
-            "backend selections."
+            "backend selections, and previously generated runtime/backend smoke reports can "
+            "be re-bridged into refreshed Autoware and top-level workflow artifacts."
         ),
         "open_gaps": [
             "Real packaged AWSIM/CARLA execution still remains to be closed."

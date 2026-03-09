@@ -436,6 +436,17 @@ The same real AWSIM Linux-handoff path also now reproduces a `tracking_fusion_v0
 For `semantic_perception_v0`, `scenario_backend_smoke_workflow.py` now also supports a supplemental semantic-only smoke pass: if the primary runtime output is missing `/semantic/image_raw`, the workflow can run a second semantic camera pass and merge that report into one Autoware bridge bundle instead of leaving the top-level result permanently degraded.
 `scenario_runtime_backend_workflow_report_v0.json` now lifts that merge state to top-level as well, including merged report count, supplemental semantic status, and supplemental semantic artifact paths, so semantic recovery can be triaged without opening the nested backend smoke report.
 
+If a real runtime/backend smoke run already exists, you can rebuild the top-level runtime summary and the latest Autoware bundle without rerunning batch selection or backend smoke:
+
+```bash
+python3 scripts/run_scenario_runtime_backend_rebridge.py \
+  --runtime-backend-workflow-report artifacts/scenario_runtime_backend_actual_awsim_run/scenario_runtime_backend_workflow_report_v0.json \
+  --out-root artifacts/scenario_runtime_backend_rebridge_runs \
+  --run-history-guard
+```
+
+This re-reads the existing backend smoke workflow report, optionally merges supplemental semantic smoke reports, regenerates the current Autoware bridge artifacts, and emits a fresh top-level runtime-style report and Markdown summary.
+
 Both `run_scenario_variants.py` and `run_scenario_variant_workflow.py` resolve default scenario-language profiles from:
 
 - `tests/fixtures/autonomy_e2e/p_validation`
