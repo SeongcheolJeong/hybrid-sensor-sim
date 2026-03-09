@@ -358,6 +358,62 @@ def _default_probe_set_specs(repo_root: Path) -> dict[str, dict[str, Any]]:
                 }
             ],
         },
+        "hybrid_runtime_readiness_v0": {
+            "probe_set_id": "hybrid_runtime_readiness_v0",
+            "description": (
+                "Combined native-run readiness view across real AWSIM runtime probes and "
+                "the latest local CARLA runtime-strategy summary."
+            ),
+            "probes": [
+                {
+                    "probe_id": "tracking_ready",
+                    "runtime_backend_workflow_report_path": (
+                        repo_root
+                        / "artifacts"
+                        / "scenario_runtime_backend_real_awsim_tracking_ready_probe"
+                        / "scenario_runtime_backend_workflow_report_v0.json"
+                    ),
+                    "consumer_profile_id": "tracking_fusion_v0",
+                    "expect_runtime_status": "SUCCEEDED",
+                    "expect_autoware_status": "READY",
+                },
+                {
+                    "probe_id": "semantic_primary_ready",
+                    "runtime_backend_workflow_report_path": (
+                        repo_root
+                        / "artifacts"
+                        / "scenario_runtime_backend_real_awsim_probe_v14"
+                        / "scenario_runtime_backend_workflow_report_v0.json"
+                    ),
+                    "consumer_profile_id": "semantic_perception_v0",
+                    "expect_runtime_status": "SUCCEEDED",
+                    "expect_autoware_status": "READY",
+                },
+                {
+                    "probe_id": "semantic_recovery_ready",
+                    "runtime_backend_workflow_report_path": (
+                        repo_root
+                        / "artifacts"
+                        / "scenario_runtime_backend_real_awsim_degraded_runtime_probe"
+                        / "scenario_runtime_backend_workflow_report_v0.json"
+                    ),
+                    "consumer_profile_id": "semantic_perception_v0",
+                    "expect_runtime_status": "SUCCEEDED",
+                    "expect_autoware_status": "READY",
+                },
+                {
+                    "probe_id": "carla_local_runtime_strategy",
+                    "local_setup_summary_path": (
+                        repo_root
+                        / "artifacts"
+                        / "renderer_backend_local_setup_probe_latest"
+                        / "renderer_backend_local_setup.json"
+                    ),
+                    "backend": "carla",
+                    "consumer_profile_id": "tracking_fusion_v0",
+                },
+            ],
+        },
     }
 
 
