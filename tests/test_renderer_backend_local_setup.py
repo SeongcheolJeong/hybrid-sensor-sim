@@ -873,6 +873,18 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
                 "--output-root",
                 summary["runtime_strategy"]["carla"]["recommended_stage_command"],
             )
+            self.assertIn(
+                "--download-dir",
+                summary["runtime_strategy"]["carla"][
+                    "recommended_download_and_stage_command"
+                ],
+            )
+            self.assertIn(
+                "--output-root",
+                summary["runtime_strategy"]["carla"][
+                    "recommended_download_and_stage_command"
+                ],
+            )
 
     def test_build_renderer_backend_local_setup_prefers_largest_download_dir_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

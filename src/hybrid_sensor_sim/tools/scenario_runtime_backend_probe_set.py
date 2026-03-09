@@ -578,6 +578,9 @@ def _build_local_setup_probe_result(
         "backend_runtime_recommended_download_command": runtime_strategy.get(
             "recommended_download_command"
         ),
+        "backend_runtime_recommended_download_and_stage_command": runtime_strategy.get(
+            "recommended_download_and_stage_command"
+        ),
         "backend_runtime_selected_path": runtime_strategy.get("selected_path"),
         "backend_runtime_docker_storage_status": runtime_strategy.get(
             "docker_storage_status"
@@ -635,6 +638,9 @@ def _build_local_setup_probe_result(
                 ),
                 "backend_runtime_recommended_download_command": runtime_strategy.get(
                     "recommended_download_command"
+                ),
+                "backend_runtime_recommended_download_and_stage_command": runtime_strategy.get(
+                    "recommended_download_and_stage_command"
                 ),
                 "backend_runtime_selected_path": runtime_strategy.get("selected_path"),
                 "backend_runtime_docker_storage_status": runtime_strategy.get(
@@ -1284,7 +1290,31 @@ def run_scenario_runtime_backend_probe_set(
                     result.get("backend_runtime_strategy_reason_codes", []) or []
                 ):
                     recommended_next_command = str(
+                        result.get(
+                            "backend_runtime_recommended_download_and_stage_command"
+                        )
+                        or ""
+                    ).strip()
+                if (
+                    not recommended_next_command
+                    and "DOWNLOAD_SPACE_INSUFFICIENT" in (
+                        result.get("backend_runtime_strategy_reason_codes", []) or []
+                    )
+                ):
+                    recommended_next_command = str(
                         result.get("backend_runtime_recommended_download_command") or ""
+                    ).strip()
+                if (
+                    not recommended_next_command
+                    and "STAGE_SPACE_INSUFFICIENT" in (
+                        result.get("backend_runtime_strategy_reason_codes", []) or []
+                    )
+                ):
+                    recommended_next_command = str(
+                        result.get(
+                            "backend_runtime_recommended_download_and_stage_command"
+                        )
+                        or ""
                     ).strip()
                 if (
                     not recommended_next_command

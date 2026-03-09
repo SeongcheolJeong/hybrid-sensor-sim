@@ -1870,15 +1870,17 @@ def _classify_backend_runtime_strategy(
             reason_codes.append("STAGE_SPACE_INSUFFICIENT")
         recommended_download_command = None
         recommended_stage_command = None
+        recommended_download_and_stage_command = None
+        acquire_command = commands.get(f"{backend}_acquire")
         if (
             isinstance(recommended_download_dir, str)
             and recommended_download_dir.strip()
-            and isinstance(recommended_command, str)
-            and recommended_command.strip()
+            and isinstance(acquire_command, str)
+            and acquire_command.strip()
         ):
             quoted_dir = shlex.quote(recommended_download_dir)
             recommended_download_command = (
-                f"{recommended_command} --download-dir {quoted_dir}"
+                f"{acquire_command} --download-dir {quoted_dir}"
             )
         stage_command = commands.get(f"{backend}_stage")
         if (
@@ -1892,24 +1894,38 @@ def _classify_backend_runtime_strategy(
                 f"{stage_command} --output-root {quoted_root}"
             )
         if (
+            isinstance(acquire_command, str)
+            and acquire_command.strip()
+            and isinstance(recommended_download_dir, str)
+            and recommended_download_dir.strip()
+            and isinstance(recommended_stage_output_root, str)
+            and recommended_stage_output_root.strip()
+        ):
+            quoted_dir = shlex.quote(recommended_download_dir)
+            quoted_root = shlex.quote(recommended_stage_output_root)
+            recommended_download_and_stage_command = (
+                f"{acquire_command} --download-dir {quoted_dir} --output-root {quoted_root}"
+            )
+        if (
             isinstance(recommended_download_dir, str)
             and recommended_download_dir.strip()
             and recommended_download_dir_ready is True
-            and isinstance(recommended_command, str)
-            and recommended_command.strip()
+            and isinstance(recommended_download_and_stage_command, str)
+            and recommended_download_and_stage_command.strip()
         ):
-            recommended_command = recommended_download_command
+            recommended_command = recommended_download_and_stage_command
         elif (
             isinstance(recommended_stage_output_root, str)
             and recommended_stage_output_root.strip()
             and recommended_stage_output_root_ready is True
-            and isinstance(recommended_stage_command, str)
-            and recommended_stage_command.strip()
+            and isinstance(recommended_download_and_stage_command, str)
+            and recommended_download_and_stage_command.strip()
         ):
-            recommended_command = recommended_stage_command
+            recommended_command = recommended_download_and_stage_command
     else:
         recommended_download_command = None
         recommended_stage_command = None
+        recommended_download_and_stage_command = None
     return {
         "backend": backend,
         "strategy": strategy,
@@ -1936,6 +1952,7 @@ def _classify_backend_runtime_strategy(
         "recommended_command": recommended_command,
         "recommended_download_command": recommended_download_command,
         "recommended_stage_command": recommended_stage_command,
+        "recommended_download_and_stage_command": recommended_download_and_stage_command,
         "platform_supported": backend_hints.get("platform_supported"),
         "platform_note": backend_hints.get("platform_note"),
     }

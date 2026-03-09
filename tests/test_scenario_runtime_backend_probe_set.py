@@ -675,14 +675,21 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                                     "LOCAL_RUNTIME_MISSING",
                                     "DOWNLOAD_SPACE_INSUFFICIENT",
                                 ],
-                                "recommended_command": "python3 scripts/acquire_renderer_backend_package.py --backend carla",
+                            "recommended_command": "python3 scripts/acquire_renderer_backend_package.py --backend carla",
                                 "recommended_download_command": "python3 scripts/acquire_renderer_backend_package.py --backend carla --download-dir /Volumes/LargeDisk/backend_downloads/carla",
+                                "recommended_download_and_stage_command": "python3 scripts/acquire_renderer_backend_package.py --backend carla --download-dir /Volumes/LargeDisk/backend_downloads/carla --output-root /Volumes/LargeDisk/runtime_backends/carla",
                                 "recommended_download_dir": "/Volumes/LargeDisk/backend_downloads/carla",
                                 "recommended_download_dir_ready": False,
                                 "recommended_download_dir_available_space_bytes": 123456789,
                                 "recommended_download_dir_shortfall_bytes": 15723108218 - 123456789,
                                 "download_directory_status": "insufficient",
                                 "archive_estimated_size_bytes": 15723108218,
+                                "recommended_stage_output_root": "/Volumes/LargeDisk/runtime_backends/carla",
+                                "recommended_stage_output_root_ready": True,
+                                "recommended_stage_output_root_available_space_bytes": 30_000_000_000,
+                                "recommended_stage_output_root_shortfall_bytes": 0,
+                                "stage_output_root_status": "ready",
+                                "stage_estimated_size_bytes": 4123456789,
                             }
                         }
                     }
@@ -723,6 +730,10 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                             "/Volumes/LargeDisk/backend_downloads/carla"
                         ],
                         "recommended_download_dir_shortfall_bytes": 15723108218 - 123456789,
+                        "recommended_stage_output_roots": [
+                            "/Volumes/LargeDisk/runtime_backends/carla"
+                        ],
+                        "recommended_stage_output_root_shortfall_bytes": 0,
                         "plan_id": "packaged_runtime_required_with_download_space_blocker",
                         "plan_summary": "Acquire a packaged runtime after switching to a directory with enough free space.",
                         "plan_steps": [
@@ -805,7 +816,14 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                                     "LOCAL_RUNTIME_MISSING",
                                     "STAGE_SPACE_INSUFFICIENT",
                                 ],
-                                "recommended_command": "python3 scripts/acquire_renderer_backend_package.py --backend carla",
+                            "recommended_command": "python3 scripts/acquire_renderer_backend_package.py --backend carla",
+                                "recommended_download_and_stage_command": "python3 scripts/acquire_renderer_backend_package.py --backend carla --download-dir /Volumes/LargeDisk/backend_downloads/carla --output-root /Volumes/LargeDisk/runtime_backends/carla",
+                                "recommended_download_dir": "/Volumes/LargeDisk/backend_downloads/carla",
+                                "recommended_download_dir_ready": True,
+                                "recommended_download_dir_available_space_bytes": 20_000_000_000,
+                                "recommended_download_dir_shortfall_bytes": 0,
+                                "download_directory_status": "ready",
+                                "archive_estimated_size_bytes": 15723108218,
                                 "recommended_stage_command": "python3 scripts/stage_renderer_backend_package.py --backend carla --output-root /Volumes/LargeDisk/runtime_backends/carla",
                                 "recommended_stage_output_root": "/Volumes/LargeDisk/runtime_backends/carla",
                                 "recommended_stage_output_root_ready": False,
@@ -849,6 +867,10 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                             "LOCAL_RUNTIME_MISSING",
                             "STAGE_SPACE_INSUFFICIENT",
                         ],
+                        "recommended_download_dirs": [
+                            "/Volumes/LargeDisk/backend_downloads/carla"
+                        ],
+                        "recommended_download_dir_shortfall_bytes": 0,
                         "recommended_stage_output_roots": [
                             "/Volumes/LargeDisk/runtime_backends/carla"
                         ],
