@@ -782,6 +782,136 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                 15723108218 - 123456789,
             )
 
+    def test_builtin_carla_local_probe_set_prefers_stage_space_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            local_setup_summary = (
+                root
+                / "artifacts"
+                / "renderer_backend_local_setup_probe_latest"
+                / "renderer_backend_local_setup.json"
+            )
+            local_setup_summary.parent.mkdir(parents=True, exist_ok=True)
+            local_setup_summary.write_text(
+                json.dumps(
+                    {
+                        "runtime_strategy": {
+                            "carla": {
+                                "strategy": "packaged_runtime_required",
+                                "preferred_runtime_source": "packaged",
+                                "selected_path": None,
+                                "docker_storage_status": "healthy",
+                                "reason_codes": [
+                                    "LOCAL_RUNTIME_MISSING",
+                                    "STAGE_SPACE_INSUFFICIENT",
+                                ],
+                                "recommended_command": "python3 scripts/acquire_renderer_backend_package.py --backend carla",
+                                "recommended_stage_command": "python3 scripts/stage_renderer_backend_package.py --backend carla --output-root /Volumes/LargeDisk/runtime_backends/carla",
+                                "recommended_stage_output_root": "/Volumes/LargeDisk/runtime_backends/carla",
+                                "recommended_stage_output_root_ready": False,
+                                "recommended_stage_output_root_available_space_bytes": 123456789,
+                                "recommended_stage_output_root_shortfall_bytes": 4123456789 - 123456789,
+                                "stage_output_root_status": "insufficient",
+                                "stage_estimated_size_bytes": 4123456789,
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_scenario_runtime_backend_probe_set(
+                out_root=root / "probe_set",
+                probe_set_id="carla_local_v0",
+                repo_root=root,
+            )
+
+            report = result["report"]
+            self.assertEqual(report["status"], "FAIL")
+            self.assertEqual(report["primary_runtime_strategy"], "packaged_runtime_required")
+            self.assertEqual(
+                report["primary_runtime_plan_id"],
+                "packaged_runtime_required_with_stage_space_blocker",
+            )
+            self.assertEqual(
+                report["blocking_reason_category_counts"],
+                {"runtime_environment": 2, "stage_environment": 2},
+            )
+            self.assertEqual(
+                report["runtime_strategy_plan_rows"],
+                [
+                    {
+                        "strategy": "packaged_runtime_required",
+                        "probe_ids": ["carla_local_runtime_strategy"],
+                        "preferred_runtime_source": "packaged",
+                        "docker_storage_statuses": ["healthy"],
+                        "reason_codes": [
+                            "LOCAL_RUNTIME_MISSING",
+                            "STAGE_SPACE_INSUFFICIENT",
+                        ],
+                        "recommended_stage_output_roots": [
+                            "/Volumes/LargeDisk/runtime_backends/carla"
+                        ],
+                        "recommended_stage_output_root_shortfall_bytes": 4123456789 - 123456789,
+                        "plan_id": "packaged_runtime_required_with_stage_space_blocker",
+                        "plan_summary": "Stage the packaged runtime in a directory with enough extraction space.",
+                        "plan_steps": [
+                            "Choose or create a stage/output directory with at least 3.7 GiB more free space at /Volumes/LargeDisk/runtime_backends/carla.",
+                            "Re-run the package stage command with --output-root set to that directory.",
+                            "Rerun the backend smoke workflow using the staged runtime.",
+                        ],
+                    }
+                ],
+            )
+            self.assertEqual(
+                report["recommended_resolution_focus"],
+                "Use a larger stage/output directory before extracting the packaged runtime.",
+            )
+            self.assertEqual(
+                report["recommended_resolution_steps"],
+                [
+                    "Choose or create a stage/output directory with at least 3.7 GiB more free space at /Volumes/LargeDisk/runtime_backends/carla.",
+                    "Re-run the package stage command with --output-root set to that directory.",
+                    "Rerun the backend smoke workflow using the staged runtime.",
+                    "Acquire and stage a packaged runtime for the selected backend.",
+                    "Run: python3 scripts/stage_renderer_backend_package.py --backend carla --output-root /Volumes/LargeDisk/runtime_backends/carla",
+                    "Use a larger stage/output directory before extracting the packaged runtime.",
+                    "Fix the runtime environment or switch to the recommended handoff path.",
+                ],
+            )
+            self.assertEqual(
+                report["recommended_next_command"],
+                "python3 scripts/stage_renderer_backend_package.py --backend carla --output-root /Volumes/LargeDisk/runtime_backends/carla",
+            )
+            self.assertEqual(
+                report["recommended_stage_output_root_counts"],
+                {"/Volumes/LargeDisk/runtime_backends/carla": 1},
+            )
+            self.assertEqual(
+                report["recommended_stage_output_root_probe_ids"],
+                {
+                    "/Volumes/LargeDisk/runtime_backends/carla": [
+                        "carla_local_runtime_strategy"
+                    ]
+                },
+            )
+            self.assertEqual(
+                report["stage_output_root_status_counts"],
+                {"insufficient": 1},
+            )
+            self.assertEqual(
+                report["primary_recommended_stage_output_root"],
+                "/Volumes/LargeDisk/runtime_backends/carla",
+            )
+            self.assertEqual(
+                report["primary_recommended_stage_output_root_available_space_bytes"],
+                123456789,
+            )
+            self.assertEqual(
+                report["primary_recommended_stage_output_root_shortfall_bytes"],
+                4123456789 - 123456789,
+            )
+
     def test_builtin_hybrid_runtime_readiness_probe_set_combines_awsim_and_carla(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

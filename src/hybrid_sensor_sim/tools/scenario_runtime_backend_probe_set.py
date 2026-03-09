@@ -25,6 +25,8 @@ def _classify_blocking_reason(reason_code: str) -> str:
         return "consumer_contract"
     if "DOWNLOAD_SPACE" in normalized:
         return "download_environment"
+    if "STAGE_SPACE" in normalized:
+        return "stage_environment"
     if (
         normalized.startswith("LOCAL_RUNTIME_")
         or normalized.endswith("_RUNTIME_MISSING")
@@ -55,12 +57,16 @@ def _recommended_action_for_blocking_reason(reason_code: str, category: str) -> 
         return "Inspect missing and recovered Autoware topics for the selected consumer profile."
     if normalized == "DOWNLOAD_SPACE_INSUFFICIENT":
         return "Free space or use a larger download directory before acquiring the packaged runtime."
+    if normalized == "STAGE_SPACE_INSUFFICIENT":
+        return "Use a larger stage/output directory before extracting the packaged runtime."
     if normalized.startswith("DOCKER_") or "STORAGE" in normalized:
         return "Repair the local Docker image store or use a packaged runtime handoff path."
     if category == "runtime_execution":
         return "Inspect the backend runtime workflow report and rerun the selected runtime strategy."
     if category == "download_environment":
         return "Pick a download directory with enough free space for the backend archive."
+    if category == "stage_environment":
+        return "Pick a stage/output directory with enough free space for packaged runtime extraction."
     if category == "consumer_contract":
         return "Reconcile required consumer topics against the bridge output and consumer profile."
     if category == "governance":
@@ -68,6 +74,30 @@ def _recommended_action_for_blocking_reason(reason_code: str, category: str) -> 
     if category == "runtime_environment":
         return "Fix the runtime environment or switch to the recommended handoff path."
     return "Inspect the probe report for the blocking reason details."
+
+
+def _blocking_reason_priority(reason_code: str) -> int:
+    normalized = str(reason_code or "").strip().upper()
+    if normalized in {
+        "DOWNLOAD_SPACE_INSUFFICIENT",
+        "STAGE_SPACE_INSUFFICIENT",
+        "AUTOWARE_STATUS_MISMATCH",
+        "DOCKER_STORAGE_CORRUPT",
+        "DOCKER_IMAGE_MISSING",
+    }:
+        return 0
+    if normalized == "HOST_INCOMPATIBLE_PACKAGED_RUNTIME":
+        return 1
+    category = _classify_blocking_reason(normalized)
+    if category in {"download_environment", "stage_environment", "consumer_contract"}:
+        return 0
+    if category == "runtime_environment":
+        return 2
+    if category == "runtime_execution":
+        return 3
+    if category == "governance":
+        return 4
+    return 5
 
 
 def _recommended_action_for_runtime_strategy(
@@ -104,6 +134,10 @@ def _build_runtime_strategy_plan(
     recommended_download_dir_available_space_bytes: int | None = None,
     archive_estimated_size_bytes: int | None = None,
     recommended_download_dir_shortfall_bytes: int | None = None,
+    recommended_stage_output_root: str = "",
+    recommended_stage_output_root_available_space_bytes: int | None = None,
+    stage_estimated_size_bytes: int | None = None,
+    recommended_stage_output_root_shortfall_bytes: int | None = None,
 ) -> dict[str, Any]:
     normalized_strategy = str(strategy or "").strip()
     normalized_source = str(preferred_runtime_source or "").strip()
@@ -187,6 +221,36 @@ def _build_runtime_strategy_plan(
                     shortfall_step,
                     "Re-run the package acquire command with --download-dir set to that directory.",
                     "Stage the packaged runtime into the local runtime workspace and rerun smoke.",
+                ],
+            }
+        if "STAGE_SPACE_INSUFFICIENT" in normalized_reason_codes:
+            shortfall_gib = None
+            if isinstance(recommended_stage_output_root_shortfall_bytes, int):
+                shortfall_gib = (
+                    recommended_stage_output_root_shortfall_bytes / float(1024 ** 3)
+                )
+            shortfall_note = ""
+            if (
+                isinstance(recommended_stage_output_root, str)
+                and recommended_stage_output_root.strip()
+            ):
+                shortfall_note = f" at {recommended_stage_output_root}"
+            shortfall_step = (
+                "Choose or create a stage/output directory with enough free space "
+                "for packaged runtime extraction."
+            )
+            if shortfall_gib is not None:
+                shortfall_step = (
+                    f"Choose or create a stage/output directory with at least "
+                    f"{shortfall_gib:.1f} GiB more free space{shortfall_note}."
+                )
+            return {
+                "plan_id": "packaged_runtime_required_with_stage_space_blocker",
+                "summary": "Stage the packaged runtime in a directory with enough extraction space.",
+                "steps": [
+                    shortfall_step,
+                    "Re-run the package stage command with --output-root set to that directory.",
+                    "Rerun the backend smoke workflow using the staged runtime.",
                 ],
             }
         if "DOCKER_STORAGE_CORRUPT" in normalized_reason_codes:
@@ -536,6 +600,27 @@ def _build_local_setup_probe_result(
         "backend_runtime_archive_estimated_size_bytes": runtime_strategy.get(
             "archive_estimated_size_bytes"
         ),
+        "backend_runtime_recommended_stage_command": runtime_strategy.get(
+            "recommended_stage_command"
+        ),
+        "backend_runtime_recommended_stage_output_root": runtime_strategy.get(
+            "recommended_stage_output_root"
+        ),
+        "backend_runtime_recommended_stage_output_root_ready": runtime_strategy.get(
+            "recommended_stage_output_root_ready"
+        ),
+        "backend_runtime_recommended_stage_output_root_available_space_bytes": runtime_strategy.get(
+            "recommended_stage_output_root_available_space_bytes"
+        ),
+        "backend_runtime_recommended_stage_output_root_shortfall_bytes": runtime_strategy.get(
+            "recommended_stage_output_root_shortfall_bytes"
+        ),
+        "backend_runtime_stage_output_root_status": runtime_strategy.get(
+            "stage_output_root_status"
+        ),
+        "backend_runtime_stage_estimated_size_bytes": runtime_strategy.get(
+            "stage_estimated_size_bytes"
+        ),
         "rebridge_result": {
             "workflow_report": {
                 "status_summary": {
@@ -573,6 +658,27 @@ def _build_local_setup_probe_result(
                 "backend_runtime_archive_estimated_size_bytes": runtime_strategy.get(
                     "archive_estimated_size_bytes"
                 ),
+                "backend_runtime_recommended_stage_command": runtime_strategy.get(
+                    "recommended_stage_command"
+                ),
+                "backend_runtime_recommended_stage_output_root": runtime_strategy.get(
+                    "recommended_stage_output_root"
+                ),
+                "backend_runtime_recommended_stage_output_root_ready": runtime_strategy.get(
+                    "recommended_stage_output_root_ready"
+                ),
+                "backend_runtime_recommended_stage_output_root_available_space_bytes": runtime_strategy.get(
+                    "recommended_stage_output_root_available_space_bytes"
+                ),
+                "backend_runtime_recommended_stage_output_root_shortfall_bytes": runtime_strategy.get(
+                    "recommended_stage_output_root_shortfall_bytes"
+                ),
+                "backend_runtime_stage_output_root_status": runtime_strategy.get(
+                    "stage_output_root_status"
+                ),
+                "backend_runtime_stage_estimated_size_bytes": runtime_strategy.get(
+                    "stage_estimated_size_bytes"
+                ),
             },
                 "rebridge": {
                     "comparison": {
@@ -607,8 +713,17 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
     recommended_download_dir_probe_ids = dict(
         report.get("recommended_download_dir_probe_ids", {}) or {}
     )
+    recommended_stage_output_root_counts = dict(
+        report.get("recommended_stage_output_root_counts", {}) or {}
+    )
+    recommended_stage_output_root_probe_ids = dict(
+        report.get("recommended_stage_output_root_probe_ids", {}) or {}
+    )
     download_directory_status_counts = dict(
         report.get("download_directory_status_counts", {}) or {}
+    )
+    stage_output_root_status_counts = dict(
+        report.get("stage_output_root_status_counts", {}) or {}
     )
     blocking_reason_counts = dict(report.get("blocking_reason_counts", {}) or {})
     blocking_reason_probe_ids = dict(report.get("blocking_reason_probe_ids", {}) or {})
@@ -650,6 +765,9 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
         f"- Recommended download dir counts: `{json.dumps(recommended_download_dir_counts, sort_keys=True) if recommended_download_dir_counts else '-'}`",
         f"- Download directory status counts: `{json.dumps(download_directory_status_counts, sort_keys=True) if download_directory_status_counts else '-'}`",
         f"- Primary recommended download dir: `{report.get('primary_recommended_download_dir') or '-'}`",
+        f"- Recommended stage root counts: `{json.dumps(recommended_stage_output_root_counts, sort_keys=True) if recommended_stage_output_root_counts else '-'}`",
+        f"- Stage output root status counts: `{json.dumps(stage_output_root_status_counts, sort_keys=True) if stage_output_root_status_counts else '-'}`",
+        f"- Primary recommended stage root: `{report.get('primary_recommended_stage_output_root') or '-'}`",
         "",
         "## Runtime Strategies",
         "",
@@ -727,6 +845,19 @@ def _build_markdown_report(report: dict[str, Any]) -> str:
         ]
     )
     for directory, probe_ids in sorted(recommended_download_dir_probe_ids.items()):
+        lines.append(
+            f"| {directory or '-'} | {', '.join(probe_ids or []) or '-'} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Stage Output Roots",
+            "",
+            "| Directory | Probe IDs |",
+            "| --- | --- |",
+        ]
+    )
+    for directory, probe_ids in sorted(recommended_stage_output_root_probe_ids.items()):
         lines.append(
             f"| {directory or '-'} | {', '.join(probe_ids or []) or '-'} |"
         )
@@ -967,6 +1098,27 @@ def run_scenario_runtime_backend_probe_set(
                 "backend_runtime_archive_estimated_size_bytes": rebridge_status_summary.get(
                     "backend_runtime_archive_estimated_size_bytes"
                 ),
+                "backend_runtime_recommended_stage_command": rebridge_status_summary.get(
+                    "backend_runtime_recommended_stage_command"
+                ),
+                "backend_runtime_recommended_stage_output_root": rebridge_status_summary.get(
+                    "backend_runtime_recommended_stage_output_root"
+                ),
+                "backend_runtime_recommended_stage_output_root_ready": rebridge_status_summary.get(
+                    "backend_runtime_recommended_stage_output_root_ready"
+                ),
+                "backend_runtime_recommended_stage_output_root_available_space_bytes": rebridge_status_summary.get(
+                    "backend_runtime_recommended_stage_output_root_available_space_bytes"
+                ),
+                "backend_runtime_recommended_stage_output_root_shortfall_bytes": rebridge_status_summary.get(
+                    "backend_runtime_recommended_stage_output_root_shortfall_bytes"
+                ),
+                "backend_runtime_stage_output_root_status": rebridge_status_summary.get(
+                    "backend_runtime_stage_output_root_status"
+                ),
+                "backend_runtime_stage_estimated_size_bytes": rebridge_status_summary.get(
+                    "backend_runtime_stage_estimated_size_bytes"
+                ),
                 "source_missing_required_topics": source_missing_required_topics,
                 "refreshed_missing_required_topics": refreshed_missing_required_topics,
                 "recovered_required_topics": recovered_required_topics,
@@ -1011,7 +1163,10 @@ def run_scenario_runtime_backend_probe_set(
     runtime_strategy_recommended_command_probe_ids: dict[str, list[str]] = {}
     recommended_download_dir_counts: dict[str, int] = {}
     recommended_download_dir_probe_ids: dict[str, list[str]] = {}
+    recommended_stage_output_root_counts: dict[str, int] = {}
+    recommended_stage_output_root_probe_ids: dict[str, list[str]] = {}
     download_directory_status_counts: dict[str, int] = {}
+    stage_output_root_status_counts: dict[str, int] = {}
     blocking_reason_counts: dict[str, int] = {}
     blocking_reason_probe_ids: dict[str, list[str]] = {}
     blocking_reason_category_counts: dict[str, int] = {}
@@ -1086,12 +1241,32 @@ def run_scenario_runtime_backend_probe_set(
             recommended_download_dir_probe_ids.setdefault(
                 recommended_download_dir, []
             ).append(str(result.get("probe_id") or ""))
+        recommended_stage_output_root = str(
+            result.get("backend_runtime_recommended_stage_output_root") or ""
+        ).strip()
+        if recommended_stage_output_root:
+            recommended_stage_output_root_counts[recommended_stage_output_root] = (
+                recommended_stage_output_root_counts.get(
+                    recommended_stage_output_root, 0
+                )
+                + 1
+            )
+            recommended_stage_output_root_probe_ids.setdefault(
+                recommended_stage_output_root, []
+            ).append(str(result.get("probe_id") or ""))
         download_directory_status = str(
             result.get("backend_runtime_download_directory_status") or ""
         ).strip()
         if download_directory_status:
             download_directory_status_counts[download_directory_status] = (
                 download_directory_status_counts.get(download_directory_status, 0) + 1
+            )
+        stage_output_root_status = str(
+            result.get("backend_runtime_stage_output_root_status") or ""
+        ).strip()
+        if stage_output_root_status:
+            stage_output_root_status_counts[stage_output_root_status] = (
+                stage_output_root_status_counts.get(stage_output_root_status, 0) + 1
             )
         recovered_required_topics.update(result.get("recovered_required_topics", []) or [])
         source_missing_required_topics.update(
@@ -1110,6 +1285,15 @@ def run_scenario_runtime_backend_probe_set(
                 ):
                     recommended_next_command = str(
                         result.get("backend_runtime_recommended_download_command") or ""
+                    ).strip()
+                if (
+                    not recommended_next_command
+                    and "STAGE_SPACE_INSUFFICIENT" in (
+                        result.get("backend_runtime_strategy_reason_codes", []) or []
+                    )
+                ):
+                    recommended_next_command = str(
+                        result.get("backend_runtime_recommended_stage_command") or ""
                     ).strip()
                 if not recommended_next_command:
                     recommended_next_command = str(
@@ -1186,6 +1370,48 @@ def run_scenario_runtime_backend_probe_set(
                 int,
             )
         ]
+        recommended_stage_output_roots = sorted(
+            {
+                str(
+                    result.get("backend_runtime_recommended_stage_output_root") or ""
+                ).strip()
+                for result in probe_results
+                if str(result.get("backend_runtime_strategy") or "") == strategy
+                and str(
+                    result.get("backend_runtime_recommended_stage_output_root") or ""
+                ).strip()
+            }
+        )
+        stage_space_values = [
+            result.get(
+                "backend_runtime_recommended_stage_output_root_available_space_bytes"
+            )
+            for result in probe_results
+            if str(result.get("backend_runtime_strategy") or "") == strategy
+            and isinstance(
+                result.get(
+                    "backend_runtime_recommended_stage_output_root_available_space_bytes"
+                ),
+                int,
+            )
+        ]
+        stage_size_values = [
+            result.get("backend_runtime_stage_estimated_size_bytes")
+            for result in probe_results
+            if str(result.get("backend_runtime_strategy") or "") == strategy
+            and isinstance(result.get("backend_runtime_stage_estimated_size_bytes"), int)
+        ]
+        stage_shortfall_values = [
+            result.get("backend_runtime_recommended_stage_output_root_shortfall_bytes")
+            for result in probe_results
+            if str(result.get("backend_runtime_strategy") or "") == strategy
+            and isinstance(
+                result.get(
+                    "backend_runtime_recommended_stage_output_root_shortfall_bytes"
+                ),
+                int,
+            )
+        ]
         runtime_plan = _build_runtime_strategy_plan(
             strategy=strategy,
             preferred_runtime_source=preferred_runtime_source or "",
@@ -1198,6 +1424,16 @@ def run_scenario_runtime_backend_probe_set(
             archive_estimated_size_bytes=(max(archive_size_values) if archive_size_values else None),
             recommended_download_dir_shortfall_bytes=(
                 min(shortfall_values) if shortfall_values else None
+            ),
+            recommended_stage_output_root=(
+                recommended_stage_output_roots[0] if recommended_stage_output_roots else ""
+            ),
+            recommended_stage_output_root_available_space_bytes=(
+                max(stage_space_values) if stage_space_values else None
+            ),
+            stage_estimated_size_bytes=(max(stage_size_values) if stage_size_values else None),
+            recommended_stage_output_root_shortfall_bytes=(
+                min(stage_shortfall_values) if stage_shortfall_values else None
             ),
         )
         runtime_strategy_summary_rows.append(
@@ -1226,6 +1462,14 @@ def run_scenario_runtime_backend_probe_set(
             runtime_plan_row["recommended_download_dir_shortfall_bytes"] = min(
                 shortfall_values
             )
+        if recommended_stage_output_roots:
+            runtime_plan_row["recommended_stage_output_roots"] = (
+                recommended_stage_output_roots
+            )
+        if stage_shortfall_values:
+            runtime_plan_row["recommended_stage_output_root_shortfall_bytes"] = min(
+                stage_shortfall_values
+            )
         runtime_strategy_plan_rows.append(runtime_plan_row)
 
     blocking_reason_summary_rows = []
@@ -1251,6 +1495,9 @@ def run_scenario_runtime_backend_probe_set(
     primary_recommended_download_dir = None
     primary_recommended_download_dir_available_space_bytes = None
     primary_recommended_download_dir_shortfall_bytes = None
+    primary_recommended_stage_output_root = None
+    primary_recommended_stage_output_root_available_space_bytes = None
+    primary_recommended_stage_output_root_shortfall_bytes = None
     primary_blocking_reason_code = None
     primary_blocking_category = None
     if runtime_strategy_summary_rows:
@@ -1308,10 +1555,51 @@ def run_scenario_runtime_backend_probe_set(
             )
         if shortfall_values:
             primary_recommended_download_dir_shortfall_bytes = min(shortfall_values)
+    if recommended_stage_output_root_probe_ids:
+        primary_recommended_stage_output_root = sorted(
+            recommended_stage_output_root_probe_ids.items(),
+            key=lambda item: (-len(item[1]), item[0]),
+        )[0][0]
+        primary_stage_results = [
+            result
+            for result in probe_results
+            if str(result.get("backend_runtime_recommended_stage_output_root") or "").strip()
+            == primary_recommended_stage_output_root
+        ]
+        available_space_values = [
+            result.get("backend_runtime_recommended_stage_output_root_available_space_bytes")
+            for result in primary_stage_results
+            if isinstance(
+                result.get(
+                    "backend_runtime_recommended_stage_output_root_available_space_bytes"
+                ),
+                int,
+            )
+        ]
+        shortfall_values = [
+            result.get("backend_runtime_recommended_stage_output_root_shortfall_bytes")
+            for result in primary_stage_results
+            if isinstance(
+                result.get("backend_runtime_recommended_stage_output_root_shortfall_bytes"),
+                int,
+            )
+        ]
+        if available_space_values:
+            primary_recommended_stage_output_root_available_space_bytes = max(
+                available_space_values
+            )
+        if shortfall_values:
+            primary_recommended_stage_output_root_shortfall_bytes = min(
+                shortfall_values
+            )
     if blocking_reason_summary_rows:
         primary_row = sorted(
             blocking_reason_summary_rows,
-            key=lambda row: (-int(row.get("count") or 0), str(row.get("reason_code") or "")),
+            key=lambda row: (
+                -int(row.get("count") or 0),
+                _blocking_reason_priority(str(row.get("reason_code") or "")),
+                str(row.get("reason_code") or ""),
+            ),
         )[0]
         recommended_resolution_focus = primary_row["recommended_action"]
         primary_blocking_reason_code = primary_row["reason_code"]
@@ -1327,7 +1615,11 @@ def run_scenario_runtime_backend_probe_set(
         recommended_resolution_steps.append(f"Run: {recommended_next_command}")
     for row in sorted(
         blocking_reason_summary_rows,
-        key=lambda row: (-int(row.get("count") or 0), str(row.get("reason_code") or "")),
+        key=lambda row: (
+            -int(row.get("count") or 0),
+            _blocking_reason_priority(str(row.get("reason_code") or "")),
+            str(row.get("reason_code") or ""),
+        ),
     ):
         action = str(row.get("recommended_action") or "").strip()
         if action and action not in recommended_resolution_steps:
@@ -1367,7 +1659,15 @@ def run_scenario_runtime_backend_probe_set(
             directory: sorted(probe_ids)
             for directory, probe_ids in sorted(recommended_download_dir_probe_ids.items())
         },
+        "recommended_stage_output_root_counts": recommended_stage_output_root_counts,
+        "recommended_stage_output_root_probe_ids": {
+            directory: sorted(probe_ids)
+            for directory, probe_ids in sorted(
+                recommended_stage_output_root_probe_ids.items()
+            )
+        },
         "download_directory_status_counts": download_directory_status_counts,
+        "stage_output_root_status_counts": stage_output_root_status_counts,
         "primary_runtime_strategy": primary_runtime_strategy,
         "recommended_runtime_action": recommended_runtime_action,
         "primary_runtime_plan_id": primary_runtime_plan_id,
@@ -1375,6 +1675,9 @@ def run_scenario_runtime_backend_probe_set(
         "primary_recommended_download_dir": primary_recommended_download_dir,
         "primary_recommended_download_dir_available_space_bytes": primary_recommended_download_dir_available_space_bytes,
         "primary_recommended_download_dir_shortfall_bytes": primary_recommended_download_dir_shortfall_bytes,
+        "primary_recommended_stage_output_root": primary_recommended_stage_output_root,
+        "primary_recommended_stage_output_root_available_space_bytes": primary_recommended_stage_output_root_available_space_bytes,
+        "primary_recommended_stage_output_root_shortfall_bytes": primary_recommended_stage_output_root_shortfall_bytes,
         "blocking_reason_counts": blocking_reason_counts,
         "blocking_reason_probe_ids": {
             reason: sorted(probe_ids)

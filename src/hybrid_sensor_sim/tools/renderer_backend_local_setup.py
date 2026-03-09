@@ -86,6 +86,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Additional candidate directory to consider when choosing where backend archives should be downloaded.",
     )
     parser.add_argument(
+        "--stage-dir-candidate",
+        action="append",
+        default=[],
+        help="Additional candidate directory to consider when choosing where packaged runtimes should be staged or extracted.",
+    )
+    parser.add_argument(
         "--summary-path",
         type=Path,
         help="Where to write renderer_backend_local_setup.json. Defaults under output_dir.",
@@ -1150,6 +1156,36 @@ def _mounted_volume_download_candidates(
     return unique
 
 
+def _mounted_volume_stage_output_root_candidates(
+    *, backend: str, volumes_root: Path | None = None
+) -> list[Path]:
+    root = (volumes_root or Path("/Volumes")).expanduser()
+    if not root.exists() or not root.is_dir():
+        return []
+    candidates: list[Path] = []
+    for entry in sorted(root.iterdir(), key=lambda path: path.name.lower()):
+        if not entry.is_dir() or entry.name.startswith("."):
+            continue
+        candidates.extend(
+            [
+                (entry / "runtime_backends" / backend),
+                (entry / "backend_runtimes" / backend),
+                (entry / "third_party" / "runtime_backends" / backend),
+                (entry / f"{backend}_runtime"),
+                entry,
+            ]
+        )
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(candidate)
+    return unique
+
+
 def _download_directory_candidates(
     *, repo_root: Path, backend: str, extra_candidates: list[Path] | None = None
 ) -> list[Path]:
@@ -1196,6 +1232,51 @@ def _download_directory_candidates(
     return unique_paths
 
 
+def _stage_output_root_candidates(
+    *, repo_root: Path, backend: str, extra_candidates: list[Path] | None = None
+) -> list[Path]:
+    env_candidates = [
+        os.getenv(f"{backend.upper()}_PACKAGE_STAGE_DIR", ""),
+        os.getenv("BACKEND_PACKAGE_STAGE_DIR", ""),
+        os.getenv("RENDERER_BACKEND_STAGE_DIR", ""),
+    ]
+    env_candidate_lists = [
+        *_split_path_list_env(os.getenv(f"{backend.upper()}_PACKAGE_STAGE_DIRS", "")),
+        *_split_path_list_env(os.getenv("BACKEND_PACKAGE_STAGE_DIRS", "")),
+        *_split_path_list_env(os.getenv("RENDERER_BACKEND_STAGE_DIRS", "")),
+    ]
+    candidate_paths = [
+        _resolve_runtime_path(raw)
+        for raw in env_candidates
+        if isinstance(raw, str) and raw.strip()
+    ]
+    candidate_paths.extend(
+        path.resolve() for path in (extra_candidates or []) if isinstance(path, Path)
+    )
+    candidate_paths.extend(
+        _resolve_runtime_path(raw)
+        for raw in env_candidate_lists
+        if isinstance(raw, str) and raw.strip()
+    )
+    candidate_paths.extend(_mounted_volume_stage_output_root_candidates(backend=backend))
+    candidate_paths.extend(
+        [
+            (repo_root / "third_party" / "runtime_backends" / backend).resolve(),
+            (repo_root / "artifacts" / "backend_stage" / backend).resolve(),
+            (repo_root / "third_party" / backend).resolve(),
+        ]
+    )
+    unique_paths: list[Path] = []
+    seen: set[str] = set()
+    for path in candidate_paths:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_paths.append(path)
+    return unique_paths
+
+
 def _probe_directory_space_candidate(
     *, directory: Path, archive_name: str, estimated_size_bytes: int | None
 ) -> dict[str, Any]:
@@ -1224,6 +1305,119 @@ def _probe_directory_space_candidate(
         "available_space_bytes": available_space_bytes,
         "download_space_ready": download_space_ready,
         "download_space_status": download_space_status,
+    }
+
+
+def _build_stage_output_root_hints(
+    *,
+    repo_root: Path,
+    backend: str,
+    download_options: list[dict[str, Any]],
+    local_download_candidates: list[str],
+    extra_stage_output_root_candidates: list[Path] | None = None,
+) -> dict[str, Any]:
+    archive_option = _select_archive_download_option(download_options)
+    archive_name = ""
+    archive_url = ""
+    archive_estimated_size_bytes = None
+    archive_estimated_size_source = None
+    if archive_option:
+        archive_name = str(archive_option.get("name") or "").strip()
+        archive_url = str(archive_option.get("url") or "").strip()
+        archive_estimated_size_bytes, archive_estimated_size_source = _archive_size_hint_bytes(
+            backend=backend,
+            archive_name=archive_name,
+            archive_url=archive_url,
+        )
+        if not archive_name:
+            archive_name = Path(urlparse(archive_url).path).name
+    for candidate in local_download_candidates:
+        if not isinstance(candidate, str) or not candidate:
+            continue
+        archive_path = Path(candidate)
+        if archive_path.exists():
+            archive_name = archive_path.name
+            if archive_estimated_size_bytes is None:
+                try:
+                    archive_estimated_size_bytes = int(archive_path.stat().st_size)
+                    archive_estimated_size_source = "local_archive_size"
+                except OSError:
+                    archive_estimated_size_bytes = None
+                    archive_estimated_size_source = archive_estimated_size_source
+            break
+    stage_estimated_size_bytes = None
+    stage_estimated_size_source = None
+    if isinstance(archive_estimated_size_bytes, int):
+        stage_estimated_size_bytes = archive_estimated_size_bytes * 3
+        stage_estimated_size_source = (
+            f"triple_{archive_estimated_size_source or 'archive_size'}"
+        )
+    stage_name = archive_name or f"{backend}_runtime_stage.bin"
+    directory_candidates = [
+        _probe_directory_space_candidate(
+            directory=directory,
+            archive_name=stage_name,
+            estimated_size_bytes=stage_estimated_size_bytes,
+        )
+        for directory in _stage_output_root_candidates(
+            repo_root=repo_root,
+            backend=backend,
+            extra_candidates=extra_stage_output_root_candidates,
+        )
+    ]
+    ready_candidates = [
+        row for row in directory_candidates if row.get("download_space_ready") is True
+    ]
+    if ready_candidates:
+        recommended_candidate = ready_candidates[0]
+    elif directory_candidates:
+        recommended_candidate = max(
+            directory_candidates,
+            key=lambda row: (
+                int(row.get("available_space_bytes"))
+                if isinstance(row.get("available_space_bytes"), int)
+                else -1
+            ),
+        )
+    else:
+        recommended_candidate = None
+    if ready_candidates:
+        stage_output_root_status = "ready"
+    elif directory_candidates and stage_estimated_size_bytes is not None:
+        stage_output_root_status = "insufficient"
+    elif directory_candidates:
+        stage_output_root_status = "unknown"
+    else:
+        stage_output_root_status = "unavailable"
+    recommended_stage_output_root_shortfall_bytes = None
+    if (
+        isinstance(recommended_candidate, dict)
+        and isinstance(stage_estimated_size_bytes, int)
+        and isinstance(recommended_candidate.get("available_space_bytes"), int)
+        and stage_estimated_size_bytes > recommended_candidate["available_space_bytes"]
+    ):
+        recommended_stage_output_root_shortfall_bytes = (
+            stage_estimated_size_bytes - recommended_candidate["available_space_bytes"]
+        )
+    return {
+        "stage_output_root_candidates": directory_candidates,
+        "recommended_stage_output_root": (
+            recommended_candidate.get("path") if isinstance(recommended_candidate, dict) else None
+        ),
+        "recommended_stage_output_root_ready": (
+            recommended_candidate.get("download_space_ready")
+            if isinstance(recommended_candidate, dict)
+            else None
+        ),
+        "recommended_stage_output_root_available_space_bytes": (
+            recommended_candidate.get("available_space_bytes")
+            if isinstance(recommended_candidate, dict)
+            else None
+        ),
+        "recommended_stage_output_root_shortfall_bytes": recommended_stage_output_root_shortfall_bytes,
+        "stage_output_root_status": stage_output_root_status,
+        "stage_estimated_size_bytes": stage_estimated_size_bytes,
+        "stage_estimated_size_source": stage_estimated_size_source,
     }
 
 
@@ -1339,6 +1533,7 @@ def _build_acquisition_hints(
     readiness: dict[str, Any],
     probes: dict[str, Any] | None = None,
     extra_download_dir_candidates: list[Path] | None = None,
+    extra_stage_output_root_candidates: list[Path] | None = None,
 ) -> dict[str, Any]:
     host = _host_platform_summary()
     system = host["system"]
@@ -1464,6 +1659,15 @@ def _build_acquisition_hints(
             extra_download_dir_candidates=extra_download_dir_candidates,
         )
     )
+    awsim_hints.update(
+        _build_stage_output_root_hints(
+            repo_root=repo_root,
+            backend="awsim",
+            download_options=awsim_hints["download_options"],
+            local_download_candidates=awsim_download_candidates,
+            extra_stage_output_root_candidates=extra_stage_output_root_candidates,
+        )
+    )
 
     carla_hints = {
         "status": (
@@ -1527,6 +1731,15 @@ def _build_acquisition_hints(
             extra_download_dir_candidates=extra_download_dir_candidates,
         )
     )
+    carla_hints.update(
+        _build_stage_output_root_hints(
+            repo_root=repo_root,
+            backend="carla",
+            download_options=carla_hints["download_options"],
+            local_download_candidates=carla_download_candidates,
+            extra_stage_output_root_candidates=extra_stage_output_root_candidates,
+        )
+    )
 
     return {
         "host_platform": host,
@@ -1567,6 +1780,18 @@ def _classify_backend_runtime_strategy(
     recommended_download_dir_shortfall_bytes = backend_hints.get(
         "recommended_download_dir_shortfall_bytes"
     )
+    recommended_stage_output_root = backend_hints.get("recommended_stage_output_root")
+    recommended_stage_output_root_ready = backend_hints.get(
+        "recommended_stage_output_root_ready"
+    )
+    recommended_stage_output_root_available_space_bytes = backend_hints.get(
+        "recommended_stage_output_root_available_space_bytes"
+    )
+    recommended_stage_output_root_shortfall_bytes = backend_hints.get(
+        "recommended_stage_output_root_shortfall_bytes"
+    )
+    stage_output_root_status = backend_hints.get("stage_output_root_status")
+    stage_estimated_size_bytes = backend_hints.get("stage_estimated_size_bytes")
     docker_storage_status = docker_hints.get("storage_probe_status")
     recommended_handoff_command = (
         "python3 scripts/run_renderer_backend_workflow.py "
@@ -1641,7 +1866,10 @@ def _classify_backend_runtime_strategy(
     if strategy in {"packaged_runtime_required", "docker_or_packaged_runtime_required"}:
         if download_directory_status == "insufficient":
             reason_codes.append("DOWNLOAD_SPACE_INSUFFICIENT")
+        if stage_output_root_status == "insufficient":
+            reason_codes.append("STAGE_SPACE_INSUFFICIENT")
         recommended_download_command = None
+        recommended_stage_command = None
         if (
             isinstance(recommended_download_dir, str)
             and recommended_download_dir.strip()
@@ -1652,6 +1880,17 @@ def _classify_backend_runtime_strategy(
             recommended_download_command = (
                 f"{recommended_command} --download-dir {quoted_dir}"
             )
+        stage_command = commands.get(f"{backend}_stage")
+        if (
+            isinstance(recommended_stage_output_root, str)
+            and recommended_stage_output_root.strip()
+            and isinstance(stage_command, str)
+            and stage_command.strip()
+        ):
+            quoted_root = shlex.quote(recommended_stage_output_root)
+            recommended_stage_command = (
+                f"{stage_command} --output-root {quoted_root}"
+            )
         if (
             isinstance(recommended_download_dir, str)
             and recommended_download_dir.strip()
@@ -1660,8 +1899,17 @@ def _classify_backend_runtime_strategy(
             and recommended_command.strip()
         ):
             recommended_command = recommended_download_command
+        elif (
+            isinstance(recommended_stage_output_root, str)
+            and recommended_stage_output_root.strip()
+            and recommended_stage_output_root_ready is True
+            and isinstance(recommended_stage_command, str)
+            and recommended_stage_command.strip()
+        ):
+            recommended_command = recommended_stage_command
     else:
         recommended_download_command = None
+        recommended_stage_command = None
     return {
         "backend": backend,
         "strategy": strategy,
@@ -1678,9 +1926,16 @@ def _classify_backend_runtime_strategy(
         "recommended_download_dir_shortfall_bytes": recommended_download_dir_shortfall_bytes,
         "download_directory_status": download_directory_status,
         "archive_estimated_size_bytes": archive_estimated_size_bytes,
+        "recommended_stage_output_root": recommended_stage_output_root,
+        "recommended_stage_output_root_ready": recommended_stage_output_root_ready,
+        "recommended_stage_output_root_available_space_bytes": recommended_stage_output_root_available_space_bytes,
+        "recommended_stage_output_root_shortfall_bytes": recommended_stage_output_root_shortfall_bytes,
+        "stage_output_root_status": stage_output_root_status,
+        "stage_estimated_size_bytes": stage_estimated_size_bytes,
         "reason_codes": sorted(set(reason_codes)),
         "recommended_command": recommended_command,
         "recommended_download_command": recommended_download_command,
+        "recommended_stage_command": recommended_stage_command,
         "platform_supported": backend_hints.get("platform_supported"),
         "platform_note": backend_hints.get("platform_note"),
     }
@@ -1722,6 +1977,7 @@ def build_renderer_backend_local_setup(
     repo_root: Path,
     search_roots: list[Path] | None = None,
     download_dir_candidates: list[Path] | None = None,
+    stage_dir_candidates: list[Path] | None = None,
     output_dir: Path | None = None,
     include_default_search_roots: bool = True,
     probe_helios_docker_demo: bool = False,
@@ -1740,6 +1996,7 @@ def build_renderer_backend_local_setup(
     repo_root = repo_root.resolve()
     extra_roots = [_resolve_runtime_path(path) for path in (search_roots or [])]
     extra_download_dirs = [_resolve_runtime_path(path) for path in (download_dir_candidates or [])]
+    extra_stage_dirs = [_resolve_runtime_path(path) for path in (stage_dir_candidates or [])]
     default_roots = [repo_root]
     if include_default_search_roots:
         default_roots.extend(
@@ -1899,6 +2156,14 @@ def build_renderer_backend_local_setup(
         ),
         "carla_acquire": (
             "python3 scripts/acquire_renderer_backend_package.py "
+            f"--backend carla --setup-summary {shlex.quote(str(summary_path))}"
+        ),
+        "awsim_stage": (
+            "python3 scripts/stage_renderer_backend_package.py "
+            f"--backend awsim --setup-summary {shlex.quote(str(summary_path))}"
+        ),
+        "carla_stage": (
+            "python3 scripts/stage_renderer_backend_package.py "
             f"--backend carla --setup-summary {shlex.quote(str(summary_path))}"
         ),
         "carla_docker_pull": "docker pull --platform linux/amd64 carlasim/carla:0.10.0",
@@ -2086,11 +2351,13 @@ def build_renderer_backend_local_setup(
         readiness=readiness,
         probes=probes,
         extra_download_dir_candidates=extra_download_dirs,
+        extra_stage_output_root_candidates=extra_stage_dirs,
     )
     summary = {
         "generated_at_utc": _format_utc(_utc_now()),
         "search_roots": [str(path) for path in all_search_roots],
         "download_dir_candidates": [str(path) for path in extra_download_dirs],
+        "stage_dir_candidates": [str(path) for path in extra_stage_dirs],
         "backends": {
             "helios": helios,
             "awsim": awsim,
@@ -2133,6 +2400,9 @@ def main(argv: list[str] | None = None) -> int:
         search_roots=[_resolve_runtime_path(path) for path in args.search_root],
         download_dir_candidates=[
             _resolve_runtime_path(path) for path in args.download_dir_candidate
+        ],
+        stage_dir_candidates=[
+            _resolve_runtime_path(path) for path in args.stage_dir_candidate
         ],
         output_dir=output_dir,
         include_default_search_roots=not args.no_default_search_roots,

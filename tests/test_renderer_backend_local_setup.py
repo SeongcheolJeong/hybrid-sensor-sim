@@ -817,6 +817,63 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
                 summary["runtime_strategy"]["carla"]["recommended_download_command"],
             )
 
+    def test_build_renderer_backend_local_setup_surfaces_stage_space_blocker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            repo_root.mkdir(parents=True, exist_ok=True)
+            download_dir = root / "downloads"
+            stage_root = root / "stage"
+            download_dir.mkdir(parents=True, exist_ok=True)
+            stage_root.mkdir(parents=True, exist_ok=True)
+
+            def _fake_probe_download_space(*, target_path, estimated_size_bytes):
+                target = Path(target_path).resolve()
+                if target.parent == download_dir.resolve():
+                    return 20_000_000_000, True
+                if target.parent == stage_root.resolve():
+                    return 100_000_000, False
+                return 50, False
+
+            with patch(
+                "hybrid_sensor_sim.tools.renderer_backend_local_setup._inspect_helios_docker_runtime",
+                return_value=_unavailable_docker_runtime(),
+            ), patch(
+                "hybrid_sensor_sim.tools.renderer_backend_local_setup._probe_download_space",
+                side_effect=_fake_probe_download_space,
+            ):
+                summary = build_renderer_backend_local_setup(
+                    repo_root=repo_root,
+                    search_roots=[],
+                    download_dir_candidates=[download_dir],
+                    stage_dir_candidates=[stage_root],
+                    output_dir=root / "artifacts",
+                    include_default_search_roots=False,
+                )
+
+            carla_hints = summary["acquisition_hints"]["carla"]
+            self.assertEqual(carla_hints["download_directory_status"], "ready")
+            self.assertEqual(carla_hints["stage_output_root_status"], "insufficient")
+            self.assertEqual(
+                carla_hints["recommended_stage_output_root"],
+                str(stage_root.resolve()),
+            )
+            self.assertGreater(
+                carla_hints["recommended_stage_output_root_shortfall_bytes"], 0
+            )
+            self.assertIn(
+                "STAGE_SPACE_INSUFFICIENT",
+                summary["runtime_strategy"]["carla"]["reason_codes"],
+            )
+            self.assertEqual(
+                summary["runtime_strategy"]["carla"]["stage_output_root_status"],
+                "insufficient",
+            )
+            self.assertIn(
+                "--output-root",
+                summary["runtime_strategy"]["carla"]["recommended_stage_command"],
+            )
+
     def test_build_renderer_backend_local_setup_prefers_largest_download_dir_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
