@@ -153,6 +153,14 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                 {"HOST_INCOMPATIBLE_PACKAGED_RUNTIME": 3},
             )
             self.assertEqual(
+                report["blocking_reason_counts"],
+                {"HOST_INCOMPATIBLE_PACKAGED_RUNTIME": 3},
+            )
+            self.assertEqual(
+                report["blocking_reason_probe_ids"]["HOST_INCOMPATIBLE_PACKAGED_RUNTIME"],
+                ["semantic_primary_ready", "semantic_recovery_ready", "tracking_ready"],
+            )
+            self.assertEqual(
                 report["runtime_strategy_recommended_command_counts"],
                 {
                     "python3 scripts/run_renderer_backend_workflow.py --backend awsim --dry-run": 3
@@ -243,6 +251,17 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
             self.assertEqual(report["status"], "FAIL")
             self.assertEqual(report["fail_count"], 1)
             self.assertEqual(report["failed_probe_ids"], ["semantic_recovery_ready"])
+            self.assertEqual(
+                report["blocking_reason_counts"],
+                {
+                    "AUTOWARE_STATUS_MISMATCH": 1,
+                    "HOST_INCOMPATIBLE_PACKAGED_RUNTIME": 3,
+                },
+            )
+            self.assertEqual(
+                report["blocking_reason_probe_ids"]["AUTOWARE_STATUS_MISMATCH"],
+                ["semantic_recovery_ready"],
+            )
             self.assertEqual(
                 report["recommended_next_command"],
                 "python3 scripts/run_renderer_backend_workflow.py --backend awsim --dry-run",
