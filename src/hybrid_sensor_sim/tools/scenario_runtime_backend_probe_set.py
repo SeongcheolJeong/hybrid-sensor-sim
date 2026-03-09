@@ -283,6 +283,13 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
 
+def _load_json(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"Expected JSON object at {path}")
+    return payload
+
+
 def _default_probe_set_specs(repo_root: Path) -> dict[str, dict[str, Any]]:
     return {
         DEFAULT_SCENARIO_RUNTIME_BACKEND_PROBE_SET_ID: {
@@ -330,6 +337,111 @@ def _default_probe_set_specs(repo_root: Path) -> dict[str, dict[str, Any]]:
                 },
             ],
         }
+        ,
+        "carla_local_v0": {
+            "probe_set_id": "carla_local_v0",
+            "description": (
+                "CARLA local runtime readiness probe using the latest local setup summary "
+                "when no real packaged runtime report is available."
+            ),
+            "probes": [
+                {
+                    "probe_id": "carla_local_runtime_strategy",
+                    "local_setup_summary_path": (
+                        repo_root
+                        / "artifacts"
+                        / "renderer_backend_local_setup_probe_latest"
+                        / "renderer_backend_local_setup.json"
+                    ),
+                    "backend": "carla",
+                    "consumer_profile_id": "tracking_fusion_v0",
+                }
+            ],
+        },
+    }
+
+
+def _build_local_setup_probe_result(
+    *,
+    probe_spec: dict[str, Any],
+    out_root: Path,
+) -> dict[str, Any]:
+    summary_path = Path(probe_spec["local_setup_summary_path"]).resolve()
+    payload = _load_json(summary_path)
+    backend = str(probe_spec.get("backend") or "").strip().lower()
+    if not backend:
+        raise ValueError("local setup probe spec requires a backend")
+    runtime_strategy = dict(payload.get("runtime_strategy", {}).get(backend, {}) or {})
+    if not runtime_strategy:
+        raise ValueError(
+            f"local setup summary {summary_path} is missing runtime_strategy for backend {backend}"
+        )
+    strategy = str(runtime_strategy.get("strategy") or "").strip()
+    reason_codes = list(runtime_strategy.get("reason_codes", []) or [])
+    probe_status = (
+        "PASS"
+        if strategy in {
+            "local_packaged_runtime",
+            "local_docker_runtime",
+            "linux_handoff_packaged_runtime",
+        }
+        else "FAIL"
+    )
+    runtime_status = {
+        "local_packaged_runtime": "LOCAL_READY",
+        "local_docker_runtime": "LOCAL_READY",
+        "linux_handoff_packaged_runtime": "HANDOFF_READY",
+    }.get(strategy, "UNAVAILABLE")
+    report_path = out_root / "scenario_runtime_backend_probe_report_v0.json"
+    markdown_path = out_root / "scenario_runtime_backend_probe_report_v0.md"
+    out_root.mkdir(parents=True, exist_ok=True)
+    report = {
+        "probe_id": str(probe_spec.get("probe_id") or "").strip(),
+        "consumer_profile_id": str(probe_spec.get("consumer_profile_id") or "").strip(),
+        "status": probe_status,
+        "summary": {
+            "runtime_status": runtime_status,
+            "autoware_pipeline_status": "UNAVAILABLE",
+            "semantic_topic_recovered": False,
+        },
+        "evaluation": {
+            "failure_codes": [] if probe_status == "PASS" else list(reason_codes),
+        },
+    }
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+    markdown_path.write_text("# local setup probe\n", encoding="utf-8")
+    return {
+        "report_path": report_path,
+        "markdown_path": markdown_path,
+        "report": report,
+        "rebridge_result": {
+            "workflow_report": {
+                "status_summary": {
+                    "backend_runtime_strategy": strategy,
+                    "backend_runtime_strategy_source": "renderer_backend_local_setup.runtime_strategy",
+                    "backend_runtime_preferred_runtime_source": runtime_strategy.get(
+                        "preferred_runtime_source"
+                    ),
+                    "backend_runtime_strategy_reason_codes": reason_codes,
+                    "backend_runtime_recommended_command": runtime_strategy.get(
+                        "recommended_command"
+                    ),
+                    "backend_runtime_selected_path": runtime_strategy.get("selected_path"),
+                    "backend_runtime_docker_storage_status": runtime_strategy.get(
+                        "docker_storage_status"
+                    ),
+                },
+                "rebridge": {
+                    "comparison": {
+                        "source_runtime_status": runtime_status,
+                        "source_autoware_pipeline_status": "UNAVAILABLE",
+                        "source_missing_required_topics": [],
+                        "refreshed_missing_required_topics": [],
+                        "recovered_required_topics": [],
+                    }
+                },
+            }
+        },
     }
 
 
@@ -571,26 +683,39 @@ def run_scenario_runtime_backend_probe_set(
 
     probe_results: list[dict[str, Any]] = []
     for probe_spec in spec.get("probes", []):
-        runtime_report_path = Path(
-            probe_spec["runtime_backend_workflow_report_path"]
-        ).resolve()
-        probe_result = run_scenario_runtime_backend_probe(
-            runtime_backend_workflow_report_path=str(runtime_report_path),
-            out_root=out_root / str(probe_spec["probe_id"]).strip(),
-            probe_id=str(probe_spec["probe_id"]).strip(),
-            consumer_profile_id=str(probe_spec.get("consumer_profile_id", "")).strip(),
-            autoware_base_frame=autoware_base_frame,
-            autoware_strict=bool(autoware_strict),
-            expect_runtime_status=str(probe_spec.get("expect_runtime_status", "")).strip(),
-            expect_autoware_status=str(
-                probe_spec.get("expect_autoware_status", "")
-            ).strip(),
-            run_history_guard=bool(run_history_guard),
-            history_guard_metadata_root=history_guard_metadata_root,
-            history_guard_current_repo_root=history_guard_current_repo_root,
-            history_guard_compare_ref=history_guard_compare_ref,
-            history_guard_include_untracked=bool(history_guard_include_untracked),
-        )
+        probe_id = str(probe_spec.get("probe_id") or "").strip()
+        probe_out_root = out_root / probe_id
+        runtime_report_path = None
+        if probe_spec.get("runtime_backend_workflow_report_path"):
+            runtime_report_path = Path(
+                probe_spec["runtime_backend_workflow_report_path"]
+            ).resolve()
+            probe_result = run_scenario_runtime_backend_probe(
+                runtime_backend_workflow_report_path=str(runtime_report_path),
+                out_root=probe_out_root,
+                probe_id=probe_id,
+                consumer_profile_id=str(probe_spec.get("consumer_profile_id", "")).strip(),
+                autoware_base_frame=autoware_base_frame,
+                autoware_strict=bool(autoware_strict),
+                expect_runtime_status=str(probe_spec.get("expect_runtime_status", "")).strip(),
+                expect_autoware_status=str(
+                    probe_spec.get("expect_autoware_status", "")
+                ).strip(),
+                run_history_guard=bool(run_history_guard),
+                history_guard_metadata_root=history_guard_metadata_root,
+                history_guard_current_repo_root=history_guard_current_repo_root,
+                history_guard_compare_ref=history_guard_compare_ref,
+                history_guard_include_untracked=bool(history_guard_include_untracked),
+            )
+        elif probe_spec.get("local_setup_summary_path"):
+            probe_result = _build_local_setup_probe_result(
+                probe_spec=probe_spec,
+                out_root=probe_out_root,
+            )
+        else:
+            raise ValueError(
+                f"Probe spec {probe_id or '<unknown>'} must define runtime_backend_workflow_report_path or local_setup_summary_path"
+            )
         probe_report = dict(probe_result.get("report", {}))
         probe_summary = dict(probe_report.get("summary", {}))
         rebridge_report = dict(
@@ -656,7 +781,14 @@ def run_scenario_runtime_backend_probe_set(
                 "source_missing_required_topics": source_missing_required_topics,
                 "refreshed_missing_required_topics": refreshed_missing_required_topics,
                 "recovered_required_topics": recovered_required_topics,
-                "runtime_backend_workflow_report_path": str(runtime_report_path),
+                "runtime_backend_workflow_report_path": (
+                    str(runtime_report_path) if runtime_report_path is not None else None
+                ),
+                "local_setup_summary_path": (
+                    str(Path(probe_spec["local_setup_summary_path"]).resolve())
+                    if probe_spec.get("local_setup_summary_path")
+                    else None
+                ),
                 "report_path": str(probe_result["report_path"]),
                 "markdown_path": str(probe_result["markdown_path"]),
                 "failure_codes": list(

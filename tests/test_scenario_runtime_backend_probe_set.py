@@ -564,6 +564,94 @@ class ScenarioRuntimeBackendProbeSetTests(unittest.TestCase):
                 ],
             )
 
+    def test_builtin_carla_local_probe_set_uses_local_setup_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            local_setup_summary = (
+                root
+                / "artifacts"
+                / "renderer_backend_local_setup_probe_latest"
+                / "renderer_backend_local_setup.json"
+            )
+            local_setup_summary.parent.mkdir(parents=True, exist_ok=True)
+            local_setup_summary.write_text(
+                json.dumps(
+                    {
+                        "runtime_strategy": {
+                            "carla": {
+                                "strategy": "packaged_runtime_required",
+                                "preferred_runtime_source": "packaged",
+                                "selected_path": None,
+                                "docker_storage_status": "content_store_corrupt",
+                                "reason_codes": [
+                                    "LOCAL_RUNTIME_MISSING",
+                                    "DOCKER_STORAGE_CORRUPT",
+                                ],
+                                "recommended_command": "python3 scripts/acquire_renderer_backend_package.py --backend carla",
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_scenario_runtime_backend_probe_set(
+                out_root=root / "probe_set",
+                probe_set_id="carla_local_v0",
+                repo_root=root,
+            )
+
+            report = result["report"]
+            self.assertEqual(report["status"], "FAIL")
+            self.assertEqual(report["probe_count"], 1)
+            self.assertEqual(report["failed_probe_ids"], ["carla_local_runtime_strategy"])
+            self.assertEqual(report["primary_runtime_strategy"], "packaged_runtime_required")
+            self.assertEqual(
+                report["primary_runtime_plan_id"],
+                "packaged_runtime_required_after_docker_failure",
+            )
+            self.assertEqual(
+                report["blocking_reason_counts"],
+                {
+                    "DOCKER_STORAGE_CORRUPT": 2,
+                    "LOCAL_RUNTIME_MISSING": 2,
+                },
+            )
+            self.assertEqual(
+                report["blocking_reason_category_counts"],
+                {"runtime_environment": 4},
+            )
+            self.assertEqual(
+                report["runtime_strategy_plan_rows"],
+                [
+                    {
+                        "strategy": "packaged_runtime_required",
+                        "probe_ids": ["carla_local_runtime_strategy"],
+                        "preferred_runtime_source": "packaged",
+                        "docker_storage_statuses": ["content_store_corrupt"],
+                        "reason_codes": [
+                            "DOCKER_STORAGE_CORRUPT",
+                            "LOCAL_RUNTIME_MISSING",
+                        ],
+                        "plan_id": "packaged_runtime_required_after_docker_failure",
+                        "plan_summary": "Docker is blocked, so acquire and stage a packaged runtime.",
+                        "plan_steps": [
+                            "Acquire or locate a packaged runtime for the selected backend.",
+                            "Stage the packaged runtime into the local runtime workspace.",
+                            "Use the packaged runtime path or linux handoff workflow to rerun smoke.",
+                        ],
+                    }
+                ],
+            )
+            self.assertEqual(
+                report["recommended_next_command"],
+                "python3 scripts/acquire_renderer_backend_package.py --backend carla",
+            )
+            self.assertEqual(
+                report["recommended_resolution_focus"],
+                "Repair the local Docker image store or use a packaged runtime handoff path.",
+            )
+
     def test_probe_set_script_bootstraps_src_path(self) -> None:
         script_path = (
             Path(__file__).resolve().parents[1]
