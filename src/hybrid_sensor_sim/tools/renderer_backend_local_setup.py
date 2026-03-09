@@ -1125,7 +1125,7 @@ def _split_path_list_env(raw: str) -> list[str]:
 def _mounted_volume_download_candidates(
     *, backend: str, volumes_root: Path | None = None
 ) -> list[Path]:
-    root = (volumes_root or Path("/Volumes")).resolve()
+    root = (volumes_root or Path("/Volumes")).expanduser()
     if not root.exists() or not root.is_dir():
         return []
     candidates: list[Path] = []
@@ -1134,9 +1134,9 @@ def _mounted_volume_download_candidates(
             continue
         candidates.extend(
             [
-                (entry / "backend_downloads" / backend).resolve(),
-                (entry / "Downloads").resolve(),
-                entry.resolve(),
+                (entry / "backend_downloads" / backend),
+                (entry / "Downloads"),
+                entry,
             ]
         )
     unique: list[Path] = []

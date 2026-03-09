@@ -970,11 +970,11 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
                 volumes_root=volumes_root,
             )
 
-            self.assertIn((volume_a / "backend_downloads" / "carla").resolve(), candidates)
-            self.assertIn((volume_a / "Downloads").resolve(), candidates)
-            self.assertIn(volume_a.resolve(), candidates)
-            self.assertIn((volume_b / "backend_downloads" / "carla").resolve(), candidates)
-            self.assertIn(volume_b.resolve(), candidates)
+            self.assertIn(volume_a / "backend_downloads" / "carla", candidates)
+            self.assertIn(volume_a / "Downloads", candidates)
+            self.assertIn(volume_a, candidates)
+            self.assertIn(volume_b / "backend_downloads" / "carla", candidates)
+            self.assertIn(volume_b, candidates)
 
     def test_build_renderer_backend_local_setup_prefers_mounted_volume_candidates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -996,7 +996,7 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
                 return_value=_unavailable_docker_runtime(),
             ), patch(
                 "hybrid_sensor_sim.tools.renderer_backend_local_setup._mounted_volume_download_candidates",
-                return_value=[mounted_backend_dir.resolve(), volume_root.resolve()],
+                return_value=[mounted_backend_dir, volume_root],
             ), patch(
                 "hybrid_sensor_sim.tools.renderer_backend_local_setup._probe_download_space",
                 side_effect=_fake_probe_download_space,
@@ -1009,12 +1009,12 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
                 )
 
             recommended = summary["acquisition_hints"]["carla"]["recommended_download_dir"]
-            self.assertEqual(recommended, str(mounted_backend_dir.resolve()))
+            self.assertEqual(recommended, str(mounted_backend_dir))
             candidate_rows = summary["acquisition_hints"]["carla"]["download_directory_candidates"]
             mounted_row = next(
-                row for row in candidate_rows if row["path"] == str(mounted_backend_dir.resolve())
+                row for row in candidate_rows if row["path"] == str(mounted_backend_dir)
             )
-            self.assertEqual(mounted_row["probe_directory"], str(volume_root.resolve()))
+            self.assertEqual(Path(mounted_row["probe_directory"]).resolve(), volume_root.resolve())
 
     def test_build_renderer_backend_local_setup_writes_probe_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
