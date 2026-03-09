@@ -434,6 +434,7 @@ This means a real backend run can now be `DEGRADED` even when output comparison 
 The current AWSIM Linux-handoff path now reproduces that state with runtime-origin outputs as well: using `semantic_perception_v0`, the workflow stays `MATCHED` + `COMPLETE` + `BACKEND_RUNTIME_ONLY` but becomes top-level `DEGRADED` because `/sensing/camera/<sensor>/semantic/image_raw` is still missing.
 The same real AWSIM Linux-handoff path also now reproduces a `tracking_fusion_v0` runtime `READY` case when radar tracks are enabled: the top-level workflow remains `SUCCEEDED`, the Autoware pipeline remains `READY`, and the available topics include `/sensing/radar/<sensor>/tracks`.
 For `semantic_perception_v0`, `scenario_backend_smoke_workflow.py` now also supports a supplemental semantic-only smoke pass: if the primary runtime output is missing `/semantic/image_raw`, the workflow can run a second semantic camera pass and merge that report into one Autoware bridge bundle instead of leaving the top-level result permanently degraded.
+`scenario_runtime_backend_workflow_report_v0.json` now lifts that merge state to top-level as well, including merged report count, supplemental semantic status, and supplemental semantic artifact paths, so semantic recovery can be triaged without opening the nested backend smoke report.
 
 Both `run_scenario_variants.py` and `run_scenario_variant_workflow.py` resolve default scenario-language profiles from:
 

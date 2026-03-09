@@ -428,6 +428,7 @@ def _build_status_summary(
     worst_logical_row = dict(batch_status_summary.get("worst_logical_scenario_row", {}))
     smoke_summary = dict(backend_report.get("smoke", {}).get("summary", {}))
     autoware_summary = dict(backend_report.get("autoware", {}))
+    backend_artifacts = dict(backend_report.get("artifacts", {}))
     history_guard_summary = dict(history_guard_report or {})
     return {
         "final_status_source": final_status_source,
@@ -538,6 +539,28 @@ def _build_status_summary(
         "autoware_dataset_ready": autoware_summary.get("dataset_ready"),
         "autoware_required_topics_complete": autoware_summary.get("required_topics_complete"),
         "autoware_frame_tree_complete": autoware_summary.get("frame_tree_complete"),
+        "autoware_topic_catalog_available": bool(
+            backend_artifacts.get("autoware_topic_catalog_path")
+        ),
+        "autoware_consumer_input_manifest_available": bool(
+            backend_artifacts.get("autoware_consumer_input_manifest_path")
+        ),
+        "autoware_report_available": bool(
+            backend_artifacts.get("autoware_report_path")
+        ),
+        "autoware_merged_report_count": autoware_summary.get("merged_report_count"),
+        "autoware_supplemental_backend_smoke_workflow_report_count": len(
+            autoware_summary.get("supplemental_backend_smoke_workflow_report_paths", [])
+        ),
+        "autoware_supplemental_semantic_requested": autoware_summary.get(
+            "supplemental_semantic_requested"
+        ),
+        "autoware_supplemental_semantic_status": autoware_summary.get(
+            "supplemental_semantic_status"
+        ),
+        "autoware_supplemental_semantic_report_path": autoware_summary.get(
+            "supplemental_semantic_report_path"
+        ),
         "history_guard_status": history_guard_summary.get("status"),
         "history_guard_failure_codes": list(history_guard_summary.get("failure_codes", [])),
         "history_guard_impacted_block_ids": list(
@@ -620,6 +643,14 @@ def _build_markdown_report(workflow_report: dict[str, Any]) -> str:
         f"- Recording style: `{summary.get('autoware_recording_style') or '-'}`",
         f"- Required topics complete: `{summary.get('autoware_required_topics_complete') if summary.get('autoware_required_topics_complete') is not None else '-'}`",
         f"- Frame tree complete: `{summary.get('autoware_frame_tree_complete') if summary.get('autoware_frame_tree_complete') is not None else '-'}`",
+        f"- Topic catalog available: `{summary.get('autoware_topic_catalog_available') if summary.get('autoware_topic_catalog_available') is not None else '-'}`",
+        f"- Consumer input manifest available: `{summary.get('autoware_consumer_input_manifest_available') if summary.get('autoware_consumer_input_manifest_available') is not None else '-'}`",
+        f"- Report available: `{summary.get('autoware_report_available') if summary.get('autoware_report_available') is not None else '-'}`",
+        f"- Merged report count: `{summary.get('autoware_merged_report_count') if summary.get('autoware_merged_report_count') is not None else '-'}`",
+        f"- Supplemental reports: `{summary.get('autoware_supplemental_backend_smoke_workflow_report_count') if summary.get('autoware_supplemental_backend_smoke_workflow_report_count') is not None else '-'}`",
+        f"- Supplemental semantic requested: `{summary.get('autoware_supplemental_semantic_requested') if summary.get('autoware_supplemental_semantic_requested') is not None else '-'}`",
+        f"- Supplemental semantic status: `{summary.get('autoware_supplemental_semantic_status') or '-'}`",
+        f"- Supplemental semantic report: `{summary.get('autoware_supplemental_semantic_report_path') or '-'}`",
         f"- Message types: `{', '.join(summary.get('autoware_available_message_types', [])) or '-'}`",
         f"- Available modalities: `{', '.join(summary.get('autoware_available_modalities', [])) or '-'}`",
         f"- Available topics: `{', '.join(summary.get('autoware_available_topics', [])) or '-'}`",
@@ -923,6 +954,12 @@ def run_scenario_runtime_backend_workflow(
             "autoware_topic_export_root": backend_report["artifacts"].get("autoware_topic_export_root"),
             "autoware_topic_export_index_path": backend_report["artifacts"].get("autoware_topic_export_index_path"),
             "autoware_topic_catalog_path": backend_report["artifacts"].get("autoware_topic_catalog_path"),
+            "supplemental_semantic_smoke_config_path": backend_report["artifacts"].get(
+                "supplemental_semantic_smoke_config_path"
+            ),
+            "supplemental_semantic_backend_smoke_workflow_report_path": backend_report[
+                "artifacts"
+            ].get("supplemental_semantic_backend_smoke_workflow_report_path"),
             "renderer_backend_workflow_summary_path": backend_report["artifacts"].get("renderer_backend_workflow_summary_path"),
             "renderer_backend_workflow_report_path": backend_report["artifacts"].get("renderer_backend_workflow_report_path"),
             "renderer_backend_linux_handoff_script_path": backend_report["artifacts"].get("renderer_backend_linux_handoff_script_path"),

@@ -333,6 +333,21 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
                 report["backend_smoke_workflow"]["selection"]["logical_scenario_id"],
             )
             self.assertIsNotNone(report["status_summary"]["autoware_missing_required_sensor_count"])
+            self.assertTrue(report["status_summary"]["autoware_topic_catalog_available"])
+            self.assertTrue(
+                report["status_summary"]["autoware_consumer_input_manifest_available"]
+            )
+            self.assertTrue(report["status_summary"]["autoware_report_available"])
+            self.assertGreaterEqual(
+                report["status_summary"]["autoware_merged_report_count"], 1
+            )
+            self.assertEqual(
+                report["status_summary"]["autoware_supplemental_backend_smoke_workflow_report_count"],
+                0,
+            )
+            self.assertFalse(
+                report["status_summary"]["autoware_supplemental_semantic_requested"]
+            )
             self.assertTrue(Path(report["artifacts"]["autoware_pipeline_manifest_path"]).is_file())
             self.assertTrue(Path(report["artifacts"]["autoware_topic_export_index_path"]).is_file())
             self.assertTrue(Path(report["artifacts"]["autoware_topic_catalog_path"]).is_file())
@@ -341,6 +356,160 @@ class ScenarioRuntimeBackendWorkflowTests(unittest.TestCase):
             )
             self.assertTrue(Path(report["artifacts"]["smoke_scenario_path"]).is_file())
             self.assertTrue(Path(result["workflow_markdown_path"]).is_file())
+
+    def test_run_scenario_runtime_backend_workflow_lifts_supplemental_semantic_details(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            supplemental_report = root / "supplemental_semantic" / "scenario_backend_smoke_workflow_report_v0.json"
+            supplemental_report.parent.mkdir(parents=True, exist_ok=True)
+            supplemental_report.write_text("{}\n", encoding="utf-8")
+            supplemental_config = root / "supplemental_semantic_smoke_base.json"
+            supplemental_config.write_text("{}\n", encoding="utf-8")
+            with patch(
+                "hybrid_sensor_sim.tools.scenario_runtime_backend_workflow.run_scenario_batch_workflow",
+                return_value={
+                    "workflow_report_path": root / "batch_workflow_report.json",
+                    "workflow_markdown_path": root / "batch_workflow_report.md",
+                    "workflow_report": {
+                        "status": "SUCCEEDED",
+                        "status_summary": {
+                            "worst_logical_scenario_row": {"logical_scenario_id": "scn_ok"},
+                            "gate_failure_codes": [],
+                            "status_reason_codes": [],
+                        },
+                    },
+                },
+            ), patch(
+                "hybrid_sensor_sim.tools.scenario_runtime_backend_workflow.run_scenario_backend_smoke_workflow",
+                return_value={
+                    "workflow_report_path": root / "scenario_backend_smoke_workflow_report_v0.json",
+                    "workflow_report": {
+                        "status": "HANDOFF_DOCKER_OUTPUT_READY",
+                        "selection": {"variant_id": "v_sem", "logical_scenario_id": "scn_ok"},
+                        "bridge": {
+                            "scenario_id": "scn_runtime_sem",
+                            "source_payload_kind": "scenario_definition_v0",
+                        },
+                        "smoke": {
+                            "summary": {
+                                "output_comparison_status": "MATCHED",
+                                "output_smoke_status": "COMPLETE",
+                                "output_origin_status": "BACKEND_RUNTIME_ONLY",
+                                "runner_smoke_status": "EXECUTION_FAILED",
+                            }
+                        },
+                        "renderer_backend_workflow": {
+                            "status": "HANDOFF_DOCKER_OUTPUT_READY",
+                            "linux_handoff_ready": True,
+                            "blocker_codes": ["BACKEND_HOST_INCOMPATIBLE"],
+                            "warning_codes": [
+                                "BACKEND_RUNTIME_NONZERO_EXIT_WITH_COMPLETE_OUTPUTS"
+                            ],
+                        },
+                        "autoware": {
+                            "status": "READY",
+                            "availability_mode": "runtime",
+                            "consumer_profile_id": "semantic_perception_v0",
+                            "available_sensor_count": 4,
+                            "missing_required_sensor_count": 0,
+                            "available_topics": [
+                                "/sensing/camera/camera_front/image_raw",
+                                "/sensing/camera/camera_front/semantic/image_raw",
+                                "/sensing/lidar/lidar_top/pointcloud",
+                            ],
+                            "required_topics_complete": True,
+                            "frame_tree_complete": True,
+                            "merged_report_count": 2,
+                            "supplemental_backend_smoke_workflow_report_paths": [
+                                str(supplemental_report)
+                            ],
+                            "supplemental_semantic_requested": True,
+                            "supplemental_semantic_status": "HANDOFF_DOCKER_OUTPUT_READY",
+                            "supplemental_semantic_report_path": str(supplemental_report),
+                        },
+                        "artifacts": {
+                            "smoke_scenario_path": str(root / "smoke_scenario.json"),
+                            "smoke_input_config_path": str(root / "smoke_input_config.json"),
+                            "autoware_report_path": str(root / "autoware_report.json"),
+                            "autoware_sensor_contracts_path": str(root / "autoware_sensor_contracts.json"),
+                            "autoware_frame_tree_path": str(root / "autoware_frame_tree.json"),
+                            "autoware_pipeline_manifest_path": str(root / "autoware_pipeline_manifest.json"),
+                            "autoware_dataset_manifest_path": str(root / "autoware_dataset_manifest.json"),
+                            "autoware_consumer_input_manifest_path": str(root / "autoware_consumer_input_manifest.json"),
+                            "autoware_topic_catalog_path": str(root / "autoware_topic_catalog.json"),
+                            "supplemental_semantic_smoke_config_path": str(supplemental_config),
+                            "supplemental_semantic_backend_smoke_workflow_report_path": str(
+                                supplemental_report
+                            ),
+                        },
+                    },
+                },
+            ):
+                result = run_scenario_runtime_backend_workflow(
+                    logical_scenarios_path=str(P_VALIDATION_FIXTURE_ROOT / "highway_mixed_payloads_v0.json"),
+                    scenario_language_profile="",
+                    scenario_language_dir=P_VALIDATION_FIXTURE_ROOT,
+                    matrix_scenario_path=P_SIM_ENGINE_FIXTURE_ROOT / "highway_safe_following_v0.json",
+                    smoke_config_path=root / "smoke_config.json",
+                    backend="awsim",
+                    out_root=root / "runtime_backend_workflow",
+                    sampling="full",
+                    sample_size=0,
+                    seed=7,
+                    max_variants_per_scenario=1000,
+                    execution_max_variants=1,
+                    sds_version="sds_test",
+                    sim_version="sim_test",
+                    fidelity_profile="dev-fast",
+                    matrix_run_id_prefix="RUN_BATCH",
+                    traffic_profile_ids=["sumo_highway_balanced_v0"],
+                    traffic_actor_pattern_ids=["sumo_platoon_sparse_v0"],
+                    traffic_npc_speed_scale_values=[1.0],
+                    tire_friction_coeff_values=[1.0],
+                    surface_friction_scale_values=[1.0],
+                    enable_ego_collision_avoidance=False,
+                    avoidance_ttc_threshold_sec=2.5,
+                    ego_max_brake_mps2=6.0,
+                    max_cases=0,
+                    selection_strategy="worst_logical_scenario",
+                    selected_variant_id="",
+                    lane_spacing_m=4.0,
+                    smoke_output_dir="",
+                    setup_summary_path="",
+                    backend_workflow_summary_path="",
+                    backend_bin="",
+                    renderer_map="",
+                    option_overrides=[],
+                    skip_smoke=False,
+                )
+
+            report = result["workflow_report"]
+            self.assertEqual(report["status"], "SUCCEEDED")
+            self.assertEqual(report["status_summary"]["autoware_pipeline_status"], "READY")
+            self.assertEqual(report["status_summary"]["autoware_merged_report_count"], 2)
+            self.assertEqual(
+                report["status_summary"]["autoware_supplemental_backend_smoke_workflow_report_count"],
+                1,
+            )
+            self.assertTrue(
+                report["status_summary"]["autoware_supplemental_semantic_requested"]
+            )
+            self.assertEqual(
+                report["status_summary"]["autoware_supplemental_semantic_status"],
+                "HANDOFF_DOCKER_OUTPUT_READY",
+            )
+            self.assertEqual(
+                report["status_summary"]["autoware_supplemental_semantic_report_path"],
+                str(supplemental_report),
+            )
+            self.assertEqual(
+                report["artifacts"]["supplemental_semantic_smoke_config_path"],
+                str(supplemental_config),
+            )
+            self.assertEqual(
+                report["artifacts"]["supplemental_semantic_backend_smoke_workflow_report_path"],
+                str(supplemental_report),
+            )
 
     def test_run_scenario_runtime_backend_workflow_surfaces_backend_output_mismatch_details(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
