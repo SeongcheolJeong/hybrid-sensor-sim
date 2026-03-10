@@ -23,6 +23,20 @@ The current practical goal is:
 
 This is the shortest path to a usable native-run stack. It is narrower than a full cloud, HIL, data-explorer, or neural-sim product line.
 
+## Completion Snapshot
+
+| Subsystem | Status | What is real today | Main remaining gap |
+| --- | --- | --- | --- |
+| Scenario / Object Sim | Implemented | deterministic scenario execution, replay, route-aware object sim, lane risk, batch scenario selection | deeper map-aware behavior beyond current runtime semantics |
+| Log Replay / Augment | Implemented | `log_scene_v0` replay, augmentation, generated replay scenarios, manifest outputs | dataset-scale replay packaging |
+| Map Toolset | Implemented | canonical conversion, validation, route computation, map-aware scenario consumption | richer map editing and world-generation product surface |
+| Validation / Batch | Implemented | variants, matrix sweep, batch comparison, gates, probe summaries, workflow triage | mostly frozen; only runtime-relevant refinements remain |
+| Native Sensor Sim | Implemented | camera/lidar/radar native outputs, HELIOS integration, ground-truth and rig sweep surfaces | targeted parity tightening from real runtime evidence |
+| AWSIM Runtime | Implemented | packaged runtime handoff, real AWSIM probe sets, runtime-origin READY/DEGRADED classification | primary semantic output still has a narrower gap than tracking |
+| CARLA Runtime | Blocked | acquisition, local setup diagnostics, staged runtime planning, probe-set blocker triage | local runtime/image availability, storage space, and Docker health |
+| Autoware Data Contract | Implemented | topic catalog, frame tree, pipeline manifest, consumer input manifest, processing stages | downstream consumer shape can still be narrowed further |
+| Historical Provenance / Governance | Implemented | checked-in inventory, migration registry, traceability, refresh tooling, history guard | routine maintenance only |
+
 ## System Overview
 
 ```mermaid
@@ -37,6 +51,36 @@ flowchart TD
     H --> I["AWSIM or CARLA Packaged Runtime"]
     I --> J["Output Comparison and Probes<br/>probe / rebridge / probe set"]
     J --> K["Autoware Bridge<br/>topics / frames / consumer manifests / profiles"]
+```
+
+## AWSIM Real Execution Path
+
+```mermaid
+flowchart LR
+    A["Scenario Input"] --> B["Scenario Layer<br/>object_sim / replay / variants"]
+    B --> C["Runtime Bridge"]
+    C --> D["Native Sensor + Physics"]
+    D --> E["Renderer Contract"]
+    E --> F["Backend Workflow"]
+    F --> G["AWSIM Packaged Runtime<br/>Linux handoff / Docker handoff"]
+    G --> H["Smoke / Output Comparison"]
+    H --> I["Probe / Rebridge"]
+    I --> J["Autoware Bridge"]
+```
+
+This is the strongest verified execution lane in the repository today.
+
+```mermaid
+flowchart TD
+    A["/Users/seongcheoljeong/Documents/Test"]
+    A --> B["src/hybrid_sensor_sim<br/>implementation"]
+    A --> C["scripts<br/>CLI entrypoints"]
+    A --> D["tests<br/>regression + fixtures"]
+    A --> E["docs<br/>guides and plans"]
+    A --> F["metadata/autonomy_e2e<br/>history/provenance ledger"]
+    A --> G["configs<br/>example configs"]
+    A --> H["artifacts<br/>execution outputs"]
+    A --> I["third_party<br/>external runtimes"]
 ```
 
 ## Repository Layout
@@ -208,6 +252,25 @@ Responsibilities:
 - classify readiness as `READY`, `DEGRADED`, `PLANNED`, or sidecar/mixed equivalents
 
 This layer is JSON-first. It intentionally does not depend on ROS runtime in the current phase.
+
+## Autoware Bridge Internals
+
+```mermaid
+flowchart TD
+    A["Backend Smoke Outputs"] --> B["Output Summary + Comparison"]
+    B --> C["contracts.py<br/>topic/message mapping"]
+    B --> D["frames.py<br/>frame tree"]
+    B --> E["profiles.py<br/>consumer profiles"]
+    C --> F["export_bridge.py"]
+    D --> F
+    E --> F
+    F --> G["autoware_sensor_contracts.json"]
+    F --> H["autoware_frame_tree.json"]
+    F --> I["autoware_pipeline_manifest.json"]
+    F --> J["autoware_dataset_manifest.json"]
+    F --> K["autoware_topic_catalog.json"]
+    F --> L["autoware_consumer_input_manifest.json"]
+```
 
 ## Main Workflows
 

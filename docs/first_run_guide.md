@@ -23,6 +23,13 @@ The repository currently optimizes for:
 
 This is narrower than a full cloud, HIL, data-explorer, or neural-sim product line.
 
+## Current Status Summary
+
+- strongest verified path: `AWSIM`
+- current blocked lane: `CARLA runtime availability`
+- recommended first report:
+  - `scenario_runtime_backend_probe_set_report_v0.json`
+
 ## Read Order
 
 Read in this order:

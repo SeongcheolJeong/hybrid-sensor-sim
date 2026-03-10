@@ -36,6 +36,15 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `docs/autonomy_e2e_migration_master_plan.md`: selective migration scope and phased execution plan for `Autonomy-E2E` sources.
 - `docs/autonomy_e2e_history_integration.md`: provenance model, ledger workflow, and Git governance for the canonical GitHub codebase.
 - `metadata/autonomy_e2e/*.json`: checked-in provenance ledger for inventory, source history snapshot, migration registry, reverse traceability, and refresh status.
+
+Newcomer quick links:
+
+- [Architecture Guide](docs/architecture_guide.md)
+- [First-Run Guide](docs/first_run_guide.md)
+- [Completion Snapshot](docs/architecture_guide.md#completion-snapshot)
+- [AWSIM Real Execution Path](docs/architecture_guide.md#awsim-real-execution-path)
+- [Autoware Bridge Internals](docs/architecture_guide.md#autoware-bridge-internals)
+
 - `scripts/setup_helios.sh`: bootstrap helper for cloning/building HELIOS.
 - `scripts/run_renderer_backend_smoke.py`: AWSIM/CARLA smoke launcher that forces direct backend execution plus output-contract inspection.
 - `scripts/discover_renderer_backend_local_env.py`: discovers local HELIOS/AWSIM/CARLA runtime candidates and writes a reusable env file plus readiness summary.
