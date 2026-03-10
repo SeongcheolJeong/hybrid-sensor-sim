@@ -1,10 +1,10 @@
 {
   "schema_version": "autonomy_e2e_migration_registry_v0",
-  "generated_at_utc": "2026-03-10T11:18:39+00:00",
+  "generated_at_utc": "2026-03-10T11:37:08+00:00",
   "source_repo_root": "/Users/seongcheoljeong/Documents/Autonomy-E2E/Autonomy-E2E",
   "current_repo_root": "/Users/seongcheoljeong/Documents/Test",
   "integration_baseline_commit": "8d2353f",
-  "current_repo_head_commit": "9e44dee55751e40b6391d0ec913f08bcd75ca98a",
+  "current_repo_head_commit": "bf79e619c8235973a9dcd2b9b967f11a0274512e",
   "blocks": [
     {
       "block_id": "p_autoware_workspace_ci.data_contract_bridge",
@@ -50,7 +50,8 @@
         "README.md",
         "docs/autonomy_e2e_history_integration.md",
         "docs/p_sim_engine_migration_audit.md",
-        "docs/autonomy_e2e_migration_master_plan.md"
+        "docs/autonomy_e2e_migration_master_plan.md",
+        "docs/architecture_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
       "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79",
@@ -88,7 +89,8 @@
       "current_fixture_paths": [],
       "current_script_paths": [],
       "current_doc_paths": [
-        "docs/autonomy_e2e_migration_master_plan.md"
+        "docs/autonomy_e2e_migration_master_plan.md",
+        "docs/architecture_guide.md"
       ],
       "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
       "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79",
@@ -131,7 +133,8 @@
         "scripts/run_scenario_batch_workflow.py"
       ],
       "current_doc_paths": [
-        "docs/autonomy_e2e_migration_master_plan.md"
+        "docs/autonomy_e2e_migration_master_plan.md",
+        "docs/architecture_guide.md"
       ],
       "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
       "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79",
@@ -170,7 +173,8 @@
       "current_fixture_paths": [],
       "current_script_paths": [],
       "current_doc_paths": [
-        "docs/autonomy_e2e_migration_master_plan.md"
+        "docs/autonomy_e2e_migration_master_plan.md",
+        "docs/architecture_guide.md"
       ],
       "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
       "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79",
@@ -217,7 +221,8 @@
         "scripts/run_scenario_batch_comparison.py"
       ],
       "current_doc_paths": [
-        "docs/autonomy_e2e_migration_master_plan.md"
+        "docs/autonomy_e2e_migration_master_plan.md",
+        "docs/architecture_guide.md"
       ],
       "current_intro_commit": "b95cb42a093a638463fac893cb8179f916b135b3",
       "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79",
@@ -261,7 +266,8 @@
       ],
       "current_doc_paths": [
         "README.md",
-        "docs/autonomy_e2e_migration_master_plan.md"
+        "docs/autonomy_e2e_migration_master_plan.md",
+        "docs/architecture_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
       "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79",
@@ -306,7 +312,8 @@
       ],
       "current_doc_paths": [
         "README.md",
-        "docs/autonomy_e2e_migration_master_plan.md"
+        "docs/autonomy_e2e_migration_master_plan.md",
+        "docs/architecture_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
       "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79",
@@ -351,7 +358,8 @@
       ],
       "current_doc_paths": [
         "README.md",
-        "docs/autonomy_e2e_migration_master_plan.md"
+        "docs/autonomy_e2e_migration_master_plan.md",
+        "docs/architecture_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
       "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79",
@@ -402,7 +410,8 @@
       "current_doc_paths": [
         "README.md",
         "docs/p_sim_engine_migration_audit.md",
-        "docs/autonomy_e2e_migration_master_plan.md"
+        "docs/autonomy_e2e_migration_master_plan.md",
+        "docs/architecture_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
       "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79",
@@ -454,7 +463,8 @@
       "current_doc_paths": [
         "README.md",
         "docs/p_sim_engine_migration_audit.md",
-        "docs/autonomy_e2e_migration_master_plan.md"
+        "docs/autonomy_e2e_migration_master_plan.md",
+        "docs/architecture_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
       "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79",
@@ -496,7 +506,8 @@
       ],
       "current_doc_paths": [
         "README.md",
-        "docs/p_sim_engine_migration_audit.md"
+        "docs/p_sim_engine_migration_audit.md",
+        "docs/architecture_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
       "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79",
@@ -536,7 +547,8 @@
       ],
       "current_doc_paths": [
         "README.md",
-        "docs/p_sim_engine_migration_audit.md"
+        "docs/p_sim_engine_migration_audit.md",
+        "docs/architecture_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
       "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79",
@@ -573,7 +585,8 @@
       "current_fixture_paths": [],
       "current_script_paths": [],
       "current_doc_paths": [
-        "docs/autonomy_e2e_migration_master_plan.md"
+        "docs/autonomy_e2e_migration_master_plan.md",
+        "docs/architecture_guide.md"
       ],
       "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
       "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79",
@@ -621,7 +634,8 @@
       "current_doc_paths": [
         "README.md",
         "docs/p_sim_engine_migration_audit.md",
-        "docs/autonomy_e2e_migration_master_plan.md"
+        "docs/autonomy_e2e_migration_master_plan.md",
+        "docs/architecture_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
       "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79",
@@ -670,7 +684,8 @@
       ],
       "current_doc_paths": [
         "README.md",
-        "docs/p_sim_engine_migration_audit.md"
+        "docs/p_sim_engine_migration_audit.md",
+        "docs/architecture_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
       "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79",
@@ -725,7 +740,8 @@
       "current_doc_paths": [
         "README.md",
         "docs/p_sim_engine_migration_audit.md",
-        "docs/autonomy_e2e_migration_master_plan.md"
+        "docs/autonomy_e2e_migration_master_plan.md",
+        "docs/architecture_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
       "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79",
@@ -781,7 +797,8 @@
       ],
       "current_doc_paths": [
         "README.md",
-        "docs/p_sim_engine_migration_audit.md"
+        "docs/p_sim_engine_migration_audit.md",
+        "docs/architecture_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
       "current_latest_touch_commit": "9e44dee55751e40b6391d0ec913f08bcd75ca98a",
@@ -837,7 +854,8 @@
       ],
       "current_doc_paths": [
         "docs/p_sim_engine_migration_audit.md",
-        "docs/autonomy_e2e_migration_master_plan.md"
+        "docs/autonomy_e2e_migration_master_plan.md",
+        "docs/architecture_guide.md"
       ],
       "current_intro_commit": "ab390e6725b84f94ebeadfa993b281d2f5d47935",
       "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79",
@@ -898,7 +916,8 @@
       "current_doc_paths": [
         "README.md",
         "docs/p_sim_engine_migration_audit.md",
-        "docs/autonomy_e2e_migration_master_plan.md"
+        "docs/autonomy_e2e_migration_master_plan.md",
+        "docs/architecture_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
       "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79",
@@ -943,7 +962,8 @@
       ],
       "current_doc_paths": [
         "README.md",
-        "docs/p_sim_engine_migration_audit.md"
+        "docs/p_sim_engine_migration_audit.md",
+        "docs/architecture_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
       "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79",
@@ -987,7 +1007,8 @@
       "current_script_paths": [],
       "current_doc_paths": [
         "docs/p_sim_engine_migration_audit.md",
-        "docs/sensor_sim_master_plan.md"
+        "docs/sensor_sim_master_plan.md",
+        "docs/architecture_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
       "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79",
@@ -1032,7 +1053,8 @@
       "current_doc_paths": [
         "README.md",
         "docs/p_sim_engine_migration_audit.md",
-        "docs/autonomy_e2e_migration_master_plan.md"
+        "docs/autonomy_e2e_migration_master_plan.md",
+        "docs/architecture_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
       "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79",
@@ -1068,7 +1090,8 @@
       "current_fixture_paths": [],
       "current_script_paths": [],
       "current_doc_paths": [
-        "docs/autonomy_e2e_migration_master_plan.md"
+        "docs/autonomy_e2e_migration_master_plan.md",
+        "docs/architecture_guide.md"
       ],
       "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
       "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79",
@@ -1117,7 +1140,8 @@
       ],
       "current_doc_paths": [
         "README.md",
-        "docs/autonomy_e2e_migration_master_plan.md"
+        "docs/autonomy_e2e_migration_master_plan.md",
+        "docs/architecture_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
       "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79",

@@ -1,6 +1,6 @@
 {
   "schema_version": "autonomy_e2e_project_inventory_v0",
-  "generated_at_utc": "2026-03-10T11:18:41+00:00",
+  "generated_at_utc": "2026-03-10T11:37:09+00:00",
   "source_repo_root": "/Users/seongcheoljeong/Documents/Autonomy-E2E/Autonomy-E2E",
   "integration_baseline_commit": "8d2353f",
   "projects": [
@@ -59,6 +59,7 @@
       ],
       "current_repo_equivalent_paths": [
         "README.md",
+        "docs/architecture_guide.md",
         "docs/autonomy_e2e_history_integration.md",
         "docs/autonomy_e2e_migration_master_plan.md",
         "docs/p_sim_engine_migration_audit.md",
@@ -246,6 +247,7 @@
         }
       ],
       "current_repo_equivalent_paths": [
+        "docs/architecture_guide.md",
         "docs/autonomy_e2e_migration_master_plan.md",
         "scripts/run_scenario_batch_workflow.py",
         "src/hybrid_sensor_sim/scenarios/matrix_sweep.py",
@@ -448,6 +450,7 @@
         }
       ],
       "current_repo_equivalent_paths": [
+        "docs/architecture_guide.md",
         "docs/autonomy_e2e_migration_master_plan.md"
       ],
       "current_assessment": "Tracked for provenance only; analytics and data-lake workflow are outside this repository boundary.",
@@ -763,6 +766,7 @@
         }
       ],
       "current_repo_equivalent_paths": [
+        "docs/architecture_guide.md",
         "docs/autonomy_e2e_migration_master_plan.md",
         "scripts/run_renderer_backend_workflow.py",
         "scripts/run_scenario_batch_comparison.py",
@@ -939,6 +943,7 @@
       ],
       "current_repo_equivalent_paths": [
         "README.md",
+        "docs/architecture_guide.md",
         "docs/autonomy_e2e_migration_master_plan.md",
         "scripts/run_map_convert.py",
         "scripts/run_map_route.py",
@@ -1189,6 +1194,7 @@
       ],
       "current_repo_equivalent_paths": [
         "README.md",
+        "docs/architecture_guide.md",
         "docs/autonomy_e2e_migration_master_plan.md",
         "docs/p_sim_engine_migration_audit.md",
         "docs/sensor_sim_master_plan.md",
@@ -1802,6 +1808,7 @@
       ],
       "current_repo_equivalent_paths": [
         "README.md",
+        "docs/architecture_guide.md",
         "docs/autonomy_e2e_migration_master_plan.md",
         "scripts/run_scenario_variant_runner.py",
         "scripts/run_scenario_variant_workflow.py",
