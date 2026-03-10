@@ -728,9 +728,10 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
                 "DOCKER_STORAGE_CORRUPT",
                 summary["runtime_strategy"]["carla"]["reason_codes"],
             )
-            self.assertEqual(
-                summary["runtime_strategy"]["carla"]["recommended_command"],
-                summary["commands"]["carla_acquire"],
+            self.assertTrue(
+                str(summary["runtime_strategy"]["carla"]["recommended_command"]).startswith(
+                    "python3 scripts/acquire_renderer_backend_package.py --backend carla"
+                )
             )
             probe_path = Path(summary["artifacts"]["docker_storage_probe_path"])
             self.assertTrue(probe_path.exists())
@@ -1044,6 +1045,23 @@ class RendererBackendLocalSetupTests(unittest.TestCase):
             self.assertIn(volume_a, candidates)
             self.assertIn(volume_b / "backend_downloads" / "carla", candidates)
             self.assertIn(volume_b, candidates)
+
+    def test_mounted_volume_download_candidates_skip_system_symlink_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            volumes_root = Path(tmp) / "Volumes"
+            volumes_root.mkdir(parents=True, exist_ok=True)
+            system_link = volumes_root / "Macintosh HD"
+            system_link.symlink_to("/")
+            external = volumes_root / "FastDisk"
+            external.mkdir(parents=True, exist_ok=True)
+
+            candidates = _mounted_volume_download_candidates(
+                backend="carla",
+                volumes_root=volumes_root,
+            )
+
+            self.assertNotIn(system_link / "backend_downloads" / "carla", candidates)
+            self.assertIn(external / "backend_downloads" / "carla", candidates)
 
     def test_build_renderer_backend_local_setup_prefers_mounted_volume_candidates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

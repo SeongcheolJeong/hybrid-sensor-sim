@@ -1134,9 +1134,12 @@ def _mounted_volume_download_candidates(
     root = (volumes_root or Path("/Volumes")).expanduser()
     if not root.exists() or not root.is_dir():
         return []
+    system_paths = {Path("/").resolve(), Path("/System/Volumes/Data").resolve()}
     candidates: list[Path] = []
     for entry in sorted(root.iterdir(), key=lambda path: path.name.lower()):
         if not entry.is_dir() or entry.name.startswith("."):
+            continue
+        if entry.resolve() in system_paths:
             continue
         candidates.extend(
             [
@@ -1162,9 +1165,12 @@ def _mounted_volume_stage_output_root_candidates(
     root = (volumes_root or Path("/Volumes")).expanduser()
     if not root.exists() or not root.is_dir():
         return []
+    system_paths = {Path("/").resolve(), Path("/System/Volumes/Data").resolve()}
     candidates: list[Path] = []
     for entry in sorted(root.iterdir(), key=lambda path: path.name.lower()):
         if not entry.is_dir() or entry.name.startswith("."):
+            continue
+        if entry.resolve() in system_paths:
             continue
         candidates.extend(
             [
