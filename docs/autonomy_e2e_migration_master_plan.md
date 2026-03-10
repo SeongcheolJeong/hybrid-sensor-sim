@@ -25,6 +25,10 @@ Checked-in provenance truth now lives under:
 
 This document remains the narrative migration plan layered on top of that checked-in ledger.
 
+Newcomer-oriented architecture reference:
+
+- `/Users/seongcheoljeong/Documents/Test/docs/architecture_guide.md`
+
 Governance rule:
 
 - if migrated result paths changed, refresh the ledger and validate with `/Users/seongcheoljeong/Documents/Test/scripts/run_autonomy_e2e_history_guard.py` before publish

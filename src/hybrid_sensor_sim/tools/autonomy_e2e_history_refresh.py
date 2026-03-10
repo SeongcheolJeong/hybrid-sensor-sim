@@ -19,6 +19,7 @@ from hybrid_sensor_sim.io.autonomy_e2e_provenance import (
 INTEGRATION_BASELINE_COMMIT = "8d2353f"
 THIRTY_PROJECTS_DIR_NAME = "30_Projects"
 DEFAULT_RECENT_COMMIT_LIMIT = 20
+ARCHITECTURE_GUIDE_DOC_PATH = "docs/architecture_guide.md"
 
 PROJECT_SPECS = {
     "P_Sim-Engine": {
@@ -887,6 +888,12 @@ BLOCK_CATALOG: list[dict[str, Any]] = [
         "notes": "",
     },
 ]
+
+for _block_spec in BLOCK_CATALOG:
+    current_doc_paths = list(_block_spec.get("current_doc_paths", []))
+    if current_doc_paths and ARCHITECTURE_GUIDE_DOC_PATH not in current_doc_paths:
+        current_doc_paths.append(ARCHITECTURE_GUIDE_DOC_PATH)
+        _block_spec["current_doc_paths"] = current_doc_paths
 
 
 def _utc_now() -> str:

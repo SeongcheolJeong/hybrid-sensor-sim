@@ -30,6 +30,7 @@ This repository implements a hybrid integration strategy for [HELIOS](https://gi
 - `src/hybrid_sensor_sim/renderers/playback_contract.py`: renderer playback contract builder for CARLA/AWSIM bridge.
 - `src/hybrid_sensor_sim/orchestrator.py`: mode selection and pipeline chaining.
 - `docs/hybrid_helios_plan.md`: functional roadmap and risk management.
+- `docs/architecture_guide.md`: newcomer-facing architecture, folder structure, workflow entrypoints, and layer responsibilities.
 - `docs/p_sim_engine_migration_audit.md`: audit of historical `P_Sim-Engine` work and concrete migration targets into this repository.
 - `docs/autonomy_e2e_migration_master_plan.md`: selective migration scope and phased execution plan for `Autonomy-E2E` sources.
 - `docs/autonomy_e2e_history_integration.md`: provenance model, ledger workflow, and Git governance for the canonical GitHub codebase.

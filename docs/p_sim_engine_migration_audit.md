@@ -19,6 +19,10 @@ Checked-in provenance truth for the broader `Autonomy-E2E` integration now lives
 
 This audit remains the narrative explanation layer for the `P_Sim-Engine` slice of that ledger.
 
+Newcomer-oriented architecture reference:
+
+- `/Users/seongcheoljeong/Documents/Test/docs/architecture_guide.md`
+
 Before publishing changes that touch migrated `P_Sim-Engine` result paths, run:
 
 - `/Users/seongcheoljeong/Documents/Test/scripts/run_autonomy_e2e_history_guard.py`
