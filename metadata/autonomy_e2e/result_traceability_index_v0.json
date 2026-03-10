@@ -1,6 +1,6 @@
 {
   "schema_version": "autonomy_e2e_result_traceability_index_v0",
-  "generated_at_utc": "2026-03-09T18:03:37+00:00",
+  "generated_at_utc": "2026-03-10T11:18:47+00:00",
   "current_repo_root": "/Users/seongcheoljeong/Documents/Test",
   "paths": [
     {
@@ -829,7 +829,7 @@
       ],
       "result_role": "core_logic",
       "current_intro_commit": "9c39f72ea8b002ada457623b95362610ad827cc5",
-      "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79"
+      "current_latest_touch_commit": "9e44dee55751e40b6391d0ec913f08bcd75ca98a"
     },
     {
       "current_path": "src/hybrid_sensor_sim/tools/renderer_backend_package_acquire.py",
@@ -1423,7 +1423,7 @@
       ],
       "result_role": "regression",
       "current_intro_commit": "9c39f72ea8b002ada457623b95362610ad827cc5",
-      "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79"
+      "current_latest_touch_commit": "9e44dee55751e40b6391d0ec913f08bcd75ca98a"
     },
     {
       "current_path": "tests/test_renderer_backend_package_acquire.py",

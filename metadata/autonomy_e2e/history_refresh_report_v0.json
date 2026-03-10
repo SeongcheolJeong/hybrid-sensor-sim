@@ -1,10 +1,10 @@
 {
   "schema_version": "autonomy_e2e_history_refresh_report_v0",
-  "generated_at_utc": "2026-03-09T18:03:37+00:00",
+  "generated_at_utc": "2026-03-10T11:18:47+00:00",
   "source_repo_root": "/Users/seongcheoljeong/Documents/Autonomy-E2E/Autonomy-E2E",
   "current_repo_root": "/Users/seongcheoljeong/Documents/Test",
   "integration_baseline_commit": "8d2353f",
-  "current_repo_head_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79",
+  "current_repo_head_commit": "9e44dee55751e40b6391d0ec913f08bcd75ca98a",
   "current_repo_worktree_dirty": true,
   "source_repo_available": true,
   "inventory_status": "generated",
@@ -17,30 +17,7 @@
     "new_unmapped_prototype_files": [],
     "orphan_current_paths": [],
     "changed_registry_blocks": [
-      "p_autoware_workspace_ci.data_contract_bridge",
-      "p_autoware_workspace_ci.hil_sequence_reference",
-      "p_cloud_engine.local_batch_pattern",
-      "p_data_lake.run_ingest_reference",
-      "p_e2e_stack.runtime_evidence_compare_reference",
-      "p_map_toolset.canonical_route",
-      "p_map_toolset.convert_map",
-      "p_map_toolset.validate_canonical_map",
-      "p_sim_engine.batch_workflow",
-      "p_sim_engine.log_replay",
-      "p_sim_engine.log_scene_augment",
-      "p_sim_engine.matrix_sweep",
-      "p_sim_engine.neural_sensor_reference",
-      "p_sim_engine.object_sim_core",
-      "p_sim_engine.route_aware_avoidance",
-      "p_sim_engine.route_aware_semantics",
-      "p_sim_engine.runtime_asset_prepare",
-      "p_sim_engine.runtime_interop_reference",
-      "p_sim_engine.scenario_runtime_smoke_bridge",
-      "p_sim_engine.sensor_rig_sweep",
-      "p_sim_engine.sensor_sim_bridge",
-      "p_sim_engine.vehicle_dynamics",
-      "p_validation.release_report_reference",
-      "p_validation.scenario_variants"
+      "p_sim_engine.runtime_asset_prepare"
     ]
   }
 }
