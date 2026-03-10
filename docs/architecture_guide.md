@@ -263,8 +263,9 @@ Read in this order:
 
 1. [README.md](/Users/seongcheoljeong/Documents/Test/README.md)
 2. this architecture guide
-3. [/Users/seongcheoljeong/Documents/Test/docs/autonomy_e2e_migration_master_plan.md](/Users/seongcheoljeong/Documents/Test/docs/autonomy_e2e_migration_master_plan.md)
-4. [/Users/seongcheoljeong/Documents/Test/docs/p_sim_engine_migration_audit.md](/Users/seongcheoljeong/Documents/Test/docs/p_sim_engine_migration_audit.md)
+3. [/Users/seongcheoljeong/Documents/Test/docs/first_run_guide.md](/Users/seongcheoljeong/Documents/Test/docs/first_run_guide.md)
+4. [/Users/seongcheoljeong/Documents/Test/docs/autonomy_e2e_migration_master_plan.md](/Users/seongcheoljeong/Documents/Test/docs/autonomy_e2e_migration_master_plan.md)
+5. [/Users/seongcheoljeong/Documents/Test/docs/p_sim_engine_migration_audit.md](/Users/seongcheoljeong/Documents/Test/docs/p_sim_engine_migration_audit.md)
 
 ### Run a scenario locally
 
@@ -337,9 +338,10 @@ If you are new to this repository, start in this order:
 
 1. [README.md](/Users/seongcheoljeong/Documents/Test/README.md)
 2. this architecture guide
-3. [/Users/seongcheoljeong/Documents/Test/docs/autonomy_e2e_migration_master_plan.md](/Users/seongcheoljeong/Documents/Test/docs/autonomy_e2e_migration_master_plan.md)
-4. [/Users/seongcheoljeong/Documents/Test/docs/p_sim_engine_migration_audit.md](/Users/seongcheoljeong/Documents/Test/docs/p_sim_engine_migration_audit.md)
-5. [/Users/seongcheoljeong/Documents/Test/metadata/autonomy_e2e](/Users/seongcheoljeong/Documents/Test/metadata/autonomy_e2e)
+3. [/Users/seongcheoljeong/Documents/Test/docs/first_run_guide.md](/Users/seongcheoljeong/Documents/Test/docs/first_run_guide.md)
+4. [/Users/seongcheoljeong/Documents/Test/docs/autonomy_e2e_migration_master_plan.md](/Users/seongcheoljeong/Documents/Test/docs/autonomy_e2e_migration_master_plan.md)
+5. [/Users/seongcheoljeong/Documents/Test/docs/p_sim_engine_migration_audit.md](/Users/seongcheoljeong/Documents/Test/docs/p_sim_engine_migration_audit.md)
+6. [/Users/seongcheoljeong/Documents/Test/metadata/autonomy_e2e](/Users/seongcheoljeong/Documents/Test/metadata/autonomy_e2e)
 
 Then use these practical entry points:
 

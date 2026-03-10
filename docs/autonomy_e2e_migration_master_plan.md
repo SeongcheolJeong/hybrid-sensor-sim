@@ -29,6 +29,10 @@ Newcomer-oriented architecture reference:
 
 - `/Users/seongcheoljeong/Documents/Test/docs/architecture_guide.md`
 
+Newcomer-oriented execution reference:
+
+- `/Users/seongcheoljeong/Documents/Test/docs/first_run_guide.md`
+
 Governance rule:
 
 - if migrated result paths changed, refresh the ledger and validate with `/Users/seongcheoljeong/Documents/Test/scripts/run_autonomy_e2e_history_guard.py` before publish

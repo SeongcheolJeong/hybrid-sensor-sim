@@ -23,6 +23,10 @@ Newcomer-oriented architecture reference:
 
 - `/Users/seongcheoljeong/Documents/Test/docs/architecture_guide.md`
 
+Newcomer-oriented execution reference:
+
+- `/Users/seongcheoljeong/Documents/Test/docs/first_run_guide.md`
+
 Before publishing changes that touch migrated `P_Sim-Engine` result paths, run:
 
 - `/Users/seongcheoljeong/Documents/Test/scripts/run_autonomy_e2e_history_guard.py`

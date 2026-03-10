@@ -1,6 +1,6 @@
 {
   "schema_version": "autonomy_e2e_result_traceability_index_v0",
-  "generated_at_utc": "2026-03-10T11:37:16+00:00",
+  "generated_at_utc": "2026-03-10T11:48:57+00:00",
   "current_repo_root": "/Users/seongcheoljeong/Documents/Test",
   "paths": [
     {
@@ -32,7 +32,7 @@
       ],
       "result_role": "audit_doc",
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79"
+      "current_latest_touch_commit": "9022a1b6351179c608e8a2a5215440812ff89ee6"
     },
     {
       "current_path": "docs/architecture_guide.md",
@@ -73,8 +73,8 @@
         "P_Validation-Tooling-MVP"
       ],
       "result_role": "audit_doc",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "9022a1b6351179c608e8a2a5215440812ff89ee6",
+      "current_latest_touch_commit": "9022a1b6351179c608e8a2a5215440812ff89ee6"
     },
     {
       "current_path": "docs/autonomy_e2e_history_integration.md",
@@ -123,7 +123,49 @@
       ],
       "result_role": "audit_doc",
       "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
-      "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79"
+      "current_latest_touch_commit": "9022a1b6351179c608e8a2a5215440812ff89ee6"
+    },
+    {
+      "current_path": "docs/first_run_guide.md",
+      "path_kind": "doc",
+      "block_ids": [
+        "p_autoware_workspace_ci.data_contract_bridge",
+        "p_autoware_workspace_ci.hil_sequence_reference",
+        "p_cloud_engine.local_batch_pattern",
+        "p_data_lake.run_ingest_reference",
+        "p_e2e_stack.runtime_evidence_compare_reference",
+        "p_map_toolset.canonical_route",
+        "p_map_toolset.convert_map",
+        "p_map_toolset.validate_canonical_map",
+        "p_sim_engine.batch_workflow",
+        "p_sim_engine.log_replay",
+        "p_sim_engine.log_scene_augment",
+        "p_sim_engine.matrix_sweep",
+        "p_sim_engine.neural_sensor_reference",
+        "p_sim_engine.object_sim_core",
+        "p_sim_engine.route_aware_avoidance",
+        "p_sim_engine.route_aware_semantics",
+        "p_sim_engine.runtime_asset_prepare",
+        "p_sim_engine.runtime_interop_reference",
+        "p_sim_engine.scenario_runtime_smoke_bridge",
+        "p_sim_engine.sensor_rig_sweep",
+        "p_sim_engine.sensor_sim_bridge",
+        "p_sim_engine.vehicle_dynamics",
+        "p_validation.release_report_reference",
+        "p_validation.scenario_variants"
+      ],
+      "project_ids": [
+        "P_Autoware-Workspace-CI-MVP",
+        "P_Cloud-Engine",
+        "P_Data-Lake-and-Explorer",
+        "P_E2E_Stack",
+        "P_Map-Toolset-MVP",
+        "P_Sim-Engine",
+        "P_Validation-Tooling-MVP"
+      ],
+      "result_role": "audit_doc",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
     },
     {
       "current_path": "docs/p_sim_engine_migration_audit.md",
@@ -150,7 +192,7 @@
       ],
       "result_role": "audit_doc",
       "current_intro_commit": "9104dc8429b6e5bd7faac52cbd37a8a8287ff960",
-      "current_latest_touch_commit": "8e06729a0ea23881c41830d3c4f1c423f1f3ef79"
+      "current_latest_touch_commit": "9022a1b6351179c608e8a2a5215440812ff89ee6"
     },
     {
       "current_path": "docs/sensor_sim_master_plan.md",
