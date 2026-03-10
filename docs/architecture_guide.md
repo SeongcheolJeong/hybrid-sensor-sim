@@ -70,6 +70,8 @@ flowchart LR
 
 This is the strongest verified execution lane in the repository today.
 
+## Folder Structure
+
 ```mermaid
 flowchart TD
     A["/Users/seongcheoljeong/Documents/Test"]
