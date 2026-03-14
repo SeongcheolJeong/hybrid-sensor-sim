@@ -45,6 +45,27 @@ Newcomer quick links:
 - [AWSIM Real Execution Path](docs/architecture_guide.md#awsim-real-execution-path)
 - [Autoware Bridge Internals](docs/architecture_guide.md#autoware-bridge-internals)
 
+Control plane:
+
+- backend API: `src/hybrid_sensor_sim/server`
+- frontend app: `apps/control-plane`
+- API launcher: `scripts/run_control_plane_api.py`
+
+Control-plane quick start:
+
+```bash
+cd /Users/seongcheoljeong/Documents/Test
+python3 /Users/seongcheoljeong/Documents/Test/scripts/run_control_plane_api.py --host 127.0.0.1 --port 8000
+```
+
+```bash
+cd /Users/seongcheoljeong/Documents/Test/apps/control-plane
+npm install
+npm run dev
+```
+
+The control plane is an internal React + FastAPI operator console. It launches and inspects the same canonical object-sim, batch, runtime, probe-set, and Autoware workflows that already exist in `src/` and `scripts/`.
+
 - `scripts/setup_helios.sh`: bootstrap helper for cloning/building HELIOS.
 - `scripts/run_renderer_backend_smoke.py`: AWSIM/CARLA smoke launcher that forces direct backend execution plus output-contract inspection.
 - `scripts/discover_renderer_backend_local_env.py`: discovers local HELIOS/AWSIM/CARLA runtime candidates and writes a reusable env file plus readiness summary.

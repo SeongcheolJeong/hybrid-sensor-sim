@@ -9,3 +9,12 @@ third_party/helios/build/
 third_party/helios/bin/
 third_party/helios/
 third_party/runtime_backends/
+third_party/toolchains/
+apps/control-plane/node_modules/
+apps/control-plane/dist/
+apps/control-plane/.vite/
+apps/control-plane/*.tsbuildinfo
+apps/control-plane/vite.config.js
+apps/control-plane/vite.config.d.ts
+apps/control-plane/tailwind.config.js
+apps/control-plane/tailwind.config.d.ts

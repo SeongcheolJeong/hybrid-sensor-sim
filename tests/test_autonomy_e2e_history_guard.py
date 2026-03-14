@@ -40,6 +40,15 @@ class AutonomyE2EHistoryGuardTests(unittest.TestCase):
                     "current_intro_commit": "1111111",
                     "current_latest_touch_commit": "2222222",
                 },
+                {
+                    "current_path": "apps/control-plane/src/main.tsx",
+                    "path_kind": "library",
+                    "block_ids": ["p_cloud_engine.control_plane_operator_surface"],
+                    "project_ids": ["P_Cloud-Engine"],
+                    "result_role": "operator_console",
+                    "current_intro_commit": "3333333",
+                    "current_latest_touch_commit": "4444444",
+                },
             ],
         }
         (
@@ -147,6 +156,30 @@ class AutonomyE2EHistoryGuardTests(unittest.TestCase):
             self.assertEqual(
                 report["provenance_system_changed_paths"],
                 ["src/hybrid_sensor_sim/tools/autonomy_e2e_history_refresh.py"],
+            )
+
+    def test_guard_treats_apps_paths_as_governed_results(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir) / "repo"
+            repo_root.mkdir()
+            metadata_root = repo_root / "metadata" / "autonomy_e2e"
+            self._write_traceability_metadata(metadata_root)
+            report = evaluate_autonomy_e2e_history_guard(
+                current_repo_root=repo_root,
+                metadata_root=metadata_root,
+                changed_paths=["apps/control-plane/src/main.tsx"],
+                compare_ref_available=True,
+                head_commit="head123",
+                worktree_dirty=True,
+            )
+            self.assertEqual(report["status"], "FAIL")
+            self.assertIn(
+                "MIGRATION_CHANGES_WITHOUT_METADATA_REFRESH",
+                report["failure_codes"],
+            )
+            self.assertEqual(
+                report["mapped_guarded_paths"],
+                ["apps/control-plane/src/main.tsx"],
             )
 
     def test_guard_script_reports_failures_for_repo_diff(self) -> None:

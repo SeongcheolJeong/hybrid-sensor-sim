@@ -278,6 +278,8 @@ def _infer_path_kind(relative_path: str) -> str | None:
         return "doc"
     if top_level == "src":
         return "library"
+    if top_level == "apps":
+        return "library"
     if top_level == "tests":
         if "fixtures" in path.parts:
             return "fixture"

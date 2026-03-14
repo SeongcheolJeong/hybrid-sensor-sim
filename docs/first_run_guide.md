@@ -29,6 +29,8 @@ This is narrower than a full cloud, HIL, data-explorer, or neural-sim product li
 - current blocked lane: `CARLA runtime availability`
 - recommended first report:
   - `scenario_runtime_backend_probe_set_report_v0.json`
+- optional operator surface:
+  - React + FastAPI control plane at `apps/control-plane` and `src/hybrid_sensor_sim/server`
 
 ## Read Order
 
@@ -86,6 +88,25 @@ python3 /Users/seongcheoljeong/Documents/Test/scripts/discover_renderer_backend_
 Check:
 
 - [/Users/seongcheoljeong/Documents/Test/artifacts/renderer_backend_local_setup_probe_latest/renderer_backend_local_setup.json](/Users/seongcheoljeong/Documents/Test/artifacts/renderer_backend_local_setup_probe_latest/renderer_backend_local_setup.json)
+
+### 4. Optional control-plane startup
+
+API:
+
+```bash
+cd /Users/seongcheoljeong/Documents/Test
+python3 /Users/seongcheoljeong/Documents/Test/scripts/run_control_plane_api.py --host 127.0.0.1 --port 8000
+```
+
+Frontend:
+
+```bash
+cd /Users/seongcheoljeong/Documents/Test/apps/control-plane
+npm install
+npm run dev
+```
+
+Use this if you want the same object-sim, runtime, probe-set, and Autoware workflows through the operator UI instead of the CLI.
 
 ## First Functional Run
 

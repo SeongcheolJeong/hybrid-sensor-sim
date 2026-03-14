@@ -23,6 +23,11 @@ The current practical goal is:
 
 This is the shortest path to a usable native-run stack. It is narrower than a full cloud, HIL, data-explorer, or neural-sim product line.
 
+The repository now also includes an internal control plane:
+
+- FastAPI API layer over the canonical workflows
+- React operator console for launch, monitoring, runtime triage, and Autoware inspection
+
 ## Completion Snapshot
 
 | Subsystem | Status | What is real today | Main remaining gap |
@@ -51,6 +56,7 @@ flowchart TD
     H --> I["AWSIM or CARLA Packaged Runtime"]
     I --> J["Output Comparison and Probes<br/>probe / rebridge / probe set"]
     J --> K["Autoware Bridge<br/>topics / frames / consumer manifests / profiles"]
+    K --> L["Control Plane<br/>FastAPI + React operator console"]
 ```
 
 ## AWSIM Real Execution Path
@@ -105,11 +111,15 @@ flowchart TD
   - top-level workflows, smoke tools, runtime probes, package acquire/stage, provenance tooling
 - [/Users/seongcheoljeong/Documents/Test/src/hybrid_sensor_sim/io](/Users/seongcheoljeong/Documents/Test/src/hybrid_sensor_sim/io)
   - file and provenance helpers
+- [/Users/seongcheoljeong/Documents/Test/src/hybrid_sensor_sim/server](/Users/seongcheoljeong/Documents/Test/src/hybrid_sensor_sim/server)
+  - FastAPI control-plane API, local SQLite run index, and job runner
 
 ### Operational surfaces
 
 - [/Users/seongcheoljeong/Documents/Test/scripts](/Users/seongcheoljeong/Documents/Test/scripts)
   - thin CLI wrappers around library workflows
+- [/Users/seongcheoljeong/Documents/Test/apps/control-plane](/Users/seongcheoljeong/Documents/Test/apps/control-plane)
+  - React operator console for runs, runtime blockers, probes, and Autoware bundles
 - [/Users/seongcheoljeong/Documents/Test/tests](/Users/seongcheoljeong/Documents/Test/tests)
   - regression suite and fixtures
 - [/Users/seongcheoljeong/Documents/Test/configs](/Users/seongcheoljeong/Documents/Test/configs)
@@ -135,6 +145,7 @@ Operational rule:
 
 - implementation truth lives in `src/`
 - runnable surfaces live in `scripts/`
+- operator UI lives in `apps/control-plane/`
 - expected behavior lives in `tests/`
 - historical traceability lives in `metadata/autonomy_e2e/`
 - `artifacts/` are execution byproducts, not source of truth
