@@ -1,10 +1,10 @@
 {
   "schema_version": "autonomy_e2e_migration_registry_v0",
-  "generated_at_utc": "2026-03-10T18:16:28+00:00",
+  "generated_at_utc": "2026-03-14T05:36:10+00:00",
   "source_repo_root": "/Users/seongcheoljeong/Documents/Autonomy-E2E/Autonomy-E2E",
   "current_repo_root": "/Users/seongcheoljeong/Documents/Test",
   "integration_baseline_commit": "8d2353f",
-  "current_repo_head_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
+  "current_repo_head_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
   "blocks": [
     {
       "block_id": "p_autoware_workspace_ci.data_contract_bridge",
@@ -55,7 +55,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
       "working_result_kind": [
         "library",
         "workflow",
@@ -95,7 +95,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
       "working_result_kind": [
         "doc"
       ],
@@ -104,6 +104,79 @@
         "HIL/workspace CI is outside current repository scope."
       ],
       "notes": ""
+    },
+    {
+      "block_id": "p_cloud_engine.control_plane_operator_surface",
+      "project_id": "P_Cloud-Engine",
+      "source_kind": "workflow_pattern",
+      "source_paths": [
+        "30_Projects/P_Cloud-Engine/prototype/cloud_batch_runner.py",
+        "30_Projects/P_Cloud-Engine/prototype/generate_batch_from_catalog.py"
+      ],
+      "source_commits": [
+        "2e120860549ebf6151fa9c2249d5b9b1e08a7492",
+        "32d91ecf767a5077b81091154cf59e55f6b00a52",
+        "a5e43757f5e706039da3c5f6852839d9148c5fc9",
+        "1f8f384c3fc894830104454378dc8f9b78721988",
+        "0210248abfa0907c1dc0bceefdd905957de5e831"
+      ],
+      "source_evidence_summary": "Dark-first operator console for runs, runtime blockers, probes, and Autoware readiness layered on local APIs.",
+      "migration_status": "partial",
+      "current_paths": [
+        "apps/control-plane/index.html",
+        "apps/control-plane/package-lock.json",
+        "apps/control-plane/package.json",
+        "apps/control-plane/postcss.config.cjs",
+        "apps/control-plane/tailwind.config.ts",
+        "apps/control-plane/tsconfig.app.json",
+        "apps/control-plane/tsconfig.json",
+        "apps/control-plane/tsconfig.node.json",
+        "apps/control-plane/vite.config.ts",
+        "apps/control-plane/src/components/app-shell.tsx",
+        "apps/control-plane/src/components/data-table.tsx",
+        "apps/control-plane/src/components/json-viewer.tsx",
+        "apps/control-plane/src/components/metric-card.tsx",
+        "apps/control-plane/src/components/panel.tsx",
+        "apps/control-plane/src/components/run-launch-dialog.tsx",
+        "apps/control-plane/src/components/status-bar-chart.tsx",
+        "apps/control-plane/src/components/status-chip.tsx",
+        "apps/control-plane/src/index.css",
+        "apps/control-plane/src/lib/api.ts",
+        "apps/control-plane/src/lib/defaults.ts",
+        "apps/control-plane/src/lib/types.ts",
+        "apps/control-plane/src/main.tsx",
+        "apps/control-plane/src/pages/autoware-page.tsx",
+        "apps/control-plane/src/pages/history-page.tsx",
+        "apps/control-plane/src/pages/maps-page.tsx",
+        "apps/control-plane/src/pages/projects-page.tsx",
+        "apps/control-plane/src/pages/run-detail-page.tsx",
+        "apps/control-plane/src/pages/runtime-page.tsx",
+        "apps/control-plane/src/pages/simulation-page.tsx",
+        "apps/control-plane/src/pages/validation-page.tsx",
+        "apps/control-plane/src/pages/workspace-page.tsx",
+        "apps/control-plane/src/router.tsx",
+        "apps/control-plane/src/vite-env.d.ts"
+      ],
+      "current_test_paths": [],
+      "current_fixture_paths": [],
+      "current_script_paths": [],
+      "current_doc_paths": [
+        "README.md",
+        "docs/architecture_guide.md",
+        "docs/first_run_guide.md"
+      ],
+      "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
+      "working_result_kind": [
+        "workflow",
+        "doc"
+      ],
+      "result_summary": "Dark-first operator console for runs, runtime blockers, probes, and Autoware readiness layered on local APIs.",
+      "open_gaps": [
+        "No multi-user auth or remote deployment in the current round.",
+        "CARLA remains a blocker surface until a runnable local runtime exists."
+      ],
+      "notes": "This is an internal control plane, not a public marketing site."
     },
     {
       "block_id": "p_cloud_engine.local_batch_pattern",
@@ -140,7 +213,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
       "working_result_kind": [
         "workflow",
         "cli",
@@ -181,7 +254,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
       "working_result_kind": [
         "doc"
       ],
@@ -190,6 +263,66 @@
         "Analytics/data-lake stack stays outside the repository boundary."
       ],
       "notes": ""
+    },
+    {
+      "block_id": "p_e2e_stack.control_plane_api",
+      "project_id": "P_E2E_Stack",
+      "source_kind": "workflow_pattern",
+      "source_paths": [
+        "30_Projects/P_E2E_Stack/prototype/compare_runtime_evidence.py",
+        "30_Projects/P_E2E_Stack/prototype/compare_runtime_native_summaries.py",
+        "30_Projects/P_E2E_Stack/prototype/STACK_MASTER_PLAN.md"
+      ],
+      "source_commits": [
+        "4cc42b53ab86db8b876a86194cd10393b5276a6a",
+        "ac93381f0d9eb9c6da2fb85cab50124d7c9bc8b1",
+        "7ab14f3c64fb7767e0f1a0a26e57952ba2454d01",
+        "3165194f0e6d55d6fa8c2a34d1be0ea74ab49eee",
+        "aa35808621e434b3787a2c27228ba318c866ab0b"
+      ],
+      "source_evidence_summary": "FastAPI control-plane API and local job/index layer over the existing runtime, probe, and Autoware workflows.",
+      "migration_status": "partial",
+      "current_paths": [
+        "src/hybrid_sensor_sim/server/__init__.py",
+        "src/hybrid_sensor_sim/server/app.py",
+        "src/hybrid_sensor_sim/server/db.py",
+        "src/hybrid_sensor_sim/server/jobs.py",
+        "src/hybrid_sensor_sim/server/models.py",
+        "src/hybrid_sensor_sim/server/routes/__init__.py",
+        "src/hybrid_sensor_sim/server/routes/autoware.py",
+        "src/hybrid_sensor_sim/server/routes/history.py",
+        "src/hybrid_sensor_sim/server/routes/projects.py",
+        "src/hybrid_sensor_sim/server/routes/runs.py",
+        "src/hybrid_sensor_sim/server/routes/runtime.py",
+        "src/hybrid_sensor_sim/server/routes/scenarios.py"
+      ],
+      "current_test_paths": [
+        "tests/test_control_plane_api.py"
+      ],
+      "current_fixture_paths": [],
+      "current_script_paths": [
+        "scripts/run_control_plane_api.py"
+      ],
+      "current_doc_paths": [
+        "README.md",
+        "docs/architecture_guide.md",
+        "docs/first_run_guide.md"
+      ],
+      "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
+      "working_result_kind": [
+        "library",
+        "workflow",
+        "cli",
+        "test",
+        "doc"
+      ],
+      "result_summary": "FastAPI control-plane API and local job/index layer over the existing runtime, probe, and Autoware workflows.",
+      "open_gaps": [
+        "The control plane is local single-node only in the current round.",
+        "Long-running orchestration remains file-system and artifact driven."
+      ],
+      "notes": "The API wraps canonical engine workflows rather than introducing a second orchestration stack."
     },
     {
       "block_id": "p_e2e_stack.runtime_evidence_compare_reference",
@@ -230,7 +363,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "b95cb42a093a638463fac893cb8179f916b135b3",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
       "working_result_kind": [
         "workflow",
         "cli",
@@ -276,7 +409,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
       "working_result_kind": [
         "library",
         "cli",
@@ -323,7 +456,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
       "working_result_kind": [
         "library",
         "cli",
@@ -370,7 +503,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
       "working_result_kind": [
         "library",
         "cli",
@@ -423,7 +556,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
       "working_result_kind": [
         "workflow",
         "cli",
@@ -477,7 +610,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
       "working_result_kind": [
         "library",
         "cli",
@@ -521,7 +654,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
       "working_result_kind": [
         "cli",
         "test",
@@ -563,7 +696,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
       "working_result_kind": [
         "library",
         "cli",
@@ -602,7 +735,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
       "working_result_kind": [
         "doc"
       ],
@@ -652,7 +785,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
       "working_result_kind": [
         "library",
         "cli",
@@ -703,7 +836,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
       "working_result_kind": [
         "library",
         "cli",
@@ -760,7 +893,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
       "working_result_kind": [
         "library",
         "test",
@@ -818,7 +951,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
       "working_result_kind": [
         "workflow",
         "cli",
@@ -876,7 +1009,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "ab390e6725b84f94ebeadfa993b281d2f5d47935",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
       "working_result_kind": [
         "library",
         "workflow",
@@ -939,7 +1072,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
       "working_result_kind": [
         "workflow",
         "cli",
@@ -986,7 +1119,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
       "working_result_kind": [
         "cli",
         "test",
@@ -1032,7 +1165,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
       "working_result_kind": [
         "library",
         "test",
@@ -1079,7 +1212,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
       "working_result_kind": [
         "library",
         "cli",
@@ -1117,7 +1250,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
       "working_result_kind": [
         "doc"
       ],
@@ -1168,7 +1301,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8",
       "working_result_kind": [
         "library",
         "workflow",

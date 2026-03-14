@@ -1,6 +1,6 @@
 {
   "schema_version": "autonomy_e2e_result_traceability_index_v0",
-  "generated_at_utc": "2026-03-10T18:16:36+00:00",
+  "generated_at_utc": "2026-03-14T05:36:20+00:00",
   "current_repo_root": "/Users/seongcheoljeong/Documents/Test",
   "paths": [
     {
@@ -8,6 +8,8 @@
       "path_kind": "doc",
       "block_ids": [
         "p_autoware_workspace_ci.data_contract_bridge",
+        "p_cloud_engine.control_plane_operator_surface",
+        "p_e2e_stack.control_plane_api",
         "p_map_toolset.canonical_route",
         "p_map_toolset.convert_map",
         "p_map_toolset.validate_canonical_map",
@@ -26,13 +28,444 @@
       ],
       "project_ids": [
         "P_Autoware-Workspace-CI-MVP",
+        "P_Cloud-Engine",
+        "P_E2E_Stack",
         "P_Map-Toolset-MVP",
         "P_Sim-Engine",
         "P_Validation-Tooling-MVP"
       ],
       "result_role": "audit_doc",
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980"
+      "current_latest_touch_commit": "7e7487f58284cf05e40ceca43a19594358c0b567"
+    },
+    {
+      "current_path": "apps/control-plane/index.html",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/package-lock.json",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/package.json",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/postcss.config.cjs",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/src/components/app-shell.tsx",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/src/components/data-table.tsx",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/src/components/json-viewer.tsx",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/src/components/metric-card.tsx",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/src/components/panel.tsx",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/src/components/run-launch-dialog.tsx",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/src/components/status-bar-chart.tsx",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/src/components/status-chip.tsx",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/src/index.css",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/src/lib/api.ts",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/src/lib/defaults.ts",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/src/lib/types.ts",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/src/main.tsx",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/src/pages/autoware-page.tsx",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/src/pages/history-page.tsx",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/src/pages/maps-page.tsx",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/src/pages/projects-page.tsx",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/src/pages/run-detail-page.tsx",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/src/pages/runtime-page.tsx",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/src/pages/simulation-page.tsx",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/src/pages/validation-page.tsx",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/src/pages/workspace-page.tsx",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/src/router.tsx",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/src/vite-env.d.ts",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/tailwind.config.ts",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/tsconfig.app.json",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/tsconfig.json",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/tsconfig.node.json",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "apps/control-plane/vite.config.ts",
+      "path_kind": "library",
+      "block_ids": [
+        "p_cloud_engine.control_plane_operator_surface"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
     },
     {
       "current_path": "docs/architecture_guide.md",
@@ -40,8 +473,10 @@
       "block_ids": [
         "p_autoware_workspace_ci.data_contract_bridge",
         "p_autoware_workspace_ci.hil_sequence_reference",
+        "p_cloud_engine.control_plane_operator_surface",
         "p_cloud_engine.local_batch_pattern",
         "p_data_lake.run_ingest_reference",
+        "p_e2e_stack.control_plane_api",
         "p_e2e_stack.runtime_evidence_compare_reference",
         "p_map_toolset.canonical_route",
         "p_map_toolset.convert_map",
@@ -74,7 +509,7 @@
       ],
       "result_role": "audit_doc",
       "current_intro_commit": "9022a1b6351179c608e8a2a5215440812ff89ee6",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980"
+      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8"
     },
     {
       "current_path": "docs/autonomy_e2e_history_integration.md",
@@ -131,8 +566,10 @@
       "block_ids": [
         "p_autoware_workspace_ci.data_contract_bridge",
         "p_autoware_workspace_ci.hil_sequence_reference",
+        "p_cloud_engine.control_plane_operator_surface",
         "p_cloud_engine.local_batch_pattern",
         "p_data_lake.run_ingest_reference",
+        "p_e2e_stack.control_plane_api",
         "p_e2e_stack.runtime_evidence_compare_reference",
         "p_map_toolset.canonical_route",
         "p_map_toolset.convert_map",
@@ -165,7 +602,7 @@
       ],
       "result_role": "audit_doc",
       "current_intro_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980"
+      "current_latest_touch_commit": "7e7487f58284cf05e40ceca43a19594358c0b567"
     },
     {
       "current_path": "docs/p_sim_engine_migration_audit.md",
@@ -271,6 +708,19 @@
       "result_role": "runner",
       "current_intro_commit": "491e86b305ad2d55293a301407bfcb09221fbb12",
       "current_latest_touch_commit": "491e86b305ad2d55293a301407bfcb09221fbb12"
+    },
+    {
+      "current_path": "scripts/run_control_plane_api.py",
+      "path_kind": "script",
+      "block_ids": [
+        "p_e2e_stack.control_plane_api"
+      ],
+      "project_ids": [
+        "P_E2E_Stack"
+      ],
+      "result_role": "runner",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
     },
     {
       "current_path": "scripts/run_log_replay.py",
@@ -877,6 +1327,162 @@
       "current_latest_touch_commit": "cf53c64ec29e4b17540e1fa8c57fde7eca8e82c9"
     },
     {
+      "current_path": "src/hybrid_sensor_sim/server/__init__.py",
+      "path_kind": "library",
+      "block_ids": [
+        "p_e2e_stack.control_plane_api"
+      ],
+      "project_ids": [
+        "P_E2E_Stack"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "src/hybrid_sensor_sim/server/app.py",
+      "path_kind": "library",
+      "block_ids": [
+        "p_e2e_stack.control_plane_api"
+      ],
+      "project_ids": [
+        "P_E2E_Stack"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "src/hybrid_sensor_sim/server/db.py",
+      "path_kind": "library",
+      "block_ids": [
+        "p_e2e_stack.control_plane_api"
+      ],
+      "project_ids": [
+        "P_E2E_Stack"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "src/hybrid_sensor_sim/server/jobs.py",
+      "path_kind": "library",
+      "block_ids": [
+        "p_e2e_stack.control_plane_api"
+      ],
+      "project_ids": [
+        "P_E2E_Stack"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "src/hybrid_sensor_sim/server/models.py",
+      "path_kind": "library",
+      "block_ids": [
+        "p_e2e_stack.control_plane_api"
+      ],
+      "project_ids": [
+        "P_E2E_Stack"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "src/hybrid_sensor_sim/server/routes/__init__.py",
+      "path_kind": "library",
+      "block_ids": [
+        "p_e2e_stack.control_plane_api"
+      ],
+      "project_ids": [
+        "P_E2E_Stack"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "src/hybrid_sensor_sim/server/routes/autoware.py",
+      "path_kind": "library",
+      "block_ids": [
+        "p_e2e_stack.control_plane_api"
+      ],
+      "project_ids": [
+        "P_E2E_Stack"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "src/hybrid_sensor_sim/server/routes/history.py",
+      "path_kind": "library",
+      "block_ids": [
+        "p_e2e_stack.control_plane_api"
+      ],
+      "project_ids": [
+        "P_E2E_Stack"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "src/hybrid_sensor_sim/server/routes/projects.py",
+      "path_kind": "library",
+      "block_ids": [
+        "p_e2e_stack.control_plane_api"
+      ],
+      "project_ids": [
+        "P_E2E_Stack"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "src/hybrid_sensor_sim/server/routes/runs.py",
+      "path_kind": "library",
+      "block_ids": [
+        "p_e2e_stack.control_plane_api"
+      ],
+      "project_ids": [
+        "P_E2E_Stack"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "src/hybrid_sensor_sim/server/routes/runtime.py",
+      "path_kind": "library",
+      "block_ids": [
+        "p_e2e_stack.control_plane_api"
+      ],
+      "project_ids": [
+        "P_E2E_Stack"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "src/hybrid_sensor_sim/server/routes/scenarios.py",
+      "path_kind": "library",
+      "block_ids": [
+        "p_e2e_stack.control_plane_api"
+      ],
+      "project_ids": [
+        "P_E2E_Stack"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
       "current_path": "src/hybrid_sensor_sim/tools/autoware_pipeline_bridge.py",
       "path_kind": "library",
       "block_ids": [
@@ -1437,6 +2043,19 @@
       "result_role": "regression",
       "current_intro_commit": "47a0a593dd6235cb51a3ce3c1dfba32399d220a4",
       "current_latest_touch_commit": "1c6d99a30378cced4b211a90ffa0002b429ea052"
+    },
+    {
+      "current_path": "tests/test_control_plane_api.py",
+      "path_kind": "test",
+      "block_ids": [
+        "p_e2e_stack.control_plane_api"
+      ],
+      "project_ids": [
+        "P_E2E_Stack"
+      ],
+      "result_role": "regression",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
     },
     {
       "current_path": "tests/test_log_replay.py",
