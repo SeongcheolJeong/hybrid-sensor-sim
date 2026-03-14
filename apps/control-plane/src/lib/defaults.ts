@@ -52,3 +52,47 @@ export const DEFAULT_PROBE_SET_PAYLOAD = {
   probe_set_id: "hybrid_runtime_readiness_v0",
   out_root: "/Users/seongcheoljeong/Documents/Test/artifacts/control_plane/runs/probe_set",
 };
+
+export const DEFAULT_CLOSED_LOOP_DEMO_PAYLOAD = {
+  project_id: "default",
+  scenario_path:
+    "/Users/seongcheoljeong/Documents/Test/tests/fixtures/autonomy_e2e/p_sim_engine/highway_safe_following_v0.json",
+  linux_runtime_root: "/opt/hybrid-runtime",
+  autoware_workspace_root: "/opt/autoware",
+  awsim_runtime_root: "/opt/awsim/AWSIM-Demo-Lightweight",
+  map_path:
+    "/Users/seongcheoljeong/Documents/Test/tests/fixtures/autonomy_e2e/p_map_toolset/simple_map_v0.json",
+  route_path:
+    "/Users/seongcheoljeong/Documents/Test/tests/fixtures/autonomy_e2e/p_sim_engine/highway_map_route_following_v0.json",
+  autoware_pipeline_manifest_path:
+    "/Users/seongcheoljeong/Documents/Test/artifacts/autoware_primary_semantic_embedded_probe_v1/autoware/autoware_pipeline_manifest.json",
+  autoware_dataset_manifest_path:
+    "/Users/seongcheoljeong/Documents/Test/artifacts/autoware_primary_semantic_embedded_probe_v1/autoware/autoware_dataset_manifest.json",
+  autoware_topic_catalog_path:
+    "/Users/seongcheoljeong/Documents/Test/artifacts/autoware_primary_semantic_embedded_probe_v1/autoware/autoware_topic_catalog.json",
+  autoware_consumer_input_manifest_path:
+    "/Users/seongcheoljeong/Documents/Test/artifacts/autoware_primary_semantic_embedded_probe_v1/autoware/autoware_consumer_input_manifest.json",
+  out_root: "/Users/seongcheoljeong/Documents/Test/artifacts/control_plane/runs/closed_loop_demo",
+  run_duration_sec: 45,
+  heartbeat_timeout_sec: 60,
+  poll_interval_sec: 2,
+  startup_grace_sec: 5,
+  record_video: true,
+  record_rviz: false,
+  record_rosbag: false,
+  strict_capture: false,
+  preflight_only: false,
+  allow_non_linux_host: false,
+  awsim_launch_command: "",
+  autoware_launch_command: "",
+  route_goal_command: "",
+  localization_check_command: "",
+  perception_check_command: "",
+  planning_check_command: "",
+  control_check_command: "",
+  vehicle_motion_check_command: "",
+  route_completion_check_command: "",
+  video_capture_command: "",
+  rviz_capture_command: "",
+  rosbag_record_command: "",
+};

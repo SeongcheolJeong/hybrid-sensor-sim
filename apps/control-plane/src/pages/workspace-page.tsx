@@ -37,6 +37,7 @@ export function WorkspacePage() {
   const awsimBackend = backendMap.get("awsim");
   const carlaBackend = backendMap.get("carla");
   const migratedBlockCount = historySummary.data?.migration_status_counts?.migrated ?? 0;
+  const latestClosedLoopRun = (runs.data ?? []).find((run) => run.run_type === "closed_loop_demo");
 
   const statusCounts = (runs.data ?? []).reduce<Record<string, number>>((counts, run) => {
     counts[run.status] = (counts[run.status] ?? 0) + 1;
@@ -45,7 +46,7 @@ export function WorkspacePage() {
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-4 xl:grid-cols-4">
+      <section className="grid gap-4 xl:grid-cols-5">
         <MetricCard label="Runs" value={runs.data?.length ?? 0} hint="Indexed runs in the local control-plane DB" />
         <MetricCard
           label="AWSIM Runtime"
@@ -56,6 +57,11 @@ export function WorkspacePage() {
           label="CARLA Runtime"
           value={carlaBackend?.host_compatible || carlaBackend?.readiness === true ? "READY" : "BLOCKED"}
           hint={String(carlaBackend?.strategy ?? "Pending local runtime")}
+        />
+        <MetricCard
+          label="AWSIM Closed Loop"
+          value={latestClosedLoopRun?.status ?? "PLANNED"}
+          hint={latestClosedLoopRun?.recommended_next_command ?? "No closed-loop demo run indexed yet"}
         />
         <MetricCard label="History Blocks" value={historySummary.data?.block_count ?? 0} hint={`${migratedBlockCount} migrated blocks tracked in provenance`} />
       </section>

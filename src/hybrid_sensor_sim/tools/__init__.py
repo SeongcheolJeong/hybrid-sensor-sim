@@ -57,6 +57,9 @@ from hybrid_sensor_sim.tools.scenario_runtime_backend_probe import (
 from hybrid_sensor_sim.tools.scenario_runtime_backend_probe_set import (
     run_scenario_runtime_backend_probe_set,
 )
+from hybrid_sensor_sim.tools.scenario_closed_loop_demo_workflow import (
+    run_scenario_closed_loop_demo,
+)
 from hybrid_sensor_sim.tools.autoware_pipeline_bridge import (
     run_autoware_pipeline_bridge,
 )
@@ -107,6 +110,7 @@ __all__ = [
     "run_scenario_runtime_backend_rebridge",
     "run_scenario_runtime_backend_probe",
     "run_scenario_runtime_backend_probe_set",
+    "run_scenario_closed_loop_demo",
     "run_autoware_pipeline_bridge",
     "build_scenario_batch_comparison_report",
     "augment_log_scene",

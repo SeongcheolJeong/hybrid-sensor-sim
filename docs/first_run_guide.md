@@ -31,6 +31,8 @@ This is narrower than a full cloud, HIL, data-explorer, or neural-sim product li
   - `scenario_runtime_backend_probe_set_report_v0.json`
 - optional operator surface:
   - React + FastAPI control plane at `apps/control-plane` and `src/hybrid_sensor_sim/server`
+- optional Linux-host-only lane:
+  - `scripts/run_scenario_closed_loop_demo.py` for AWSIM + Autoware ROS2 closed-loop demo orchestration
 
 ## Read Order
 
@@ -164,6 +166,7 @@ This report is the fastest single runtime summary:
 
 - [/Users/seongcheoljeong/Documents/Test/scripts/run_scenario_backend_smoke_workflow.py](/Users/seongcheoljeong/Documents/Test/scripts/run_scenario_backend_smoke_workflow.py)
 - [/Users/seongcheoljeong/Documents/Test/scripts/run_scenario_runtime_backend_workflow.py](/Users/seongcheoljeong/Documents/Test/scripts/run_scenario_runtime_backend_workflow.py)
+- [/Users/seongcheoljeong/Documents/Test/scripts/run_scenario_closed_loop_demo.py](/Users/seongcheoljeong/Documents/Test/scripts/run_scenario_closed_loop_demo.py)
 
 ### Existing runtime artifacts
 
@@ -185,6 +188,7 @@ This report is the fastest single runtime summary:
 - `semantic_perception_v0` can be `READY`
   - from primary semantic output
   - or through semantic supplemental recovery
+- true closed-loop demo orchestration now exists, but it expects a separate Linux host with ROS2, Autoware, AWSIM, and capture tooling
 
 ### CARLA
 

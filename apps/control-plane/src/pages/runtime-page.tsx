@@ -7,8 +7,8 @@ import { MetricCard } from "../components/metric-card";
 import { Panel } from "../components/panel";
 import { RunLaunchDialog } from "../components/run-launch-dialog";
 import { StatusChip } from "../components/status-chip";
-import { DEFAULT_BACKEND_SMOKE_PAYLOAD, DEFAULT_PROBE_SET_PAYLOAD, DEFAULT_REBRIDGE_PAYLOAD, DEFAULT_RUNTIME_BACKEND_PAYLOAD } from "../lib/defaults";
-import { createBackendSmokeRun, createProbeSetRun, createRebridgeRun, createRuntimeBackendRun, getRuntimeStrategySummary, listRuns } from "../lib/api";
+import { DEFAULT_BACKEND_SMOKE_PAYLOAD, DEFAULT_CLOSED_LOOP_DEMO_PAYLOAD, DEFAULT_PROBE_SET_PAYLOAD, DEFAULT_REBRIDGE_PAYLOAD, DEFAULT_RUNTIME_BACKEND_PAYLOAD } from "../lib/defaults";
+import { createBackendSmokeRun, createClosedLoopDemoRun, createProbeSetRun, createRebridgeRun, createRuntimeBackendRun, getRuntimeStrategySummary, listRuns } from "../lib/api";
 import type { RunIndexEntryModel } from "../lib/types";
 
 const columnHelper = createColumnHelper<RunIndexEntryModel>();
@@ -30,7 +30,8 @@ export function RuntimePage() {
   const queryClient = useQueryClient();
   const runtimeSummary = useQuery({ queryKey: ["runtime-strategy-summary"], queryFn: getRuntimeStrategySummary });
   const runs = useQuery({ queryKey: ["runs"], queryFn: listRuns });
-  const runtimeRuns = (runs.data ?? []).filter((run) => ["backend_smoke", "runtime_backend", "rebridge", "probe_set"].includes(run.run_type));
+  const runtimeRuns = (runs.data ?? []).filter((run) => ["backend_smoke", "runtime_backend", "rebridge", "probe_set", "closed_loop_demo"].includes(run.run_type));
+  const closedLoopRuns = runtimeRuns.filter((run) => run.run_type === "closed_loop_demo");
   const backendMap = new Map((runtimeSummary.data?.backends ?? []).map((backend) => [backend.backend, backend]));
   const blockers = runtimeSummary.data?.blockers ?? [];
   const probeSets = runtimeSummary.data?.probe_sets ?? [];
@@ -39,6 +40,7 @@ export function RuntimePage() {
   const runtimeBackendMutation = useMutation({ mutationFn: createRuntimeBackendRun, onSuccess: async () => queryClient.invalidateQueries({ queryKey: ["runs"] }) });
   const rebridgeMutation = useMutation({ mutationFn: createRebridgeRun, onSuccess: async () => queryClient.invalidateQueries({ queryKey: ["runs"] }) });
   const probeMutation = useMutation({ mutationFn: createProbeSetRun, onSuccess: async () => queryClient.invalidateQueries({ queryKey: ["runs"] }) });
+  const closedLoopMutation = useMutation({ mutationFn: createClosedLoopDemoRun, onSuccess: async () => queryClient.invalidateQueries({ queryKey: ["runs"] }) });
 
   return (
     <div className="space-y-6">
@@ -58,17 +60,22 @@ export function RuntimePage() {
           value={backendMap.get("carla")?.strategy ?? "Unknown"}
           hint={backendMap.get("carla")?.preferred_runtime_source ?? "No CARLA strategy"}
         />
-        <MetricCard label="Probe sets" value={probeSets.length} hint={`${blockers.length} blockers`} />
+        <MetricCard
+          label="Closed loop demos"
+          value={closedLoopRuns.length}
+          hint={closedLoopRuns[0]?.status ?? `${probeSets.length} probe sets indexed`}
+        />
       </section>
 
       <Panel
         title="Runtime Workflows"
-        subtitle="Launch backend smoke, runtime backend workflows, rebridge refreshes, and probe sets from one page."
+        subtitle="Launch backend smoke, runtime backend workflows, rebridge refreshes, closed-loop demos, and probe sets from one page."
         action={
           <div className="flex flex-wrap gap-3">
             <RunLaunchDialog title="Launch Backend Smoke" defaultPayload={DEFAULT_BACKEND_SMOKE_PAYLOAD} onSubmit={(payload) => backendSmokeMutation.mutateAsync(payload)} />
             <RunLaunchDialog title="Launch Runtime Backend Workflow" defaultPayload={DEFAULT_RUNTIME_BACKEND_PAYLOAD} onSubmit={(payload) => runtimeBackendMutation.mutateAsync(payload)} />
             <RunLaunchDialog title="Launch Rebridge" defaultPayload={DEFAULT_REBRIDGE_PAYLOAD} onSubmit={(payload) => rebridgeMutation.mutateAsync(payload)} />
+            <RunLaunchDialog title="Launch Closed-Loop Demo" defaultPayload={DEFAULT_CLOSED_LOOP_DEMO_PAYLOAD} onSubmit={(payload) => closedLoopMutation.mutateAsync(payload)} />
             <RunLaunchDialog title="Launch Probe Set" defaultPayload={DEFAULT_PROBE_SET_PAYLOAD} onSubmit={(payload) => probeMutation.mutateAsync(payload)} />
           </div>
         }
@@ -87,6 +94,10 @@ export function RuntimePage() {
 
       <Panel title="Probe Sets" subtitle="Read-only runtime health probe-set summaries indexed by the backend API.">
         <JsonViewer value={probeSets} />
+      </Panel>
+
+      <Panel title="Closed-Loop Demo Runs" subtitle="AWSIM + Autoware orchestration attempts, including blockers, recommended commands, and video artifacts.">
+        <DataTable data={closedLoopRuns} columns={columns} />
       </Panel>
     </div>
   );

@@ -423,6 +423,7 @@ BLOCK_CATALOG: list[dict[str, Any]] = [
             "src/hybrid_sensor_sim/tools/scenario_runtime_backend_rebridge.py",
             "src/hybrid_sensor_sim/tools/scenario_runtime_backend_probe.py",
             "src/hybrid_sensor_sim/tools/scenario_runtime_backend_probe_set.py",
+            "src/hybrid_sensor_sim/tools/scenario_closed_loop_demo_workflow.py",
         ],
         "current_test_paths": [
             "tests/test_scenario_backend_smoke_workflow.py",
@@ -430,6 +431,7 @@ BLOCK_CATALOG: list[dict[str, Any]] = [
             "tests/test_scenario_runtime_backend_rebridge.py",
             "tests/test_scenario_runtime_backend_probe.py",
             "tests/test_scenario_runtime_backend_probe_set.py",
+            "tests/test_scenario_closed_loop_demo_workflow.py",
         ],
         "current_fixture_paths": [],
         "current_script_paths": [
@@ -438,6 +440,7 @@ BLOCK_CATALOG: list[dict[str, Any]] = [
             "scripts/run_scenario_runtime_backend_rebridge.py",
             "scripts/run_scenario_runtime_backend_probe.py",
             "scripts/run_scenario_runtime_backend_probe_set.py",
+            "scripts/run_scenario_closed_loop_demo.py",
         ],
         "current_doc_paths": [
             "README.md",
@@ -448,10 +451,13 @@ BLOCK_CATALOG: list[dict[str, Any]] = [
         "result_summary": (
             "Scenario batch outputs can now bridge into runtime smoke and reuse staged "
             "backend selections, and previously generated runtime/backend smoke reports can "
-            "be re-bridged into refreshed Autoware and top-level workflow artifacts."
+            "be re-bridged into refreshed Autoware and top-level workflow artifacts. "
+            "The same lane now also includes Linux-host-only closed-loop demo orchestration "
+            "for AWSIM + Autoware ROS2 runs."
         ),
         "open_gaps": [
-            "Real packaged AWSIM/CARLA execution still remains to be closed."
+            "Real packaged AWSIM/CARLA execution still remains to be closed.",
+            "Closed-loop runtime assets still remain external to this repository."
         ],
         "notes": "This block captures the scenario-to-runtime integration path.",
     },
@@ -897,6 +903,7 @@ BLOCK_CATALOG: list[dict[str, Any]] = [
         "open_gaps": [
             "The control plane is local single-node only in the current round.",
             "Long-running orchestration remains file-system and artifact driven.",
+            "Closed-loop demo launch still expects external Linux-host runtime assets.",
         ],
         "notes": "The API wraps canonical engine workflows rather than introducing a second orchestration stack.",
     },

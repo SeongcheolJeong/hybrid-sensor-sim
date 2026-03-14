@@ -121,6 +121,10 @@ export function createProbeSetRun(payload: Record<string, unknown>) {
   return postRun("/runs/probe-set", payload);
 }
 
+export function createClosedLoopDemoRun(payload: Record<string, unknown>) {
+  return postRun("/runs/closed-loop-demo", payload);
+}
+
 export function createStatusEventSource(runId: string) {
   return new EventSource(`${API_BASE}/runs/${runId}/status-stream`);
 }

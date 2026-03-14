@@ -23,6 +23,12 @@ The current practical goal is:
 
 This is the shortest path to a usable native-run stack. It is narrower than a full cloud, HIL, data-explorer, or neural-sim product line.
 
+There is now also a Linux-host-only extension of that path:
+
+`scenario -> AWSIM + Autoware ROS2 closed-loop demo orchestration -> video/rosbag/report`
+
+That lane is orchestration-only in this repo. The live runtime assets remain external.
+
 The repository now also includes an internal control plane:
 
 - FastAPI API layer over the canonical workflows
@@ -39,7 +45,7 @@ The repository now also includes an internal control plane:
 | Native Sensor Sim | Implemented | camera/lidar/radar native outputs, HELIOS integration, ground-truth and rig sweep surfaces | targeted parity tightening from real runtime evidence |
 | AWSIM Runtime | Implemented | packaged runtime handoff, real AWSIM probe sets, runtime-origin READY/DEGRADED classification | primary semantic output still has a narrower gap than tracking |
 | CARLA Runtime | Blocked | acquisition, local setup diagnostics, staged runtime planning, probe-set blocker triage | local runtime/image availability, storage space, and Docker health |
-| Autoware Data Contract | Implemented | topic catalog, frame tree, pipeline manifest, consumer input manifest, processing stages | downstream consumer shape can still be narrowed further |
+| Autoware Data Contract | Implemented | topic catalog, frame tree, pipeline manifest, consumer input manifest, processing stages, closed-loop preflight inputs | downstream consumer shape can still be narrowed further; live ROS2 execution stays external |
 | Historical Provenance / Governance | Implemented | checked-in inventory, migration registry, traceability, refresh tooling, history guard | routine maintenance only |
 
 ## System Overview
@@ -57,6 +63,7 @@ flowchart TD
     I --> J["Output Comparison and Probes<br/>probe / rebridge / probe set"]
     J --> K["Autoware Bridge<br/>topics / frames / consumer manifests / profiles"]
     K --> L["Control Plane<br/>FastAPI + React operator console"]
+    L --> M["Closed-Loop Demo Orchestration<br/>Linux host + Autoware ROS2 + video capture"]
 ```
 
 ## AWSIM Real Execution Path
@@ -75,6 +82,8 @@ flowchart LR
 ```
 
 This is the strongest verified execution lane in the repository today.
+
+The closed-loop demo workflow builds on top of this lane, but it does not replace it. It consumes the existing runtime and Autoware contract surfaces as preflight inputs before handing execution to external AWSIM and Autoware runtimes on a Linux host.
 
 ## Folder Structure
 

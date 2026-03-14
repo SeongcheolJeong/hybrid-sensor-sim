@@ -28,6 +28,7 @@ class ControlPlaneAPITests(unittest.TestCase):
         self.tmpdir = tempfile.TemporaryDirectory(prefix="control-plane-api-")
         self.tmp_path = Path(self.tmpdir.name)
         self.db_path = self.tmp_path / "index.sqlite"
+        self._original_path = os.environ.get("PATH", "")
         os.environ["CONTROL_PLANE_REPO_ROOT"] = str(REPO_ROOT)
         os.environ["CONTROL_PLANE_DB_PATH"] = str(self.db_path)
         self._reset_server_app_globals()
@@ -40,6 +41,7 @@ class ControlPlaneAPITests(unittest.TestCase):
         self._reset_server_app_globals()
         os.environ.pop("CONTROL_PLANE_REPO_ROOT", None)
         os.environ.pop("CONTROL_PLANE_DB_PATH", None)
+        os.environ["PATH"] = self._original_path
         self.tmpdir.cleanup()
 
     def _reset_server_app_globals(self) -> None:
@@ -226,6 +228,118 @@ class ControlPlaneAPITests(unittest.TestCase):
         self.assertEqual(payload["run_id"], run_id)
         self.assertIn("/sensing/lidar/lidar_top/pointcloud", payload["available_topics"])
         self.assertTrue(payload["pipeline_manifest_path"].endswith("autoware_pipeline_manifest.json"))
+
+    def test_closed_loop_demo_run_endpoint(self) -> None:
+        env = self._build_closed_loop_fixture_env()
+        launch = self.client.post(
+            "/api/v1/runs/closed-loop-demo",
+            json={
+                "project_id": "default",
+                "payload": {
+                    "scenario_path": str(SCENARIO_FIXTURE),
+                    "linux_runtime_root": str(env["linux_root"]),
+                    "autoware_workspace_root": str(env["autoware_root"]),
+                    "awsim_runtime_root": str(env["awsim_root"]),
+                    "map_path": str(REPO_ROOT / "tests" / "fixtures" / "autonomy_e2e" / "p_map_toolset" / "simple_map_v0.json"),
+                    "route_path": str(REPO_ROOT / "tests" / "fixtures" / "autonomy_e2e" / "p_sim_engine" / "highway_map_route_following_v0.json"),
+                    "autoware_pipeline_manifest_path": str(env["pipeline_manifest_path"]),
+                    "autoware_dataset_manifest_path": str(env["dataset_manifest_path"]),
+                    "autoware_topic_catalog_path": str(env["topic_catalog_path"]),
+                    "autoware_consumer_input_manifest_path": str(env["consumer_input_manifest_path"]),
+                    "out_root": str(self.tmp_path / "closed-loop-run"),
+                    "run_duration_sec": 0.5,
+                    "heartbeat_timeout_sec": 3.0,
+                    "poll_interval_sec": 0.1,
+                    "startup_grace_sec": 1.0,
+                    "record_video": True,
+                    "record_rosbag": True,
+                    "strict_capture": True,
+                    "allow_non_linux_host": True,
+                },
+            },
+        )
+        self.assertEqual(launch.status_code, 200)
+        run_id = launch.json()["run_id"]
+        run_detail = self._wait_for_run(run_id, timeout_s=20.0)
+        self.assertEqual(run_detail["status"], "SUCCEEDED")
+        self.assertTrue(run_detail["summary_json_path"].endswith("scenario_closed_loop_demo_report_v0.json"))
+
+        artifacts = self.client.get(f"/api/v1/runs/{run_id}/artifacts")
+        self.assertEqual(artifacts.status_code, 200)
+        artifact_names = {item["display_name"] for item in artifacts.json()}
+        self.assertIn("scenario_closed_loop_demo_report_v0.json", artifact_names)
+        self.assertIn("run_telemetry.json", artifact_names)
+        self.assertIn("awsim_camera_capture.mp4", artifact_names)
+
+    def _build_closed_loop_fixture_env(self) -> dict[str, Path]:
+        linux_root = self.tmp_path / "linux-runtime"
+        bin_root = linux_root / "bin"
+        bin_root.mkdir(parents=True, exist_ok=True)
+        awsim_root = self.tmp_path / "awsim-runtime"
+        awsim_root.mkdir(parents=True, exist_ok=True)
+        (awsim_root / "AWSIM-Demo-Lightweight.x86_64").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+        (awsim_root / "AWSIM-Demo-Lightweight.x86_64").chmod(0o755)
+
+        autoware_root = self.tmp_path / "autoware"
+        fake_bin = self.tmp_path / "fake-bin"
+        fake_bin.mkdir(parents=True, exist_ok=True)
+        ros2_bin = fake_bin / "ros2"
+        ros2_bin.write_text("#!/usr/bin/env bash\necho ros2-fake\n", encoding="utf-8")
+        ros2_bin.chmod(0o755)
+        setup_bash = autoware_root / "install" / "setup.bash"
+        setup_bash.parent.mkdir(parents=True, exist_ok=True)
+        setup_bash.write_text(f"#!/usr/bin/env bash\nexport PATH={str(fake_bin)}:$PATH\n", encoding="utf-8")
+
+        self._write_helper(bin_root / "launch_awsim_closed_loop.sh", "trap 'exit 0' TERM INT\nwhile true; do sleep 1; done\n")
+        self._write_helper(bin_root / "launch_autoware_closed_loop.sh", "trap 'exit 0' TERM INT\nwhile true; do sleep 1; done\n")
+        self._write_helper(bin_root / "send_route_goal.sh", "touch \"$RUN_OUT_ROOT/route_goal_sent.txt\"\n")
+        for helper_name in (
+            "check_localization_ready.sh",
+            "check_perception_ready.sh",
+            "check_planning_ready.sh",
+            "check_control_ready.sh",
+            "check_vehicle_motion.sh",
+            "check_route_completed.sh",
+        ):
+            self._write_helper(bin_root / helper_name, "exit 0\n")
+        self._write_helper(
+            bin_root / "capture_awsim_video.sh",
+            "mkdir -p \"$(dirname \"$AWSIM_CAMERA_CAPTURE_PATH\")\"\n"
+            "touch \"$AWSIM_CAMERA_CAPTURE_PATH\"\n"
+            "trap 'exit 0' TERM INT\nwhile true; do sleep 1; done\n",
+        )
+        self._write_helper(
+            bin_root / "record_rosbag.sh",
+            "mkdir -p \"$ROSBAG_ROOT\"\n"
+            "touch \"$ROSBAG_ROOT/demo.db3\"\n"
+            "trap 'exit 0' TERM INT\nwhile true; do sleep 1; done\n",
+        )
+
+        bundle_root = self.tmp_path / "autoware-bundle"
+        bundle_root.mkdir(parents=True, exist_ok=True)
+        pipeline_manifest_path = bundle_root / "autoware_pipeline_manifest.json"
+        dataset_manifest_path = bundle_root / "autoware_dataset_manifest.json"
+        topic_catalog_path = bundle_root / "autoware_topic_catalog.json"
+        consumer_input_manifest_path = bundle_root / "autoware_consumer_input_manifest.json"
+        pipeline_manifest_path.write_text('{"status":"READY","consumer_profile":"semantic_perception_v0"}\n', encoding="utf-8")
+        dataset_manifest_path.write_text('{"dataset_ready":true}\n', encoding="utf-8")
+        topic_catalog_path.write_text('{"available_topics":["/sensing/camera/camera_front/image_raw"],"missing_required_topics":[]}\n', encoding="utf-8")
+        consumer_input_manifest_path.write_text('{"consumer_profile_id":"semantic_perception_v0","processing_stages":[{"stage_id":"semantic_camera_ingest","status":"READY"}]}\n', encoding="utf-8")
+
+        os.environ["PATH"] = f"{str(fake_bin)}:{self._original_path}"
+        return {
+            "linux_root": linux_root,
+            "autoware_root": autoware_root,
+            "awsim_root": awsim_root,
+            "pipeline_manifest_path": pipeline_manifest_path,
+            "dataset_manifest_path": dataset_manifest_path,
+            "topic_catalog_path": topic_catalog_path,
+            "consumer_input_manifest_path": consumer_input_manifest_path,
+        }
+
+    def _write_helper(self, path: Path, body: str) -> None:
+        path.write_text("#!/usr/bin/env bash\nset -e\n" + body, encoding="utf-8")
+        path.chmod(0o755)
 
 
 if __name__ == "__main__":

@@ -64,7 +64,7 @@ npm install
 npm run dev
 ```
 
-The control plane is an internal React + FastAPI operator console. It launches and inspects the same canonical object-sim, batch, runtime, probe-set, and Autoware workflows that already exist in `src/` and `scripts/`.
+The control plane is an internal React + FastAPI operator console. It launches and inspects the same canonical object-sim, batch, runtime, probe-set, Autoware, and closed-loop demo workflows that already exist in `src/` and `scripts/`.
 
 - `scripts/setup_helios.sh`: bootstrap helper for cloning/building HELIOS.
 - `scripts/run_renderer_backend_smoke.py`: AWSIM/CARLA smoke launcher that forces direct backend execution plus output-contract inspection.
@@ -87,6 +87,7 @@ The control plane is an internal React + FastAPI operator console. It launches a
 - `src/hybrid_sensor_sim/tools/scenario_runtime_bridge.py`: translates migrated scenarios into smoke-ready `objects` scenarios for HELIOS survey generation and renderer smoke execution.
 - `scripts/run_scenario_backend_smoke_workflow.py`: selects a variant from scenario variant/batch workflow reports, materializes a smoke-ready scenario/config, and optionally runs renderer backend smoke.
 - `scripts/run_scenario_runtime_backend_workflow.py`: runs scenario batch workflow first, then feeds the selected result into renderer backend smoke as one top-level workflow.
+- `scripts/run_scenario_closed_loop_demo.py`: Linux-host-oriented AWSIM + Autoware closed-loop orchestration workflow that performs runtime preflight, launches external helper commands, records video/rosbag artifacts, and writes `scenario_closed_loop_demo_report_v0.json`.
 - `src/hybrid_sensor_sim/autoware/*.py`: JSON-first Autoware topic/frame/pipeline contract bridge built from backend smoke artifacts.
 - `scripts/run_autoware_pipeline_bridge.py`: builds Autoware-facing sensor contracts, frame tree, pipeline manifest, dataset manifest, and consumer input manifest from backend smoke workflow reports.
   - bridge availability modes are now explicit: `runtime`, `planned`, `sidecar`, `mixed`
@@ -103,6 +104,11 @@ The control plane is an internal React + FastAPI operator console. It launches a
 - `scripts/run_autonomy_e2e_history_report.py`: builds JSON/Markdown summaries from the checked-in provenance ledger.
 - `scripts/run_autonomy_e2e_history_query.py`: queries the checked-in provenance ledger by project, block, or current path.
 - `scripts/run_autonomy_e2e_history_guard.py`: checks changed migration result paths against `origin/main` and fails when provenance metadata was not refreshed.
+
+Closed-loop note:
+
+- true `AWSIM -> Autoware perception/planning/control -> vehicle motion` demo runs are orchestrated from this repo but require an external `Linux + GPU + ROS2 + Autoware workspace + AWSIM runtime`
+- the in-repo Autoware layer remains a JSON-first preflight and validation bridge, not a live ROS2 topic bridge
 
 ## Quick start
 

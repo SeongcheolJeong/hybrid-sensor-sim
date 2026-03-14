@@ -67,6 +67,12 @@ def launch_probe_set(request: RunLaunchRequest, jobs: JobManager = Depends(get_j
     return RunIndexEntryModel(**_to_index_entry(run_row))
 
 
+@router.post("/runs/closed-loop-demo", response_model=RunIndexEntryModel)
+def launch_closed_loop_demo(request: RunLaunchRequest, jobs: JobManager = Depends(get_job_manager)) -> RunIndexEntryModel:
+    run_row = jobs.submit(run_type="closed_loop_demo", project_id=request.project_id, payload=request.payload)
+    return RunIndexEntryModel(**_to_index_entry(run_row))
+
+
 @router.get("/runs/{run_id}", response_model=RunDetailModel)
 def get_run(run_id: str, db: ControlPlaneDB = Depends(get_db)) -> RunDetailModel:
     row = db.get_run(run_id)
