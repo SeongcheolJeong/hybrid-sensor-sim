@@ -1,10 +1,10 @@
 {
   "schema_version": "autonomy_e2e_migration_registry_v0",
-  "generated_at_utc": "2026-03-14T06:50:13+00:00",
+  "generated_at_utc": "2026-03-14T08:32:38+00:00",
   "source_repo_root": "/Users/seongcheoljeong/Documents/Autonomy-E2E/Autonomy-E2E",
   "current_repo_root": "/Users/seongcheoljeong/Documents/Test",
   "integration_baseline_commit": "8d2353f",
-  "current_repo_head_commit": "edaa5e9da1b2442f3dafc043a8db743326696de7",
+  "current_repo_head_commit": "9a0bb96332862f27b1a5c55a0f09c9faafe6b089",
   "blocks": [
     {
       "block_id": "p_autoware_workspace_ci.data_contract_bridge",
@@ -55,7 +55,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
       "working_result_kind": [
         "library",
         "workflow",
@@ -95,7 +95,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
       "working_result_kind": [
         "doc"
       ],
@@ -166,7 +166,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
       "working_result_kind": [
         "workflow",
         "doc"
@@ -177,6 +177,65 @@
         "CARLA remains a blocker surface until a runnable local runtime exists."
       ],
       "notes": "This is an internal control plane, not a public marketing site."
+    },
+    {
+      "block_id": "p_cloud_engine.linux_closed_loop_handoff_assets",
+      "project_id": "P_Cloud-Engine",
+      "source_kind": "workflow_pattern",
+      "source_paths": [
+        "30_Projects/P_Cloud-Engine/prototype/runtime_runner.py",
+        "30_Projects/P_Sim-Engine/prototype/sim_runtime_probe_runner.py"
+      ],
+      "source_commits": [
+        "54f675e3dd9893c918dbe78f9e44d6f60ff1e4f8",
+        "da81953c6a5070668aff6e448e5e02a8785b3745",
+        "157855d6ccbe7be8352295ba4df83cf07418edba",
+        "369ed69b1e0c0be1b96a6f83f76eacc0ed749340",
+        "446b69d2747efdc8c38177b6e2b6bbc31aea559e"
+      ],
+      "source_evidence_summary": "Linux-host closed-loop handoff contract with checked-in helper templates, sample launch payloads, and newcomer runbook for continuing on another machine.",
+      "migration_status": "migrated",
+      "current_paths": [],
+      "current_test_paths": [
+        "tests/test_closed_loop_helper_contract.py"
+      ],
+      "current_fixture_paths": [
+        "examples/closed_loop/closed_loop_demo_request_v0.json"
+      ],
+      "current_script_paths": [
+        "examples/closed_loop/linux_runtime_root/bin/launch_awsim_closed_loop.sh",
+        "examples/closed_loop/linux_runtime_root/bin/launch_autoware_closed_loop.sh",
+        "examples/closed_loop/linux_runtime_root/bin/send_route_goal.sh",
+        "examples/closed_loop/linux_runtime_root/bin/check_localization_ready.sh",
+        "examples/closed_loop/linux_runtime_root/bin/check_perception_ready.sh",
+        "examples/closed_loop/linux_runtime_root/bin/check_planning_ready.sh",
+        "examples/closed_loop/linux_runtime_root/bin/check_control_ready.sh",
+        "examples/closed_loop/linux_runtime_root/bin/check_vehicle_motion.sh",
+        "examples/closed_loop/linux_runtime_root/bin/check_route_completed.sh",
+        "examples/closed_loop/linux_runtime_root/bin/capture_awsim_video.sh",
+        "examples/closed_loop/linux_runtime_root/bin/capture_rviz_video.sh",
+        "examples/closed_loop/linux_runtime_root/bin/record_rosbag.sh"
+      ],
+      "current_doc_paths": [
+        "README.md",
+        "docs/linux_closed_loop_handoff.md",
+        "docs/architecture_guide.md",
+        "docs/first_run_guide.md"
+      ],
+      "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
+      "working_result_kind": [
+        "workflow",
+        "cli",
+        "test",
+        "fixture",
+        "doc"
+      ],
+      "result_summary": "Linux-host closed-loop handoff contract with checked-in helper templates, sample launch payloads, and newcomer runbook for continuing on another machine.",
+      "open_gaps": [
+        "The checked-in helpers remain templates; real launch commands still depend on the target Linux host."
+      ],
+      "notes": "These assets make the GitHub repository clone-to-first-run complete for Linux host continuation."
     },
     {
       "block_id": "p_cloud_engine.local_batch_pattern",
@@ -213,7 +272,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
       "working_result_kind": [
         "workflow",
         "cli",
@@ -254,7 +313,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
       "working_result_kind": [
         "doc"
       ],
@@ -309,7 +368,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
       "working_result_kind": [
         "library",
         "workflow",
@@ -364,7 +423,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "b95cb42a093a638463fac893cb8179f916b135b3",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
       "working_result_kind": [
         "workflow",
         "cli",
@@ -410,7 +469,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
       "working_result_kind": [
         "library",
         "cli",
@@ -457,7 +516,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
       "working_result_kind": [
         "library",
         "cli",
@@ -504,7 +563,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
       "working_result_kind": [
         "library",
         "cli",
@@ -557,7 +616,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
       "working_result_kind": [
         "workflow",
         "cli",
@@ -611,7 +670,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
       "working_result_kind": [
         "library",
         "cli",
@@ -655,7 +714,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
       "working_result_kind": [
         "cli",
         "test",
@@ -697,7 +756,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
       "working_result_kind": [
         "library",
         "cli",
@@ -736,7 +795,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
       "working_result_kind": [
         "doc"
       ],
@@ -786,7 +845,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
       "working_result_kind": [
         "library",
         "cli",
@@ -837,7 +896,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
       "working_result_kind": [
         "library",
         "cli",
@@ -894,7 +953,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
       "working_result_kind": [
         "library",
         "test",
@@ -952,7 +1011,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
       "working_result_kind": [
         "workflow",
         "cli",
@@ -1010,7 +1069,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "ab390e6725b84f94ebeadfa993b281d2f5d47935",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
       "working_result_kind": [
         "library",
         "workflow",
@@ -1066,21 +1125,35 @@
         "scripts/run_scenario_runtime_backend_rebridge.py",
         "scripts/run_scenario_runtime_backend_probe.py",
         "scripts/run_scenario_runtime_backend_probe_set.py",
-        "scripts/run_scenario_closed_loop_demo.py"
+        "scripts/run_scenario_closed_loop_demo.py",
+        "examples/closed_loop/linux_runtime_root/bin/launch_awsim_closed_loop.sh",
+        "examples/closed_loop/linux_runtime_root/bin/launch_autoware_closed_loop.sh",
+        "examples/closed_loop/linux_runtime_root/bin/send_route_goal.sh",
+        "examples/closed_loop/linux_runtime_root/bin/check_localization_ready.sh",
+        "examples/closed_loop/linux_runtime_root/bin/check_perception_ready.sh",
+        "examples/closed_loop/linux_runtime_root/bin/check_planning_ready.sh",
+        "examples/closed_loop/linux_runtime_root/bin/check_control_ready.sh",
+        "examples/closed_loop/linux_runtime_root/bin/check_vehicle_motion.sh",
+        "examples/closed_loop/linux_runtime_root/bin/check_route_completed.sh",
+        "examples/closed_loop/linux_runtime_root/bin/capture_awsim_video.sh",
+        "examples/closed_loop/linux_runtime_root/bin/capture_rviz_video.sh",
+        "examples/closed_loop/linux_runtime_root/bin/record_rosbag.sh"
       ],
       "current_doc_paths": [
         "README.md",
         "docs/p_sim_engine_migration_audit.md",
         "docs/autonomy_e2e_migration_master_plan.md",
+        "docs/linux_closed_loop_handoff.md",
         "docs/architecture_guide.md",
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
       "working_result_kind": [
         "workflow",
         "cli",
         "test",
+        "fixture",
         "doc"
       ],
       "result_summary": "Scenario batch outputs can now bridge into runtime smoke and reuse staged backend selections, and previously generated runtime/backend smoke reports can be re-bridged into refreshed Autoware and top-level workflow artifacts. The same lane now also includes Linux-host-only closed-loop demo orchestration for AWSIM + Autoware ROS2 runs.",
@@ -1124,7 +1197,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
       "working_result_kind": [
         "cli",
         "test",
@@ -1170,7 +1243,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
       "working_result_kind": [
         "library",
         "test",
@@ -1217,7 +1290,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
       "working_result_kind": [
         "library",
         "cli",
@@ -1255,7 +1328,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
       "working_result_kind": [
         "doc"
       ],
@@ -1306,7 +1379,7 @@
         "docs/first_run_guide.md"
       ],
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
       "working_result_kind": [
         "library",
         "workflow",

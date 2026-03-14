@@ -1,6 +1,6 @@
 {
   "schema_version": "autonomy_e2e_result_traceability_index_v0",
-  "generated_at_utc": "2026-03-14T06:50:22+00:00",
+  "generated_at_utc": "2026-03-14T08:32:46+00:00",
   "current_repo_root": "/Users/seongcheoljeong/Documents/Test",
   "paths": [
     {
@@ -9,6 +9,7 @@
       "block_ids": [
         "p_autoware_workspace_ci.data_contract_bridge",
         "p_cloud_engine.control_plane_operator_surface",
+        "p_cloud_engine.linux_closed_loop_handoff_assets",
         "p_e2e_stack.control_plane_api",
         "p_map_toolset.canonical_route",
         "p_map_toolset.convert_map",
@@ -36,7 +37,7 @@
       ],
       "result_role": "audit_doc",
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc"
     },
     {
       "current_path": "apps/control-plane/index.html",
@@ -218,7 +219,7 @@
       ],
       "result_role": "core_logic",
       "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc"
     },
     {
       "current_path": "apps/control-plane/src/lib/defaults.ts",
@@ -231,7 +232,7 @@
       ],
       "result_role": "core_logic",
       "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc"
     },
     {
       "current_path": "apps/control-plane/src/lib/types.ts",
@@ -322,7 +323,7 @@
       ],
       "result_role": "core_logic",
       "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc"
     },
     {
       "current_path": "apps/control-plane/src/pages/runtime-page.tsx",
@@ -335,7 +336,7 @@
       ],
       "result_role": "core_logic",
       "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc"
     },
     {
       "current_path": "apps/control-plane/src/pages/simulation-page.tsx",
@@ -374,7 +375,7 @@
       ],
       "result_role": "core_logic",
       "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc"
     },
     {
       "current_path": "apps/control-plane/src/router.tsx",
@@ -474,6 +475,7 @@
         "p_autoware_workspace_ci.data_contract_bridge",
         "p_autoware_workspace_ci.hil_sequence_reference",
         "p_cloud_engine.control_plane_operator_surface",
+        "p_cloud_engine.linux_closed_loop_handoff_assets",
         "p_cloud_engine.local_batch_pattern",
         "p_data_lake.run_ingest_reference",
         "p_e2e_stack.control_plane_api",
@@ -509,7 +511,7 @@
       ],
       "result_role": "audit_doc",
       "current_intro_commit": "9022a1b6351179c608e8a2a5215440812ff89ee6",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc"
     },
     {
       "current_path": "docs/autonomy_e2e_history_integration.md",
@@ -558,7 +560,7 @@
       ],
       "result_role": "audit_doc",
       "current_intro_commit": "b16fcf621c2a91c41c174f08d656f3b3abc16473",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980"
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc"
     },
     {
       "current_path": "docs/first_run_guide.md",
@@ -567,6 +569,7 @@
         "p_autoware_workspace_ci.data_contract_bridge",
         "p_autoware_workspace_ci.hil_sequence_reference",
         "p_cloud_engine.control_plane_operator_surface",
+        "p_cloud_engine.linux_closed_loop_handoff_assets",
         "p_cloud_engine.local_batch_pattern",
         "p_data_lake.run_ingest_reference",
         "p_e2e_stack.control_plane_api",
@@ -602,7 +605,22 @@
       ],
       "result_role": "audit_doc",
       "current_intro_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc"
+    },
+    {
+      "current_path": "docs/linux_closed_loop_handoff.md",
+      "path_kind": "doc",
+      "block_ids": [
+        "p_cloud_engine.linux_closed_loop_handoff_assets",
+        "p_sim_engine.scenario_runtime_smoke_bridge"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine",
+        "P_Sim-Engine"
+      ],
+      "result_role": "audit_doc",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
     },
     {
       "current_path": "docs/p_sim_engine_migration_audit.md",
@@ -629,7 +647,7 @@
       ],
       "result_role": "audit_doc",
       "current_intro_commit": "9104dc8429b6e5bd7faac52cbd37a8a8287ff960",
-      "current_latest_touch_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980"
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc"
     },
     {
       "current_path": "docs/sensor_sim_master_plan.md",
@@ -643,6 +661,199 @@
       "result_role": "audit_doc",
       "current_intro_commit": "456cd46ffb696508589fd0afb4b2a288c0a927fb",
       "current_latest_touch_commit": "612fb0acd20eb89db1a78c91cfda9f8f0befcda3"
+    },
+    {
+      "current_path": "examples/closed_loop/closed_loop_demo_request_v0.json",
+      "path_kind": "config",
+      "block_ids": [
+        "p_cloud_engine.linux_closed_loop_handoff_assets"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "fixture",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "examples/closed_loop/linux_runtime_root/bin/capture_awsim_video.sh",
+      "path_kind": "script",
+      "block_ids": [
+        "p_cloud_engine.linux_closed_loop_handoff_assets",
+        "p_sim_engine.scenario_runtime_smoke_bridge"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine",
+        "P_Sim-Engine"
+      ],
+      "result_role": "runner",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "examples/closed_loop/linux_runtime_root/bin/capture_rviz_video.sh",
+      "path_kind": "script",
+      "block_ids": [
+        "p_cloud_engine.linux_closed_loop_handoff_assets",
+        "p_sim_engine.scenario_runtime_smoke_bridge"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine",
+        "P_Sim-Engine"
+      ],
+      "result_role": "runner",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "examples/closed_loop/linux_runtime_root/bin/check_control_ready.sh",
+      "path_kind": "script",
+      "block_ids": [
+        "p_cloud_engine.linux_closed_loop_handoff_assets",
+        "p_sim_engine.scenario_runtime_smoke_bridge"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine",
+        "P_Sim-Engine"
+      ],
+      "result_role": "runner",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "examples/closed_loop/linux_runtime_root/bin/check_localization_ready.sh",
+      "path_kind": "script",
+      "block_ids": [
+        "p_cloud_engine.linux_closed_loop_handoff_assets",
+        "p_sim_engine.scenario_runtime_smoke_bridge"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine",
+        "P_Sim-Engine"
+      ],
+      "result_role": "runner",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "examples/closed_loop/linux_runtime_root/bin/check_perception_ready.sh",
+      "path_kind": "script",
+      "block_ids": [
+        "p_cloud_engine.linux_closed_loop_handoff_assets",
+        "p_sim_engine.scenario_runtime_smoke_bridge"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine",
+        "P_Sim-Engine"
+      ],
+      "result_role": "runner",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "examples/closed_loop/linux_runtime_root/bin/check_planning_ready.sh",
+      "path_kind": "script",
+      "block_ids": [
+        "p_cloud_engine.linux_closed_loop_handoff_assets",
+        "p_sim_engine.scenario_runtime_smoke_bridge"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine",
+        "P_Sim-Engine"
+      ],
+      "result_role": "runner",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "examples/closed_loop/linux_runtime_root/bin/check_route_completed.sh",
+      "path_kind": "script",
+      "block_ids": [
+        "p_cloud_engine.linux_closed_loop_handoff_assets",
+        "p_sim_engine.scenario_runtime_smoke_bridge"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine",
+        "P_Sim-Engine"
+      ],
+      "result_role": "runner",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "examples/closed_loop/linux_runtime_root/bin/check_vehicle_motion.sh",
+      "path_kind": "script",
+      "block_ids": [
+        "p_cloud_engine.linux_closed_loop_handoff_assets",
+        "p_sim_engine.scenario_runtime_smoke_bridge"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine",
+        "P_Sim-Engine"
+      ],
+      "result_role": "runner",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "examples/closed_loop/linux_runtime_root/bin/launch_autoware_closed_loop.sh",
+      "path_kind": "script",
+      "block_ids": [
+        "p_cloud_engine.linux_closed_loop_handoff_assets",
+        "p_sim_engine.scenario_runtime_smoke_bridge"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine",
+        "P_Sim-Engine"
+      ],
+      "result_role": "runner",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "examples/closed_loop/linux_runtime_root/bin/launch_awsim_closed_loop.sh",
+      "path_kind": "script",
+      "block_ids": [
+        "p_cloud_engine.linux_closed_loop_handoff_assets",
+        "p_sim_engine.scenario_runtime_smoke_bridge"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine",
+        "P_Sim-Engine"
+      ],
+      "result_role": "runner",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "examples/closed_loop/linux_runtime_root/bin/record_rosbag.sh",
+      "path_kind": "script",
+      "block_ids": [
+        "p_cloud_engine.linux_closed_loop_handoff_assets",
+        "p_sim_engine.scenario_runtime_smoke_bridge"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine",
+        "P_Sim-Engine"
+      ],
+      "result_role": "runner",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
+      "current_path": "examples/closed_loop/linux_runtime_root/bin/send_route_goal.sh",
+      "path_kind": "script",
+      "block_ids": [
+        "p_cloud_engine.linux_closed_loop_handoff_assets",
+        "p_sim_engine.scenario_runtime_smoke_bridge"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine",
+        "P_Sim-Engine"
+      ],
+      "result_role": "runner",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
     },
     {
       "current_path": "scripts/acquire_renderer_backend_package.py",
@@ -885,8 +1096,8 @@
         "P_Sim-Engine"
       ],
       "result_role": "runner",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc"
     },
     {
       "current_path": "scripts/run_scenario_matrix_sweep.py",
@@ -1389,7 +1600,7 @@
       ],
       "result_role": "core_logic",
       "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc"
     },
     {
       "current_path": "src/hybrid_sensor_sim/server/models.py",
@@ -1467,7 +1678,7 @@
       ],
       "result_role": "core_logic",
       "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc"
     },
     {
       "current_path": "src/hybrid_sensor_sim/server/routes/runtime.py",
@@ -1640,8 +1851,8 @@
         "P_Sim-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc"
     },
     {
       "current_path": "src/hybrid_sensor_sim/tools/scenario_runtime_backend_probe.py",
@@ -2071,6 +2282,19 @@
       "current_latest_touch_commit": "1c6d99a30378cced4b211a90ffa0002b429ea052"
     },
     {
+      "current_path": "tests/test_closed_loop_helper_contract.py",
+      "path_kind": "test",
+      "block_ids": [
+        "p_cloud_engine.linux_closed_loop_handoff_assets"
+      ],
+      "project_ids": [
+        "P_Cloud-Engine"
+      ],
+      "result_role": "regression",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
+    },
+    {
       "current_path": "tests/test_control_plane_api.py",
       "path_kind": "test",
       "block_ids": [
@@ -2081,7 +2305,7 @@
       ],
       "result_role": "regression",
       "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
-      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc"
     },
     {
       "current_path": "tests/test_log_replay.py",
@@ -2277,8 +2501,8 @@
         "P_Sim-Engine"
       ],
       "result_role": "regression",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc",
+      "current_latest_touch_commit": "06ecb9cf26a9e45eea3dab6f5280968b9fa7eadc"
     },
     {
       "current_path": "tests/test_scenario_matrix_sweep.py",
