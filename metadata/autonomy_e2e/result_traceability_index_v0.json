@@ -1,6 +1,6 @@
 {
   "schema_version": "autonomy_e2e_result_traceability_index_v0",
-  "generated_at_utc": "2026-03-14T05:36:20+00:00",
+  "generated_at_utc": "2026-03-14T06:50:22+00:00",
   "current_repo_root": "/Users/seongcheoljeong/Documents/Test",
   "paths": [
     {
@@ -36,7 +36,7 @@
       ],
       "result_role": "audit_doc",
       "current_intro_commit": "55794614d3d62b8c8b232610f88c575a973973f4",
-      "current_latest_touch_commit": "7e7487f58284cf05e40ceca43a19594358c0b567"
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/index.html",
@@ -48,8 +48,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/package-lock.json",
@@ -61,8 +61,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/package.json",
@@ -74,8 +74,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/postcss.config.cjs",
@@ -87,8 +87,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/src/components/app-shell.tsx",
@@ -100,8 +100,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/src/components/data-table.tsx",
@@ -113,8 +113,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/src/components/json-viewer.tsx",
@@ -126,8 +126,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/src/components/metric-card.tsx",
@@ -139,8 +139,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/src/components/panel.tsx",
@@ -152,8 +152,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/src/components/run-launch-dialog.tsx",
@@ -165,8 +165,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/src/components/status-bar-chart.tsx",
@@ -178,8 +178,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/src/components/status-chip.tsx",
@@ -191,8 +191,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/src/index.css",
@@ -204,8 +204,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/src/lib/api.ts",
@@ -217,8 +217,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/src/lib/defaults.ts",
@@ -230,8 +230,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/src/lib/types.ts",
@@ -243,8 +243,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/src/main.tsx",
@@ -256,8 +256,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/src/pages/autoware-page.tsx",
@@ -269,8 +269,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/src/pages/history-page.tsx",
@@ -282,8 +282,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/src/pages/maps-page.tsx",
@@ -295,8 +295,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/src/pages/projects-page.tsx",
@@ -308,8 +308,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/src/pages/run-detail-page.tsx",
@@ -321,8 +321,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/src/pages/runtime-page.tsx",
@@ -334,8 +334,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/src/pages/simulation-page.tsx",
@@ -347,8 +347,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/src/pages/validation-page.tsx",
@@ -360,8 +360,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/src/pages/workspace-page.tsx",
@@ -373,8 +373,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/src/router.tsx",
@@ -386,8 +386,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/src/vite-env.d.ts",
@@ -399,8 +399,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/tailwind.config.ts",
@@ -412,8 +412,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/tsconfig.app.json",
@@ -425,8 +425,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/tsconfig.json",
@@ -438,8 +438,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/tsconfig.node.json",
@@ -451,8 +451,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "apps/control-plane/vite.config.ts",
@@ -464,8 +464,8 @@
         "P_Cloud-Engine"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "docs/architecture_guide.md",
@@ -509,7 +509,7 @@
       ],
       "result_role": "audit_doc",
       "current_intro_commit": "9022a1b6351179c608e8a2a5215440812ff89ee6",
-      "current_latest_touch_commit": "940eae5542978384423a7dd956d75f637e3e1aa8"
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "docs/autonomy_e2e_history_integration.md",
@@ -602,7 +602,7 @@
       ],
       "result_role": "audit_doc",
       "current_intro_commit": "dddb87f0d5c68ab9f867e44578d9a89143762980",
-      "current_latest_touch_commit": "7e7487f58284cf05e40ceca43a19594358c0b567"
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "docs/p_sim_engine_migration_audit.md",
@@ -719,8 +719,8 @@
         "P_E2E_Stack"
       ],
       "result_role": "runner",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "scripts/run_log_replay.py",
@@ -874,6 +874,19 @@
       "result_role": "runner",
       "current_intro_commit": "42862794ac074d2f2b8d31d5cac8eb267160b684",
       "current_latest_touch_commit": "42862794ac074d2f2b8d31d5cac8eb267160b684"
+    },
+    {
+      "current_path": "scripts/run_scenario_closed_loop_demo.py",
+      "path_kind": "script",
+      "block_ids": [
+        "p_sim_engine.scenario_runtime_smoke_bridge"
+      ],
+      "project_ids": [
+        "P_Sim-Engine"
+      ],
+      "result_role": "runner",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
     },
     {
       "current_path": "scripts/run_scenario_matrix_sweep.py",
@@ -1336,8 +1349,8 @@
         "P_E2E_Stack"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "src/hybrid_sensor_sim/server/app.py",
@@ -1349,8 +1362,8 @@
         "P_E2E_Stack"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "src/hybrid_sensor_sim/server/db.py",
@@ -1362,8 +1375,8 @@
         "P_E2E_Stack"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "src/hybrid_sensor_sim/server/jobs.py",
@@ -1375,8 +1388,8 @@
         "P_E2E_Stack"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "src/hybrid_sensor_sim/server/models.py",
@@ -1388,8 +1401,8 @@
         "P_E2E_Stack"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "src/hybrid_sensor_sim/server/routes/__init__.py",
@@ -1401,8 +1414,8 @@
         "P_E2E_Stack"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "src/hybrid_sensor_sim/server/routes/autoware.py",
@@ -1414,8 +1427,8 @@
         "P_E2E_Stack"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "src/hybrid_sensor_sim/server/routes/history.py",
@@ -1427,8 +1440,8 @@
         "P_E2E_Stack"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "src/hybrid_sensor_sim/server/routes/projects.py",
@@ -1440,8 +1453,8 @@
         "P_E2E_Stack"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "src/hybrid_sensor_sim/server/routes/runs.py",
@@ -1453,8 +1466,8 @@
         "P_E2E_Stack"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "src/hybrid_sensor_sim/server/routes/runtime.py",
@@ -1466,8 +1479,8 @@
         "P_E2E_Stack"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "src/hybrid_sensor_sim/server/routes/scenarios.py",
@@ -1479,8 +1492,8 @@
         "P_E2E_Stack"
       ],
       "result_role": "core_logic",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "src/hybrid_sensor_sim/tools/autoware_pipeline_bridge.py",
@@ -1616,6 +1629,19 @@
       "result_role": "core_logic",
       "current_intro_commit": "42862794ac074d2f2b8d31d5cac8eb267160b684",
       "current_latest_touch_commit": "d10bfb62ac43ae7f7b2de4c67ab444e518470027"
+    },
+    {
+      "current_path": "src/hybrid_sensor_sim/tools/scenario_closed_loop_demo_workflow.py",
+      "path_kind": "library",
+      "block_ids": [
+        "p_sim_engine.scenario_runtime_smoke_bridge"
+      ],
+      "project_ids": [
+        "P_Sim-Engine"
+      ],
+      "result_role": "core_logic",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
     },
     {
       "current_path": "src/hybrid_sensor_sim/tools/scenario_runtime_backend_probe.py",
@@ -2054,8 +2080,8 @@
         "P_E2E_Stack"
       ],
       "result_role": "regression",
-      "current_intro_commit": null,
-      "current_latest_touch_commit": null
+      "current_intro_commit": "994780e91467b96dc3527f27e413f5f8771c9aba",
+      "current_latest_touch_commit": "994780e91467b96dc3527f27e413f5f8771c9aba"
     },
     {
       "current_path": "tests/test_log_replay.py",
@@ -2240,6 +2266,19 @@
       "result_role": "regression",
       "current_intro_commit": "42862794ac074d2f2b8d31d5cac8eb267160b684",
       "current_latest_touch_commit": "d10bfb62ac43ae7f7b2de4c67ab444e518470027"
+    },
+    {
+      "current_path": "tests/test_scenario_closed_loop_demo_workflow.py",
+      "path_kind": "test",
+      "block_ids": [
+        "p_sim_engine.scenario_runtime_smoke_bridge"
+      ],
+      "project_ids": [
+        "P_Sim-Engine"
+      ],
+      "result_role": "regression",
+      "current_intro_commit": null,
+      "current_latest_touch_commit": null
     },
     {
       "current_path": "tests/test_scenario_matrix_sweep.py",
