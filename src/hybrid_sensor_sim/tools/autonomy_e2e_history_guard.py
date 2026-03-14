@@ -15,7 +15,7 @@ AUTONOMY_E2E_HISTORY_GUARD_REPORT_SCHEMA_VERSION_V0 = (
 )
 
 DEFAULT_COMPARE_REF = "origin/main"
-GUARDED_RESULT_PREFIXES = ("src/", "scripts/", "tests/", "configs/", "apps/")
+GUARDED_RESULT_PREFIXES = ("src/", "scripts/", "tests/", "configs/", "apps/", "examples/")
 DOC_RESULT_PREFIXES = ("docs/",)
 ROOT_DOC_FILES = {"README.md"}
 METADATA_PREFIX = "metadata/autonomy_e2e/"

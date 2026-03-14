@@ -41,6 +41,7 @@ Newcomer quick links:
 
 - [Architecture Guide](docs/architecture_guide.md)
 - [First-Run Guide](docs/first_run_guide.md)
+- [Continue on Linux Host](docs/linux_closed_loop_handoff.md)
 - [Completion Snapshot](docs/architecture_guide.md#completion-snapshot)
 - [AWSIM Real Execution Path](docs/architecture_guide.md#awsim-real-execution-path)
 - [Autoware Bridge Internals](docs/architecture_guide.md#autoware-bridge-internals)
@@ -88,6 +89,9 @@ The control plane is an internal React + FastAPI operator console. It launches a
 - `scripts/run_scenario_backend_smoke_workflow.py`: selects a variant from scenario variant/batch workflow reports, materializes a smoke-ready scenario/config, and optionally runs renderer backend smoke.
 - `scripts/run_scenario_runtime_backend_workflow.py`: runs scenario batch workflow first, then feeds the selected result into renderer backend smoke as one top-level workflow.
 - `scripts/run_scenario_closed_loop_demo.py`: Linux-host-oriented AWSIM + Autoware closed-loop orchestration workflow that performs runtime preflight, launches external helper commands, records video/rosbag artifacts, and writes `scenario_closed_loop_demo_report_v0.json`.
+- `docs/linux_closed_loop_handoff.md`: clone-to-first-run Linux GPU host runbook for continuing the closed-loop lane on another machine.
+- `examples/closed_loop/linux_runtime_root/bin/*.sh`: checked-in helper templates that match the closed-loop workflow contract and are meant to be copied into the Linux runtime root and filled in.
+- `examples/closed_loop/closed_loop_demo_request_v0.json`: sample API/control-plane requests for preflight and full closed-loop demo runs.
 - `src/hybrid_sensor_sim/autoware/*.py`: JSON-first Autoware topic/frame/pipeline contract bridge built from backend smoke artifacts.
 - `scripts/run_autoware_pipeline_bridge.py`: builds Autoware-facing sensor contracts, frame tree, pipeline manifest, dataset manifest, and consumer input manifest from backend smoke workflow reports.
   - bridge availability modes are now explicit: `runtime`, `planned`, `sidecar`, `mixed`
@@ -109,6 +113,7 @@ Closed-loop note:
 
 - true `AWSIM -> Autoware perception/planning/control -> vehicle motion` demo runs are orchestrated from this repo but require an external `Linux + GPU + ROS2 + Autoware workspace + AWSIM runtime`
 - the in-repo Autoware layer remains a JSON-first preflight and validation bridge, not a live ROS2 topic bridge
+- GitHub includes the Linux handoff runbook, helper templates, and sample payloads, but it does not include runtime binaries, Autoware workspaces, videos, or rosbags
 
 ## Quick start
 

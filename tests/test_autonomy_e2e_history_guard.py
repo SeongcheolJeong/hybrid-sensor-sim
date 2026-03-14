@@ -49,6 +49,15 @@ class AutonomyE2EHistoryGuardTests(unittest.TestCase):
                     "current_intro_commit": "3333333",
                     "current_latest_touch_commit": "4444444",
                 },
+                {
+                    "current_path": "examples/closed_loop/linux_runtime_root/bin/launch_awsim_closed_loop.sh",
+                    "path_kind": "script",
+                    "block_ids": ["p_cloud_engine.linux_closed_loop_handoff_assets"],
+                    "project_ids": ["P_Cloud-Engine"],
+                    "result_role": "runner",
+                    "current_intro_commit": "5555555",
+                    "current_latest_touch_commit": "6666666",
+                },
             ],
         }
         (
@@ -180,6 +189,30 @@ class AutonomyE2EHistoryGuardTests(unittest.TestCase):
             self.assertEqual(
                 report["mapped_guarded_paths"],
                 ["apps/control-plane/src/main.tsx"],
+            )
+
+    def test_guard_treats_examples_paths_as_governed_results(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir) / "repo"
+            repo_root.mkdir()
+            metadata_root = repo_root / "metadata" / "autonomy_e2e"
+            self._write_traceability_metadata(metadata_root)
+            report = evaluate_autonomy_e2e_history_guard(
+                current_repo_root=repo_root,
+                metadata_root=metadata_root,
+                changed_paths=["examples/closed_loop/linux_runtime_root/bin/launch_awsim_closed_loop.sh"],
+                compare_ref_available=True,
+                head_commit="head123",
+                worktree_dirty=True,
+            )
+            self.assertEqual(report["status"], "FAIL")
+            self.assertIn(
+                "MIGRATION_CHANGES_WITHOUT_METADATA_REFRESH",
+                report["failure_codes"],
+            )
+            self.assertEqual(
+                report["mapped_guarded_paths"],
+                ["examples/closed_loop/linux_runtime_root/bin/launch_awsim_closed_loop.sh"],
             )
 
     def test_guard_script_reports_failures_for_repo_diff(self) -> None:

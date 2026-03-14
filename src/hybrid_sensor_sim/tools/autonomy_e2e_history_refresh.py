@@ -441,13 +441,26 @@ BLOCK_CATALOG: list[dict[str, Any]] = [
             "scripts/run_scenario_runtime_backend_probe.py",
             "scripts/run_scenario_runtime_backend_probe_set.py",
             "scripts/run_scenario_closed_loop_demo.py",
+            "examples/closed_loop/linux_runtime_root/bin/launch_awsim_closed_loop.sh",
+            "examples/closed_loop/linux_runtime_root/bin/launch_autoware_closed_loop.sh",
+            "examples/closed_loop/linux_runtime_root/bin/send_route_goal.sh",
+            "examples/closed_loop/linux_runtime_root/bin/check_localization_ready.sh",
+            "examples/closed_loop/linux_runtime_root/bin/check_perception_ready.sh",
+            "examples/closed_loop/linux_runtime_root/bin/check_planning_ready.sh",
+            "examples/closed_loop/linux_runtime_root/bin/check_control_ready.sh",
+            "examples/closed_loop/linux_runtime_root/bin/check_vehicle_motion.sh",
+            "examples/closed_loop/linux_runtime_root/bin/check_route_completed.sh",
+            "examples/closed_loop/linux_runtime_root/bin/capture_awsim_video.sh",
+            "examples/closed_loop/linux_runtime_root/bin/capture_rviz_video.sh",
+            "examples/closed_loop/linux_runtime_root/bin/record_rosbag.sh",
         ],
         "current_doc_paths": [
             "README.md",
             "docs/p_sim_engine_migration_audit.md",
             "docs/autonomy_e2e_migration_master_plan.md",
+            "docs/linux_closed_loop_handoff.md",
         ],
-        "working_result_kind": ["workflow", "cli", "test", "doc"],
+        "working_result_kind": ["workflow", "cli", "test", "fixture", "doc"],
         "result_summary": (
             "Scenario batch outputs can now bridge into runtime smoke and reuse staged "
             "backend selections, and previously generated runtime/backend smoke reports can "
@@ -906,6 +919,50 @@ BLOCK_CATALOG: list[dict[str, Any]] = [
             "Closed-loop demo launch still expects external Linux-host runtime assets.",
         ],
         "notes": "The API wraps canonical engine workflows rather than introducing a second orchestration stack.",
+    },
+    {
+        "block_id": "p_cloud_engine.linux_closed_loop_handoff_assets",
+        "project_id": "P_Cloud-Engine",
+        "source_kind": "workflow_pattern",
+        "source_paths": [
+            "30_Projects/P_Cloud-Engine/prototype/runtime_runner.py",
+            "30_Projects/P_Sim-Engine/prototype/sim_runtime_probe_runner.py",
+        ],
+        "migration_status": "migrated",
+        "current_paths": [],
+        "current_test_paths": [
+            "tests/test_closed_loop_helper_contract.py",
+        ],
+        "current_fixture_paths": [
+            "examples/closed_loop/closed_loop_demo_request_v0.json",
+        ],
+        "current_script_paths": [
+            "examples/closed_loop/linux_runtime_root/bin/launch_awsim_closed_loop.sh",
+            "examples/closed_loop/linux_runtime_root/bin/launch_autoware_closed_loop.sh",
+            "examples/closed_loop/linux_runtime_root/bin/send_route_goal.sh",
+            "examples/closed_loop/linux_runtime_root/bin/check_localization_ready.sh",
+            "examples/closed_loop/linux_runtime_root/bin/check_perception_ready.sh",
+            "examples/closed_loop/linux_runtime_root/bin/check_planning_ready.sh",
+            "examples/closed_loop/linux_runtime_root/bin/check_control_ready.sh",
+            "examples/closed_loop/linux_runtime_root/bin/check_vehicle_motion.sh",
+            "examples/closed_loop/linux_runtime_root/bin/check_route_completed.sh",
+            "examples/closed_loop/linux_runtime_root/bin/capture_awsim_video.sh",
+            "examples/closed_loop/linux_runtime_root/bin/capture_rviz_video.sh",
+            "examples/closed_loop/linux_runtime_root/bin/record_rosbag.sh",
+        ],
+        "current_doc_paths": [
+            "README.md",
+            "docs/linux_closed_loop_handoff.md",
+        ],
+        "working_result_kind": ["workflow", "cli", "test", "fixture", "doc"],
+        "result_summary": (
+            "Linux-host closed-loop handoff contract with checked-in helper templates, "
+            "sample launch payloads, and newcomer runbook for continuing on another machine."
+        ),
+        "open_gaps": [
+            "The checked-in helpers remain templates; real launch commands still depend on the target Linux host."
+        ],
+        "notes": "These assets make the GitHub repository clone-to-first-run complete for Linux host continuation.",
     },
     {
         "block_id": "p_autoware_workspace_ci.data_contract_bridge",

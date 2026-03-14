@@ -290,6 +290,12 @@ def _infer_path_kind(relative_path: str) -> str | None:
         return "doc"
     if top_level == "configs":
         return "config"
+    if top_level == "examples":
+        if path.suffix == ".sh":
+            return "script"
+        if path.suffix == ".json":
+            return "config"
+        return "config"
     return None
 
 

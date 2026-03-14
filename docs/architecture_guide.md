@@ -85,6 +85,10 @@ This is the strongest verified execution lane in the repository today.
 
 The closed-loop demo workflow builds on top of this lane, but it does not replace it. It consumes the existing runtime and Autoware contract surfaces as preflight inputs before handing execution to external AWSIM and Autoware runtimes on a Linux host.
 
+For clone-to-first-run Linux host continuation, use:
+
+- [/Users/seongcheoljeong/Documents/Test/docs/linux_closed_loop_handoff.md](/Users/seongcheoljeong/Documents/Test/docs/linux_closed_loop_handoff.md)
+
 ## Folder Structure
 
 ```mermaid

@@ -33,6 +33,7 @@ This is narrower than a full cloud, HIL, data-explorer, or neural-sim product li
   - React + FastAPI control plane at `apps/control-plane` and `src/hybrid_sensor_sim/server`
 - optional Linux-host-only lane:
   - `scripts/run_scenario_closed_loop_demo.py` for AWSIM + Autoware ROS2 closed-loop demo orchestration
+  - `docs/linux_closed_loop_handoff.md` for clone-to-first-run continuation on a Linux GPU host
 
 ## Read Order
 
@@ -168,6 +169,19 @@ This report is the fastest single runtime summary:
 - [/Users/seongcheoljeong/Documents/Test/scripts/run_scenario_runtime_backend_workflow.py](/Users/seongcheoljeong/Documents/Test/scripts/run_scenario_runtime_backend_workflow.py)
 - [/Users/seongcheoljeong/Documents/Test/scripts/run_scenario_closed_loop_demo.py](/Users/seongcheoljeong/Documents/Test/scripts/run_scenario_closed_loop_demo.py)
 
+## Continue On Linux Host
+
+If you are moving the closed-loop lane onto a Linux GPU machine, start with:
+
+- [/Users/seongcheoljeong/Documents/Test/docs/linux_closed_loop_handoff.md](/Users/seongcheoljeong/Documents/Test/docs/linux_closed_loop_handoff.md)
+
+That runbook covers:
+
+- clone and bootstrap on Linux
+- helper-script templates
+- first `--preflight-only` run
+- control-plane closed-loop launch flow
+
 ### Existing runtime artifacts
 
 - [/Users/seongcheoljeong/Documents/Test/scripts/run_scenario_runtime_backend_rebridge.py](/Users/seongcheoljeong/Documents/Test/scripts/run_scenario_runtime_backend_rebridge.py)
@@ -189,6 +203,7 @@ This report is the fastest single runtime summary:
   - from primary semantic output
   - or through semantic supplemental recovery
 - true closed-loop demo orchestration now exists, but it expects a separate Linux host with ROS2, Autoware, AWSIM, and capture tooling
+- the Linux host continuation path now has checked-in helper templates and sample launch payloads under `examples/closed_loop/`
 
 ### CARLA
 

@@ -247,7 +247,7 @@ class ControlPlaneAPITests(unittest.TestCase):
                     "autoware_topic_catalog_path": str(env["topic_catalog_path"]),
                     "autoware_consumer_input_manifest_path": str(env["consumer_input_manifest_path"]),
                     "out_root": str(self.tmp_path / "closed-loop-run"),
-                    "run_duration_sec": 0.5,
+                    "run_duration_sec": 1.5,
                     "heartbeat_timeout_sec": 3.0,
                     "poll_interval_sec": 0.1,
                     "startup_grace_sec": 1.0,
@@ -255,6 +255,17 @@ class ControlPlaneAPITests(unittest.TestCase):
                     "record_rosbag": True,
                     "strict_capture": True,
                     "allow_non_linux_host": True,
+                    "awsim_launch_command": "trap 'exit 0' TERM INT; while true; do sleep 1; done",
+                    "autoware_launch_command": "trap 'exit 0' TERM INT; while true; do sleep 1; done",
+                    "route_goal_command": "true",
+                    "localization_check_command": "true",
+                    "perception_check_command": "true",
+                    "planning_check_command": "true",
+                    "control_check_command": "true",
+                    "vehicle_motion_check_command": "true",
+                    "route_completion_check_command": "false",
+                    "video_capture_command": "mkdir -p \"$(dirname \\\"$AWSIM_CAMERA_CAPTURE_PATH\\\")\"; touch \"$AWSIM_CAMERA_CAPTURE_PATH\"; trap 'exit 0' TERM INT; while true; do sleep 1; done",
+                    "rosbag_record_command": "mkdir -p \"$ROSBAG_ROOT\"; touch \"$ROSBAG_ROOT/demo.db3\"; trap 'exit 0' TERM INT; while true; do sleep 1; done",
                 },
             },
         )
@@ -292,16 +303,16 @@ class ControlPlaneAPITests(unittest.TestCase):
 
         self._write_helper(bin_root / "launch_awsim_closed_loop.sh", "trap 'exit 0' TERM INT\nwhile true; do sleep 1; done\n")
         self._write_helper(bin_root / "launch_autoware_closed_loop.sh", "trap 'exit 0' TERM INT\nwhile true; do sleep 1; done\n")
-        self._write_helper(bin_root / "send_route_goal.sh", "touch \"$RUN_OUT_ROOT/route_goal_sent.txt\"\n")
+        self._write_helper(bin_root / "send_route_goal.sh", "exit 0\n")
         for helper_name in (
             "check_localization_ready.sh",
             "check_perception_ready.sh",
             "check_planning_ready.sh",
             "check_control_ready.sh",
             "check_vehicle_motion.sh",
-            "check_route_completed.sh",
         ):
             self._write_helper(bin_root / helper_name, "exit 0\n")
+        self._write_helper(bin_root / "check_route_completed.sh", "exit 1\n")
         self._write_helper(
             bin_root / "capture_awsim_video.sh",
             "mkdir -p \"$(dirname \"$AWSIM_CAMERA_CAPTURE_PATH\")\"\n"

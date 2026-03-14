@@ -206,7 +206,7 @@ def _run_shell_command(
         }
     try:
         completed = subprocess.run(
-            ["bash", "-lc", command],
+            ["bash", "-c", command],
             cwd=str(cwd),
             env=env,
             capture_output=True,
@@ -244,7 +244,7 @@ def _launch_background_process(
     stdout_handle = stdout_path.open("w", encoding="utf-8")
     stderr_handle = stderr_path.open("w", encoding="utf-8")
     process = subprocess.Popen(
-        ["bash", "-lc", command],
+        ["bash", "-c", command],
         cwd=str(cwd),
         env=env,
         stdout=stdout_handle,
